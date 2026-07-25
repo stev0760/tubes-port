@@ -69,6 +69,43 @@ Two traps, both of which cost time here:
 
 We use the upstream `unlzexe` rather than a reimplementation.
 
+## Toolchain identification
+
+The binary is **Borland Pascal 7.0**, not C. Evidence:
+
+- The in-game credits screen states Tubes was written in Borland Pascal v7
+  and uses a planar 320x200x256 mode with multiple pages (i.e. Mode X).
+- `Portions Copyright (c) 1983,92 Borland` plus `Runtime error ` / ` at ` are
+  the Borland Pascal 7.0 RTL error handler.
+- `Copyright 1994 Absolute Magic`.
+- The binary refuses to run below an 80286, consistent with the `enter`
+  prologues seen at the entry point.
+
+Consequences for decompilation:
+
+- BP7 is a non-optimizing, highly deterministic single-pass compiler. Code
+  generation is regular and maps back to source structure closely.
+- Calling convention is Pascal, not cdecl: arguments pushed left-to-right,
+  callee cleans the stack (`retf N`). Ghidra must be told this or every
+  signature will be wrong.
+- Programs are built from units, which are linked as contiguous blocks. Unit
+  boundaries should be recoverable, allowing the binary to be attacked one
+  unit at a time.
+- Smart linking means only referenced routines are present.
+- A large fraction of the image is stock RTL (System, Crt, Dos). These should
+  be identified and left alone rather than decompiled.
+
+Because BP7 itself runs under DOSBox, a **matching decompilation** is
+realistic: recompile candidate Pascal source and diff the generated code
+against the original image. Byte equality is a much stronger correctness
+signal than playtesting, and does not require reaching late-game content.
+
+## Graphics
+
+Mode X (unchained VGA, 320x200x256, planar) with multiple video pages for
+page flipping. Expect writes to the VGA sequencer (`3C4h`/`3C5h` map mask)
+and CRTC (`3D4h`/`3D5h`) for page start address.
+
 ## Resource containers
 
 Both `.RES` files begin with the ASCII banner `Absolute Magic Resource File!`
