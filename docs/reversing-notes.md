@@ -196,9 +196,49 @@ single length byte followed by up to 255 characters, with no terminator.
 Ghidra's string analyzer searches for NUL-terminated data and misses almost
 all of it.
 
-A custom scanner is needed - look for a length byte `n` followed by exactly
-`n` printable bytes - after which cross-references become usable and the
-string-to-subsystem mapping should fall out.
+`ghidra_scripts/FindPascalStrings.java` handles this: pass 1 finds a length
+byte `n` followed by exactly `n` printable bytes and defines it as
+`PascalString255`; pass 2 synthesises cross-references. Result: **811 strings
+and 709 references across 75 functions**, versus 50 strings and 0 references
+from stock analysis.
+
+Two things that matter if you modify the script:
+
+- String constants live in each unit's **code** segment, not `DATA`, so
+  references are CS-relative. Match on
+  `SegmentedAddress.getSegmentOffset()`, not `getOffset()` - the latter
+  returns the flat linear address, which never appears in an instruction
+  operand. Restricting matches to the referring instruction's own segment
+  also suppresses most coincidental scalar hits.
+- The script is re-runnable, so it must *adopt* strings a previous run
+  already defined rather than skipping them as "existing data", or pass 2
+  sees an empty set.
+
+## Subsystem map
+
+Derived from string references. This is the current best guess at what the
+major functions do:
+
+| Function | Size | Role |
+|---|---|---|
+| `1b2e:2d63` | 4,510 | Slideshow / cutscene player (prev-slide, next-slide, instructions) |
+| `1000:aaba` | 2,096 | Entry: SETUP check, VGA check, memory check, resource load |
+| `1b2e:1651` | 2,323 | Text/font rendering (`WRITE0.GFX`..`WRITE7.GFX`) |
+| `1000:9e53` | 2,173 | Playfield rendering (test tubes, beaker, foreground) |
+| `1000:2dd0` | 3,064 | In-game help / key list screen |
+
+### Resource naming
+
+String references expose the asset names inside `TUBES.RES`, which is a
+strong lead for the container format work. Two extensions are in use:
+
+- `*.GFX` - graphics; includes `STAR1`/`STAR2`, `WRITE0`..`WRITE7` (font
+  glyph pages), `GAMEFG` (and the `GAMEBG` seen earlier)
+- `*.CSP` - appears to be a sprite format; includes `TESTUBE1`..`TESTUBE3`,
+  `TESTUBES`, `BEAKER`, `BEAKERS`, `TUBEH`
+
+The paired plain/`S` naming (`BEAKER`/`BEAKERS`, `TESTUBE1`/`TESTUBES`)
+suggests a shadow or mask variant alongside each sprite. Unconfirmed.
 
 ## Resource containers
 
