@@ -44,13 +44,16 @@ def find_runs(ref, target, seed=16):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    argv = sys.argv[1:]
+    min_run = 16
+    if "--min-run" in argv:
+        k = argv.index("--min-run")
+        min_run = int(argv[k + 1])
+        del argv[k:k + 2]
+    args = [a for a in argv if not a.startswith("--")]
     if len(args) != 2:
         print(__doc__.strip())
         return 2
-    min_run = 16
-    if "--min-run" in sys.argv:
-        min_run = int(sys.argv[sys.argv.index("--min-run") + 1])
 
     ref = load_image(args[0])
     target = load_image(args[1])

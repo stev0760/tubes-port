@@ -145,6 +145,61 @@ Mode X (unchained VGA, 320x200x256, planar) with multiple video pages for
 page flipping. Expect writes to the VGA sequencer (`3C4h`/`3C5h` map mask)
 and CRTC (`3D4h`/`3D5h`) for page start address.
 
+## Ghidra
+
+Import settings that work:
+
+    ghidra-headless <project-dir> tubes -import TUBES_UNP.EXE \
+        -processor "x86:LE:16:Real Mode" -cspec default
+
+Ghidra selects the "Old-style DOS Executable (MZ)" loader and runs its
+Segmented X86 Calling Conventions analyzer. Result: **297 functions**,
+75,832 bytes covered, entry at `1000:aaba`.
+
+Notes:
+
+- Ghidra 12.2 ships Jython only as an uninstalled extension, so `.py` scripts
+  do not run out of the box and PyGhidra wants an interactive venv install.
+  Java `GhidraScript` files compile on the fly with no setup - use those.
+- `-scriptPath` must be absolute, as must the project directory (a leading
+  `./` is rejected outright).
+- Available conventions include `__stdcall16far` / `__stdcall16near`. Pascal
+  is callee-cleans, so `__stdcall16far` is the right default for game code.
+
+### Segment layout = unit layout
+
+Borland Pascal links each unit as its own segment, so Ghidra's 24 `CODE_*`
+blocks correspond to program units. Base segment `0x1000` maps to image
+offset 0.
+
+| Block | Segment | Size | Notes |
+|---|---|---|---|
+| `CODE_0` | `1000` | 45,792 | contains entry `1000:aaba` - main program |
+| `CODE_1` | `1b2e` | 25,760 | largest unit after the main block |
+| `CODE_2`..`CODE_15` | `2178`..`2407` | ~12,300 total | game units |
+| `CODE_16`..`CODE_23` | `2475`..`2785` | ~15,900 total | RTL |
+| `DATA` | `2785:0d40` | 16,752 | |
+
+Cross-checking against `rtl_match.py` confirms the split. The largest RTL
+cluster spans image `0x160a9`..`0x16690`, which coincides almost exactly with
+`CODE_19` (`0x16070`..`0x16690`); the remaining clusters all fall inside
+`CODE_22` (`0x16850`..`0x17850`), which is therefore the System unit.
+
+So roughly **84KB of game code across 16 units, and 16KB of RTL** that can be
+ignored. RTL sits at the end of the image, after the game units.
+
+### Pascal strings are not C strings
+
+Ghidra's auto-analysis found only 50 strings and zero references to them,
+despite the binary being full of text. Turbo Pascal uses `ShortString`: a
+single length byte followed by up to 255 characters, with no terminator.
+Ghidra's string analyzer searches for NUL-terminated data and misses almost
+all of it.
+
+A custom scanner is needed - look for a length byte `n` followed by exactly
+`n` printable bytes - after which cross-references become usable and the
+string-to-subsystem mapping should fall out.
+
 ## Resource containers
 
 Both `.RES` files begin with the ASCII banner `Absolute Magic Resource File!`
