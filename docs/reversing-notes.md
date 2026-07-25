@@ -100,6 +100,45 @@ realistic: recompile candidate Pascal source and diff the generated code
 against the original image. Byte equality is a much stronger correctness
 signal than playtesting, and does not require reaching late-game content.
 
+## Toolchain reproduction
+
+Turbo Pascal 7.0 (BIN dated 1992-10-30) runs headless under DOSBox and
+compiles successfully, which makes an automated compile-and-diff loop
+possible:
+
+    SDL_VIDEODRIVER=dummy dosbox -noconsole \
+      -c "mount c <dir>" -c "c:" -c "cd work" \
+      -c "..\\tp7\\bin\\tpc.exe HELLO.PAS" -c "exit"
+
+`TPC.EXE` is the command-line compiler and the one to automate; `TURBO.EXE`
+is the IDE and cannot be scripted. Note the shipped `SOURCE/` directory is
+Turbo Vision and WinDos only - the core System / Crt / Dos units exist solely
+as compiled code inside `TURBO.TPL`.
+
+### Version confirmation
+
+Compiling a trivial program and byte-comparing its image against
+`TUBES_UNP.EXE` (see `tools/rtl_match.py`) gives **79.4% of the reference
+image matching**, with 21 runs totalling 1,326 bytes sharing a single delta
+of `0x016810`. A whole linked unit relocates as one block, so a shared delta
+across many runs means the System unit sits contiguously in Tubes at that
+offset.
+
+This is strong evidence the toolchain version is correct, and therefore that
+a matching decompilation is achievable. The residual mismatch is expected:
+bytes holding segment values differ because relocation targets differ between
+the two programs.
+
+Caveats worth keeping in mind:
+
+- Tubes is dated 1994 and TP 7.01 exists; if individual routines refuse to
+  match later, a point-release codegen difference is the first suspect.
+- The reference was a hello-world, so it only pulls in the slice of System
+  that `WriteLn` needs. Real RTL usage in Tubes (Crt, Dos, more of System)
+  is certainly larger than what this first pass found.
+- Single-run deltas are likely coincidental matches on common byte patterns,
+  not real RTL. Only multi-run clusters should be trusted.
+
 ## Graphics
 
 Mode X (unchained VGA, 320x200x256, planar) with multiple video pages for
