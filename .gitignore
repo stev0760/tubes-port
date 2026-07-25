@@ -1,0 +1,27 @@
+# ---------------------------------------------------------------------------
+# Original game data is COPYRIGHTED and must never be committed.
+# The engine loads these at runtime from the user's own copy of Tubes.
+# ---------------------------------------------------------------------------
+*.EXE
+*.exe
+*.RES
+*.res
+*.SAV
+*.sav
+*.DOC
+*.doc
+*.CFG
+*.cfg
+CATALOG.TXT
+ORDERFRM.DOC
+
+# Extracted assets are derived works of the above - also never committed.
+assets-extracted/
+*.unpacked
+*.dump
+
+# Build output
+build/
+*.o
+*.a
+compile_commands.json
