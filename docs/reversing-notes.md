@@ -2611,3 +2611,20 @@ This resolves something structural. `CONVBALL` is type 14 and has **no fade
 family** - which looked odd for something that reaches the beaker. It never
 settles as itself: it becomes Xenon (11), which also has no fade family because
 Xenon cannot be matched. The type table and the behaviour agree.
+
+
+## The game continues past wave 50
+
+Wave 50 was cleared in play and the game advanced to **wave 51**, so 50 is not
+the last wave. Published notes say the registered version "adds 50 waves", which
+therefore means *+50 on top of* the shareware's set rather than a 50-wave total.
+
+This corroborates a constant measured statically long beforehand. The difficulty
+progression recorded from `1000:9e53` has **level bands at 30 / 60 / 75 / 90 /
+95 / 101** - bands at 90, 95 and 101 are meaningless in a game that stops at 50,
+and are exactly what a ~100-wave game would need.
+
+The wave number is a single byte at `TUBES.SAV` `0x206`, so the format allows up
+to 255. Where the real ceiling sits is **not** established: warping to
+progressively higher waves and reading the briefing would settle it, since an
+out-of-range wave should either refuse to load or produce a degenerate briefing.
