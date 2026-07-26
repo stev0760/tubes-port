@@ -57,10 +57,12 @@ Things currently implemented on assumptions the binary has since contradicted.
 Listed first because building on them wastes work.
 
 1. **The dispenser model.** `src/game.cpp` has atoms falling straight down to
-   be caught by a tube. The tube-piece sprites (`TUBEH`, `TUBEV`, `TUBEVL`,
-   `TUBEVR`) are 16x13 - the same cell size as atoms - so they are *tiles on a
-   grid* and the dispenser is a routing network. Both halves of the current
-   model are wrong.
+   be caught by a tube. That is still wrong, but the replacement is not yet
+   known - see "the dispenser" under Next. The earlier guess that it is a
+   *tile routing network* is **not supported by the code** and should not be
+   built on either: the whole frame update contains only two multiplies by the
+   13-pixel row pitch, both in the settled-grid draw. Whatever the tubes do,
+   they are not walked cell by cell each frame.
 2. **The test tube holds one atom.** `TESTUBE1/2/3` are 22x65, 20x42 and 20x27
    - about 5, 3 and 2 cells at the 13px row pitch. Three capacities, matching
    the 9/6/3 drop limits. The tube stacks several atoms.
@@ -76,14 +78,30 @@ Listed first because building on them wastes work.
 
 ### 1. The dispenser and test tube mechanic
 
-The last real unknown, and everything else sits on it. In `1000:3a67`:
+The last real unknown. Partially investigated; here is what is established so
+far, and what is not.
 
-- how atoms enter the tube network and how routing is represented
-- how the test tube stacks, and what capacity maps to which difficulty
-- what the `TUBEVL`/`TUBEVR` variants mean (left/right routing?)
+**Established, from the disassembly of `1000:3a67` (9382 bytes):**
 
-Anchor: the cell-to-pixel mapping is known, so tube-tile draws are
-recognisable by their coordinates.
+- The dynamic game state is an array of **12 records of 28 bytes**. It
+  dominates the frame update: of 20 small-constant multiplies, 18 are the
+  0x1c record stride and only 2 are the 13-pixel row pitch (both in the
+  settled-grid draw).
+- Records are initialised to a parked value - two coordinate-shaped pairs of
+  (303, 186). x=303 is off-screen right, past the play area which ends at 245.
+- Drawing is *not* driven by that array. Of 18 record-index computations only
+  one is followed by a sprite draw. The 126 calls to the draw routine are
+  mostly unrolled with literal or table coordinates, exactly like the
+  six-per-row grid draw.
+
+**Not established:** what the 12 records represent, how atoms reach the tube,
+how the tube stacks. One loop sets a field across records 1..5 to
+99, 93, 87, 81, 73 - descending by 6, and in the x range of the play area -
+but what it drives is unknown.
+
+**Do not** assume tile routing (see Known wrong). The next step is to identify
+the 12-record structure, most usefully by finding which of the 126 draw calls
+reads from it.
 
 ### 2. Presentation
 
