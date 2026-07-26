@@ -467,6 +467,47 @@ code - worth verifying before relying on it.
 Decoded, the demo reads as ordinary play: nudge left, hold down to descend,
 tap right to line up, press A, repeat. 83.1% of frames are idle.
 
+### Attract mode is a scriptable play session - use it as the rig's player
+
+The demo replays through **the normal game loop**, so everything the engine does
+during real play it also does during attract mode: atoms spawn and fall, the
+tube moves and catches, chains clear, the score and drop counter move. Watching
+it was in fact how the drop counter's session-start value got sampled, before
+anyone realised the "new game" was the demo.
+
+That makes it the answer to the problem that has shaped this whole phase of the
+work - **human latency**. Every live-play measurement so far has been paced by a
+person typing, pausing and reporting, which is why transitions kept being missed
+and why a pause key became load-bearing. The demo removes the human entirely:
+
+- **deterministic.** Same recording, same seed, same run - so a measurement can
+  be repeated and a suspicious result re-checked under identical conditions,
+  which live play can never offer.
+- **unattended and long.** 11,970 frames of real play with no one waiting, so the
+  guest can be slowed as far as sampling needs without anyone minding.
+- **already decoded.** `tools/scr_decode.py` gives the input stream, so the
+  *expected* action on every frame is known in advance and can be compared
+  against what the game state actually did.
+
+Two things it unblocks directly. The **type-field question** - which record
+offset really holds an atom's type, after the `+0x0b` reading was found
+unsupported - is a correlation over thousands of catches, which is exactly what
+an unattended deterministic run provides and what hand-play cannot. And the
+constants still marked guessed in `CLAUDE.md` - **spawn rate, fall speeds,
+scoring** - are all rate measurements that need a long, repeatable trace.
+
+It is also the shape of the port's regression test: feed the same `DEMO.SCR` to
+this engine, replay it frame by frame, and diff the resulting state against a
+trace captured from the original. The notes already call `DEMO.SCR` safe to use
+as the correctness oracle; this is how that gets cashed in.
+
+Caveat to establish first: the header's u32 is *inferred* to be the RNG seed and
+has never been confirmed against the playback code. Determinism is the whole
+premise here, so that inference stops being a footnote - if the replay does not
+reproduce the same atom sequence, every comparison built on it is meaningless.
+Cheapest check is to run the demo twice from a cold boot and diff the state
+traces.
+
     tools/scr_decode.py INFO <file.SCR>
     tools/scr_decode.py DUMP <file.SCR> [maxframes]
 
@@ -2949,16 +2990,22 @@ The measured `9 / 6 / 3` constants and the 11 seen in every save looked like a
 contradiction for most of this project. They are not: **9/6/3 is what a new game
 seeds, and Bonus atoms raise it from there.**
 
-The log caught the seeding by accident. A new session began mid-capture:
+The log caught a session start mid-capture:
 
     [  668.3] drops 11 -> 3   beaker=0 score=0
     [  725.7] drops  3 -> 2   beaker=14 score=1000
 
 `score=0` and `beaker=0` mark a fresh session, not a miss - the logger's `MISS`
-label there is wrong, and the score reset is the tell. The new game seeded **3**.
+label there is wrong, and the score reset is the tell.
 
-Confirmed across all three settings by play, which is where the mapping to the
-difficulty names comes from:
+**That session was attract mode, not a new game** - the demo had kicked in while
+the machine sat idle. So it measures what the *demo* runs at, which is a fact
+about `DEMO.SCR` playback and not about starting a game. Recorded here because
+3 is also the hardest difficulty's allowance and the coincidence would otherwise
+invite the same wrong inference twice.
+
+The difficulty mapping below rests on play instead - all three settings tried
+directly:
 
 | difficulty | starting drops |
 |---|---|

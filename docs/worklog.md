@@ -1524,7 +1524,9 @@ observation, missing label.
 
 Every mechanism is now measured separately, and the long-standing contradiction
 between the binary's `9/6/3` and the 11 in every save is resolved — they were
-never competing claims:
+never competing claims (the mapping is from playing all three settings; a
+`11 -> 3` session start seen in the log turned out to be **attract mode**, not a
+new game, and measures the demo rather than the seed):
 
     new game         drops = 9 / 6 / 3 by difficulty (101 / 201 / 301)
     a miss           -1
