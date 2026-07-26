@@ -19,22 +19,23 @@
 
 namespace {
 
-// Playfield geometry.
+// Playfield geometry, all measured from the draw loop in 1000:3a67.
 //
-// The cell size is real: atom sprites measure 16x13. The tube walls in
-// GAMEFG.GFX occupy x 10..73 and x 246..309, leaving x 74..245 clear, so the
-// grid sits in that gap. Column and row counts are a playable guess, not
-// recovered from the original - see docs/reversing-notes.md.
-constexpr int kCellW = 16;
-constexpr int kCellH = 13;
-// Recovered from 1000:3a67: three parallel grids are indexed [i * 6 + j] with
-// the inner loop running 1..6 and the outer 1..5. So the playfield is 6 x 5,
-// not the 7 x 10 guessed from the manual. Which index is the column is not
-// yet proven - see docs/reversing-notes.md.
+// The playfield is 6 x 5, not the 7 x 10 the manual implied. Columns are
+// pitched 18 apart while the sprites are 16 wide, which is why nothing lined
+// up when the pitch was assumed equal to the cell size. The grid spans
+// x 107..212, centred on 160 - exactly the centre of the x 74..245 gap
+// between the tube walls in GAMEFG.GFX. See docs/reversing-notes.md.
+constexpr int kCellW = 16;      // atom sprite width
+constexpr int kCellH = 13;      // atom sprite height
+constexpr int kPitchX = 18;     // column pitch: sprites are 16 wide, so a 2px gap
+constexpr int kPitchY = 13;     // row pitch: rows touch exactly
 constexpr int kCols = 6;
 constexpr int kRows = 5;
-constexpr int kGridX = (tubes::kScreenWidth - kCols * kCellW) / 2;
-constexpr int kGridY = 190 - kRows * kCellH;
+// Column x comes from a six-entry table; the values are 107..197 step 18.
+// Row y is computed inline as `row * 13 + 121` for row = 1..5.
+constexpr int kGridX = 107;
+constexpr int kGridY = 121 + kPitchY;
 constexpr int kTubeY = kGridY - kCellH - 2;
 constexpr float kFallHeight = static_cast<float>(kTubeY - 16);
 
@@ -443,22 +444,22 @@ int main(int argc, char** argv) {
             for (int c = 0; c < b.cols(); ++c) {
                 int8_t v = b.at(c, r);
                 if (v == tubes::kEmpty) continue;
-                screen.draw(atoms[v], kGridX + c * kCellW, kGridY + r * kCellH);
+                screen.draw(atoms[v], kGridX + c * kPitchX, kGridY + r * kPitchY);
             }
         }
 
         const tubes::Falling& f = game.falling();
         if (f.active && f.colour != tubes::kEmpty) {
-            screen.draw(atoms[f.colour], kGridX + f.column * kCellW,
+            screen.draw(atoms[f.colour], kGridX + f.column * kPitchX,
                         static_cast<int>(f.y));
         }
         if (haveTube) {
-            screen.draw(testTube, kGridX + game.tubeColumn() * kCellW - 3,
+            screen.draw(testTube, kGridX + game.tubeColumn() * kPitchX - 3,
                         kTubeY - 40);
         }
         if (game.heldAtom() != tubes::kEmpty) {
             screen.draw(atoms[game.heldAtom()],
-                        kGridX + game.tubeColumn() * kCellW, kTubeY);
+                        kGridX + game.tubeColumn() * kPitchX, kTubeY);
         }
 
         screen.toRgba(pal, rgba);

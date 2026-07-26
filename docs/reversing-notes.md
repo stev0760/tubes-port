@@ -707,12 +707,68 @@ taken from the manual was wrong in both dimensions.
 Cell values are 0 for empty and 1..7 for colours - the loop above increments a
 cell and wraps 8 back to 1, which is a colour-cycling effect.
 
-**Not yet proven:** which index is the column, and how cells map to pixels.
-6 x 16 = 96 and 5 x 13 = 65 are the obvious readings, but they do not fit the
-art: the play area from `GAMEFG.GFX` is 172 pixels wide, and `BEAKER.CSP` has
-an interior clear span of only 82 pixels at every height. `BEAKER.CSP` is
-exactly 65 tall, which matches 5 x 13, but its width does not match 6 x 16 on
-any reading, so that is being treated as coincidence rather than evidence.
+### Cell to pixel mapping (solved)
+
+The draw loop in `1000:3a67` settles it. At instruction level:
+
+        mov  al, [bp-0x1b3]      ; row
+        xor  ah, ah
+        imul ax, ax, 0xd         ; * 13
+        add  ax, 0x79            ; + 121
+        push word ds:0x1e        ; x for column 1
+        push ax                  ; y
+        ...
+        push [di+0x1da8]         ; sprite segment
+        push [di+0x1da6]         ; sprite offset
+        call 1321:0905           ; Draw(x, y, sprite)
+
+So **y = row * 13 + 121** for row 1..5, giving y = 134, 147, 160, 173, 186.
+The bottom row ends at y = 199, the last scanline.
+
+x does not come from arithmetic at all - it is a six-entry table, one push per
+column, unrolled. The column-to-slot order is 3, 2, 1, 6, 5, 4:
+
+| column | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| slot | `ds:0x1e` | `ds:0x1c` | `ds:0x1a` | `ds:0x24` | `ds:0x22` | `ds:0x20` |
+| x | 107 | 125 | 143 | 161 | 179 | 197 |
+
+**Column pitch is 18, not 16.** The sprites are 16 wide, so there is a 2-pixel
+gap between columns. Assuming pitch equalled cell size is why nothing lined
+up.
+
+Two independent checks that this is right:
+
+- The six values are stored in memory as two *descending* triples
+  (143, 125, 107, 197, 179, 161). Reading them through the 3,2,1,6,5,4
+  mapping yields a perfectly uniform arithmetic progression. A wrong mapping
+  would produce a jumbled sequence.
+- The grid spans x 107..212, centred on 160 - exactly the centre of the
+  x 74..245 gap between the tube walls in `GAMEFG.GFX`, which was measured
+  from completely different data.
+
+The cell value indexes a far-pointer table at `DS:0x1da6` (offset) and
+`DS:0x1da8` (segment), stride 4, which `1000:9e53` fills with the loaded
+compiled sprites. Colour 0 draws nothing.
+
+#### Finding the values: two segment traps
+
+The six x words live at `DS:0x1a`..`0x25`, and a byte search for writes to
+those offsets finds only one site - which turned out to be **a different
+segment entirely**, a function that does `mov ax, cs / mov ds, ax` and stores
+far-pointer pairs at the same offsets. Same numbers, unrelated storage.
+
+The values are not written at runtime at all; they are initialised data.
+DGROUP is Ghidra segment `2785`, load-relative `0x1785`, so `DS:0x1a` is at
+image offset `0x1785 * 16 + 0x1a`. Reading there gives the table directly.
+
+Note also that `SS:SP = 1a70:2000` from the EXE header points *past* the
+99,728-byte image. SS is not DGROUP here, and assuming it was is what sent the
+first search to the wrong address.
+
+`BEAKER.CSP` remains a dead end: 114x65 with an 82-pixel interior clear span,
+matching neither the 18-pixel column pitch nor the 6-column span. Its height
+of 65 equals 5 x 13, but that is coincidence.
 
 ### Difficulty seed and progression
 

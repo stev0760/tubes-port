@@ -103,8 +103,14 @@ playfield x range 74..245, drop limits 9/6/3, and the difficulty seed and
 progression rules in `1000:9e53`. **Also measured:** the
 playfield array is 6 x 5, read off the loop bounds in `1000:3a67` (the old
 7x10 came from the manual and was wrong in both dimensions).
-**Still guessed:** which index is the column, the cell-to-pixel mapping,
-spawn rate, fall speeds, scoring.
+**Also measured:** the full
+cell-to-pixel mapping - x = {107,125,143,161,179,197} (pitch 18, not 16),
+y = row * 13 + 121. **Still guessed:** spawn rate, fall speeds, scoring.
+
+When chasing a DS-relative global, establish which segment DS actually holds
+first. Two separate wrong turns came from this: `SS:SP` in the EXE header
+points past the image and is not DGROUP (which is Ghidra segment `2785`), and
+one unit sets `DS = CS` so its `ds:0x1e` is unrelated to the game's.
 
 `ghidra_scripts/MapProgram.java` dumps the call graph plus the strings each
 function references; that is what identified every interface stage (splashes,
