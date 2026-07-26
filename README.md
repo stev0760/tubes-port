@@ -29,7 +29,7 @@ engine draws a composited 320x200 scene from the original data.
 - [x] Engine: resource loading and Mode X-faithful rendering
 - [x] Playfield logic, matching and input
 - [x] `.MUS` FM/Adlib music (event grammar, instruments, 72.827 Hz tempo)
-- [ ] Play music in-engine: OPL2 core driven from SDL audio
+- [x] Play music in-engine: sequencer + Nuked-OPL3 driven from SDL audio
 - [ ] Recover real gameplay constants (grid size, scoring, wave curves)
 - [ ] Beaker and test tube presentation, sound effects, wave/endurance modes
 
@@ -48,6 +48,9 @@ Options:
 | `--gamedir DIR` | directory holding your `TUBES.RES` (default `.`) |
 | `--scale N` | integer scale factor (default: largest that fits) |
 | `--screenshot FILE` | render one frame to a BMP and exit |
+| `--music NAME` | song to play (default `TUBES.MUS`), `--no-music` to disable |
+| `--render-mus NAME OUT.wav` | render a song to WAV and exit |
+| `--dump-regs NAME` | print the OPL2 register stream and exit |
 
 `--screenshot` works headless under `SDL_VIDEODRIVER=dummy`, which is how the
 renderer gets verified without a display.
@@ -88,8 +91,10 @@ targeted rather than exhaustive:
 3. Write the gameplay fresh against those constants, checking feel
    side-by-side against DOSBox.
 
-The original sound drivers in `DRIVERS.RES` are discarded outright; SDL
-replaces them.
+The original sound drivers in `DRIVERS.RES` are not executed, but they are
+*read*: `FMMUSIC.DRV` is where the `.MUS` format was recovered from, and the
+engine still loads its frequency and attenuation tables at runtime rather than
+hardcoding them.
 
 See `docs/reversing-notes.md` for findings so far.
 

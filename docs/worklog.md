@@ -237,3 +237,35 @@ are state rather than triggers. The C++ player will keep the full sweep.
 
 The lesson worth keeping: a whole session of histograms and stride tests
 produced nothing, and reading a second driver produced everything.
+
+### Music playing in-engine
+
+Vendored Nuked-OPL3 (LGPL 2.1, unmodified) into `third_party/` and ported the
+sequencer to `src/mus.cpp`, driven from the SDL audio callback so tempo comes
+off the sample clock rather than the frame rate.
+
+The synth is deliberately *not* the thing being trusted. `--dump-regs` prints
+the register stream the sequencer produces, and it is diffed against
+`tools/mus_decode.py`. **All 10 songs match to the byte — 23,319 register
+writes.** That makes the port provably correct independently of whether the
+emulator sounds right, which is the same separation the MIDI/DRO split was
+built for.
+
+One bug found while wiring the bank dump: the bass drum was printed as
+single-operator. The driver's two-operator test is `ch <= 6` while the
+melodic/percussion split is `ch < 6`, so channel 6 sits on the wrong side of
+the obvious guess. `FmPlayer` had it right and only the new display code was
+wrong — but it is exactly the kind of off-by-one that would have sounded
+subtly bad and been blamed on the emulator.
+
+Also settled a question raised by listening: the MIDI and DRO exports sounded
+different, with more percussion in the DRO. Measured rather than assumed —
+percussion note-ons and 0xBD rising edges match exactly in all ten files, so
+neither export drops or adds hits. The difference is timbre: synthesized
+rhythm-mode drums against sampled GM ones.
+
+And a negative result worth keeping: the whole soundtrack uses only 12
+distinct OPL patches, but a standard OPL bank (OP2, WOPL) cannot hold them,
+because those formats key on GM program number and this game reuses program 0
+for four unrelated patches. The engine needs no bank at all — patches arrive
+inside each `.MUS` and load at runtime.

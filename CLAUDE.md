@@ -33,6 +33,7 @@ blindly.
 | `src/` | the engine (C++17, SDL2) |
 | `tools/` | Python decoders, one per format, plus `unpack.sh` |
 | `ghidra_scripts/` | Java `GhidraScript` files for headless analysis |
+| `third_party/` | vendored deps, unmodified — currently Nuked-OPL3 (LGPL 2.1) |
 | `docs/reversing-notes.md` | every format, with what is proven vs guessed |
 | `docs/worklog.md` | chronological record of the work |
 
@@ -46,6 +47,12 @@ derived from copyrighted data.
     cmake --build build -j
     ./build/tubes-tests                      # 19 checks on the matching rules
     ./build/tubes-port --gamedir ..
+
+Music is verified by diffing register streams, not by listening:
+`--dump-regs NAME` prints what the sequencer writes to the chip, and it must
+match `tools/mus_decode.py` exactly. All 10 songs currently do. That check is
+independent of the OPL emulator, so a synthesis bug can never be mistaken for
+a sequencer bug. `--render-mus NAME OUT.wav` renders offline.
 
 `--screenshot FILE` renders one frame to a BMP and exits; it works headless
 under `SDL_VIDEODRIVER=dummy`. `--auto N` runs N frames of a scripted player
@@ -105,9 +112,6 @@ float, and the test tube's vertical placement is approximate.
 Every format the game loads is now decoded, `.MUS` included. What remains is
 engine work:
 
-- **Music playback.** `tools/mus_decode.py` is the reference implementation
-  of the sequencer, transcribed from `FMMUSIC.DRV`. The C++ side needs the
-  same sequencer plus an OPL2 core, driven from SDL audio.
 - **Beaker and test tube presentation.** `BEAKER.CSP` is not drawn and the
   tube sits at the top of the screen, so atoms appear to float.
 - Sound effects through SDL_mixer; wave and endurance modes.
