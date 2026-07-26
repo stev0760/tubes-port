@@ -470,6 +470,33 @@ tap right to line up, press A, repeat. 83.1% of frames are idle.
     tools/scr_decode.py INFO <file.SCR>
     tools/scr_decode.py DUMP <file.SCR> [maxframes]
 
+## .816 / .88 - bitmap fonts (solved)
+
+Standard VGA glyph tables. No header at all: 256 characters, one byte per
+scanline, most significant bit leftmost. The extension encodes the cell size
+and the file size follows from it.
+
+| Ext | Cell | Size | Files |
+|---|---|---|---|
+| `.816` | 8 x 16 | 4096 | `FUTURE`, `SCRIPT`, `STARTREK`, `THIN8X8` |
+| `.88` | 8 x 8 | 2048 | `TINY6X8` |
+
+Cell width is always 8 because a scanline is exactly one byte. Fonts that are
+narrower in practice leave the right-hand columns clear, so advance width is
+a renderer decision rather than a property of the file - `THIN8X8` uses 7
+columns, `TINY6X8` uses 7 of its 8.
+
+`THIN8X8.816` is worth noting: despite the name it is stored in 8 x 16 cells
+with the lower 8 rows blank, i.e. a genuine 8x8 font padded into the larger
+cell. The extension describes the storage, not the design.
+
+Glyph coverage: the four `.816` fonts define 253 of 256 codes; `TINY6X8`
+defines only 97, essentially the printable ASCII range.
+
+    tools/fnt_decode.py INFO   <font>...
+    tools/fnt_decode.py RENDER <outdir> <font>...
+    tools/fnt_decode.py SHOW   <font> <char>
+
 ### Next unknowns
 - `.SCR` cutscene script format (`DEMO.SCR`, 11,976 bytes decompressed)
 - `.MUS` FM/Adlib music format
