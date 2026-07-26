@@ -3755,3 +3755,84 @@ Record fields seen being used but not yet identified: `+0x07`, `+0x09`,
 
 Until that is found, `src/game.cpp`'s three-leg route stays a placeholder, and
 it is marked as one.
+
+## The movement code: `1000:0f80` (solved)
+
+`1000:3a67` calls `FUN_1000_0f80(record)` per atom. This is the router, and it
+is a **state machine over a fixed-point position**, not a path.
+
+### Record fields, from the code and confirmed live
+
+| offset | meaning |
+|---|---|
+| `+0x00` u16 | **x** |
+| `+0x02` u16 | **y** |
+| `+0x04` u16 | **anchor x** - the column base the arc offsets are measured from |
+| `+0x06` u16 | **target y** |
+| `+0x08` u8 | **state** |
+| `+0x09` u16 | **velocity**, in 1/128 px per frame (unaligned) |
+| `+0x0b` u8 | type |
+| `+0x0c` u8 | **destination column, 1..6** |
+| `+0x10` u16 | x sub-pixel accumulator |
+| `+0x12` u16 | y sub-pixel accumulator |
+
+Live sample: `x=246 y=175 anchorX=246 targetY=0 state=3 col=4 vel=512 type=2`.
+**`512 / 128 = 4`** - the 4 px/frame network speed measured by sampling is
+literally this field divided by 128. The "speeds" recorded earlier are the
+integer part of a fixed-point step.
+
+### The topology is a table at `DS:0x18`
+
+    DS:0x18 = 26
+    DS:0x1a = 143   DS:0x1c = 125   DS:0x1e = 107      <- columns 1,2,3
+    DS:0x20 = 197   DS:0x22 = 179   DS:0x24 = 161      <- columns 4,5,6
+    DS:0x26 = 104   0x28 = 122  0x2a = 140  0x2c = 158  0x2e = 176
+
+`*(u16 *)(0x18 + col*2)` gives an atom's destination x. This is why no tube x
+value ever appears in a comparison in `1000:3a67` - the geometry is **data**,
+and the earlier failed search for those constants was looking in the wrong kind
+of place. The two descending triples `143,125,107 / 197,179,161` indexed
+`3,2,1 / 6,5,4` are exactly what the notes recorded long ago from the sprite
+table.
+
+### The states
+
+    3  RISE      acc_y += vel;  y -= acc_y/128;  acc_y &= 0x7f
+               on y <= targetY:  y = targetY, acc = 0,
+                                 state = (col < 4) ? 6 : 5
+    6  GO RIGHT  acc_x += vel;  x += acc_x/128;  acc_x &= 0x7f
+               anchorX = colTable[col];  on x >= anchorX: snap, state = 7
+    5  GO LEFT   as 6 but x decreasing
+    7  DESCEND   y += acc/128
+    9              y += 9
+
+`col < 4` chooses the turn direction: columns 1-3 sit left of their feed tube
+and the atom travels **right**, columns 4-6 travel **left**.
+
+### The arc is an offset table, not a curve
+
+This is the part the port gets visibly wrong. While within 9 px of the corner,
+the *other* axis is displaced by a small table, which rounds the turn:
+
+    rising, near the corner (y - targetY):
+        <= 1 -> x = anchorX +/- 9
+        <= 2 -> x = anchorX +/- 6
+        <= 4 -> x = anchorX +/- 4
+        <= 6 -> x = anchorX +/- 2
+        else -> x = anchorX +/- 1
+
+    travelling horizontally, near the corner (anchorX - x):
+        <= 1 -> y = targetY + 9
+        <= 2 -> y = targetY + 6
+        <= 4 -> y = targetY + 3
+        <= 6 -> y = targetY + 2
+        else -> y = targetY + 1
+
+Sign follows the direction of travel. Note the two tables are **not** the same -
+`{9,6,4,2,1}` rising versus `{9,6,3,2,1}` horizontally - so this is hand-tuned
+pixel art, not a computed curve, and it must be transliterated rather than
+approximated.
+
+The port's three-leg route (rise, cross at y=0, descend) is wrong in every
+respect: it has no fixed-point step, no column table, no turn direction rule,
+and square corners.
