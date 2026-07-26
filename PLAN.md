@@ -130,9 +130,15 @@ A PSP port is the stated end goal, so keep these in mind while writing code
 here rather than retrofitting later. None of this justifies contorting the
 code now - it justifies *not* painting into a corner.
 
-- **Keep the engine free of SDL.** `res`, `gfx`, `mus`, `board` and `game`
-  should stay platform-agnostic; only `screen`, `opl` and `main` touch SDL.
-  This is already mostly true and is worth preserving.
+- **SDL is the plan - keep it at the edge.** SDL *is* the portability layer;
+  the point is to confine it to the platform boundary rather than thread it
+  through the game. Today only `main.cpp` (window, input, loop) and `opl.cpp`
+  (audio device) include it - 3 files of 16, and `screen.cpp` is not one of
+  them, being a plain indexed framebuffer with a `toRgba()` at the end.
+  This already pays off twice: `tubes-tests` links no SDL at all, and
+  `--dump-regs` proved the sequencer correct with no audio device attached.
+  If a target's SDL is missing or awkward, `main.cpp` and `opl.cpp` are the
+  only files to rewrite and nothing reversed is touched.
 - **Endianness is not a problem.** PSP is MIPS little-endian, same as x86, so
   the format decoders port unchanged.
 - **The OPL core may be.** Nuked-OPL3 is cycle-accurate and correspondingly

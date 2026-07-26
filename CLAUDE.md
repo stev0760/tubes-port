@@ -133,9 +133,11 @@ See `PLAN.md`. In short: the dispenser/test-tube mechanic is the last real
 unknown, and the current model of it in `src/game.cpp` is known to be wrong
 rather than merely incomplete. Everything else is mapped.
 
-A PSP port is the eventual goal, so keep the engine free of SDL - `res`,
-`gfx`, `mus`, `board` and `game` are platform-agnostic today and should stay
-that way. `PLAN.md` has the rest of the portability notes.
+Ports to other platforms are an eventual goal, so keep SDL at the platform
+edge - it is the portability layer, not something to avoid. Only `main.cpp`
+and `opl.cpp` include it today; `res`, `gfx`, `mus`, `board`, `game` and even
+`screen` are platform-agnostic and should stay that way. `PLAN.md` has the
+rest.
 
 ## Reversing method that has actually worked
 
