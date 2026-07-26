@@ -49,6 +49,23 @@ constexpr int8_t kFirstColour = kRedium;
 constexpr int8_t kLastColour = kPinkium;
 constexpr int kColourCount = 7;
 
+// Only the ordinary colours and Flashium take part in matching. Xenon is inert
+// - it settles in the beaker and simply sits there - and the remaining
+// specials either never settle as themselves (Bonus becomes Flashium when
+// caught) or have behaviours of their own.
+inline bool isMatchable(int8_t v) {
+    return v >= kRedium && v <= kFlashium;
+}
+
+// NOT YET IMPLEMENTED: Flashium is a wildcard. The Instructions say chains form
+// "of the same element **or in combination with Flashium atoms**", so a run may
+// mix one real colour with Flashium. It is left out deliberately rather than
+// guessed at, for two reasons: whether a run of three Flashium and no element
+// matches at all is unknown from any evidence gathered so far, and the board
+// tests encode atoms as digits - `testCascade` uses 8s, which now means
+// Flashium - so turning it into a wildcard silently changes what those tests
+// assert. Both need settling before the mechanic goes in.
+
 // The measured cell-to-pixel mapping. The column pitch is 18, not the 16 the
 // sprite width would suggest, and the x values are a six-entry table rather
 // than an arithmetic run in the original - they happen to be evenly spaced.

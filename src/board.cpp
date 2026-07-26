@@ -63,7 +63,7 @@ int Board::findMatches(std::vector<uint8_t>& marked,
     for (int r = 0; r < rows_; ++r) {
         for (int c = 0; c < cols_; ++c) {
             int8_t colour = at(c, r);
-            if (colour == kEmpty) continue;
+            if (!isMatchable(colour)) continue;   // empty, Xenon, or a special
 
             for (const Dir& d : kDirs) {
                 // Only start scanning at the beginning of a run, so each run

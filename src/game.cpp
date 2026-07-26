@@ -6,24 +6,41 @@
 namespace tubes {
 namespace {
 
-// Scoring. Two awards are measured against the running original:
+// Scoring, stated outright by the game's own Detailed Instructions:
 //
-//   a VERTICAL run of 3   ->  250     (seen twice in the demo trace)
-//   a DIAGONAL run of 4   -> 1000     (recorded during live play)
+//     Vertical                     250
+//     Horizontal                   500
+//     Diagonal (either direction) 1000
 //
-// Those are the only two awards tied to a known run, and they differ in BOTH
-// orientation and length - so the two variables are confounded and neither
-// "diagonals pay 4x" nor "length drives the award" is established. The formula
-// below is the simplest curve through both points, 250*(len-2)^2, giving
-// 250 / 1000 / 2250 for runs of 3 / 4 / 5. It reproduces every measurement
-// taken so far and is otherwise a guess; a run of 5, or a horizontal 4, would
-// separate the two explanations in a single observation.
-constexpr int kChainUnit = 250;
-
+// The award depends on ORIENTATION ONLY - there is no length scaling - and
+// that reproduces both live measurements exactly: a vertical run of 3 paid 250
+// (seen twice), and a diagonal run of 4 paid 1000, not some multiple of it.
+//
+// An earlier version of this file fitted a curve, 250*(len-2)^2, through those
+// same two points. It matched them only by coincidence, and it was unnecessary:
+// the answer was already written down in the Instructions. Worth remembering
+// before fitting anything again.
 int awardForRun(const Run& r) {
-    const int over = r.length - 2;          // 1 for a run of 3
-    return kChainUnit * over * over;
+    switch (r.kind) {
+        case RunKind::kVertical:   return 250;
+        case RunKind::kHorizontal: return 500;
+        case RunKind::kDiagonal:   return 1000;
+    }
+    return 250;
 }
+
+// Length drives the CHAIN COUNT instead, which is what the HUD's "Chains"
+// figure shows: "3 atom molecules count as 1 chain. 4 atom molecules count as
+// 2 chains. 5 atom molecules count as 3 chains."
+int chainsForRun(const Run& r) {
+    return r.length - 2;
+}
+
+// The Instructions also say "forming multiple chains all at once will create a
+// chain bonus point multiplier", but never say how large. It is deliberately
+// NOT implemented: a 5-cell clear was observed paying exactly 1250, which is
+// 250 + 1000 - two simultaneous chains summed with no multiplier at all. Until
+// something distinguishes the two, plain summation is what the evidence shows.
 
 // The score ramps toward its target instead of snapping. Measured on the
 // original's own score variable, not a display layer: awards arrive as
@@ -243,11 +260,12 @@ void Game::resolveMatches() {
         int n = board_.findMatches(marked, &runs);
         if (n == 0) break;
         ++chain;
-        for (const Run& r : runs) award(awardForRun(r));
+        for (const Run& r : runs) {
+            award(awardForRun(r));
+            chains_ += chainsForRun(r);
+        }
         board_.removeMarked(marked);
     }
-
-    chains_ += chain;
 }
 
 void Game::update(uint8_t buttons, float dt) {

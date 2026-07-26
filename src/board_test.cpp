@@ -125,10 +125,33 @@ void testDropAndOverflow() {
     check(b.overflowing(), "column reaching the top overflows");
 }
 
+// Atoms are now numbered as the original numbers them, so a digit in these
+// boards is a real type: 1..7 the ordinary colours, 8 Flashium, 9 AntiMatter,
+// 11 Xenon. Only 1..8 take part in matching.
+void testInertSpecialsDoNotMatch() {
+    // Xenon is inert - three in a row must not clear. Written with set()
+    // because Xenon is 11 and the character grid only reaches 9.
+    tubes::Board b(4, 3);
+    for (int c = 0; c < 3; ++c) b.set(c, 2, tubes::kXenon);
+    check(matchCount(b) == 0, "three Xenon do not match");
+
+    // The same shape in an ordinary colour does clear, so the board is not
+    // simply failing to see the run.
+    tubes::Board ok(4, 3);
+    for (int c = 0; c < 3; ++c) ok.set(c, 2, tubes::kCyanium);
+    check(matchCount(ok) == 3, "three Cyanium in the same shape do match");
+
+    // An inert atom must not bridge two halves of a run either.
+    tubes::Board split = make({"....", "....", "1111"});
+    split.set(2, 2, tubes::kXenon);
+    check(matchCount(split) == 0, "Xenon breaks a run rather than joining it");
+}
+
 }  // namespace
 
 int main() {
     testHorizontal();
+    testInertSpecialsDoNotMatch();
     testVertical();
     testDiagonalDown();
     testDiagonalUp();
