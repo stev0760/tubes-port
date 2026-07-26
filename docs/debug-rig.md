@@ -14,6 +14,11 @@ holds copyrighted game data, so it sits outside:
       gamedrive/                what DOS sees as C:
       capture/                  screenshots and save states land here
       bringup_tubes.py          end-to-end check; also locates DGROUP
+      exp0_input_bits.py        Experiment 0: scancode -> bitmask, solved
+      exp1_atom_array.py        Experiment 1: locate the live atom array
+      peek_startup.py           run the game and dump the text screen
+      sweep_env.py              try conf variants against a startup guard
+      holdkey.py                hold/release one key via QMP
       build.log                 the fork's build transcript
 
 `gamedrive/` is symlinks to the game files in `..`, plus **copies** of the two
@@ -214,13 +219,41 @@ BIOS mode byte. So `0x449 == 0x13` is the right "game is up" signal.
 
 ### Screenshot quirks
 
-- The QMP `file` argument is **not reliably honoured** - the handler falls
-  through to its base64 branch and the PNG only lands in the `captures`
-  directory as `tubes_NNN.png`. Read the path out of the reply rather than
-  trusting the one you asked for.
+- **The capture always succeeds; the path reporting races.** The PNG reliably
+  lands in the `captures` directory as `tubes_NNN.png`, but
+  `CAPTURE_GetLastScreenshotPath()` is read on a different thread from the write,
+  so the reply - and the copy to a requested `path` - intermittently fails with
+  "Screenshot capture failed - no file created" *even though the file was
+  written*. Confirmed against the DOSBox-X log. **Rule: take the shot, then read
+  the newest file in `captures`.** Do not trust the returned path or a
+  `path=` argument.
+- **A screenshot needs the guest running.** The handler polls until the render
+  thread completes the capture, so calling it while the CPU is halted blocks for
+  its full 5 s and then times out. Continue first, then capture.
 - Captures come out **640x400**, not 320x200, despite `scaler = none`: mode 13h
   is double-scanned to 400 lines and DOSBox-X doubles horizontally too. Halve
   both axes before comparing against the port's own `--screenshot` output.
+
+### Other things learned driving it
+
+- **A timed-out tool call desynchronises the GDB stream.** After the screenshot
+  timeout above, every register came back as `0` - the RSP framing was out of
+  step, not the guest. There is no resync; `dosbox_restart` is the fix. Treat
+  all-zero registers as "the connection is broken", never as guest state.
+- **Mode X planes are not visible at `0xa0000`.** Reading there through the stub
+  returned all zeros mid-cutscene, so framebuffer content cannot be used as a
+  cheap screen-state test. Use `dosbox_screenshot` and look at the image.
+- **Held-key state is not observable through the MCP.** `dosbox_press_key`
+  blocks for its whole `hold_ms` and returns only after the release, and both
+  the GDB stub *and* the QMP server are single-client - a second connection to a
+  running instance is accepted but never gets a QMP greeting. Anything needing a
+  key held across a memory read must be a standalone script using
+  `key_down`/`key_up`. See `exp0_input_bits.py`.
+- **Menu navigation should not be timed.** The blackboard cutscene is multi-page
+  and its length varies between runs, so fixed waits are flaky. Pressing Enter
+  repeatedly walks cutscene -> title -> menu -> Start Game, and once a
+  breakpoint fires the CPU is halted so overshooting is harmless. Crude, but it
+  is the only approach here that worked repeatably.
 
 ## Footguns
 

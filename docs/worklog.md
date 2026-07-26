@@ -558,3 +558,57 @@ a second connection cannot be bolted onto a running MCP instance - the socket is
 accepted but no QMP greeting arrives. Anything needing a key held across a
 memory read has to be a standalone script using `key_down`/`key_up`. That is
 what `exp0_input_bits.py` is.
+
+### Experiment 1: the atom array, located live
+
+Confirmed `12 records x 28 bytes` and confirmed `(303, 186)` is a spawn marker,
+but *not* by the route the plan proposed.
+
+Breaking at `1000:3a67` and reading the static link went wrong in an instructive
+way. The prologue cooperates - `enter 0x3c6, 0`, then `mov di,[bp+4]` at `3a70`,
+so breaking at `3a73` hands you the parent frame in `DI` with no stack walking.
+But the frame it hands you contains the Pascal strings `Tubes 101`, `Tubes 201`,
+`Tubes 301`, `ifficu`(lty) and `Exit`: **`3a67`'s first call is the
+difficulty-selection screen**, not the game loop. No atoms exist yet, and
+`parent - 0x163` scores 3 plausible records out of 12 there - noise. Scoring
+every candidate base in a ±0x220 window found nothing better than 6/12, which is
+the right answer for "the array is not in this frame".
+
+What worked was a signature, the same move that settled DGROUP. The records
+initialise to `(303, 186)` and x=303 is off the right of the play area, which
+ends at 245 - so it cannot be a mid-play coordinate. Searching conventional RAM
+for `2f 01` plus a plausible y gave **ten hits at an exact 28-byte stride**,
+spanning precisely twelve slots (`0x2419e + 11*28 == 0x242d2`).
+
+Ten of twelve, and the two absentees were records 1 and 2. The screenshot from
+the same halt shows **exactly two atoms on screen**. That is the confirmation -
+a record leaves the marker exactly when its atom is in transit. Worth noting the
+screenshot was the load-bearing evidence, not the arithmetic; "render it, or
+listen to it" again.
+
+Corrections forced along the way:
+
+- `+0x1e`/`+0x1f` are not atom-record fields. `0x1f` = 31 does not fit in 28
+  bytes; they were measured on the test tube and merged into the atom table by
+  mistake. Caught by an IndexError, which is a cheap way to find out.
+- The three difficulties are named `Tubes 101` / `Tubes 201` / `Tubes 301`.
+
+Still open: the stable frame-relative offset. `parent - 0x163` remains
+unverified; it needs the breakpoint re-armed *after* difficulty selection so the
+static link is read during actual play, then cross-checked against the base the
+signature search finds in the same run.
+
+Free findings from the screenshots. The cutscene names all eight elements -
+Redium, Greenium, Bluium, Cyanium, Purplium, Yellowium, Pinkium and
+**Flashium** - against grid cells that cycle 1..7, so seven ordinary colours plus
+one special is the likely split, with `Flashium` the obvious candidate. The
+in-play HUD reads `Chains` top-left and `Drops` top-right with two counters
+between. The title screen animates an atom along the tube logo.
+
+Rig lessons, all now in `docs/debug-rig.md`: a screenshot needs the guest
+*running* (halted, it times out); a timed-out call desynchronises the GDB stream
+and every register reads back `0`, which is a broken connection and not guest
+state, fixable only by restart; Mode X planes are not readable at `0xa0000`, so
+the framebuffer cannot be used as a cheap screen-state test; and menu navigation
+must not be timed, because the cutscene length varies - pressing Enter until the
+breakpoint fires is crude but the only thing that worked repeatably.

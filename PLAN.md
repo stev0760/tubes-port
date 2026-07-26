@@ -67,9 +67,13 @@ Listed first because building on them wastes work.
    the 9/6/3 drop limits. The tube stacks several atoms.
 3. **Scoring and pacing.** `kScorePerAtom`, `kChainBonus`, `kSpawnInterval`,
    `fallSpeed` are invented. Real values are in `1000:3a67`.
-4. **Atom colour count.** The engine uses 8 flat colours. The original has
-   `ANTIBALL`, `GOLDBALL` and `XENBALL` loaded by `entry` and unused here, and
-   grid cells cycle 1..7 with 0 empty - so 8 is probably not the whole story.
+4. **Atom colour count.** The engine uses 8 flat colours. The cutscene names
+   **eight** elements - Redium, Greenium, Bluium, Cyanium, Purplium, Yellowium,
+   Pinkium and **Flashium** - while grid cells cycle **1..7** with 0 empty. So
+   seven ordinary colours plus one special is the likely split, and `Flashium`
+   is the obvious candidate, which would fit the `ANTIBALL` / `GOLDBALL` /
+   `XENBALL` sprites `entry` loads and nothing uses. Check the cell encoding
+   before building on this.
 
 ---
 
@@ -208,10 +212,29 @@ comes from the **INT 9 vector** at linear `0x24` - do not hardcode it. Reading
 that byte is the cheapest possible way to confirm any input-related theory from
 here on.
 
-**Experiment 1 - find the live atom array.** Break at `1000:3a67`, read `BP`,
-then read the static link at `[bp+4]`. Array base is that minus `0x163`. Dump
-12 x 28 = 336 bytes and confirm it looks like records: x in 0..320, y in
-0..200, colour in 0..7.
+**Experiment 1 - the live atom array. MOSTLY DONE.** `12 records x 28 bytes` is
+confirmed, and so is `(303, 186)` as the spawn marker. Found by signature rather
+than frame arithmetic: search RAM for `2f 01` plus a plausible y, and ten hits
+land at an exact 28-byte stride spanning precisely twelve slots. The two slots
+*not* on the marker matched the two atoms visible on screen in the same halt -
+that correspondence is the proof. `exp1_atom_array.py` in the tooling directory.
+
+**Two corrections it forced:**
+
+- `+0x1e`/`+0x1f` are not atom fields (`0x1f` = 31 > 28); they are the test
+  tube's. See the record table above.
+- **`1000:3a67`'s first call is the difficulty-selection screen**, not the game
+  loop - its parent frame holds `Tubes 101`, `Tubes 201`, `Tubes 301` and `Exit`.
+  So breaking at `3a67` and reading the static link gives a frame containing no
+  atoms, and `parent - 0x163` scores 3/12 there, i.e. noise.
+
+**What is left:** the stable frame-relative offset. `parent - 0x163` is still
+unverified. Re-arm the breakpoint *after* difficulty selection and read `DI` at
+`3a73` during actual play, then compare against the base the signature search
+finds in the same run. Two routes agreeing is the standard here.
+
+Useful: `3a67`'s prologue is `enter 0x3c6, 0` and `mov di,[bp+4]` sits at `3a70`,
+so breaking at **`3a73`** gives the static link directly in `DI` - no stack walk.
 
 **Experiment 2 - watch atoms move.** Free-run and re-dump each frame. Is x
 stepped by a constant, interpolated, or recomputed from elsewhere? Static
@@ -316,8 +339,10 @@ top, just above the test tube at 69.
 | +0x0b | colour / sprite index |
 | +0x14, +0x16 | saved x, one per video page (dirty-rect erase) |
 | +0x18, +0x1a | saved y, one per video page |
-| +0x1e | waypoint index, 1..6 |
-| +0x1f | target x |
+
+**Corrected:** `+0x1e` and `+0x1f` are *not* atom fields - `0x1f` = 31 does not
+fit in 28 bytes. They belong to the **test tube** struct and were merged in by
+mistake. The atom record tops out at `+0x1b`, which fits exactly.
 
 ### Two structures - and the second one is the TEST TUBE, not an atom
 

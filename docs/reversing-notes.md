@@ -1153,3 +1153,83 @@ Other observations from the bank dump:
   conflating them is an easy mistake to make.
 - Percussion patch reuse is musically coherent: one patch serves GM notes 35
   and 36 (both bass drums), another serves 38 and 40 (both snares).
+
+
+## The atom array, located live
+
+Measured under the debugger rather than inferred, and it settles the shape.
+
+**Found by signature, not by frame arithmetic.** The 12 records initialise to
+`(303, 186)`, and x=303 is off the right of the play area (which ends at 245), so
+it cannot be a mid-play coordinate - it is a parked/spawn marker. Searching
+conventional RAM for `2f 01` followed by a plausible y found **ten** hits at an
+exact **28-byte stride**, spanning precisely twelve slots:
+
+        base + 11*28 == last hit          (0x2419e + 0x134 == 0x242d2)
+
+Ten of twelve parked, and the two missing slots were records 1 and 2. The
+screenshot taken during the same halt shows **exactly two atoms on screen**. That
+correspondence is the confirmation: the twelve records are the atoms, parked at
+`(303, 186)` while unused, and a record leaves the marker exactly when its atom
+is in transit.
+
+So `12 records x 28 bytes` is confirmed, and `(303, 186)` is the spawn marker
+rather than the "parked sentinel" it was first read as.
+
+**Still open: the frame-relative offset.** `PLAN.md` records the base as
+`parent - 0x163`; that is *not* verified. The obstacle is that
+**`1000:3a67`'s first call is the difficulty-selection screen**, not the game
+loop - its parent frame at that call holds the strings `Tubes 101`, `Tubes 201`,
+`Tubes 301`, `ifficu`(lty) and `Exit`. So breaking at `3a67` and reading the
+static link yields a frame with no atoms in it, and `parent - 0x163` scores 3/12
+there, i.e. noise. To pin the offset down, re-arm the breakpoint *after*
+difficulty selection and read the static link during actual play.
+
+Mechanics for that, all verified:
+
+- `3a67`'s prologue is `enter 0x3c6, 0`, and `mov di,[bp+4]` at `3a70` loads the
+  static link. So break at **`3a73`** and read `DI`: it is the parent frame
+  offset within `SS`, with no stack walking needed.
+- The three difficulty levels are named **`Tubes 101` / `Tubes 201` /
+  `Tubes 301`** - presumably what the 9/6/3 drop limits and the three `TESTUBE`
+  sprites are selected by.
+
+### The atom record is 28 bytes, and two offsets were misattributed
+
+`+0x1e` and `+0x1f` cannot belong to it: `0x1f` = 31 > 28. Those were measured on
+the **test tube** struct (direction `+0x04`, waypoint index `+0x1e`, target x
+`+0x1f`) and got merged into the atom table. The atom record's highest offset is
+`0x1b`, which fits exactly:
+
+| offset | field |
+|---|---|
+| +0x00 | x |
+| +0x02 | y |
+| +0x0b | colour / sprite index |
+| +0x14, +0x16 | saved x, one per video page |
+| +0x18, +0x1a | saved y, one per video page |
+
+## The eight elements are named
+
+From the blackboard cutscene: Dr. Lanny B. Brilliant created "eight new elements
+not yet included on the periodic table".
+
+| name | colour |
+|---|---|
+| Redium | red |
+| Greenium | green |
+| Bluium | blue |
+| Cyanium | cyan |
+| Purplium | purple |
+| Yellowium | yellow |
+| Pinkium | magenta |
+| **Flashium** | violet |
+
+Eight named elements, against grid cells that cycle **1..7** with 0 empty. The
+odd one out is most likely `Flashium` - the name suggests a flashing or wildcard
+atom rather than an eighth ordinary colour, which would fit the `ANTIBALL` /
+`GOLDBALL` / `XENBALL` sprites that `entry` loads and nothing uses. Not proven;
+the cell encoding is what to check.
+
+The in-play HUD reads **`Chains`** top-left and **`Drops`** top-right, with two
+counters between them.
