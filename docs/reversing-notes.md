@@ -423,6 +423,53 @@ explosion frames, and the `WRITE*` scientist animation cells.
     tools/gfx_decode.py INFO   <file.GFX>...
     tools/gfx_decode.py RENDER <palette.PAL> <outdir> <file.GFX>...
 
+## .SCR - recorded demo (solved)
+
+**Correction to an earlier assumption**: `DEMO.SCR` is not a cutscene script.
+It is a recording of player input for attract mode, replayed through the
+normal game loop. The giveaway was that its referencing function is
+`1000:5f4b`, not the slideshow player at `1b2e:2d63`, and the binary also
+carries a `Recording` string.
+
+`1000:5f4b` is the attract-mode setup: it calls `Random(10)` in a loop that
+rejects a repeat of the previous value, picking one of `GAMEBG1`..`GAMEBG10`
+as the backdrop, loads it plus `DEMO.SCR`, and stores the demo pointer at
+`DS:0xd24`. That pointer is read by `1000:3a67` - at 9,382 bytes the largest
+function in the binary, i.e. the main game loop.
+
+    u16   frame count (bytes following this field)
+    u32   RNG seed          [inferred]
+    u8[]  one input bitmask per frame
+
+| Bit | Control | Evidence in the shipped demo |
+|---|---|---|
+| `0x01` | up | 20 frames, never held |
+| `0x02` | down | 1357 frames, runs to 30 - held to drop faster |
+| `0x04` | left | 280 frames, 146 runs, mean 1.92 |
+| `0x08` | right | 258 frames, 125 runs, mean 2.06 |
+| `0x10` | button A | 134 frames, never held |
+| `0x20` | button B | unused |
+
+Bit assignments are **inferred from behaviour**, not yet read out of the
+input handler. The reasoning: `0x04` and `0x08` have near-identical run
+statistics as a left/right pair should; only `0x02` is held for long
+stretches; and across 11,970 frames the impossible combinations never occur -
+`0x03` (up+down) and `0x0c` (left+right) are entirely absent - while the four
+combinations that do appear (`0x05`, `0x06`, `0x0a`, `0x18`) are all legal
+diagonals or direction+button. This matches the manual's cursor-keys plus
+Button A / Button B scheme.
+
+The 4 header bytes are read as an RNG seed on the grounds that a replay must
+reproduce the same atom sequence to stay in sync, and Turbo Pascal's
+`System.RandSeed` is a 32-bit LongInt. **Not confirmed** against the playback
+code - worth verifying before relying on it.
+
+Decoded, the demo reads as ordinary play: nudge left, hold down to descend,
+tap right to line up, press A, repeat. 83.1% of frames are idle.
+
+    tools/scr_decode.py INFO <file.SCR>
+    tools/scr_decode.py DUMP <file.SCR> [maxframes]
+
 ### Next unknowns
 - `.SCR` cutscene script format (`DEMO.SCR`, 11,976 bytes decompressed)
 - `.MUS` FM/Adlib music format
