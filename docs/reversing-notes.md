@@ -1506,3 +1506,130 @@ not the full version, so coverage is uneven:
 
 None of this is a substitute for reading the code; it is a set of hypotheses to
 aim the debugger at, which is much cheaper than finding them blind.
+
+
+## The in-game Instructions - the game documenting itself (authoritative)
+
+Captured under the debugger from the main menu's **Instructions** entry, which is
+a slide show ("The Detailed Instructions", paged with Up/Down). This is the
+game's own documentation, so it outranks both play recollection and third-party
+descriptions. `grab_instructions.py`; captures in the tooling `capture/instr/`.
+
+### Controls - and the atom-speed mechanism, stated outright
+
+> "Use Left and Right to move the Test Tube you control.
+> Press Button A to drop an atom into the beaker below.
+> **Press Button B or Down to increase the speed of any atoms in the tube
+> directly above the test tube.**"
+
+That is the answer to the speed question a whole session was spent on. Three
+things fall out:
+
+1. **Both Button B and Down do it.** Which retro-explains the `.SCR` demo's long
+   runs of bit `0x02`: the recorded player was holding **Down to speed atoms**,
+   not "holding down to drop faster" as the behavioural reading guessed. The bit
+   assignment was right; the interpretation of what the player was doing was not.
+2. **It is positional** - only atoms *in the tube directly above the test tube*
+   are accelerated. So speed is a per-atom property gated on the atom's column
+   matching the tube's column, not a global rate.
+3. Combined with `GOLDBALL` travelling fast inherently, there are at least two
+   speed inputs: the ball's type, and the boost.
+
+### Chains and scoring (solved)
+
+> "Molecule chains are formed by dropping 3 or more atoms of the same element or
+> in combination with Flashium atoms in one of 4 chains"
+
+| chain | points |
+|---|---|
+| Vertical | **250** |
+| Horizontal | **500** |
+| Diagonal (either direction) | **1000** |
+
+Four "chains" = vertical, horizontal and the two diagonals. Chain counting:
+
+> "3 atom molecules count as 1 chain. 4 atom molecules count as 2 chains.
+> 5 atom molecules count as 3 chains. Forming multiple chains all at once will
+> create a chain bonus point multiplier!"
+
+So chains = atoms - 2, and simultaneous chains apply a multiplier. This replaces
+the invented `kScorePerAtom` / `kChainBonus` in `src/game.cpp`.
+
+Also: "in combination with Flashium atoms" is the game confirming the wildcard.
+
+### The test tube
+
+> "The test tube you control to collect and release atoms can hold up to 5 atoms
+> at a time."
+>
+> "You are allowed to drop some atoms depending on your difficulty setting."
+
+Capacity **5**, flat - which retires the 5/3/2-by-difficulty guess for good. And
+the drop allowance *is* the difficulty setting, exactly as the `DROP` sound, the
+`Drops` HUD counter and the measured 9/6/3 limits together implied.
+
+> "Tubes has two different types of game play. However, both games end if you
+> drop more atoms than allowed."
+
+So exceeding the drop allowance is the lose condition, in both modes.
+
+### Special Atoms
+
+The game groups them, and the grouping is itself information.
+
+| atom | sprite | the game's words |
+|---|---|---|
+| **Xenon** | `XENBALL`, plain grey, no letter | "will not bond with any atom including other Xenons. They just take up space." |
+| **AntiMatter** | `ANTIBALL` | "unstable and causes surrounding atoms to explode. Useful for removing Xenons." |
+| **Bonus** | `GOLDBALL` | "turns into Flashium when caught and awards you an extra drop. Also, the Bonus Jackpot is increased by 1000 points and awarded to you." |
+
+`XENBALL` is Xenon and carries **no letter**. The `X` belongs to the Evil
+Multiplier - which is why "X stands for Xenon" is a natural thing to remember:
+the X ball is the Xenon *dispenser*.
+
+Bonus awards an **extra drop**, i.e. it raises the miss allowance - another
+mechanic tied to the drop counter.
+
+### Penalty Atoms - the five letter balls
+
+| atom | sprite | the game's words |
+|---|---|---|
+| **Multiplier** | `MULTBALL` **M** | "will fill the test tube with normal atoms. Drop some atoms fast before another atom arrives." |
+| **Evil Multiplier** | `EVILBALL` **X** | "will fill the test tube with Xenons." |
+| **Convertor** | `CONVBALL` **C** | "will change **all occurrences of the atom it lands on** into Xenons. Drop this on the least popular atom in the beaker." |
+| **Blocker** | `BLOCBALL` **B** | "will fill the beaker column it lands in with Xenons. Similar to Evil Multiplier but occurs in the beaker." |
+| **Filler** | `FILLBALL` **F** | "permanently **adds an atom to the bottom of the test tube** reducing the amount of atoms you can hold." |
+
+Two corrections to the third-party description:
+
+- **Convertor is far more destructive than "the atoms it lands on".** It converts
+  *every* atom of that colour in the whole beaker - hence the advice to aim it at
+  the least popular colour.
+- **Filler is implemented as an occupying atom**, not a decremented counter: it
+  adds a permanent atom to the tube's bottom. That matters for the port, and it
+  identifies a sprite.
+
+### `OBSTBALL` is very probably Filler's stuck atom (type 17)
+
+Filler "adds an atom to the bottom of the test tube" that cannot be removed, and
+play reports "a sticky black one that cannot be dumped from the tube".
+`OBSTBALL` is a near-black sphere, has **no fade family** in the measured type
+table - correct for something that lives in the tube and is never matched in the
+beaker - and its name reads as *obstruction*. Strongly supported, not proven; the
+proof is to catch a Filler and read the tube contents.
+
+### Slide order corroborates the type numbering again
+
+The Penalty Atoms are presented as Multiplier, Evil Multiplier, Convertor,
+Blocker, Filler - which is **exactly** measured types 12, 13, 14, 15, 16, in
+order. Third-party prose already matched types 9..16; the game's own slides match
+12..16. Three independent orderings agreeing.
+
+Not documented in the slides: `MYSTBALL` (type 19) and the crystal (type 18).
+
+### Our copy appears to be the registered version
+
+The slides include AntiMatter and Bonus, and published notes say those two atoms
+are **registered-only** additions. So the copy in `..` is likely the full
+version, not shareware. Not conclusive on its own - the shareware's slides could
+document features it does not ship - but the wave count would settle it.

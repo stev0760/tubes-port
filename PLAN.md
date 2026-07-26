@@ -87,7 +87,7 @@ Listed first because building on them wastes work.
    | 14 | Convertor - turns the atoms it lands on into Xenons |
    | 15 | Blocker - fills the beaker column it lands in with Xenons |
    | 16 | Filler - permanently reduces tube capacity by one |
-   | 17 | obstacle, unidentified |
+   | 17 | almost certainly the immovable atom `FILLBALL` parks at the bottom of the tube - near-black, no fade family, and play reports a "sticky black one that cannot be dumped" |
    | 18 | the crystal ("mischief crystal"), static sprite is `CRFADE1` |
    | 19 | `MYSTBALL`, unidentified |
 
@@ -490,7 +490,25 @@ Cheap and high-impact once the mechanic is settled.
 
 ### 3. Game rules
 
-- scoring tables and chain multipliers
+- **Scoring is solved**, from the in-game Instructions (`docs/reversing-notes.md`):
+  vertical chain **250**, horizontal **500**, diagonal **1000** (two diagonals, so
+  "4 chains"); chains = atoms - 2 (3 atoms = 1 chain, 4 = 2, 5 = 3); forming
+  multiple chains at once applies a **chain bonus multiplier**; a Bonus atom adds
+  **1000** to the Bonus Jackpot and awards it. `kScorePerAtom` and `kChainBonus`
+  in `src/game.cpp` can be replaced with real values.
+- **Atom speed is solved.** "Press Button B **or Down** to increase the speed of
+  any atoms in the tube **directly above the test tube**." So the boost is
+  positional - gated on the atom's column matching the tube's - and both B and
+  Down trigger it. That also reinterprets the `.SCR` demo: its long runs of bit
+  `0x02` are the player holding **Down to speed atoms**, not "dropping faster".
+  `GOLDBALL` is additionally fast by type.
+- **The test tube is a LIFO stack** - atoms leave from the top, so speeding a
+  source tube is how the player controls which atom ends up on top. Capacity is a
+  flat **5**; `FILLBALL` permanently adds an occupying atom to the bottom.
+- **Lose condition:** dropping more atoms than the difficulty allows, in both
+  modes.
+- the remaining unknowns: wave objectives, and the difficulty-to-drop-limit
+  pairing
 - the difficulty progression - seeds `3, 30, 2, 0, 3, 8` plus globals 50 and
   25, stepping every 15 and every 20 levels, with level bands at
   30 / 60 / 75 / 90 / 95 / 101. Variables not yet named; trace them from

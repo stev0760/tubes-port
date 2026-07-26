@@ -843,3 +843,86 @@ Corrected while here: `DROP` was guessed as the sound for *dumping* an atom into
 the beaker - the opposite of what it is. And `CLAP`, `NOOOO` and `WHATTHE` belong
 to the **cutscenes**, not to wave-complete or loss events as guessed. `HITGLASS`
 was right. `BUBBLE` remains unidentified.
+
+### The game documents itself: capturing the in-game Instructions
+
+The best source available was inside the program the whole time. The main menu
+has an **Instructions** entry - a slide show - and driving the rig to it and
+capturing every slide produced more hard information in one run than several
+sessions of inference. `grab_instructions.py`.
+
+**The atom-speed question is answered outright:** "Press Button B **or Down** to
+increase the speed of any atoms in the tube **directly above the test tube**."
+So the boost is *positional*, gated on the atom's column matching the tube's, and
+both B and Down trigger it. It also reinterprets the `.SCR` demo - those long runs
+of bit `0x02` are the player holding **Down to speed atoms**, not "holding down to
+drop faster" as the behavioural reading had it. The bit assignment was right; the
+story about what the player was doing was wrong.
+
+**Scoring is solved:** vertical 250, horizontal 500, diagonal 1000 (two diagonals
+= the "4 chains" the slide mentions); chains = atoms - 2; simultaneous chains
+apply a bonus multiplier; a Bonus atom adds 1000 to a Bonus Jackpot and awards it.
+Those replace invented constants in `src/game.cpp`.
+
+**Capacity is a flat 5** and the drop allowance *is* the difficulty setting -
+"You are allowed to drop some atoms depending on your difficulty setting" - with
+both game modes ending "if you drop more atoms than allowed". That is the third
+independent confirmation of the drop-limit reading and the final nail in the
+5/3/2 capacity guess.
+
+All nine specials are described in the game's own words, in two labelled groups -
+**Special Atoms** (Xenon, AntiMatter, Bonus) and **Penalty Atoms** (Multiplier,
+Evil Multiplier, Convertor, Blocker, Filler). Two corrections to the third-party
+list: **Convertor** changes *every* occurrence of the atom it lands on across the
+whole beaker, not just the ones underneath; and **Filler** works by permanently
+*adding an atom to the bottom of the tube* rather than decrementing a counter.
+
+That last one identifies a sprite. Play reported "a sticky black one that cannot
+be dumped from the tube"; `OBSTBALL` is near-black, has no fade family - right for
+something that lives in the tube and is never matched - and reads as
+*obstruction*. So type 17 is very probably Filler's parked atom. Strongly
+supported, not proven.
+
+**The Penalty Atoms' slide order is exactly measured types 12..16.** Third-party
+prose already matched types 9..16 and the game's slides match 12..16, so three
+independent orderings now agree on the type numbering.
+
+Also settled: `XENBALL` is Xenon and carries **no letter**; the `X` is the Evil
+Multiplier, which *fills the tube with Xenons* - which is exactly why "X stands
+for Xenon" is a natural thing to half-remember. Both readings were reconcilable.
+
+Still undocumented by the slides: `MYSTBALL` (type 19) and the crystal (type 18).
+
+**A side observation worth checking:** the slides include AntiMatter and Bonus,
+and published notes say those two are *registered-version* additions. So the copy
+in `..` may already be the full version rather than shareware. Not conclusive -
+shareware slides could describe features it does not ship - but the wave count
+would settle it.
+
+### The external intel dossier
+
+A research dossier at `~/Projects/Tubes/tubes-reverse-engineering-intel.md`
+(produced by another agent) was cross-checked. Two genuinely new items:
+
+- **The test tube is a LIFO stack** - atoms exit from the top, so speeding a
+  source tube is how the player controls which atom ends up on top. This makes
+  sense of the speed boost being a *targeting* tool rather than just haste.
+- **Lose condition given as the beaker exceeding 5 rows**, which independently
+  matches the measured 6 x 5 grid. Note the game's own slides give the lose
+  condition as exceeding the drop allowance, so either both apply or the overflow
+  claim is inferred.
+
+Four things in it are wrong and should not be carried into the port:
+
+1. **"VGA Mode 13h, direct framebuffer writes."** It is **Mode X** - unchained
+   planar with multiple pages, stated on the game's own credits screen and forced
+   on us by `.CSP` decoding, which needs the plane-switch sequence. The BIOS
+   *reports* mode `0x13` because Mode X is reached by reprogramming out of it,
+   which is probably the source of the error. A linear-framebuffer model would be
+   the wrong architecture.
+2. **LZEXE described as "header strip + inflate."** It is a custom LZ77 bitstream,
+   not deflate; `docs/reversing-notes.md` has the grammar.
+3. **"Element table - array of structs."** Measured as *parallel pointer tables* -
+   a 19-entry ball table and a 19 x 6 fade table, adjacent in DGROUP.
+4. **"Sound effects - if any (likely PC speaker or AdLib)."** Both: 8-bit 8 kHz
+   PCM `.SFX` and OPL2 `.MUS`, with selectable `PCSOUND.DRV` / `SBSOUND.DRV`.
