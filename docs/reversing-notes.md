@@ -381,9 +381,49 @@ dispenser tube segments.
     tools/csp_decode.py INFO   <file.CSP>...
     tools/csp_decode.py RENDER <palette.PAL> <outdir> <file.CSP>...
 
-### Next unknowns
+## .GFX - raster images (solved)
 
-- `.GFX` internal format (full-screen images / backgrounds)
+    u16   width
+    u16   height
+    u8[]  width * height pixels, 8-bit palette indices
+
+Pixel data is **planar**, in the same Mode X layout the compiled sprites draw
+into. All of plane 0 comes first as a contiguous `(width / 4) x height`
+block, then planes 1, 2 and 3:
+
+    plane = x % 4
+    index = plane * (width // 4) * height + y * (width // 4) + x // 4
+
+Decoding it as chunky produces the image tiled 4x horizontally and squashed
+4x vertically - a useful symptom to recognise if this regresses.
+
+### The 0xE5 variant
+
+Three resources - `SOFT.GFX`, `CLOUD.GFX`, `AMWRITE.GFX` - carry an extra
+leading `0xE5` byte before the header. These are exactly the three fetched
+through a different routine (`21ea:045f` rather than `21ea:03c4` /
+`21ea:035b`), which is what flagged them in the first place.
+
+The prefix marks **chunky** storage: their pixels are already linear and must
+not be de-planarized. Confirmed visually - `SOFT.GFX` decodes to the
+publisher title card only when treated as chunky.
+
+### Palettes are per-scene
+
+There is no single global palette. `SOFT.GFX` requires `SOFT.PAL`,
+`CLOUD.GFX` requires `INTRO.PAL`, and the in-game art uses `TUBES.PAL`.
+Rendering with the wrong one yields structurally correct but wildly
+miscoloured output, which is easy to mistake for a layout bug.
+
+All 73 `.GFX` resources parse and render correctly:
+backgrounds (`GAMEBG1`..`GAMEBG10`, fractal artwork behind the playfield),
+the `GAMEFG` overlay, a chemistry blackboard, the Nobel prize trophy,
+explosion frames, and the `WRITE*` scientist animation cells.
+
+    tools/gfx_decode.py INFO   <file.GFX>...
+    tools/gfx_decode.py RENDER <palette.PAL> <outdir> <file.GFX>...
+
+### Next unknowns
 - `.SCR` cutscene script format (`DEMO.SCR`, 11,976 bytes decompressed)
 - `.MUS` FM/Adlib music format
 - `.SFX` digital sound format
