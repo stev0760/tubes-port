@@ -124,11 +124,13 @@ useful once the mechanics are real.
 
 ---
 
-## Portability: keep the PSP in reach
+## Portability
 
-A PSP port is the stated end goal, so keep these in mind while writing code
-here rather than retrofitting later. None of this justifies contorting the
-code now - it justifies *not* painting into a corner.
+Running on other platforms is a goal in itself; PSP is the first candidate
+because its homebrew scene is active and SDL is already available there, but
+it is an example rather than the target. Keep these in mind while writing code
+rather than retrofitting later. None of it justifies contorting the code now -
+it justifies *not* painting into a corner.
 
 - **SDL is the plan - keep it at the edge.** SDL *is* the portability layer;
   the point is to confine it to the platform boundary rather than thread it
