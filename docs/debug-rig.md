@@ -295,6 +295,21 @@ suspect again, and doubled step values are the tell.
 
 ## Footguns
 
+- **`pgrep -f` / `pkill -f` match your own command line.** Checking whether a
+  script is running with `pgrep -f myscript` from a shell whose command line
+  contains `myscript` always reports "running", and `pkill -f myscript` kills
+  that shell (exit 144). Both happened here in one command, and the false
+  positive was acted on before it was checked - a filter that matched itself,
+  which is the exact failure this project keeps re-learning.
+
+  Wait on a **PID** instead:
+
+        PID=$(ps -eo pid,args | awk '/myscript\.py/ && !/awk/ {print $1; exit}')
+        while kill -0 $PID 2>/dev/null; do sleep 20; done
+
+  Or use the bracket trick, `pgrep -f 'mysc[r]ipt'`, which cannot match the
+  literal in the watcher's own arguments.
+
 - **`pkill -9 -f dosbox-x` on startup.** `DOSBoxInstance.start()` calls
   `_kill_existing()`, which kills *every* DOSBox-X on the machine, not just its
   own. Do not start a run while a manual DOSBox-X session matters.
