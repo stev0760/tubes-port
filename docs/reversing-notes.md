@@ -2814,9 +2814,13 @@ It makes the Bonus atom considerably more valuable than a scoring pickup - it is
 the only known way to replenish a resource that otherwise only decreases, i.e.
 an extra life.
 
-**Confirming test, not yet run:** edit `0x207` to something other than 11 and
-load. If the briefing announces that number, the case is closed. This is cheap
-and should be done before the model is relied on.
+**Confirming test - run, and passed.** The plan was to edit `0x207` to something
+other than 11 and check the briefing echoed it. Live play delivered the same
+test for free, and more convincingly, because nothing was tampered with: the
+pool was standing at **8** when wave 52 was cleared, and the wave 53 briefing
+announced **"8 drops allocated"**. The briefing reports the current pool. The
+fifty screenshots all read 11 because the sweep always loaded a save holding 11
+at `0x207` - the number was never the wave's to choose.
 
 ### The live drop counter is `0x245bc` - measured
 
@@ -2853,25 +2857,33 @@ reason worth keeping: the game was frozen for the whole of its run, so no drop
 was ever lost and the transition it was watching for could not occur. Another
 search that could not have found what it was looking for.
 
-### Open: does clearing a wave refill the drops?
+### Clearing a wave does *not* refill the drops - measured
 
-Play reports repeatedly returning to exactly 11 - "playing the game just gets me
-back to 11" - attributed to **clearing the level**. If a wave clear refills to a
-constant, then the "persistent pool carried between waves" reading above is
-wrong for the second time, and the fifty briefings all read 11 simply because
-that is the refill value.
+Play reported repeatedly returning to exactly 11 - "playing the game just gets
+me back to 11" - and attributed it to **clearing the level**. That would have
+made the pool per-wave after all. It is wrong, and the log says so cleanly:
 
-Three mechanisms are now in play and have been confused for one another:
+    [  280.5] drops 6 -> 7  (GAINED, +1)   beaker=7 score=63250
+    [  292.5] drops 7 -> 8  (GAINED, +1)   beaker=6 score=66500
+    [  394.3] ---- WAVE BOUNDARY (beaker 5 -> 0), drops=8, score=67000 ----
 
-| event | effect | status |
+The count is **8 on both sides of the boundary**, and the wave 53 briefing then
+announced "8 drops allocated". Confirmed from the display, not just from memory.
+
+The two `+1`s are what produced the "back to 11" impression: they land
+*mid-wave*, twelve seconds apart, with a populated beaker - Bonus atoms, not a
+wave clear. Attributing a change to the event you happened to notice is the same
+error as reading fifty identical briefings as a constant; in both cases the real
+cause was never the one being watched.
+
+Settled, with each mechanism measured separately:
+
+| event | effect | evidence |
 |---|---|---|
-| a miss | `drops -= 1` | measured, twice (`11 -> 10`) |
-| a Bonus atom | `drops += 1` | measured (`10 -> 11`) |
-| clearing a wave | `drops = ?` | **claimed, not yet measured** |
+| a miss | `drops -= 1` | `11 -> 10`, `8 -> 7 -> 6` |
+| a Bonus atom | `drops += 1` | `10 -> 11`, `6 -> 7 -> 8` |
+| clearing a wave | **no change** | `8` across the wave 52/53 boundary |
 
-`watch_drops.py` measures the third: it logs every change to `0x245bc` in either
-direction and marks the wave boundary *independently*, by the beaker emptying,
-so a refill is attributed to the transition rather than inferred from the number
-alone. A cap at 11 and a refill to 11 predict different things - a cap holds a
-Bonus at 11, a refill lets misses fall and restores only at the boundary - and
-the log distinguishes them.
+Marking the boundary *independently* - by the beaker emptying, rather than by
+the drop count doing something interesting - is what made this readable. A
+detector keyed to the change it hopes to see cannot report its absence.

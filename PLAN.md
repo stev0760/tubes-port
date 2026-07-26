@@ -559,12 +559,17 @@ Cheap and high-impact once the mechanic is settled.
   atoms") and often a **modifier** - a disabled element that still spawns but
   cannot be cleared, atoms hidden until they leave a tube, beaker atoms morphing
   on a timer, a pre-filled beaker. None of these exist in the port.
-- **drops are a persistent pool, not part of the wave definition.** A miss
-  decrements it, a **Bonus atom increments it**, and the briefing's "You are
-  allowed *n* drops" echoes the current value carried in `TUBES.SAV 0x207`. The
-  wave sweep saw 11 everywhere only because it edited the wave byte and never
-  the drops byte. So the Bonus atom is effectively an extra life - the only known
-  way to replenish a resource that otherwise only decreases.
+- **drops are a persistent pool, not part of the wave definition** - now proven,
+  with each mechanism measured on its own. The live counter is a u8 at
+  **`0x245bc`**, confirmed against the HUD (memory read 8 while the display read
+  `8 Drops`). A miss decrements it; a **Bonus atom increments it**; and
+  **clearing a wave leaves it untouched** - it read 8 on both sides of the wave
+  52/53 boundary, and wave 53's briefing then announced "8 drops allocated".
+  That last point is the confirming test the notes had queued, delivered by play
+  rather than by editing the save: the briefing echoes the *current pool*, so the
+  fifty screenshots read 11 only because the sweep always loaded a save holding
+  11 at `TUBES.SAV 0x207`. The Bonus atom is therefore an extra life - the only
+  known way to replenish a resource that otherwise only decreases.
 - special atoms; Endurance vs Wave mode selection sits under a Game Mode menu,
   and saved games are filtered by mode
 - save/load. `TUBES.SAV` is 960 bytes and very sparse. **Partly decoded and
