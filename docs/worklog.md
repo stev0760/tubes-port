@@ -821,3 +821,25 @@ from the user re-examining their own recollection, and in both cases the
 measurement had already been right. Play memory is good for pointing the
 debugger at a question and poor as evidence - which is why the notes keep
 reported and measured claims on separate lines.
+
+#### `DROP` resolves what the drop limits are counting
+
+Three findings from different places collapse into one. `DROP` is the sound for
+**missing** a ball; the in-play HUD reads `Drops` at top right; and `9 / 6 / 3`
+"drop limits" were measured in the binary sessions ago, before either of the
+other two was known.
+
+So a "drop" is a *missed* ball and the limit is the **miss allowance per
+difficulty** - not, as the name naturally reads, a count of atoms dumped into the
+beaker. Difficulty is therefore a miss allowance, selected by
+`Tubes 101 / 201 / 301`. The obvious pairing is easiest-gets-nine, but which name
+carries which limit is not confirmed and should not be assumed.
+
+This also reinforces retiring the 5/3/2 tube capacity: the tube holds five at
+every difficulty, `FILLBALL` is what reduces it permanently, and the per-difficulty
+variable is the drop allowance.
+
+Corrected while here: `DROP` was guessed as the sound for *dumping* an atom into
+the beaker - the opposite of what it is. And `CLAP`, `NOOOO` and `WHATTHE` belong
+to the **cutscenes**, not to wave-complete or loss events as guessed. `HITGLASS`
+was right. `BUBBLE` remains unidentified.

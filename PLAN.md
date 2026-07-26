@@ -481,7 +481,11 @@ Cheap and high-impact once the mechanic is settled.
   per family. Reported from play: the sound is chosen by the colour the **stack**
   matched as, while each ball's fade animation follows its **own** type - so a
   mixed chain shows mixed animations under a single sound.
-- HUD: the reference screenshot shows chains, score and drops across the top
+- HUD: `Chains` at top left and `Drops` at top right with two counters between.
+  A "drop" is a **missed** ball - the `DROP` sound plays on a miss - so the
+  measured `9 / 6 / 3` drop limits are the miss allowance per difficulty, which
+  is what `Tubes 101 / 201 / 301` selects. Which name maps to which limit is not
+  yet confirmed.
 - Fonts are decoded but never drawn
 
 ### 3. Game rules

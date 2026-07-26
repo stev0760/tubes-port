@@ -1386,16 +1386,33 @@ exactly as the sprite tables were.
 The other thirteen, with likely events - **all guesses** except where a name is
 unambiguous:
 
-| sound | likely use |
-|---|---|
-| `DROP` | dumping an atom from the tube into the beaker |
-| `HITATOM` | atom landing on settled atoms |
-| `HITGLASS` | atom landing in the test tube |
-| `SLIDE` | the tube sliding along its rail |
-| `SWITCH` `SELECT` | menu movement and confirmation |
-| `BUBBLE` | unidentified - beaker ambience, or a clear |
-| `CLAP` `NOOOO` `WHATTHE` | reactions: wave complete, loss, something unexpected |
-| `WOOSH` `LIGHTN` `ABSMAGIC` | the Absolute Magic splash (already attributed) |
+| sound | use | how known |
+|---|---|---|
+| `DROP` | **missing a ball**, i.e. letting one fall past the tube | from play |
+| `HITGLASS` | an atom landing in the test tube | from play |
+| `HITATOM` | atom landing on settled atoms | guess |
+| `SLIDE` | the tube sliding along its rail | guess |
+| `SWITCH` `SELECT` | menu movement and confirmation | guess |
+| `BUBBLE` | unidentified | - |
+| `CLAP` `NOOOO` `WHATTHE` | **cutscene** reactions, not gameplay | from play |
+| `WOOSH` `LIGHTN` `ABSMAGIC` | the Absolute Magic splash | already attributed |
+
+### `DROP` ties the drop limits to the HUD
+
+Three separate findings turn out to be one thing. `DROP` is the sound for
+**missing** a ball; the in-play HUD is labelled **`Drops`** at top right; and
+`9 / 6 / 3` "drop limits" were measured in the binary long before either was
+known. So a "drop" is a missed ball, and the limit is **how many misses a
+difficulty allows** before the game ends - not a count of atoms dumped into the
+beaker, which is how the name reads at first.
+
+That makes difficulty a *miss allowance*, selected by `Tubes 101 / 201 / 301`.
+The pairing is the obvious one - the easiest level granting nine and the hardest
+three - but which name maps to which number is **not** confirmed.
+
+It also reinforces retiring the 5/3/2 tube capacity in `src/game.cpp`: the tube
+holds five at every difficulty, `FILLBALL` is what permanently reduces it, and
+the thing that actually varies per difficulty is the drop allowance.
 
 ### Only types 1-10 and 18 can be cleared
 
