@@ -1,5 +1,10 @@
 #include "board.h"
 
+// Match detection here is a behavioural reconstruction, not ported code - see
+// the provenance warning at the top of game.cpp. The wildcard rule in
+// particular was wrong in two different ways before a player described what
+// the game actually does.
+
 #include <algorithm>
 
 namespace tubes {

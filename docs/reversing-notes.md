@@ -3207,3 +3207,52 @@ on pressing keys into a screen that never changed, and captured the same
 blackboard three times while believing it was walking the Start Game path. Any
 harness stepping through menus should verify the screen changed rather than
 counting keystrokes.
+
+
+## DGROUP measured live, and the DS offsets that unlock the game loop
+
+`DS = 0x1fa9` read straight off the register while the demo was running, so
+**DGROUP is linear `0x1fa90`**. This confirms the value the project had derived
+statically (`L + 0x1785` with `L = 0x0824`) - it was previously asserted from
+the file, and is now also observed.
+
+That matters because it converts every address measured this session into the
+form Ghidra needs. Ghidra creates no xrefs for DS-relative globals in 16-bit
+segmented code, but `ghidra_scripts/FindScalarRefs.java` chases them by value:
+
+| variable | linear | **DS offset to chase** |
+|---|---|---|
+| atom array | `0x241a4` | **`DS:0x4714`** |
+| beaker grid | `0x24314` | **`DS:0x4884`** |
+| drops remaining | `0x245bc` | **`DS:0x4b2c`** |
+| tube struct | `0x245d0` | **`DS:0x4b40`** |
+| score | `0x245e7` | **`DS:0x4b57`** |
+
+This is the bridge back from observation to decompilation. Static analysis of
+`1000:3a67` stalled because nothing indicated which code touched what; the code
+that writes `DS:0x4884` **is** the match-and-clear routine, and the code that
+writes `DS:0x4b57` **is** the scoring routine. They no longer have to be found
+by reading 9,382 bytes of disassembly in order.
+
+One sample caught `ds=0x4e93` with `cs=0x1b45`, which is the already-documented
+case of a unit that sets `DS = CS` - a reminder to take DS from game code, not
+from whatever happens to be executing.
+
+### Why this is the next step, not more observation
+
+The port's gameplay rules are currently **behavioural reconstructions**: watch
+the original, write C++ that reproduces what was seen. `CLAUDE.md` rejects that
+approach outright, and this session demonstrated why rather than merely
+asserting it -
+
+- a scoring rule was fitted to two data points and was simply wrong, while the
+  real rule sat in the Instructions;
+- the Flashium wildcard was wrong in two different ways until a player
+  described the actual behaviour;
+- an "ambiguity in the original" was written up that turned out to be a bug in
+  the port's own loop.
+
+Each was caught by a person, not by the method. Sampling yields points; the
+binary yields the function. The traces keep their value - they are the oracle a
+decompiled implementation must reproduce - but the *rules* should come from the
+code.

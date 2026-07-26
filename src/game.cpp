@@ -1,5 +1,19 @@
 #include "game.h"
 
+// WARNING ON PROVENANCE. The rules in this file are **behavioural
+// reconstructions**, not ported code. They were arrived at by watching the
+// original run and writing C++ that reproduces what was seen, which is exactly
+// the "just rewrite it" approach CLAUDE.md rejects, and it is lossy in a way
+// that is easy to miss: observation gives samples, the binary gives the
+// function. This session alone produced a scoring rule fitted to two data
+// points that was simply wrong, and a wildcard rule that was wrong until a
+// player said so.
+//
+// Treat every constant and rule here as a placeholder to be REPLACED by the
+// decompiled logic from 1000:3a67, not as a finished result. The measured
+// traces are still worth keeping - they become the oracle the decompiled
+// version has to reproduce.
+
 #include <algorithm>
 #include <cmath>
 
