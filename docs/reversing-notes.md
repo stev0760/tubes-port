@@ -1296,78 +1296,133 @@ place for a type/flag marker is one of the other two. That is the thing to read
 next, and it is cheap now: dump all three arrays with a Flashium settled.
 
 
-## The 66 fade sprites decode - and they name the matchable set
+## The sprite type table - measured, 19 ball types (solved)
 
-`11 families x 6 frames` was recorded as "the atom-clear animation" without the
-families being identified. They are, and the list is more informative than the
-ball inventory:
+This supersedes every earlier attempt to map fade families to balls by their
+initials. It is read out of live memory, with each pointer identified by matching
+the **entire** `.CSP` payload against guest RAM - safe because a compiled sprite
+must load verbatim to execute. `exp_sprite_tables2.py`.
 
-| family | what clears | how known |
-|---|---|---|
-| `RFADE` `GFADE` `BFADE` `CFADE` `PFADE` `YFADE` `PNKFADE` | the seven ordinary colours | initials, unambiguous |
-| `GLDFADE` | `GOLDBALL` | initials |
-| `CRFADE` | **`CRYSTAL`** | initials |
-| `FFADE` | **`MULTBALL`** (the `M` ball) | **from play** |
-| `AFADE` | `ANTIBALL`? | guessed from the initial only |
+Two contiguous tables in DGROUP, both **19 entries**, stride 4, Pascal 1-based:
 
-**The `FFADE` row is a correction.** It was first written up as Flashium's,
-purely because `F` looked like it should mean "flash". The user has it from play:
-the multicoloured mosaic is what you see when **three `MULTBALL`s** are matched.
-So the letter-to-family mapping is *not* reliable for the non-colour families -
-`F` belongs to a ball whose sprite is marked `M`, and `AFADE` is therefore a
-guess too, resting on nothing but its initial.
+        balls:  DS:0x1da6 + 4*type                       type 1..19
+        fades:  DS:0x1df6 + 76*(frame-1) + 4*(type-1)    frame 1..6
 
-**Measure it rather than spelling it.** `1000:9e53` loads the sprites into the
-far-pointer table the draw code indexes, so the association is readable at
-runtime: settle a known ball, clear it, and see which fade pointers get used.
-That is cheap now and would replace the whole initials argument.
+`76 = 19*4`, and `0x1da6 + 19*4 = 0x1df2`, immediately before the fade block -
+so the two are adjacent and the same length. This confirms the `DS:0x1da6` base
+already recorded for the settled-cell table, and gives its length.
 
-**A claim withdrawn.** This section previously argued that the existence of
-`FFADE` independently confirmed Flashium having no static sprite. It does not -
-`FFADE` is `MULTBALL`'s. What survives is the weaker but still real observation
-that **no `FLASHBALL` sprite exists anywhere in `TUBES.RES`**, which is
-consistent with a wildcard drawn by borrowing other colours, but is one source
-rather than two.
+| type | ball sprite | fade family | what it is |
+|---|---|---|---|
+| 1 | `REDBALL` | `RFADE` | Redium |
+| 2 | `GRENBALL` | `GFADE` | Greenium |
+| 3 | `BLUEBALL` | `BFADE` | Bluium |
+| 4 | `CYANBALL` | `CFADE` | Cyanium |
+| 5 | `PURPBALL` | `PFADE` | Purplium |
+| 6 | `YELWBALL` | `YFADE` | Yellowium |
+| 7 | `PINKBALL` | `PNKFADE` | Pinkium |
+| 8 | *borrowed* - read as `BLUEBALL` | `FFADE` | **Flashium**, the wildcard |
+| 9 | `ANTIBALL` | `AFADE` | AntiMatter |
+| 10 | `GOLDBALL` | `GLDFADE` | Bonus |
+| 11 | `XENBALL` | none | **Xenon** |
+| 12 | `MULTBALL` | none | Multiplier |
+| 13 | `EVILBALL` | none | Evil Multiplier |
+| 14 | `CONVBALL` | none | Convertor |
+| 15 | `BLOCBALL` | none | Blocker |
+| 16 | `FILLBALL` | none | Blocker/Filler |
+| 17 | `OBSTBALL` | none | obstacle, unidentified |
+| 18 | `CRFADE1` | `CRFADE` | the crystal |
+| 19 | `MYSTBALL` | none | unidentified |
 
-### The wildcard is `MULTBALL`, and Flashium is its element name
+### Type 8 has no sprite of its own - measured
 
-Two separate accounts from play describe one ball, which is what ties this
-together. Flashium "matches any colour, has no static sprite of its own, flashes
-the other sprites while settled, and only three matched together give the unique
-animation"; `MULTBALL` "will match any colour, but inherits that stack's colour
-animation when cleared". Same ball, named once from the cutscene and once from
-the resource.
+Type 8's *ball* pointer resolved to `BLUEBALL`, the identical address type 3
+points at. There is no `FLASHBALL` resource anywhere in `TUBES.RES`. So the
+wildcard's slot **borrows a colour sprite**, and this sample caught it holding
+blue. That is the flashing, seen from the pointer side, and it is the same
+mechanism as the `1..7` cell cycling the playfield notes recorded.
 
-So the wildcard is:
+One sample cannot distinguish "the pointer is rewritten as it flashes" from
+"permanently aliased to blue". **The check is two reads a second apart**: if
+type 8's pointer walks the colour sprites, it is confirmed outright. Cheap, and
+not yet done.
 
-- **Travelling:** the grey `M` sprite, so it stays legible in the tube.
-- **Settled:** no sprite of its own - it cycles the ordinary colours, which is
-  the `1..7` increment-and-wrap loop the playfield notes recorded.
-- **Cleared in a coloured stack:** uses **that colour's** fade family.
-- **Cleared as three wildcards:** uses `FFADE`, the multicoloured mosaic.
+### Only types 1-10 and 18 can be cleared
 
-That last pair is the useful bit for the port: **the fade family is chosen by the
-colour actually matched, not by the ball's own identity.** It also explains why
-eleven families cover twenty-five balls - the seven colour families are shared
-between the ordinary balls and any wildcard that matched them.
+Types 11-17 and 19 have **null** fade pointers in all six frames. A thing that is
+never cleared by matching needs no clear animation, so the matchable set is the
+seven colours, Flashium, AntiMatter, Bonus and the crystal. Everything else -
+Xenon, the four letter balls, `OBSTBALL`, `MYSTBALL` - does something on landing
+instead.
 
-The cutscene names eight elements and seven are plainly the ordinary colours, so
-the eighth - "Flashium", a flashing name - being this ball is as close to certain
-as an unread inference gets. Still, the *name* link is an inference; the
-behaviour is the reported part.
+Note type 18's *static* pointer is `CRFADE1`, not `CRYSTAL.CSP`: the crystal's
+first fade frame doubles as its resting appearance, which the rendered images
+bear out (they are nearly identical).
 
-**The matchable set is these eleven, not the twenty-five balls.** Only things
-that can be cleared need a fade family, so `XENBALL`, `OBSTBALL`, the eight small
-balls and the letter balls other than `MULTBALL` are *not* cleared by matching -
-they do something else.
+### `MULTBALL` is the Multiplier, not the wildcard
 
-### `CRYSTAL` and `MARKER`
+Worth stating plainly because this went back and forth. `MULTBALL` is type 12
+with **no fade family**, so it cannot be a thing that gets matched and cleared.
+The wildcard is type 8. Both an earlier guess (`FFADE` = Flashium, right for the
+wrong reason) and a subsequent correction (`FFADE` = `MULTBALL`, wrong) are
+superseded by the table.
 
-- `CRYSTAL` (16 x 13) is a solid red rounded **block**, visibly not a sphere,
-  and it has a fade family - so it is a clearable playfield object rather than
-  decoration. Its function is **unknown**.
-- `MARKER` (12 x 11) is a red **X** crosshair. Unidentified; a cursor or a
-  target indicator are the obvious guesses.
+### The small-ball table - 7 entries
+
+`DS:0x200a`, stride 4: `SRBALL` `SGBALL` `SBBALL` `SCBALL` `SPBALL` `SYBALL`
+`SPNKBALL`. Exactly the seven colours, parallel to types 1-7. **`SWBALL` is not
+in it**, and neither is anything for Flashium or the specials - so wherever the
+half-size balls are drawn, only ordinary colours appear there. Where that is
+remains unknown.
+
+## Published descriptions of the game
+
+External sources, useful because they name behaviours the binary has not yet been
+read for. Treat as documentation, not measurement - but note the special list
+below matches the **measured type order for 9..16 exactly**, which is strong
+independent corroboration of both.
+
+From RGB Classic Games, verbatim:
+
+> "Flashium is a wildcard that can used to create a chain of any color, Xenon
+> won't react with any color atom, AntiMatter destroys the surrounding atoms,
+> Bonus turns into Flashium when caught and gives you a bonus drop, Multiplier
+> will fill your test tube with atoms, Evil Multiplier fills the test tube with
+> Xenons, Convertor changes all of the atoms it lands on into Xenons, Blocker
+> will fill the beaker column it lands in with Xenons, and Filler permanently
+> reduces the number of atoms the test tube can hold by one atom."
+
+Read against the type table that is: 8 Flashium, 9 AntiMatter, 10 Bonus,
+11 Xenon, 12 Multiplier, 13 Evil Multiplier, 14 Convertor, 15 Blocker,
+16 Filler - the same order, from two unrelated sources.
+
+**So `XENBALL` is Xenon**, the inert atom that will not react with any colour.
+
+Three corrections to the play-derived notes:
+
+- `ANTIBALL` destroys the **surrounding** atoms, not every ball in the beaker.
+- `GOLDBALL` (Bonus) turns into **Flashium** when caught and grants a bonus drop -
+  not a random ordinary ball.
+- The test tube holds **five** atoms. Both published descriptions say five
+  outright, which undercuts the 5/3/2-by-difficulty guess in `PLAN.md`; and
+  `FILLBALL` *permanently reduces capacity by one*, which is a far better
+  explanation for varying capacity than difficulty is.
+
+Other facts worth having:
+
+| | |
+|---|---|
+| developer | Absolute Magic (also styled Exaggerated Software) |
+| publishers | v1.0 Software Creations, v1.1 Impulse Software; Gold Medallion Software also credited |
+| versions | v1.0 June 1994, v1.1 November 1994 |
+| year | title screen and RGB say **1994**; MobyGames and the Internet Archive item say 1993 |
+| modes | Endurance (play until you lose) and Waves (objective-based) |
+| registered adds | 50 further waves, five backgrounds, and the **AntiMatter and Bonus** atoms |
+| lineage | described as KLAX/Columns-inspired |
+| the crystal | "mischief crystals and other bad elements" - an obstacle |
+
+The registered-only AntiMatter and Bonus atoms explain why they were only ever
+seen in the shareware's preview modes.
 
 ## Provenance of the gameplay descriptions
 

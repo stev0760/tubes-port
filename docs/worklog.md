@@ -702,3 +702,74 @@ balls.
 Net: one wrong identification, caught by the user within minutes because it had
 been written down as a claim with its basis stated. Inferring from resource names
 is fine; presenting it as identification was the error.
+
+### The sprite type table, measured - 19 ball types
+
+The fade-to-ball mapping had been guessed from initials, then "corrected" from
+play, then guessed again. Measuring it ended the argument in one run.
+
+Method: dump the guest heap, then identify every pointer by matching the
+**entire** `.CSP` payload against RAM. That is exact rather than probable - a
+compiled sprite is executable code, so it must load byte-for-byte. A first pass
+used 24-byte prefixes and 11 sprites collided, because a `.CSP` opens with plane-
+setup instructions that are identical whenever the top row matches. Full-content
+matching resolved all 105.
+
+The structure came out of the data. Frame 5's first fade pointer sat at
+`DS:0x1f26` and frame 6's at `DS:0x1f72`, so the frame stride is 76 = 19*4, and
+`0x1f26 - 4*76 = 0x1df6`. The ball table ends at `0x1da6 + 19*4 = 0x1df2`,
+immediately before it. Two adjacent 19-entry tables, Pascal 1-based - and the
+`0x1da6` base was already in the notes, so this confirms it and supplies the
+length.
+
+        balls:  DS:0x1da6 + 4*type
+        fades:  DS:0x1df6 + 76*(frame-1) + 4*(type-1)
+
+Types 1-7 are the ordinary colours, which measures the `1..7` cell encoding
+directly. 8 has `FFADE`, 9 `ANTIBALL`/`AFADE`, 10 `GOLDBALL`/`GLDFADE`,
+11..17 and 19 the specials with **null** fades, 18 the crystal with `CRFADE`.
+
+**Type 8's ball pointer resolved to `BLUEBALL` - the same address type 3 uses.**
+There is no `FLASHBALL` resource at all, so the wildcard's slot borrows a colour
+sprite, and this sample caught it on blue. That is the "flashes the other
+sprites" behaviour seen from the pointer side, and the same mechanism as the cell
+cycling. One sample cannot separate "rewritten as it flashes" from "aliased to
+blue"; two reads a second apart would, and that is the next cheap check.
+
+Null fades for 11-17 and 19 delimit the matchable set: only the colours,
+Flashium, AntiMatter, Bonus and the crystal are ever cleared.
+
+**Two of my own conclusions were wrong and both are now retired.** `FFADE` =
+Flashium was originally right but for a bad reason (its initial); I then accepted
+a correction to `MULTBALL`, which the table disproves - `MULTBALL` is type 12
+with no fade family, so it can never be matched and cleared. The lesson is not
+about either guess, it is that a five-minute measurement was available the whole
+time and would have skipped both.
+
+### Published sources, and what they corroborate
+
+Searching turned up RGB Classic Games' description, which lists all nine special
+atoms and their effects. Read against the measured table it gives 8 Flashium,
+9 AntiMatter, 10 Bonus, 11 Xenon, 12 Multiplier, 13 Evil Multiplier,
+14 Convertor, 15 Blocker, 16 Filler - **the same order, from two unrelated
+sources**. That corroborates the type numbering and the prose at once.
+
+Named at last: **`XENBALL` is Xenon**, the atom that will not react with any
+colour - which is exactly the "inert grey sphere" behaviour reported from play.
+
+Three corrections to the play-derived notes: AntiMatter destroys the
+*surrounding* atoms rather than the whole beaker; Bonus turns into **Flashium**
+when caught, not a random ordinary ball; and the test tube holds **five** atoms,
+with `FILLBALL` permanently reducing that by one - a much better account of
+varying capacity than difficulty, and it undercuts the 5/3/2 guess still sitting
+in `src/game.cpp`.
+
+Also recorded: v1.0 June 1994 (Software Creations) and v1.1 November 1994
+(Impulse Software), with Gold Medallion Software also credited; Endurance and
+Wave modes; and the registered version adding 50 waves, five backgrounds and the
+AntiMatter and Bonus atoms - which is why those two were only ever visible in
+the shareware's preview modes. Year is inconsistent across sources: the title
+screen and RGB say 1994, MobyGames and the Internet Archive item say 1993.
+
+Still unexplained: `OBSTBALL` (type 17), `MYSTBALL` (type 19), `SWBALL`, and
+where the seven half-size balls at `DS:0x200a` are drawn.

@@ -62,26 +62,39 @@ Listed first because building on them wastes work.
    implemented; the *path* is not, and is approximated by a vertical fall.
    Do not model it as per-cell tile routing - the frame update contains no
    13px-pitch arithmetic outside the settled-grid draw.
-2. **The test tube holds one atom.** `TESTUBE1/2/3` are 22x65, 20x42 and 20x27
-   - about 5, 3 and 2 cells at the 13px row pitch. Three capacities, matching
-   the 9/6/3 drop limits. The tube stacks several atoms.
+2. **The test tube holds one atom.** It holds **five** - both published
+   descriptions of the game say so outright. `TESTUBE1/2/3` are tipping frames,
+   not capacities (see below), and the varying capacity is far better explained
+   by `FILLBALL`, which *permanently reduces the tube by one atom*, than by
+   difficulty. Treat the 5/3/2-by-difficulty figure in `src/game.cpp` as
+   unfounded.
 3. **Scoring and pacing.** `kScorePerAtom`, `kChainBonus`, `kSpawnInterval`,
    `fallSpeed` are invented. Real values are in `1000:3a67`.
-4. **Atom colour count, and the special balls.** The engine's 8 flat colours are
-   wrong in both directions. There are **seven** ordinary colours, and
-   **Flashium** is a wildcard with no static sprite of its own - settled in the
-   beaker it displays the other colours in turn, which is precisely the
-   "increment the cell and wrap 8 back to 1" loop already noted in
-   `docs/reversing-notes.md`. That reconciles the eight named elements with
-   1..7 cell values, and explains the seven-entry settled-sprite table.
+4. **Atom colour count and the special balls - now measured.** The engine's 8
+   flat colours are wrong. There are **19 ball types**, read out of the live
+   sprite tables at `DS:0x1da6` (balls) and `DS:0x1df6` (fades), 19 entries
+   each at stride 4:
 
-   Beyond that there are **25 ball sprites**, measured: seventeen at 16x13 and
-   eight at 8x7. The 16x13 set is the seven colours, four unlettered specials
-   (`ANTIBALL`, `GOLDBALL`, `XENBALL`, `OBSTBALL`) and six **letter balls** -
-   grey spheres marked `?` `X` `M` `B` `C` `F` (`MYSTBALL`, `EVILBALL`,
-   `MULTBALL`, `BLOCBALL`, `CONVBALL`, `FILLBALL`). None of this is implemented.
-   Behaviour known from play: `ANTIBALL` destroys any balls in the beaker on
-   contact; `GOLDBALL` is a fast bonus ball. See `docs/reversing-notes.md`.
+   | type | what |
+   |---|---|
+   | 1-7 | the ordinary colours: Redium, Greenium, Bluium, Cyanium, Purplium, Yellowium, Pinkium |
+   | 8 | **Flashium** - the wildcard, with **no sprite of its own**: its slot borrows a colour sprite |
+   | 9 | AntiMatter - destroys the surrounding atoms |
+   | 10 | Bonus - travels fast, turns into Flashium when caught, grants a bonus drop |
+   | 11 | Xenon - inert, will not react with any colour |
+   | 12 | Multiplier - fills the test tube with atoms |
+   | 13 | Evil Multiplier - fills the test tube with Xenons |
+   | 14 | Convertor - turns the atoms it lands on into Xenons |
+   | 15 | Blocker - fills the beaker column it lands in with Xenons |
+   | 16 | Filler - permanently reduces tube capacity by one |
+   | 17 | obstacle, unidentified |
+   | 18 | the crystal ("mischief crystal"), static sprite is `CRFADE1` |
+   | 19 | `MYSTBALL`, unidentified |
+
+   Only 1-10 and 18 have fade families, so only those are cleared by matching.
+   Cell values are therefore **not** limited to 1..7 - the table runs to 19.
+   Behaviours for 8-16 come from published descriptions whose ordering matches
+   the measured type order exactly; 17 and 19 are unknown.
 
 ---
 
@@ -457,14 +470,11 @@ hangs at **y = 134 - 65 = 69**.
 
 Cheap and high-impact once the mechanic is settled.
 
-- 66 fade sprites: 11 families x 6 frames, the atom-clear animation. Seven are
-  the ordinary colours; the others are `GLDFADE` (gold), `CRFADE` (crystal),
-  `FFADE` (**`MULTBALL`** - known from play, *not* from the initial) and
-  `AFADE` (anti, guessed from the initial alone). Do not trust initials here -
-  `FFADE` belongs to a ball marked `M`. The mapping is readable at runtime from
-  the sprite table `9e53` fills. The eleven families are also the **matchable
-  set**: `XENBALL`, `OBSTBALL`, the small balls and the other letter balls have
-  no fade family, so matching does not clear them.
+- 66 fade sprites: 11 families x 6 frames. **The mapping is now measured** - see
+  the 19-type sprite table in `docs/reversing-notes.md`. Indexed by ball type:
+  types 1-7 the colours, 8 Flashium (`FFADE`), 9 AntiMatter, 10 Bonus,
+  18 the crystal. Types 11-17 and 19 have **null** fade pointers, so they are
+  never cleared by matching.
 - `.SFX` through SDL audio, mixed alongside the OPL output
 - HUD: the reference screenshot shows chains, score and drops across the top
 - Fonts are decoded but never drawn
