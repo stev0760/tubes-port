@@ -368,3 +368,154 @@ code directly rather than inferring it, and speed settles by observation.
 Nuked-OPL3 with a byte-verified sequencer, playfield geometry measured, the
 whole interface mapped. The port is roughly 40% - reversing well ahead of the
 game itself.
+
+---
+
+## 2026-07-26 — Session 3
+
+No reversing progress by design. The previous session ended with static
+disassembly exhausted, so this one built the replacement instrument.
+
+### The rig
+
+`lokkju/dosbox-x-remotedebug` (DOSBox-X 2025.12.01 plus a GDB remote-serial
+stub and a QMP server) and `jdmichaud/dosbox-mcp` (24 tools over the two of
+them). Both cloned to `~/Dev/tubes-tooling/`, outside this repo — the drive it
+mounts is copyrighted game data and the paths are machine-local. `uv` installed
+user-local; the fork built with `--enable-remotedebug --disable-libfluidsynth
+--disable-mt32 --disable-avcodec`. Full account in `docs/debug-rig.md`.
+
+`--disable-avcodec` was a deliberate risk reduction: the machine has ffmpeg
+8.1 and the AUR recipe needed an ffmpeg-4.4 shim even for the 2022 release.
+Video recording is irrelevant here and screenshots go through libpng, so
+nothing is lost.
+
+The DOS drive is symlinks to the game files plus *copies* of the two files the
+game writes (`SETUP.CFG`, `TUBES.SAV`), so an experiment cannot corrupt the
+user's real save.
+
+### Two corrections to the plan, found by reading rather than running
+
+Both were in `PLAN.md`'s section 0, and both would have cost a session.
+
+1. **Which binary the rig runs.** Set up against the shipped `TUBES.EXE` at
+   first, on the assumption that was the target - wrong, and the user corrected
+   it: `assets-extracted/TUBES_UNP.EXE` has existed since day one and is what
+   Ghidra analysed. It matters for the entry breakpoint. Packed, break-on-exec
+   stops in LZEXE's stub and `CS` is the packer's; unpacked, entry `CS:IP` is
+   `0000:aaba` - image-relative segment 0 - so `CS` at entry *is* the load
+   segment and `PLAN.md`'s mapping holds unchanged.
+
+   Worth recording how the wrong turn happened: the packed EXE was sitting in
+   the game directory with the obvious name, and "LZEXE means you cannot break
+   at the entry point" is a true statement that produced a false conclusion
+   because it was applied to a file we had no reason to run. The unpacking was
+   already in `docs/worklog.md`, session 1.
+
+   The mapping is now **proven statically**, which needed no emulator at all.
+   DGROUP is Ghidra segment `0x2785`, so `0x1785` paragraphs into the image, at
+   file offset `0x1785*16 + 0x2200 = 0x19a50`. The waypoint targets read out of
+   the file there are `104, 122, 140, 158, 176, 194` - byte-exact against the
+   measured values. Six values matching by chance is not credible.
+
+   Also caught statically, before running anything: the 24-byte signature
+   invented for the runtime scan **does not exist**. `DS:0x1a` does not hold the
+   columns ascending; it holds two descending triples,
+   `143, 125, 107, 197, 179, 161`, indexed 3,2,1,6,5,4 - which
+   `reversing-notes.md` had documented correctly all along, several lines below
+   where the reading stopped. The lesson is the cheap one: check a guess against
+   the file before building a tool on it, and read the notes before inventing a
+   signature the notes already contradict.
+
+2. **The GDB stub has no memory watchpoints.** `handle_breakpoint` in
+   `gdbserver.cpp` declines every `Z` type except 0, so `Z2` — break on write —
+   is unavailable, and `dosbox_debug.py` hardcodes `Z0` anyway. This gates
+   Experiment 3, the plan's self-described highest-value moment. Worth noting
+   that `qSupported` advertises `hwbreak+`, so trusting the handshake would
+   have been misleading; and that `docs/REMOTEDEBUG.md` states the limitation
+   plainly, which is why it was checked against the source rather than assumed
+   either way. DOSBox-X's internal debugger does have it (`BPM`, and this build
+   is `C_HEAVY_DEBUG=1`) — it is simply not wired to the wire. The fix is a
+   small patch mapping `Z2` onto `CBreakpoint::AddMemBreakpoint`.
+
+### A contradiction in the input map, found from `SETUP.CFG`
+
+Reading `SETUP.CFG` (previously an open question) resolved most of it: bytes at
+`0x04`/`0x06`/`0x08` are SB base `0x220` / IRQ 7 / DMA 1 — which happens to be
+DOSBox-X's default, so no tuning needed — and six consecutive words at `0x10`
+are scancodes `48 4b 4d 50 1d 38`: the four arrows plus left Ctrl and left Alt.
+So the remappable controls are arrows + Ctrl + Alt.
+
+But that order is up/**left**/**right**/down, and the `.SCR` bit assignments in
+`reversing-notes.md` were inferred as up/**down**/**left**/right. The ends
+agree — up first, then the two buttons — which is what makes the middle
+disagreement worth taking seriously. Exactly one is wrong and neither is
+proven: the `.SCR` reading is explicitly behavioural, and its load-bearing step
+was reading the long-held bit as "down, to drop faster" — but the mechanic is
+now known to be a sliding tube where **button B** speeds an atom along, which
+is at least as good a candidate for a long hold.
+
+Left unresolved on purpose. Guessing here is precisely the failure mode that
+cost the last session, and `PLAN.md` §5 plans to use `DEMO.SCR` as a
+correctness oracle — an oracle on a wrong bit map silently validates wrong
+behaviour. Six QMP key injections against the input driver's byte at
+`ds:0x2352` settles it by measurement, and is now Experiment 0.
+
+### The rig works, and the game runs
+
+`bringup_tubes.py` passes. `CS` at the entry breakpoint is `0x0824`,
+`EIP - CS*16` is `0xaaba` exactly as the unpacked header says, DGROUP lands at
+`0x0824 + 0x1785 = 0x1fa9`, `DS:0x26` reads back the measured targets, and an
+independent RAM scan for the `DS:0x1a` bytes finds them at `0x1faaa` -
+`0x1fa90 + 0x1a`, precisely where the entry-point route predicted. Two
+independent methods, one answer. `L` is not a constant to memorise; it follows
+the DOS memory layout and must be re-measured each session.
+
+Getting there needed one real piece of reversing. The game refused to start with
+
+    This game requires complete control of your computer.  Please run from DOS!
+
+which is not in the startup-message block and is not about `SETUP.EXE` despite
+the first check's wording (that one tests for `SETUP.CFG`; the executable is
+irrelevant). Ruled out `SETUP.CFG`, EMS, XMS, UMB and HMA by sweeping conf
+variants - six runs, all refused - which said the guard was not about memory
+managers at all.
+
+Then a **single A/B run settled what a sweep could not**: the *packed* binary
+fails identically from the same drive. So it was never an unpacking artifact,
+and `TUBES_UNP.EXE` was cleared. Worth noting the user's report pointed at the
+unpacked EXE and at `SETUP.EXE`, and both readings were wrong - the packed one
+had simply been run in a directory that had `SETUP.CFG`, so it got further.
+
+Finding the actual check took no emulator at all. Both message strings had to be
+referenced from the same code segment, and a Pascal string constant is passed by
+the address of its length byte - so for a segment at paragraph `S` the immediate
+must equal `img - S*16`, which forces `imm mod 16` to match `img mod 16`.
+Inverting that over every `push imm16`/`mov reg,imm16` in the image left exactly
+**one** candidate segment, Ghidra `0x21ea`. Disassembling there:
+
+        mov  ax, 0x1680          ; INT 2Fh, release current VM time-slice
+        int  0x2f
+        not  al                  ; 0x00 back if something serviced it,
+        mov  cl, 7               ; 0x80 (unchanged AH) if nothing did
+        shr  al, cl
+        cmp  byte [0xd3e], 0
+        je   +9                  ; continue into driver install
+        mov  di, 0x167           ; the message
+
+A Windows/DPMI multitasker check, entirely reasonable for a program about to
+hook interrupts and reprogram the VGA. DOSBox-X services that call to idle the
+host CPU, so it looks like Windows. `[dos] dos idle api = false` fixes it and is
+now in `tubes.conf`.
+
+The game then reaches its splash screens - the Absolute Magic logo (`2178:00eb`)
+rendered with animated plasma, captured headless. **First time this game has run
+under instrumentation in this project.**
+
+Also recorded, from the same read: the six startup checks and their messages,
+now in `reversing-notes.md`. And two rig quirks - QMP's screendump ignores its
+`file` argument, and captures come out 640x400 rather than 320x200 because mode
+13h is double-scanned.
+
+`dosbox-mcp` is installed local-scope to `tubes-port`, all 24 tools verified to
+list over stdio. Needs a Claude Code restart to appear as `dosbox_*` tools.

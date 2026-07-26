@@ -104,30 +104,93 @@ Pascal static link at `[bp+4]`. Known fields:
    `[bp+4]` to get the live base. Everything else is an offset from it.
 2. Set a memory write breakpoint on a record's `+0x00`. Whatever traps is the
    code that moves atoms - the thing a whole session of grepping did not find.
+   **Not possible over the GDB stub as built** - see Experiment 3 below.
 3. For speed: run, hold **B**, and watch the write rate change. That settles
    whether speed is a record field, a divisor on a shared frame counter, or
    something else, by observation rather than inference.
 
-**Tooling: `jdmichaud/dosbox-mcp`** (decided). 24 tools over a DOSBox-X fork
-with a GDB stub - memory read/write, registers, linear-address breakpoints
-that account for real-mode segmentation, stepping, input injection and **save
-states**. Building the fork from autotools source is accepted cost.
+**Tooling: `jdmichaud/dosbox-mcp`** over `lokkju/dosbox-x-remotedebug`.
+**Built, installed and verified end to end** - see `docs/debug-rig.md` for where
+it lives, the config choices, and the footguns. The game runs headless and
+reaches its splash screens; segment bookkeeping is confirmed by two independent
+routes. 24 tools: memory read/write, registers, linear-address breakpoints,
+stepping, key injection and **save states**.
 
-The save states are the point. Every wrong turn this session came from an
+**One conf setting is mandatory:** `[dos] dos idle api = false`. Without it the
+game prints "This game requires complete control of your computer" and stops -
+it probes `INT 2Fh AX=1680h` for a multitasker at `21ea:0249` and DOSBox-X
+answers. Details in `docs/reversing-notes.md` under "Startup checks".
+
+The save states are the point. Every wrong turn last session came from an
 unrepeatable inference. A save state turns each question into a controlled
 experiment: identical starting state, one variable changed, re-runnable.
 
-**First: fix the segment bookkeeping.** Ghidra's base segment is an arbitrary
-`0x1000`. Under DOS the program loads wherever DOS puts it, so before any
-address here is usable, break at the program entry, read `CS`, and record it.
-Every Ghidra address then maps as:
+**Debug the unpacked image, not the shipped one.** `assets-extracted/TUBES_UNP.EXE`
+is what Ghidra analysed and what every address in these notes refers to. The DOS
+drive presents it as `TUBES.EXE`; the shipped LZEXE-packed original is there as
+`TUBESPKD.EXE` for reference only. Run the packed one and break-on-exec stops in
+the decompressor stub, whose `CS` belongs to the packer - so the mapping below
+would be measuring the wrong program.
 
-        live_segment = CS_at_entry + (ghidra_segment - 0x1000)
-        so 1000:3a67  ->  CS_at_entry:3a67
+**The segment bookkeeping is now settled, statically.** Ghidra's base segment is
+an arbitrary `0x1000` and DGROUP is Ghidra segment `0x2785`, so DGROUP sits
+`0x1785` paragraphs into the image - file offset `0x1785 * 16 + 0x2200 header =
+0x19a50`. Reading the waypoint-target table there out of the file gives
+`104, 122, 140, 158, 176, 194`, **byte-exact** against the measured values. Six
+values matching by chance is not credible, so this confirms both the DGROUP
+segment number and the file-offset formula without an emulator.
 
-Getting this wrong invalidates every measurement, so confirm it by reading
-back a known constant - e.g. the column-x table should read 107, 125, 143,
-161, 179, 197 at `DGROUP:0x1a`.
+What remains at runtime is only the load segment `L`. Entry `CS:IP` in the
+unpacked header is `0000:aaba` - image-relative segment 0 - so `CS` at the
+entry breakpoint *is* `L`, and:
+
+        live_segment = L + (ghidra_segment - 0x1000)
+        DGROUP       = L + 0x1785
+
+Confirm it two independent ways, and require them to agree - `bringup_tubes.py`
+does exactly this:
+
+- **A.** Break at entry, read `CS`, check `EIP - CS*16 == 0xaaba` (proves we
+  stopped in the right program), then read back `DS:0x26` at `L + 0x1785`.
+- **B.** Free-run, then scan conventional RAM for the 24 bytes the file holds at
+  `DS:0x1a` - verified to occur exactly once in the image:
+
+        8f 00 7d 00 6b 00 c5 00 b3 00 a1 00 68 00 7a 00 8c 00 9e 00 b0 00 c2 00
+
+  Its address must land where A predicts.
+
+A alone could be a wrong-but-self-consistent guess about the load address; B
+alone finds an address without proving what it is.
+
+**Careful - the column table is not stored ascending**, and the summary above
+glossed over it. `docs/reversing-notes.md` has this right already: the six x
+values live at `DS:0x1a`..`DS:0x24` as two *descending* triples,
+`143, 125, 107, 197, 179, 161`, and columns 1..6 index them in the order
+3, 2, 1, 6, 5, 4. The ascending `107, 125, 143, 161, 179, 197` is the mapping
+*after* that permutation, not a run of bytes to look for. Confirmed against the
+image: `DS:0x1a`=143, `0x1c`=125, `0x1e`=107, `0x20`=197, `0x22`=179,
+`0x24`=161. Anything scanning for the ascending form finds nothing - read the
+notes before inventing a signature.
+
+**Experiment 3 cannot be run as written.** The GDB stub
+supports **software execution breakpoints only**; `Z2`/`Z3`/`Z4` watchpoints
+are declined outright (`gdbserver.cpp`, `handle_breakpoint`). There is no
+memory-write breakpoint over the wire. DOSBox-X's internal debugger *does*
+have one (`BPM`, and this build has `C_HEAVY_DEBUG=1`) - it is just not
+exposed. `docs/debug-rig.md` sizes the three routes; the good one is a small
+patch mapping `Z2` onto the existing `CBreakpoint::AddMemBreakpoint`.
+
+Experiments 1, 2 and 4 need none of that and can run today.
+
+**Experiment 0 - settle the input bit map first.** Cheap, and it unblocks
+something else. `docs/reversing-notes.md` now records a contradiction: the six
+scancodes in `SETUP.CFG` are ordered up/**left**/**right**/down, while the
+`.SCR` bit assignments were inferred as up/**down**/**left**/right. Exactly one
+is wrong, neither is proven, and `PLAN.md` §5 wants to use `DEMO.SCR` as a
+correctness oracle - an oracle on a wrong bit map validates wrong behaviour.
+Inject one key at a time over QMP, watch the byte the input driver builds at
+`ds:0x2352`/`ds:0x2356`. Six injections settles it, and also says which of
+Ctrl and Alt is button A.
 
 **Experiment 1 - find the live atom array.** Break at `1000:3a67`, read `BP`,
 then read the static link at `[bp+4]`. Array base is that minus `0x163`. Dump
@@ -141,7 +204,9 @@ should show what actually drives them.
 
 **Experiment 3 - find the mover.** Set a write breakpoint on record 0's `+0x00`.
 Whatever traps is the code a full session of grepping failed to find. This is
-the single highest-value moment in the whole plan.
+the single highest-value moment in the whole plan - **and it is gated on the
+watchpoint work in Correction 2 above.** Do that patch before this experiment,
+or fall back to step-and-diff.
 
 **Experiment 4 - settle speed (controlled).** Save state with an atom mid-arc.
 Then: load, run N frames untouched, record positions. Load again, run N frames

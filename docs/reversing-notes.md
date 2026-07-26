@@ -576,12 +576,130 @@ match 3+ of a colour horizontally, vertically, or diagonally.
 Strings recovered from the unpacked binary corroborate all of the above and
 additionally reference `DEMO.SCR` and a `GAMEBG` resource name.
 
+## `SETUP.CFG` - partly decoded (65 bytes)
+
+Read straight out of the user's own file. Two blocks stand out of the zeros;
+everything else is still unread.
+
+        offset  bytes          reading
+        0x00    01 02 01 02    four device selections           guessed
+        0x04    20 02          SB base port 0x220               measured
+        0x06    07 00          IRQ 7                            measured
+        0x08    01 00          DMA 1                            measured
+        0x0a    00 x 6         zero
+        0x10    48 00          scancode 0x48  Up
+        0x12    4b 00          scancode 0x4b  Left
+        0x14    4d 00          scancode 0x4d  Right
+        0x16    50 00          scancode 0x50  Down
+        0x18    1d 00          scancode 0x1d  Left Ctrl
+        0x1a    38 00          scancode 0x38  Left Alt
+        0x1c    00 x 18        zero
+        0x2e    01 01 01 00    three more selections            guessed
+        0x32    00 x 15        zero
+
+The hardware triple is solid: 0x220 / IRQ 7 / DMA 1 is a stock Sound Blaster
+set, sitting as three consecutive 16-bit fields exactly where a hardware block
+belongs. It is also, usefully, DOSBox-X's default - so no `[sblaster]` tuning
+is needed to run the game under the debugger.
+
+The six scancodes are solid as a *set*: they are the standard XT codes for the
+four arrows plus left Ctrl and left Alt, six consecutive words in an otherwise
+zeroed span, and the game takes exactly six inputs - four directions plus
+buttons A and B. So the remappable controls are arrows + Ctrl + Alt.
+
+### The scancode order contradicts the `.SCR` bit order
+
+This is the part to be careful with. Two independent readings disagree:
+
+| index | `SETUP.CFG` order | `.SCR` bit | `.SCR` reading |
+|---|---|---|---|
+| 0 | Up | `0x01` | up |
+| 1 | **Left** | `0x02` | **down** |
+| 2 | **Right** | `0x04` | **left** |
+| 3 | **Down** | `0x08` | **right** |
+| 4 | Left Ctrl | `0x10` | button A |
+| 5 | Left Alt | `0x20` | button B |
+
+The ends agree - up first, then the two buttons - which is what makes the
+middle disagreement worth taking seriously rather than dismissing. Exactly one
+of these is wrong, and neither is proven:
+
+- The `.SCR` bits are explicitly **inferred from behaviour**, not read from the
+  input handler. The load-bearing step was reading `0x02` as "down, held to
+  drop faster" because it is the only bit held for long runs. But the mechanic
+  is now known to be a tube sliding on a horizontal rail, with **button B**
+  speeding an atom along - and B is the obvious candidate for a long hold.
+- The `SETUP.CFG` order is inferred from the scancodes alone. Nothing yet ties
+  index *n* in that table to bit *n* in the mask.
+
+Against the sliding-tube reading of `SETUP.CFG`, `0x02`=left held for runs of
+30 frames would be 30 x 6 = 180 px of travel on a rail only 90 px wide
+(104..194), so it would have to be clamping constantly. That is an argument,
+not evidence, and arguments are what this file exists to keep separate.
+
+**This matters beyond bookkeeping.** `PLAN.md` §5 plans to replay `DEMO.SCR`
+through the game loop as a correctness oracle. An oracle wired through the
+wrong bit map silently validates the wrong behaviour.
+
+**How to settle it** (cheap, now that the debug rig exists - see
+`docs/debug-rig.md`): inject one key at a time over QMP and watch the input
+byte the driver builds at `ds:0x2352`/`ds:0x2356`. Six injections, six bits,
+done - measured rather than argued. Same run also settles which of Ctrl and
+Alt is A and which is B.
+
+## Startup checks (solved)
+
+Found while getting the game to run under the debugger. Five Pascal-framed
+messages sit together at file `0x0c8d0`, and a sixth in the driver-install unit:
+
+| message | what failed |
+|---|---|
+| `Run SETUP.EXE to configure Tubes for your system!` | `SETUP.CFG` could not be opened |
+| `Tubes requires ` *n* ` bytes of free memory with this SetUp!` | not enough free conventional memory - the requirement depends on the chosen sound config, hence "with this SetUp" |
+| `Tubes Requires VGA!` | video adapter check |
+| `Tubes Resource File Error!` | `TUBES.RES` missing or malformed |
+| `Drivers Resource File Error!` | `DRIVERS.RES` missing or malformed |
+| `This game requires complete control of your computer.  Please run from DOS!` | a multitasker answered the DPMI/Windows yield call - see below |
+
+Note the first one names `SETUP.EXE` but tests for `SETUP.CFG` (opened at
+`0x149b1`). Copying `SETUP.EXE` next to the game does nothing; the *config
+file* is what has to exist.
+
+### The multitasker guard, at `21ea:0249`
+
+The one that actually blocks emulation. Read straight off the disassembly:
+
+        mov  ax, 0x1680          ; INT 2Fh "release current VM time-slice"
+        int  0x2f
+        not  al                  ; AL = 0x00 if something serviced the call,
+        mov  cl, 7               ;      0x80 (unchanged AH) if nothing did
+        shr  al, cl              ; flag = (~AL) >> 7
+        mov  [0xd3e], al
+        cmp  byte [0xd3e], 0
+        je   +9                  ; flag 0 -> continue into driver install
+        mov  di, 0x167           ; "This game requires complete control..."
+
+`INT 2Fh AX=1680h` is the Windows/DPMI cooperative-yield call. Under Windows 3.x
+enhanced mode, a DOS task switcher or a DPMI host, it returns `AL = 0`; on bare
+DOS nothing claims the interrupt so `AL` keeps the `0x80` it came in with. So
+the game is asking "is anything time-slicing me?" and refuses if so - reasonable
+for a program that is about to hook interrupts and reprogram the VGA into Mode X.
+
+This is why it will not start under a default DOSBox-X: DOSBox-X *does* service
+that call (`src/dos/dos_misc.cpp:443`, setting `reg_al = 0`) so it can idle the
+host CPU. `dos idle api = false` disables it. See `docs/debug-rig.md`.
+
+The guard reads and writes `DGROUP:0x0d3e`, which is worth remembering: the
+neighbourhood `0xd14`..`0xd44` is used as scratch by this unit, and `DS:0xd24`
+is already recorded above as the `DEMO.SCR` pointer.
+
 ## Open questions
 
 - `TUBES.RES` directory structure and compression scheme
 - Scoring tables, chain multipliers, wave progression curves
 - Atom spawn RNG and distribution
-- `SETUP.CFG` field layout (65 bytes)
+- `SETUP.CFG`: the selection bytes at `0x00` and `0x2e`; and the
+  scancode-order-vs-`.SCR`-bit-order contradiction above
 - `TUBES.SAV` layout (960 bytes)
 
 ## Porting notes

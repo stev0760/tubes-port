@@ -36,6 +36,7 @@ blindly.
 | `ghidra_scripts/` | Java `GhidraScript` files for headless analysis |
 | `third_party/` | vendored deps, unmodified — currently Nuked-OPL3 (LGPL 2.1) |
 | `docs/reversing-notes.md` | every format, with what is proven vs guessed |
+| `docs/debug-rig.md` | the live DOSBox-X debugging setup and its limits |
 | `docs/worklog.md` | chronological record of the work |
 | `PLAN.md` | roadmap, current status, and what is known-wrong |
 
@@ -130,9 +131,20 @@ float, and the test tube's vertical placement is approximate.
 ## Open work
 
 **Read `PLAN.md` first - it opens with the next step.** In short: static
-disassembly of `1000:3a67` has hit its limit, and the next move is DOSBox-X's
-debugger with a memory breakpoint on the atom array. `PLAN.md` has the exact
-addresses and what to watch.
+disassembly of `1000:3a67` has hit its limit, and the technique has switched to
+watching the game run under a debugger. `PLAN.md` has the exact addresses and
+what to watch.
+
+The rig is built and lives **outside this repo**, at `~/Dev/tubes-tooling/` -
+`docs/debug-rig.md` covers it. Two things to know before planning against it.
+It runs `assets-extracted/TUBES_UNP.EXE`, the unpacked image Ghidra analysed,
+presented to DOS as `TUBES.EXE` - debugging the shipped packed binary would
+break at LZEXE's stub instead of the game. And the GDB stub has **no memory
+watchpoints**, only execution breakpoints, so "break on a write to the atom
+array" needs a small patch first.
+
+The segment mapping is settled: DGROUP is Ghidra `0x2785` = `L + 0x1785`, and
+`L` is `CS` at the entry breakpoint. Proven against the file, not guessed.
 
 Ports to other platforms are an eventual goal, so keep SDL at the platform
 edge - it is the portability layer, not something to avoid. Only `main.cpp`
