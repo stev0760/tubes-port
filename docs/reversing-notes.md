@@ -583,3 +583,22 @@ additionally reference `DEMO.SCR` and a `GAMEBG` resource name.
 - Atom spawn RNG and distribution
 - `SETUP.CFG` field layout (65 bytes)
 - `TUBES.SAV` layout (960 bytes)
+
+## Porting notes
+
+Traps encountered building the C++ renderer that the Python tools did not hit:
+
+- **Negative offsets need floor division.** A `.CSP` addresses pixels either
+  side of its base pointer, so plane offsets go negative. Python's `//` and
+  `%` floor toward negative infinity; C++ truncates toward zero. Using the
+  native operators maps `off = -128` to row -1, column -48 instead of row -2,
+  column 32, which silently produces a 334x12 sprite with origin (-190,-1)
+  instead of 16x13 at (128,-2). The pixel *count* stays correct, so only the
+  geometry is wrong - it renders as a flat sliver rather than failing.
+- **Sprite origin is provenance, not placement.** `originX` is around 128 for
+  these resources because it reflects the base pointer the original game
+  passed in. Adding it to a draw position pushes sprites off-screen. Keep it
+  as metadata and place by the bounding box top-left.
+
+Cross-checking a new decoder against the Python tools (`csp_decode.py INFO`
+prints dimensions, origin and pixel count) catches both immediately.

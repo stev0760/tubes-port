@@ -20,14 +20,43 @@ No original files or assets extracted from them are ever committed here — see
 
 ## Status
 
-Early. Currently at the reverse-engineering stage; no engine code yet.
+Renders. Every asset format bar music is decoded, and the engine draws a
+composited 320x200 scene from the original data.
 
 - [x] Decompress `TUBES.EXE` (LZEXE v0.91) into an analyzable binary
-- [ ] Map the `TUBES.RES` container format
-- [ ] Extract sprites, sound, and level data
+- [x] Map the `TUBES.RES` container format and its LZSS compression
+- [x] Decode sprites, images, palettes, fonts, sound effects, demo recording
+- [x] Engine: resource loading and Mode X-faithful rendering
+- [ ] `.MUS` FM/Adlib music
 - [ ] Recover gameplay constants (scoring, wave curves, spawn RNG)
-- [ ] Engine: rendering, input, audio
-- [ ] Gameplay
+- [ ] Input and gameplay
+
+## Building and running
+
+Needs SDL2, CMake and a C++17 compiler.
+
+    cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+    cmake --build build -j
+    ./build/tubes-port --gamedir /path/to/your/TUBES
+
+Options:
+
+| Flag | Meaning |
+|---|---|
+| `--gamedir DIR` | directory holding your `TUBES.RES` (default `.`) |
+| `--scale N` | integer scale factor (default: largest that fits) |
+| `--screenshot FILE` | render one frame to a BMP and exit |
+
+`--screenshot` works headless under `SDL_VIDEODRIVER=dummy`, which is how the
+renderer gets verified without a display.
+
+### Rendering approach
+
+The engine draws into a 320x200 indexed framebuffer, exactly as the original
+did, then scales by an integer factor with nearest-neighbour filtering and
+letterboxes the remainder. Non-integer scaling would destroy the pixel grid
+of art authored for a 256-colour Mode X screen, so it is deliberately not
+offered.
 
 ## Getting started
 
