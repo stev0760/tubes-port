@@ -160,14 +160,51 @@ top, just above the test tube at 69.
 | +0x1e | waypoint index, 1..6 |
 | +0x1f | target x |
 
-### Speed
+### Two structures, kept apart
 
-The step size is fixed at 6 pixels, so **speed is how often the step runs**,
-not how far it moves. The phase advance is gated behind a sub-counter, which
-is the mechanism a faster bonus atom and the B button would both drive. The
-per-record speed field is not yet pinned down - that is the next thing to
-find, and it should be one of the still-unidentified bytes in +0x05..+0x0a or
-+0x0c..+0x13.
+Both reached through the Pascal static link from `9e53`'s frame. Conflating
+them caused several wrong turns, so:
+
+| base | shape | what |
+|---|---|---|
+| `parent - 0x163` | 12 x 28 bytes | the drawn sprites: x@0, y@2, colour@0x0b, savedX/Y per video page @0x14/@0x18 |
+| `parent - 0x16a` | one struct | the atom currently travelling the arc, carrying the movement machine |
+
+The movement code and the pacing divider both live on the **single** struct,
+so there is no clash with `savedX` at +0x16 in the array.
+
+### The travelling atom's state machine
+
+`+0x04` is the direction/state:
+
+| value | meaning |
+|---|---|
+| 0 | stopped |
+| 1 | moving left, `x -= 6` each frame |
+| 2 | moving right, `x += 6` each frame |
+| 3 | dwelling - the pacing divider runs |
+
+On reaching `targetX` (+0x1f) the x snaps to it exactly and direction resets
+to 0. Targets come from the six-entry waypoint table.
+
+### Pacing - what was found, and what was not
+
+**Found**, at `0x683a`, in the dwell state only:
+
+        inc BYTE es:[di+0x16]        ; divider
+        cmp BYTE es:[di+0x16], 2     ; fires every second frame
+        je  ...                      ; then reset it and advance phase +0x05
+
+**Not found: a per-atom speed value.** Horizontal travel is a flat 6 pixels
+per frame while direction is 1 or 2 - it is not gated by the divider at all.
+The divider only paces the phase machine during the dwell, and its threshold
+is a hardcoded literal `2`, not a field.
+
+So a faster bonus atom and the B button cannot work by changing this constant.
+They must act somewhere else - plausibly by how long the atom is held in the
+dwell state, or by running the whole update more than once per frame. That is
+the next thing to chase; the guess that a per-record speed byte exists in
++0x05..+0x0a is **not** supported by what has been read so far.
 
 **Do not** assume per-cell tile routing - the frame update contains no
 arithmetic on the 13px row pitch outside the settled-grid draw.
