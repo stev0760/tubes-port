@@ -160,51 +160,58 @@ top, just above the test tube at 69.
 | +0x1e | waypoint index, 1..6 |
 | +0x1f | target x |
 
-### Two structures, kept apart
+### Two structures - and the second one is the TEST TUBE, not an atom
 
-Both reached through the Pascal static link from `9e53`'s frame. Conflating
-them caused several wrong turns, so:
+Both reached through the Pascal static link from `9e53`'s frame:
 
 | base | shape | what |
 |---|---|---|
-| `parent - 0x163` | 12 x 28 bytes | the drawn sprites: x@0, y@2, colour@0x0b, savedX/Y per video page @0x14/@0x18 |
-| `parent - 0x16a` | one struct | the atom currently travelling the arc, carrying the movement machine |
+| `parent - 0x163` | 12 x 28 bytes | the atoms |
+| `parent - 0x16a` | one struct | **the player's test tube** |
 
-The movement code and the pacing divider both live on the **single** struct,
-so there is no clash with `savedX` at +0x16 in the array.
+The single struct was read for most of a session as "the atom currently
+travelling the arc". It is not. At `0x66f0` it only acts when its direction is
+0, then calls the input driver (`ds:0x2352`, `ds:0x2356`) and branches on the
+button bits. It is player-controlled.
 
-### The travelling atom's state machine
+Five things corroborate it, none of which fit a travelling atom:
 
-`+0x04` is the direction/state:
+- Its waypoint targets are 104, 122, 140, 158, 176, 194 - the six column x's
+  **minus 3**, which is exactly the offset the test tube is drawn at.
+- It moves 6 pixels per frame toward a target: a tube sliding smoothly between
+  columns, not snapping.
+- Button A (`0x10`) puts it into state 3.
+- State 3 runs a 4-phase counter that indexes a **sprite pointer table**
+  (`phase << 2` at `0x7b2f`) - an animation, and A is the dump action.
+- Its y values are 68 and 187, and the tube hangs at 69.
 
-| value | meaning |
+### The test tube's state machine
+
+| `+0x04` | meaning |
 |---|---|
-| 0 | stopped |
-| 1 | moving left, `x -= 6` each frame |
-| 2 | moving right, `x += 6` each frame |
-| 3 | dwelling - the pacing divider runs |
+| 0 | parked at a column, accepting input |
+| 1 | sliding left, `x -= 6` per frame |
+| 2 | sliding right, `x += 6` per frame |
+| 3 | tipping: 4-frame animation, one frame per 2 game frames |
 
-On reaching `targetX` (+0x1f) the x snaps to it exactly and direction resets
-to 0. Targets come from the six-entry waypoint table.
+Left and right also step the waypoint index at `+0x1e` (`dec`/`inc`), bounded
+at 6, so the tube stops on column centres.
 
-### Pacing - what was found, and what was not
+### `TESTUBE1/2/3` are tipping frames, not capacities
 
-**Found**, at `0x683a`, in the dwell state only:
+This follows directly, and **corrects an earlier inference**. The sprites are
+22x65, 20x42 and 20x27 - a tube foreshortening as it tips over, not three
+capacities for three difficulties. The capacity 5/3/2 currently in
+`src/game.cpp` is therefore unfounded and should be treated as a placeholder.
 
-        inc BYTE es:[di+0x16]        ; divider
-        cmp BYTE es:[di+0x16], 2     ; fires every second frame
-        je  ...                      ; then reset it and advance phase +0x05
+### Speed: still not found, and now known not to be here
 
-**Not found: a per-atom speed value.** Horizontal travel is a flat 6 pixels
-per frame while direction is 1 or 2 - it is not gated by the divider at all.
-The divider only paces the phase machine during the dwell, and its threshold
-is a hardcoded literal `2`, not a field.
+Neither candidate survives. Travel is a flat 6 px/frame with the divider
+threshold and the 4-phase limit both hardcoded, and this struct is the tube
+rather than an atom - so the bonus atom's speed cannot live here at all.
 
-So a faster bonus atom and the B button cannot work by changing this constant.
-They must act somewhere else - plausibly by how long the atom is held in the
-dwell state, or by running the whole update more than once per frame. That is
-the next thing to chase; the guess that a per-record speed byte exists in
-+0x05..+0x0a is **not** supported by what has been read so far.
+Atom speed must be in the 12-record array at `parent - 0x163`, which has not
+been examined for it yet. That is where to look next.
 
 **Do not** assume per-cell tile routing - the frame update contains no
 arithmetic on the 13px row pitch outside the settled-grid draw.
