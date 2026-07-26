@@ -112,12 +112,62 @@ So each of the 12 records is a free-moving sprite carrying its own position,
 plus saved positions per page for dirty-rect erase (the page index lives at
 `ds:0x2376`). 28 bytes: x, y, colour, and two saved pairs.
 
-**There is no waypoint table.** DGROUP holds only 3392 bytes of initialised
-data in total, and the only smooth coordinate-like runs in it are a
-multiplication table (11, 22, 33, ...) and an 8-word fragment. The path is
-**procedural** - a phase counter drives increments and decrements of the
-record's x and y, so it needs to be read as a state machine rather than
-recovered as data.
+**There IS a waypoint table** - at `DS:0x26`, six words, immediately after
+the column-x table:
+
+        targets: 104, 122, 140, 158, 176, 194     (pitch 18)
+        columns: 107, 125, 143, 161, 179, 197     (pitch 18)
+
+The targets are the column positions minus 3, the same -3 the test tube is
+drawn at. So the six waypoints are the six column stops.
+
+A first scan of DGROUP reported "no waypoint table". That was wrong: the scan
+required smooth runs of **8 or more** words and this table has **6**. The
+filter excluded the answer. Worth remembering - a negative result from a
+threshold search is only as good as the threshold.
+
+### The atom movement state machine
+
+From `1000:3a67` around `0x67bd`:
+
+        cmp  BYTE es:[di+0x1e], 6      ; waypoint index
+        mov  BYTE es:[di+0x04], 2      ; direction = right
+        inc  BYTE es:[di+0x1e]         ; advance waypoint
+        mov  ax, [di+0x24]             ; target = waypointTable[index]
+        mov  es:[di+0x1f], ax
+        ...
+        cmp  al, 1                     ; direction 1 = left
+        sub  WORD es:[di], 6           ;   x -= 6
+        cmp  ax, es:[di+0x1f]          ;   reached target?
+        mov  BYTE es:[di+0x04], 0      ;   yes: snap to target, stop
+        cmp  al, 2                     ; direction 2 = right
+        add  WORD es:[di], 6           ;   x += 6
+
+So atoms step **6 pixels at a time** toward a target column, and y snaps
+between two lanes: **187** at the bottom where they enter, and **68** at the
+top, just above the test tube at 69.
+
+### Record layout (28 bytes)
+
+| offset | field |
+|---|---|
+| +0x00 | x |
+| +0x02 | y |
+| +0x04 | direction: 0 stopped, 1 left, 2 right |
+| +0x0b | colour / sprite index |
+| +0x14, +0x16 | saved x, one per video page (dirty-rect erase) |
+| +0x18, +0x1a | saved y, one per video page |
+| +0x1e | waypoint index, 1..6 |
+| +0x1f | target x |
+
+### Speed
+
+The step size is fixed at 6 pixels, so **speed is how often the step runs**,
+not how far it moves. The phase advance is gated behind a sub-counter, which
+is the mechanism a faster bonus atom and the B button would both drive. The
+per-record speed field is not yet pinned down - that is the next thing to
+find, and it should be one of the still-unidentified bytes in +0x05..+0x0a or
++0x0c..+0x13.
 
 **Do not** assume per-cell tile routing - the frame update contains no
 arithmetic on the 13px row pitch outside the settled-grid draw.
