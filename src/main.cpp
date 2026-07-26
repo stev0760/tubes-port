@@ -277,10 +277,15 @@ uint8_t scriptedInput(const tubes::Game& game) {
     }
 
     // Nothing held: line up under the falling atom to catch it.
-    if (game.falling().active && game.falling().column != game.tubeColumn()) {
-        return b | (game.falling().column > game.tubeColumn()
-                        ? tubes::button::kRight
-                        : tubes::button::kLeft);
+    // The atom carries the original's 1..6 column numbering, whose x order is
+    // 143,125,107,197,179,161 - not the board's 0..5. Steer by comparing x.
+    if (game.falling().active) {
+        const int atomX = tubes::kAtomColumnX[game.falling().column];
+        const int tubeX = tubes::playColumnX(game.tubeColumn());
+        if (atomX != tubeX) {
+            return b | (atomX > tubeX ? tubes::button::kRight
+                                      : tubes::button::kLeft);
+        }
     }
     return b;
 }
@@ -496,17 +501,21 @@ int main(int argc, char** argv) {
     }
     if (opt.autoFrames) {
         const tubes::Falling& fa = game.falling();
-        const char* legName = !fa.active            ? "none"
-                              : fa.leg == tubes::Leg::kRise  ? "rise"
-                              : fa.leg == tubes::Leg::kCross ? "cross"
-                                                             : "descend";
+        const char* stateName =
+            !fa.active                              ? "none"
+            : fa.state == tubes::atomstate::kRise    ? "rise"
+            : fa.state == tubes::atomstate::kGoLeft  ? "go-left"
+            : fa.state == tubes::atomstate::kGoRight ? "go-right"
+            : fa.state == tubes::atomstate::kDescend ? "descend"
+                                                     : "?";
         std::printf(
             "simulated %d frames: %d atoms, score %d, chains %d, drops %d/%d%s\n"
-            "  dispenser: %s at (%.0f,%.0f) -> column %d\n",
+            "  dispenser: %s at (%d,%d) -> column %d (x=%d)\n",
             opt.autoFrames, game.board().count(), game.score(), game.chains(),
             game.dropsRemaining(), game.startingDrops(),
             game.gameOver() ? ", GAME OVER" : "",
-            legName, fa.x, fa.y, fa.column);
+            stateName, fa.x, fa.y, fa.column,
+            tubes::kAtomColumnX[fa.column]);
     }
 
     // Music is best-effort: a missing DRIVERS.RES or a busy audio device

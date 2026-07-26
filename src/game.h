@@ -33,26 +33,43 @@ enum class Difficulty {
     k301,   // 3 drops
 };
 
-// Which leg of the dispenser path an atom is on. The route was measured by
-// sampling the live atom array over time - static analysis never found the
-// code that moves atoms, and did not need to:
-//
-//     spawn -> bottom of an outer vertical tube (y = 187)
-//           -> ascends, x constant
-//           -> crosses the top (y ~ 0)
-//           -> descends into a play column
-//
-enum class Leg : uint8_t { kRise, kCross, kDescend };
+// Atom movement states, transliterated from FUN_1000_0f80 - the router the
+// game loop calls once per atom per frame. These are the original's own state
+// numbers, kept so a live record can be compared against this struct directly.
+namespace atomstate {
+constexpr uint8_t kRise = 3;      // up a feed tube, y decreasing
+constexpr uint8_t kGoLeft = 5;    // across the top, x decreasing
+constexpr uint8_t kGoRight = 6;   // across the top, x increasing
+constexpr uint8_t kDescend = 7;   // down a play column, y increasing
+}  // namespace atomstate
+
+// Destination x by column, read from the table at DS:0x18. Two descending
+// triples - the geometry lives in DATA, which is why no tube x value appears
+// in any comparison in the game loop.
+constexpr int kAtomColumnX[7] = {0, 143, 125, 107, 197, 179, 161};
+
+// Velocity is stored in 1/128 pixel per frame. A live record reads 512, and
+// 512/128 = 4, which is the "4 px/frame" that sampling measured - the observed
+// speed was only ever the integer part of a fixed-point step.
+constexpr int kSubPixel = 128;
+constexpr int kNetworkVel = 4 * kSubPixel;
+constexpr int kDescendVel = 18 * kSubPixel;
 
 struct Falling {
     bool active = false;
     int8_t colour = kEmpty;
-    Leg leg = Leg::kRise;
-    // Original screen pixels, the same space the beaker geometry uses, so a
-    // position here can be compared straight against a captured trace.
-    float x = 0.0f;
-    float y = 0.0f;
-    int column = 0;     // destination play column, 0..5
+    // Field names follow the original's record so the two can be diffed:
+    // +0x00 x, +0x02 y, +0x04 anchorX, +0x06 targetY, +0x08 state,
+    // +0x09 velocity, +0x0c column, +0x10/+0x12 the accumulators.
+    int x = 0;
+    int y = 0;
+    int anchorX = 0;      // column base the arc offsets are measured from
+    int targetY = 0;
+    uint8_t state = atomstate::kRise;
+    int column = 1;       // destination column, 1..6
+    int velocity = kNetworkVel;
+    int accX = 0;
+    int accY = 0;
 };
 
 class Game {

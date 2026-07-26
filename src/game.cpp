@@ -15,7 +15,6 @@
 // version has to reproduce.
 
 #include <algorithm>
-#include <cmath>
 
 namespace tubes {
 namespace {
@@ -61,21 +60,41 @@ int chainsForRun(const Run& r) {
 // +166 then +834 for 1000, +41 then +209 for 250 - about a sixth per step.
 constexpr int kScoreRampSteps = 6;
 
-// Atom motion, in pixels per frame, measured by sampling the live atom array.
-// The original moves whole pixels per frame, which is why the simulation steps
-// in frames rather than integrating a velocity.
-constexpr float kNetworkSpeed = 4.0f;    // up the outer tubes and across the top
-constexpr float kDescendSpeed = 18.0f;   // falling down a play column
 constexpr int kTubeSlideFrames = 3;      // 18 px pitch at the tube's 6 px/frame
 
-// The measured route. Atoms enter at the bottom of an outer vertical tube and
-// rise; the tube x positions come from observed dwell points, and the entry
-// lane y = 187 and top lane y = 68 are both measured.
-constexpr float kEntryY = 187.0f;
-constexpr float kTopY = 0.0f;
-constexpr float kTubeMouthY = 68.0f;     // where the test tube can catch
-constexpr float kLostY = 190.0f;         // past the beaker rim: the atom is gone
-const float kEntryColumns[] = {34.0f, 58.0f, 246.0f, 270.0f, 294.0f};
+// The lanes an atom travels between. y = 187 is where atoms enter at the
+// bottom of a feed tube and y = 68 is the top lane where the test tube can
+// catch; both measured.
+constexpr int kEntryY = 187;
+constexpr int kTopY = 0;
+constexpr int kTubeMouthY = 68;
+constexpr int kLostY = 190;
+
+// Feed tubes, by side. Which tube feeds which column has NOT been recovered -
+// only that left-hand tubes serve columns 1..3 and right-hand ones 4..6, since
+// the router picks its turn direction with `column < 4`.
+const int kFeedLeft[] = {34, 58};
+const int kFeedRight[] = {246, 270, 294};
+
+// The corner is rounded by displacing the OTHER axis while within 9 px of the
+// turn. Transliterated rather than approximated, because the two tables are
+// not the same - {9,6,4,2,1} rising against {9,6,3,2,1} horizontally - which
+// marks them as hand-tuned pixel art rather than a computed curve.
+int riseArcOffset(int distanceToCorner) {
+    if (distanceToCorner <= 1) return 9;
+    if (distanceToCorner <= 2) return 6;
+    if (distanceToCorner <= 4) return 4;
+    if (distanceToCorner <= 6) return 2;
+    return 1;
+}
+
+int crossArcOffset(int distanceToCorner) {
+    if (distanceToCorner <= 1) return 9;
+    if (distanceToCorner <= 2) return 6;
+    if (distanceToCorner <= 4) return 3;
+    if (distanceToCorner <= 6) return 2;
+    return 1;
+}
 
 // How often an atom is dispensed. NOT measured - the demo trace could not
 // resolve it, and the number below is only a playable placeholder. Flagged in
@@ -155,13 +174,26 @@ void Game::advanceScore() {
 }
 
 void Game::spawn() {
+    falling_ = Falling{};
     falling_.active = true;
     falling_.colour = nextColour();
-    falling_.column = static_cast<int>(rng_ % board_.cols());
-    falling_.leg = Leg::kRise;
-    const size_t n = sizeof(kEntryColumns) / sizeof(kEntryColumns[0]);
-    falling_.x = kEntryColumns[rng_ % n];
+    // Columns are 1..6 in the original's own numbering, matching the DS:0x18
+    // table. A left-hand column is fed from a left-hand tube so the atom
+    // turns right, and vice versa - that pairing is what `column < 4` in the
+    // router encodes. WHICH tube feeds which column is not yet recovered.
+    falling_.column = 1 + static_cast<int>(rng_ % 6);
+    if (falling_.column < 4) {
+        const size_t n = sizeof(kFeedLeft) / sizeof(kFeedLeft[0]);
+        falling_.x = kFeedLeft[rng_ % n];
+    } else {
+        const size_t n = sizeof(kFeedRight) / sizeof(kFeedRight[0]);
+        falling_.x = kFeedRight[rng_ % n];
+    }
+    falling_.anchorX = falling_.x;
     falling_.y = kEntryY;
+    falling_.targetY = kTopY;
+    falling_.state = atomstate::kRise;
+    falling_.velocity = kNetworkVel;
 }
 
 // One frame of the dispenser path. Speeds are the measured px/frame values,
@@ -202,41 +234,86 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
         return;
     }
 
-    const float targetX = static_cast<float>(playColumnX(falling_.column));
-
-    switch (falling_.leg) {
-        case Leg::kRise:
-            falling_.y -= kNetworkSpeed;
-            if (falling_.y <= kTopY) {
-                falling_.y = kTopY;
-                falling_.leg = Leg::kCross;
+    // --- FUN_1000_0f80, transliterated -----------------------------------
+    Falling& a = falling_;
+    switch (a.state) {
+        case atomstate::kRise: {
+            a.accY += a.velocity;
+            a.y -= a.accY / kSubPixel;
+            a.accY &= kSubPixel - 1;
+            if (a.y < a.targetY) {
+                a.y = a.targetY;
+                a.accY = 0;
+                // column < 4 decides the turn: columns 1..3 sit right of
+                // their feed tube, 4..6 sit left of theirs.
+                a.state = (a.column < 4) ? atomstate::kGoRight
+                                         : atomstate::kGoLeft;
             }
-            break;
-
-        case Leg::kCross: {
-            const float d = targetX - falling_.x;
-            if (std::fabs(d) <= kNetworkSpeed) {
-                falling_.x = targetX;
-                falling_.leg = Leg::kDescend;
-            } else {
-                falling_.x += (d > 0 ? kNetworkSpeed : -kNetworkSpeed);
+            if (a.y < a.targetY + 9) {
+                const int d = riseArcOffset(a.y - a.targetY);
+                a.x = a.anchorX + ((a.column < 4) ? d : -d);
             }
             break;
         }
 
-        case Leg::kDescend:
-            // Down and B both speed an atom along, confirmed from the input
-            // bit map: the demo holds Down for long stretches.
-            falling_.y += (buttons & (button::kDown | button::kB))
-                              ? kDescendSpeed
-                              : kNetworkSpeed;
+        case atomstate::kGoRight: {
+            a.accX += a.velocity;
+            a.x += a.accX / kSubPixel;
+            a.accX &= kSubPixel - 1;
+            a.anchorX = kAtomColumnX[a.column];
+            if (a.anchorX < a.x) {
+                a.x = a.anchorX;
+                a.accX = 0;
+                a.state = atomstate::kDescend;
+                a.velocity = kDescendVel;
+            }
+            if (a.x > a.anchorX - 9) {
+                a.y = a.targetY + crossArcOffset(a.anchorX - a.x);
+            }
+            break;
+        }
+
+        case atomstate::kGoLeft: {
+            a.accX += a.velocity;
+            a.x -= a.accX / kSubPixel;
+            a.accX &= kSubPixel - 1;
+            a.anchorX = kAtomColumnX[a.column];
+            if (a.x < a.anchorX) {
+                a.x = a.anchorX;
+                a.accX = 0;
+                a.state = atomstate::kDescend;
+                a.velocity = kDescendVel;
+            }
+            if (a.x < a.anchorX + 9) {
+                a.y = a.targetY + crossArcOffset(a.x - a.anchorX);
+            }
+            break;
+        }
+
+        case atomstate::kDescend:
+            // Down and B speed an atom along - confirmed from the input bit
+            // map, where the demo holds Down for long stretches. The boosted
+            // and unboosted descent rates are measured (18 and 4 px/frame);
+            // the code that sets the velocity field has not been located, so
+            // this assignment is inferred, unlike the states above.
+            a.velocity = (buttons & (button::kDown | button::kB))
+                             ? kDescendVel
+                             : kNetworkVel;
+            a.accY += a.velocity;
+            a.y += a.accY / kSubPixel;
+            a.accY &= kSubPixel - 1;
             break;
     }
 
-    if (falling_.leg != Leg::kDescend) return;
+    if (a.state != atomstate::kDescend) return;
 
     // The test tube catches an atom at the top lane, in its own column.
-    if (falling_.y >= kTubeMouthY && falling_.column == tubeColumn_ &&
+    // The atom's column is the original's 1..6 numbering and the board's is
+    // 0..5, and they are not in the same order - kAtomColumnX runs
+    // 143,125,107,197,179,161. Compare the x positions rather than the
+    // indices, which sidesteps the mapping entirely.
+    if (falling_.y >= kTubeMouthY &&
+        kAtomColumnX[falling_.column] == playColumnX(tubeColumn_) &&
         !tubeFull()) {
         int8_t held = falling_.colour;
         if (held == kBonus) {
@@ -267,13 +344,11 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
 void Game::resolveMatches() {
     std::vector<uint8_t> marked;
     std::vector<Run> runs;
-    int chain = 0;
 
     // Clearing can drop atoms into new matches, so keep resolving.
     while (true) {
         int n = board_.findMatches(marked, &runs);
         if (n == 0) break;
-        ++chain;
         for (const Run& r : runs) {
             award(awardForRun(r));
             chains_ += chainsForRun(r);
