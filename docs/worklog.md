@@ -1424,3 +1424,21 @@ same pattern as the `MULTBALL`, `DROP` and missed-atom corrections. Play memory
 keeps proving unreliable as *evidence* and excellent at *pointing*, which is the
 reason these notes keep reported and measured claims on separate lines rather
 than merging them.
+
+#### `BUBBLE` corroborated from the binary
+
+The cutscene identification came from recognition, so it was worth checking
+against the image rather than filing on one source. Resource name strings turn
+out to be emitted in **contiguous blocks**, one per unit, and the blocks line up
+with the grouping: the 11 fades plus `DROP`/`HITATOM`/`HITGLASS`/`SELECT` at
+`0x9d53`, `CLAP`/`SLIDE`/`SWITCH` at `0xaa85`, **`WHATTHE`/`NOOOO`/`BUBBLE` at
+`0xc5fc`**, and `WOOSH`/`LIGHTN`/`ABSMAGIC` at `0x11809`.
+
+`BUBBLE` sitting directly beside two known cutscene reactions, with all three
+referenced from segments inside CODE_1 - the unit holding the blackboard cutscene
+- is independent structural support for what was a memory.
+
+Recorded with its caveat: a string's position shows the unit that emitted it, not
+every unit that uses it. `SELECT` is in the gameplay block while the program map
+has the title/menu referencing it, because a far pointer crosses units freely. So
+adjacency is good evidence of grouping and poor evidence of exclusive ownership.

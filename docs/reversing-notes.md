@@ -2435,3 +2435,34 @@ it was. Someone recognising it settled it in one line - the same way the
 `MULTBALL`, `DROP` and miss-mechanic corrections arrived. Play memory has been
 unreliable as evidence and excellent at pointing, which is why these notes keep
 the two on separate lines.
+
+
+### The sound grouping, corroborated from the binary
+
+`BUBBLE` being a cutscene sound was recognised from play. The binary agrees, and
+the evidence is structural rather than circumstantial: **resource name strings
+are emitted in contiguous blocks**, one per unit, and the blocks match the
+grouping exactly.
+
+| string offsets (image) | sounds |
+|---|---|
+| `0x9d53`..`0x9de8` | the 11 fade families, plus `DROP` `HITATOM` `HITGLASS` `SELECT` |
+| `0xaa85`..`0xaa98` | `CLAP` `SLIDE` `SWITCH` |
+| **`0xc5fc`..`0xc612`** | **`WHATTHE` `NOOOO` `BUBBLE`** |
+| `0x11809`..`0x1181e` | `WOOSH` `LIGHTN` `ABSMAGIC` |
+
+`BUBBLE` sits directly beside `NOOOO` and `WHATTHE` - two sounds already known
+to be cutscene reactions - and scanning for code that references those three
+resolves them to segments in the `0x1c5x` range, inside CODE_1, the unit holding
+the blackboard cutscene at `1b2e:1651`. The splash trio is likewise contiguous
+and separate.
+
+**Caveat on the method.** A string's location shows the unit that *emitted* it,
+not every unit that uses it. `SELECT` sits in the gameplay block, yet the program
+map records the title/menu at `1b2e:52bf` referencing `SELECT.SFX` - a far
+pointer crosses units freely. So block adjacency is good evidence of grouping and
+poor evidence of exclusive ownership, and the table above should be read as "who
+these belong to", not "who may play them".
+
+For the port that distinction matters little: it says which stage needs which
+sounds loaded, which is what `PLAN.md` §2 and §4 need.
