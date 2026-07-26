@@ -2466,3 +2466,43 @@ these belong to", not "who may play them".
 
 For the port that distinction matters little: it says which stage needs which
 sounds loaded, which is what `PLAN.md` §2 and §4 need.
+
+
+## The wave objective vocabulary (23 templates)
+
+Wave briefings are not stored per wave. They are **assembled at runtime** from a
+fixed set of templates plus parameters - a count, a colour, a chain orientation -
+which is why the text breaks oddly where a value is substituted. Extracting the
+Pascal strings from image `0x5f00`..`0x8200` gives the game's complete objective
+vocabulary, exactly, without transcribing a single screenshot.
+
+**Objective kinds**
+
+| kind | variants |
+|---|---|
+| endurance | form as many chains as possible; the game grows harder with each chain |
+| survive N atoms | plain; **hidden until they leave a tube**; or with a named element **disabled for the wave and will not disappear** |
+| form N chains of a colour | horizontal / vertical / diagonal, each with a named colour |
+| form N chains, any atom | plain; **beaker already contains atoms**; or **beaker atoms morph every 45 s** |
+| form N chains using **Flashium** | - |
+| form N chains using a shown atom | "the following atom" |
+| form N *Horizontal* or *Vertical* chains using any atoms | - |
+| **Task Display** driven | required **colour**, required **chain**, or **colour & chain** - each in two flavours, changing **after each task** or **every 45 seconds** |
+| remove N **marked atoms** | plain; or first remove the atoms covering them; or first use **Anti-Matter** to remove the Xenons surrounding them |
+| remove N **Mischief Crystals** | using **Anti-Matter** |
+
+That is a far richer rule set than the port models, and several kinds imply
+machinery that does not exist yet: marked atoms, a Task Display that changes
+mid-wave, atoms that morph on a timer, atoms hidden until they leave a tube, and
+a pre-filled beaker.
+
+**Where the parameters live is still open.** They are not a simple 50-entry
+table: searching the whole image for a repeating `0x0b` at any stride from 2 to
+16 found no drops column, and every wave sampled allows 11 drops, so that
+allowance is a Wave-mode constant rather than per-wave data. Counts and colours
+are most likely derived from the wave number, which would fit the difficulty
+seeds and level bands already recorded above.
+
+The full template list with offsets is in `wave-templates.md` in the tooling
+directory, alongside per-wave screenshots in `capture/waves/`. Kept outside this
+repository because it is the game's own text.
