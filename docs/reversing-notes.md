@@ -2749,14 +2749,34 @@ lands as an ordinary cell first, then explodes. Notably the Pinkium directly
 below at r5c6 **survived**, which constrains the blast shape - it is not simply
 "everything adjacent".
 
-**Atoms wait at the tube exits.** Records sat unchanged at `(107,63)`,
-`(125,60)`, `(161,62)` and `(197,63)` - four columns at once, for nine seconds
-and more. The test tube can only be under one column, so these are atoms
-**queued at their own tube exits**, not caught.
+**Caught atoms freeze in the array - and that is the test tube's contents.**
 
-That refines the earlier caught-vs-missed result. It measured a long dwell in the
-y 40..75 band at the tube's column and read it as atoms being held in the test
-tube. The dwell is real, but it is where atoms wait at the *end of a tube* -
-which is also what "increase the speed of any atoms in the tube directly above
-the test tube" refers to. Whether a caught atom is additionally parked there is
-no longer established either way.
+Records sat unchanged at `(107,63)`, `(125,60)`, `(161,62)` and `(197,63)` -
+four different columns at once, for nine seconds and more. My first reading was
+that these were atoms *queued at their tube exits*, which is wrong: atoms at a
+tube exit would fall.
+
+Checking properly settles it. The game was **running**, not paused - 75 of 76
+flight samples had at least one atom move. And the number of stationary records
+in the `y 55..70` band **accumulates over time**:
+
+        t= 70.8   0 held
+        t= 76.6   1 held
+        t= 82.6   2 held
+        t= 87.8   3 held
+        t= 93.0   4 held
+
+That is the **test tube filling up**, against its capacity of five. The x values
+differ because a caught atom's record is **frozen at the position where it was
+caught** and is not updated as the tube slides along its rail - the tube draws
+its contents itself.
+
+This answers a question left open since the record-lifecycle work: **caught atoms
+do not leave the array.** They persist, motionless, at their catch position.
+
+It also re-explains the earlier caught-vs-missed measurement. That run saw 226
+frames of dwell in the `y 40..75` band at the tube's column and none below y=120;
+the dwell is caught atoms freezing there, which is why nothing appeared deeper.
+The conclusion of that experiment - caught atoms halt at the mouth, missed ones
+continue at 18 px/frame - stands. Only my later "queued at tube exits" gloss was
+wrong.
