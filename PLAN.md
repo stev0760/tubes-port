@@ -556,17 +556,23 @@ Cheap and high-impact once the mechanic is settled.
   30 / 60 / 75 / 90 / 95 / 101. Variables not yet named; trace them from
   `9e53` into `3a67` through the Pascal static link.
 - **wave definitions.** A wave briefing carries an objective ("live through 30
-  atoms"), a **disabled element** that still spawns but cannot be cleared, and its
-  own **drop allowance** (11 on wave 6). So the measured 9/6/3 triple is the
-  Endurance difficulty setting; Wave mode overrides it per wave. The
-  disabled-element rule has no equivalent in the port yet.
+  atoms") and often a **modifier** - a disabled element that still spawns but
+  cannot be cleared, atoms hidden until they leave a tube, beaker atoms morphing
+  on a timer, a pre-filled beaker. None of these exist in the port.
+- **drops are a persistent pool, not part of the wave definition.** A miss
+  decrements it, a **Bonus atom increments it**, and the briefing's "You are
+  allowed *n* drops" echoes the current value carried in `TUBES.SAV 0x207`. The
+  wave sweep saw 11 everywhere only because it edited the wave byte and never
+  the drops byte. So the Bonus atom is effectively an extra life - the only known
+  way to replenish a resource that otherwise only decreases.
 - special atoms; Endurance vs Wave mode selection sits under a Game Mode menu,
   and saved games are filtered by mode
 - save/load. `TUBES.SAV` is 960 bytes and very sparse. **Partly decoded and
   confirmed against the running game**: player name at `0x1e0` (Pascal
-  ShortString), score u32 at `0x1ff`, wave number at `0x206`; `0x207` and `0x20d`
-  match the wave's drop allowance and atom target from one sample. See
-  `docs/reversing-notes.md`.
+  ShortString), score u32 at `0x1ff`, wave number at `0x206`, **drops remaining at
+  `0x207`** (a carried pool, confirmed by play), and `0x20d` matching the wave's
+  atom target from one sample. Editing `0x206` warps to any wave - there is no
+  checksum. See `docs/reversing-notes.md`.
 
 ### 4. The other screens
 
