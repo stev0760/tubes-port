@@ -3029,3 +3029,98 @@ a whole byte in both the save and the session. The reading is withdrawn.
 That also retires the last of the "drops are a wave property" family of errors.
 The number was never stored per wave, never reset per wave, and never capped -
 it is one counter, seeded once by difficulty and carried until the game ends.
+
+## Measured from attract mode (demo-driven)
+
+Attract mode replays `DEMO.SCR` through the normal game loop, so it is a real
+play session with no human pacing it. Everything below came from traces taken
+while the demo played itself.
+
+### Replay is deterministic - verified
+
+Two cold-boot runs, sampled independently:
+
+| quantity | run A | run B |
+|---|---|---|
+| beaker-grid transitions, in order | 20 | 20, **all identical** |
+| score sequence | `0, 1000, 2250` | `0, 1000, 2250` |
+| drops sequence | identical | identical |
+
+The atom-array snapshots overlap only 53%, which is *expected* - two
+asynchronous samplers land on different frames of the same sequence. The
+ordered grid and score sequences are the meaningful comparison and they match
+exactly.
+
+This was the premise that needed establishing before anything else: the header
+u32 is only *inferred* to be an RNG seed, and without determinism no comparison
+built on the demo means anything. It holds.
+
+The demo runs at **3 drops** (visible on its HUD), which is what the earlier
+`11 -> 3` log entry was actually measuring.
+
+### `+0x0b` **is** the type field - the refutation was the error
+
+Settled by predicting a *different* structure rather than by inspecting value
+ranges: when an atom settles into a beaker cell, does that cell take the value
+this offset held? Every one of the 28 record offsets was scored identically,
+over 79 settle events pooled from three traces:
+
+| offset | agrees with the settled cell |
+|---|---|
+| **`+0x0b`** | **76/79 = 96.2%** |
+| `+0x0a`, `+0x0c`, `+0x0f` | 6/79 = 7.6% each |
+
+So the original static reading off the draw site was right all along. The
+observation that "appeared to refute" it - `+0x0b` only ever holding 0 or 1 -
+was taken with array base `0x2419e`, **six bytes early**, landing inside the
+saved-position fields. With the corrected base `0x241a4` the offset carries the
+full range the beaker holds.
+
+Consequence: writing a type to `+0x0b` *is* the way to inject an atom type, so
+the technique the MYSTBALL experiments wanted is sound. Those particular runs
+stay void, because they wrote at the wrong base (hitting `+0x05`), but the
+approach can now be re-run correctly.
+
+### The score ramps toward its target, it does not jump
+
+Score changes captured during play do not land on round numbers. They pair up:
+
+    +166 then +834   = 1000
+    +41  then +209   =  250
+    +166 then +1084  = 1250
+    +166 then +1334  = 1500
+    +332, +332, +170, +166 = 1000
+
+`1000/6 = 166.7` and `250/6 = 41.7`, so the counter advances in roughly sixths
+of the award. **The score variable itself animates** - this is not a display
+effect layered over a settled value, because the trace reads the variable
+directly.
+
+Two consequences. For the port, an award should ramp rather than snap, or it
+will look wrong next to the original. For measurement, **any single sample of
+the score may be mid-ramp**, so chain values must be recovered by summing
+consecutive deltas - reading one delta and calling it the award is a mistake
+this trace would happily support.
+
+Every recovered chain award is a multiple of **250**, and a vertical 3-chain
+scored exactly 250 on two separate occasions, which matches the Instructions'
+250-vertical / 1000-diagonal rule.
+
+### Two techniques that did not work, recorded so they are not retried
+
+**Ctrl+F11 slowdown via QMP does nothing here.** The adaptive harness measured
+the state-change rate after each batch of twelve presses and it never trended
+down (17.0, 17.3, 4.3, 13.3, 8.7, 16.7 ... - variance, not a trend). Two runs
+were aliased before this was noticed. Slowing the guest must be done with
+`cycles` in the config instead, at the cost of a proportionally slower boot.
+
+**There is no frame counter at `0x24c2e` or `0x24dc0`.** Both came out of a scan
+for strictly-increasing fields across 7 snapshots, over ~28,000 candidate
+offsets - at that ratio, fields rise monotonically by chance. Checking the full
+series killed both: `0x24dc0` reads 2568, 2319, 1553, 513 across one trace.
+
+That is this project's recurring lesson pointed the other way. The standing rule
+is "when a search comes back empty, suspect the search"; the same scepticism is
+owed to a search that comes back **full**. The tell was available immediately -
+a frame counter that disagrees with itself is not a finding, it is a filter
+artefact.
