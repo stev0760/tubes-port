@@ -3305,3 +3305,79 @@ link. The addresses now confirm it from the data side.
 The decompilation of `1000:3a67` + `1000:9e53` is kept **outside this repo**, at
 `~/Dev/tubes-tooling/decomp-3a67-9e53.txt`, for the same reason the Ghidra
 project is: it is derived from copyrighted data.
+
+## `1000:3a67` decompiled: the beaker grid and atom array, from the code
+
+First gameplay structures recovered from the **code** rather than from watching
+memory. Both were already known from observation; what is new is that their
+shape is now read off the program, which is what settles details sampling
+cannot reach.
+
+### The beaker grid is a Turbo Pascal `array[1..5, 1..6] of byte`
+
+    FUN_2685_0fbf(0, 0x1e, abStack_27 + 7, unaff_SS);      // FillChar(grid, 30, 0)
+
+`0x1e` = 30 bytes, cleared at session start. The draw loop indexes it as
+
+    abStack_27[row * 6 + col]        col unrolled 1..6
+
+and the `+ 7` bias on the base is the giveaway: a 1-based two-dimensional Pascal
+array is addressed as `base + (row*6 + col)` with `base` biased by
+`-(1*6 + 1) = -7`. So the declaration is **`array[1..5, 1..6] of byte`**,
+row-major, one byte per cell - confirming the 6 x 5 read off the loop bounds
+earlier, and confirming which index is which.
+
+Each cell value is used directly as a **ball-table index**:
+
+    FUN_2321_0905(*(u16 *)(cell * 4 + 0x1da6),      // sprite ptr, low word
+                  *(u16 *)(cell * 4 + 0x1da8),      // sprite ptr, high word
+                  x, y);                            // Draw
+
+which is the `DS:0x1da6` ball table with 4-byte entries, already documented -
+and it independently confirms that a settled cell holds the atom's **type
+number**, the fact the `+0x0b` settle correlation established by measurement.
+
+### There are THREE parallel 30-byte arrays, not one
+
+All three are cleared together at session start:
+
+| array | role |
+|---|---|
+| `abStack_27 + 7` | the beaker contents - atom type per cell |
+| `acStack_62 + 6` | per-cell flag, tested `== 1` in the draw loop |
+| `local_3e` | third 30-byte array, purpose not yet established |
+
+The port models the beaker as a single array of types. The original keeps at
+least one parallel plane, tested per cell while drawing, which is what a
+clearing/fading flag would look like. **This is exactly the kind of structure
+black-box observation cannot see**: it never shows up in a state trace of the
+grid, because it is a different array.
+
+### Atom array: 12 records of 28 bytes, in this frame
+
+    local_1b6[1] != 0xc                        // loop bound: 12 records
+    FUN_2685_0f9b(0x1c, &local_1c8 + n * 7, ...)   // 28-byte record copy
+
+`&local_1c8 + n * 7` on an `undefined4` base is `n * 28` bytes, so **the array
+base is `local_1c8`**; Ghidra also exposes overlapping views of it
+(`local_1c4`, `local_1b0`) at fixed field offsets. Initialisation writes `0xba`
+= **186** to fields `+0` and `+2`, matching the spawn-marker pair and the
+x/saved-x/y/saved-y record shape found when the array base was corrected.
+
+Note `local_18e` is **not** the atom array - it is a 2-byte drawing coordinate.
+It was briefly taken for the array because its number matched an offset
+prediction; Ghidra's `local_N` naming does not map onto BP displacement that
+way, and offset arithmetic is not an identification. Shapes are: a 28-byte
+stride, a bound of 12, a 30-byte FillChar.
+
+### Already visible: a colour-cycling rule the port does not have
+
+    if (cell != 0 && cell < 8) {
+        cell = cell + 1;
+        if (cell == 8) cell = 1;
+    }
+
+Every ordinary atom in the beaker steps to the next colour, wrapping 7 -> 1.
+This is very likely the wave modifier described in the briefings as beaker atoms
+morphing on a timer. Nothing in any state trace suggested it, because no sampled
+wave exercised it.
