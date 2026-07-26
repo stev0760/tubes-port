@@ -1981,3 +1981,64 @@ breakpoint.
 
 Three speeds in one game, all different, is worth carrying into the port: the
 current `fallSpeed` constant in `src/game.cpp` cannot be right for both phases.
+
+
+## The speed table, from a controlled A/B
+
+The earlier "atoms have two speeds" note had a flaw in the *experiment*, not the
+arithmetic: **no input was ever sent**. The test tube never moved, so it never
+caught anything, so every descent sampled was an atom that had already been
+missed. Calling 18 px/frame "the descent" was therefore an over-labelled result.
+
+Re-measured with input as the controlled variable. Both conditions interleaved in
+short blocks within one session - the first attempt ran 95 s of each back to
+back and the second phase captured 15 frames with **zero motion**, because with
+no input every atom is missed and wave 6 allows only 11 drops, so the wave had
+ended and phase B was sampling a game-over screen. When the control condition
+itself ends the game, long phases cannot work.
+
+### Result
+
+Upward steps inside the tube network (`y <= 68`), 292 vs 295 frames:
+
+| dy | no input | **Down held** |
+|---|---|---|
+| -4 | **188** | 66 |
+| -8 (= 2 x 4) | 11 | 32 |
+| **-18** | 10 | **29** |
+| -36 (= 2 x 18) | 0 | **10** |
+
+and horizontally, `dx = -18` appears **only** with Down held.
+
+So the accelerated step is **18 px/frame**, applied in whatever direction the
+atom is travelling, against a normal **4 px/frame**.
+
+**The `-4` count does not fall to zero under Down - it drops to 66.** That is the
+load-bearing detail. A global speed-up would eliminate it; its persistence is
+exactly what the Instructions predict: "increase the speed of any atoms in the
+tube **directly above the test tube**". Some atoms accelerate, the rest carry on
+at 4. The measurement independently confirms the wording.
+
+### Summary
+
+| what | step |
+|---|---|
+| atom travelling the tube network | **4 px/frame** |
+| atom with Down / Button B held, and above the test tube | **18 px/frame** |
+| atom below the tube mouth (`y > 68`) | **18 px/frame**, in *both* conditions |
+| the test tube sliding on its rail (static analysis) | 6 px/frame |
+
+Below the mouth, `18` dominates whether or not Down is held (18: 14 vs 15;
+36: 4 vs 8) - consistent with the boost applying only to atoms still in the tube,
+not to ones already past it.
+
+### What this does *not* settle
+
+Play reports that a missed atom's fall *looks* different from a boosted atom in
+the tube. The measured per-frame step is the same magnitude - 18 - for both, so
+the difference is not step size. It may be direction and path (a straight
+vertical plunge versus following the tube route), or a distinction this
+experiment cannot resolve: with no left/right input the test tube stays in one
+column, so the `y > 68` band mixes atoms descending *into* the tube with atoms
+falling *past* it. Separating those needs the tube deliberately positioned under
+a known column, and is not yet done.

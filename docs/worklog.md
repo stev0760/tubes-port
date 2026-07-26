@@ -1134,3 +1134,48 @@ breakpoint, and it is not worth guessing.
 Three different speeds in one game - 4 in the tubes, 18 falling, 6 for the test
 tube - which is enough on its own to retire the single `fallSpeed` constant in
 `src/game.cpp`.
+
+### The speed table, and a flaw in my own experiment
+
+The user spot-checked their own DOSBox session and reported that a missed atom's
+fall looks different from a boosted atom in the tube. Checking that exposed a
+flaw in the previous measurement - in the experiment, not the arithmetic.
+
+**No input was ever sent in any run.** The test tube therefore never moved, never
+caught anything, and every descent I sampled was an atom that had already been
+missed. Labelling 18 px/frame "the descent" was over-reading a result produced
+under exactly one, unrepresentative condition.
+
+Re-ran with input as the controlled variable, and hit a second problem first: 95 s
+with nothing held followed by 95 s with Down held gave a second phase of 15
+frames and **zero motion**. With no input every atom is missed, wave 6 allows 11
+drops, and the wave had simply ended - phase B was sampling a game-over screen.
+When the control condition itself ends the game, long phases cannot work.
+Interleaving six short blocks fixed it and controls for progression too.
+
+Result, upward steps inside the tube network:
+
+    dy        no input    Down held
+    -4          188          66
+    -8           11          32
+    -18          10          29
+    -36           0          10
+
+plus `dx = -18` appearing only with Down held. So the boost is **18 px/frame**
+against a normal **4**, in whatever direction the atom travels.
+
+The detail worth the whole run: **-4 does not vanish under Down, it drops to
+66**. A global speed-up would eliminate it. Its persistence is precisely what the
+Instructions say - "any atoms in the tube *directly above the test tube*" - so
+the measurement independently confirms the wording, which is a much stronger
+result than the raw number.
+
+Below the mouth, 18 dominates in both conditions, consistent with the boost not
+reaching atoms already past the tube.
+
+Left open honestly: the user's perceived difference between a fall and a boosted
+atom is **not** step size - both are 18. It may be direction and path, or a
+distinction this experiment cannot make, because with no left/right input the
+tube sits in one column and the `y > 68` band mixes atoms descending *into* the
+tube with atoms falling *past* it. Separating them needs the tube deliberately
+parked under a known column.

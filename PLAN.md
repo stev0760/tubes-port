@@ -61,11 +61,12 @@ Listed first because building on them wastes work.
    spawn at `(303,186)`, placed at the bottom of an outer vertical tube at
    `y = 187`, ascend at constant x, cross the top along `y ~ 0..3`, then descend
    into a play column. Tube columns seen: 34, 58, 107, 179, 197, 246, 270, 294 -
-   the same x values as the tube artwork, plus 294. **Atoms have two speeds**,
-   both measured with a frame-synchronised sampler: **4 px/frame** travelling the
-   tube network, and **18 px/frame** descending a play column. The test tube
-   moves 6 px/frame. So the single `fallSpeed` constant in `src/game.cpp` cannot
-   be right for both phases.
+   the same x values as the tube artwork, plus 294. **Speeds are measured**
+   (frame-synchronised sampler, input as a controlled variable): **4 px/frame**
+   travelling the tube network, **18 px/frame** when Down/Button B is held *and*
+   the atom is above the test tube, and **18 px/frame** below the tube mouth in
+   both conditions. The test tube itself moves 6 px/frame. The single
+   `fallSpeed` constant in `src/game.cpp` cannot cover this.
 2. **The test tube holds one atom.** It holds **five** - both published
    descriptions of the game say so outright. `TESTUBE1/2/3` are tipping frames,
    not capacities (see below), and the varying capacity is far better explained
