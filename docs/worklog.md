@@ -1673,3 +1673,73 @@ had its edge consumed and never reached the simulation. The scripted player
 caught nothing and burned eight of nine drops. The symptom was a plausible
 "the AI just plays badly", which is exactly the kind of result that gets
 explained away rather than investigated.
+
+## 2026-07-26 — Session 6: back to transliteration
+
+Pivoted from black-box reconstruction to reading the code, after the user
+observed that the port was being *re-implemented* rather than ported and that
+this would be lossy. `CLAUDE.md` now carries a prime directive making the order
+of authority explicit: decompiled code settles a rule, the game's own text
+corroborates, live measurement locates and validates but never derives.
+
+The pivot paid for itself immediately. Everything below came out of the code in
+one sitting, and most of it was **invisible to measurement in principle** - not
+merely missed.
+
+### Structures
+
+- **Gameplay state is on the stack, not in DGROUP.** `FindScalarRefs` returned
+  nothing for the grid, score and drops as DS offsets, and could not have
+  succeeded: `DS = 0x1fa9`, `SS = 0x2294`, and every gameplay address is above
+  `0x22940`. The grid is 30 bytes at `SS:0x19d4` with a sampled `BP` of
+  `0x19f2` - it is `[BP-0x1e]`. Drops, tube and score live in the *enclosing*
+  frame, confirming from data that `3a67` is a nested procedure sharing
+  `9e53`'s locals.
+- **The beaker is three parallel `array[1..5, 1..6] of byte` planes**, not one.
+  The `+7` bias on the base is the fingerprint of Turbo Pascal 1-based
+  two-dimensional indexing.
+- **A cell holds `type + 19 * fadeFrame`**, not a type. Plane B flags the cell
+  as animating and plane A's value climbs by 19 a frame. This closes a loop with
+  a formula derived years earlier: `0x1df6 + 76*(frame-1) + 4*(type-1)` expands
+  exactly to `0x1da6 + 4*(type + 19*frame)`, so one lookup draws settled and
+  fading atoms alike and the drawing code never branches.
+- **Plane C is an overlay** - `MARKER.CSP` drawn over flagged cells when
+  `DS:0x1d4e == 6`. Those are the red X marks seen on beaker balls in play.
+
+### Rendering
+
+- The tube network is **not a backdrop**. It is assembled from segment sprites
+  in layered passes, and the atoms are drawn *between* those passes so the solid
+  pieces overpaint them. That is what makes the tubes read as hollow with atoms
+  visibly inside and tubes overlapping - and it is unreproducible by
+  compositing one foreground image.
+- Sprite slots were named by **spacing fingerprint**: the gaps between the 16
+  resource-name strings are known exactly, and only one position in the image
+  holds printable Pascal strings at every one of them.
+- `BEAKER.CSP` is drawn **last**, after the settled atoms, so the glass front
+  overlaps the balls. The port had this inverted - same sprite, same
+  coordinates, wrong order, and no behavioural test could ever have caught it.
+- Rendering is **dirty-rect over two Mode X pages**; the 16 x 13 atom cell is
+  the unit of redraw.
+
+### MYSTBALL
+
+Settled after three failed experiments, by two lines of code: the draw is
+`ball[type]` or `MYSTBALL` chosen by a flag, at the same coordinates. It is a
+**rendering state**, so scanning the atom array for type 19 could never have
+found it, and injecting 19 into a type byte could not have produced it.
+
+### One retraction
+
+`DS:0x1d4e` was written up as selecting the tube layout. It does not - it gates
+the overlay. The error came from grouping draw calls by line range between
+conditions; a brace-aware grouper showed the furniture is drawn unconditionally.
+The claim was labelled unverified when written, which is the only reason it was
+caught quickly. Notably the error pointed towards *more* work than the truth
+required, and nothing would have failed to reveal it.
+
+### Still open
+
+The movement code. The tube x positions appear in `3a67` only inside draw calls,
+never in a comparison, so the route is not hard-coded position tests there.
+`src/game.cpp`'s three-leg path remains an explicit placeholder.
