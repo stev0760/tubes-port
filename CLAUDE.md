@@ -17,6 +17,48 @@ Two goals, in tension occasionally — the first one wins:
    early on and rejected for good reason.
 2. Produce a playable port.
 
+## The prime directive: transfer the logic, do not re-invent it
+
+**Every gameplay rule in `src/` must be derived from the original's code**, by
+decompiling the Turbo Pascal and transliterating it to C++/SDL. The Pascal
+source is almost certainly lost, so this binary is the only remaining record of
+how Tubes works — the aim is a near-exact reconstruction of it, not a game that
+behaves similarly.
+
+**Black-box recreation is forbidden as a source of rules.** Watching the game
+run and writing code that reproduces what you saw is not porting. It has
+already been tried, in the session that measured the drops model, and it was
+lossy in ways that were invisible from the inside:
+
+- a scoring rule was fitted to two observed awards and was **wrong**, while the
+  real rule sat in the game's own Instructions;
+- Flashium's wildcard was **wrong in two different ways** until a player
+  described what the game actually does;
+- an "unresolved ambiguity in the original" was written up that was really a
+  **bug in our own matcher**.
+
+Each was caught by a human noticing, not by the method. Observation yields
+samples; the binary yields the function. A rule that has never been exercised
+on screen cannot be sampled at all, and you will not know it is missing.
+
+**So the order of authority is:**
+
+1. the **decompiled code** — the only thing that settles a rule;
+2. the game's own text (Instructions, briefings) — good corroboration, and it
+   has twice held an answer that was being derived the hard way;
+3. **live measurement** — for *locating* and *validating*, never for deriving.
+
+Measurement keeps a large role, just not that one. Measured addresses say
+*where* to look in the disassembly (see the DS-offset table in
+`docs/reversing-notes.md`), and the deterministic `DEMO.SCR` trace is the
+**oracle**: ported logic must reproduce a captured state sequence. That is the
+same standard already applied to music, where the sequencer is verified by
+diffing register streams rather than by listening.
+
+If a rule cannot yet be decompiled, leave it **explicitly marked as a
+placeholder** — as `src/game.cpp` does at the top — rather than shipping a
+plausible invention that later reads as settled.
+
 ## Hard rule: no game data in this repository
 
 The game is still copyrighted. Assets are read at runtime from the user's own
