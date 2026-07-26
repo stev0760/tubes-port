@@ -292,13 +292,51 @@ Content of `TUBES.RES` by extension:
 `DRIVERS.RES` holds 11 `.DRV` payloads, compressing far less well (79.6%),
 consistent with them being 8086 code rather than pixel data.
 
-### Payload compression - still open
+### Payload compression - solved: LZSS
 
-Payloads are compressed (2.8:1 overall). `tools/res_extract.py EXTRACT`
-writes the raw stored bytes; the codec is not yet implemented. The `FF`
-followed by 8-byte groups pattern noted earlier is the next thing to chase,
-and the decompressor should be reachable from the fetch routines at
-`21ea:03c4` and `21ea:035b`, which are called with individual asset names.
+The `FF`-plus-8-byte-groups guess was wrong. The codec is **Okumura's classic
+LZSS**, recovered from `2475:115c` (setup) and `2475:10dc` (main loop).
+
+The fetch path is `2407:0471`. It branches on the directory entry's flags
+byte: `0` reads the payload raw in `0x2000` chunks, `1` decompresses. It
+allocates two 8KB buffers, stores the destination pointer and remaining input
+count in globals, and passes a far callback (`0x2407:004e`) used to refill
+the input - i.e. the decompressor is streaming, not whole-buffer.
+
+Parameters, all read directly out of the disassembly:
+
+| Constant | Value | Seen as |
+|---|---|---|
+| ring buffer `N` | 4096 | offsets masked with `0xfff` |
+| longest match `F` | 18 | `(b & 0xf) + 3` |
+| `THRESHOLD` | 2 | shortest encoded match is 3 |
+| ring pre-fill | `0x20` (space) | fill of `0x1011` = `N + F - 1` bytes |
+| start position `r` | `0xfee` = `N - F` | |
+
+Encoding: a flag byte supplies 8 control bits, LSB first. A set bit means one
+literal byte. A clear bit means a two-byte match reference - offset is
+`lo | ((hi & 0xf0) << 4)` (12 bits) and length is `(hi & 0x0f) + 3`.
+
+Implemented in `tools/res_extract.py` as `lzss_decompress()`.
+
+**Validation: 239/239 payloads across both containers decompress to exactly
+their recorded uncompressed size** (228 in `TUBES.RES`, 11 in `DRIVERS.RES`).
+
+Independent structural confirmation, which does not depend on the size
+oracle: all three `.PAL` resources decompress to exactly 768 bytes = 256 x 3
+VGA palette entries. The `.DRV` payloads begin with ascending 16-bit values
+(`0x22, 0x26, 0x2b, 0x38 ...`), consistent with an entry/jump table at the
+head of each driver.
+
+`tools/res_extract.py EXTRACT <container> <outdir>` now writes fully
+decompressed assets.
+
+### Next unknowns
+
+- `.GFX` / `.CSP` internal formats (image dimensions, planar layout, masks)
+- `.SCR` cutscene script format (`DEMO.SCR`, 11,976 bytes decompressed)
+- `.MUS` FM/Adlib music format
+- `.SFX` digital sound format
 
 `DRIVERS.RES` contains real 8086 code — `55 8B EC ... CA 02 00`
 (`push bp; mov bp,sp; ... retf 2`), i.e. far-called driver entry points for

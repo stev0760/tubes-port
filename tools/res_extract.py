@@ -37,6 +37,60 @@ HDR_LEN = 39
 ENT_LEN = 26
 
 
+# LZSS parameters, read straight out of the decompressor at 2475:115c/10dc.
+# This is Okumura's classic LZSS: 4096-byte ring buffer pre-filled with
+# spaces, 12-bit offset, 4-bit length biased by THRESHOLD+1.
+LZSS_N = 4096          # ring buffer size          (offset masked with 0xfff)
+LZSS_F = 18            # longest match             (0xf + 3)
+LZSS_THRESHOLD = 2     # shortest encoded match is THRESHOLD + 1 = 3
+LZSS_FILL = 0x20       # ring pre-fill byte        (fill of 0x1011 with 0x20)
+
+
+def lzss_decompress(src, expected=None):
+    """Decode one LZSS payload. Flag bit set = literal, clear = match."""
+    ring = bytearray([LZSS_FILL]) * LZSS_N
+    r = LZSS_N - LZSS_F          # 0xfee
+    out = bytearray()
+    pos = 0
+    flags = 0
+
+    while True:
+        flags >>= 1
+        if (flags & 0x100) == 0:
+            if pos >= len(src):
+                break
+            flags = src[pos] | 0xFF00
+            pos += 1
+
+        if flags & 1:
+            if pos >= len(src):
+                break
+            c = src[pos]
+            pos += 1
+            out.append(c)
+            ring[r] = c
+            r = (r + 1) & (LZSS_N - 1)
+        else:
+            if pos + 1 >= len(src):
+                break
+            lo = src[pos]
+            hi = src[pos + 1]
+            pos += 2
+            offset = lo | ((hi & 0xF0) << 4)
+            length = (hi & 0x0F) + LZSS_THRESHOLD + 1
+            for k in range(length):
+                c = ring[(offset + k) & (LZSS_N - 1)]
+                out.append(c)
+                ring[r] = c
+                r = (r + 1) & (LZSS_N - 1)
+
+        # The encoder can pad the final flag group; stop at the known length.
+        if expected is not None and len(out) >= expected:
+            break
+
+    return bytes(out)
+
+
 class Entry:
     __slots__ = ("name", "flags", "usize", "ssize", "offset")
 
@@ -141,12 +195,18 @@ def main():
         outdir = sys.argv[3]
         data, _, _, entries = parse(path)
         os.makedirs(outdir, exist_ok=True)
+        bad = 0
         for e in entries:
             blob = data[e.offset:e.offset + e.ssize]
+            if e.flags == 1:
+                blob = lzss_decompress(blob, e.usize)
+            if len(blob) != e.usize:
+                print(f"  ! {e.name}: expected {e.usize} bytes, got {len(blob)}")
+                bad += 1
             with open(os.path.join(outdir, e.name), "wb") as f:
                 f.write(blob)
-        print(f"wrote {len(entries)} raw (still-compressed) payloads to {outdir}")
-        return 0
+        print(f"wrote {len(entries)} payloads to {outdir} ({bad} size mismatches)")
+        return 1 if bad else 0
 
     print(f"unknown command {cmd}")
     return 2
