@@ -1627,9 +1627,19 @@ order. Third-party prose already matched types 9..16; the game's own slides matc
 
 Not documented in the slides: `MYSTBALL` (type 19) and the crystal (type 18).
 
-### Our copy appears to be the registered version
+`MYSTBALL` is the **`?`** ball. Reported from play, unconfirmed: it **becomes a
+random letter ball when caught** - i.e. it resolves into one of the five Penalty
+atoms. That would fit the `?` glyph and explain why it has no fade family: it
+never settles as itself. Testable by catching one and reading the tube contents
+before and after.
 
-The slides include AntiMatter and Bonus, and published notes say those two atoms
-are **registered-only** additions. So the copy in `..` is likely the full
-version, not shareware. Not conclusive on its own - the shareware's slides could
-document features it does not ship - but the wave count would settle it.
+### The copy being reversed is the registered version
+
+Confirmed by the user: the copy in `..` is the **full registered release**, not
+shareware. So everything in these notes describes the complete game, including
+AntiMatter and Bonus, which published sources list as registered-only additions -
+consistent with the slides documenting them.
+
+This matters for coverage: the shareware's preview modes are why AntiMatter and
+Bonus behaviour was known from play, while the crystal was not - it is
+registered-only content that had never been seen.
