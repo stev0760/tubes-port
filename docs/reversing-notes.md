@@ -3256,3 +3256,52 @@ Each was caught by a person, not by the method. Sampling yields points; the
 binary yields the function. The traces keep their value - they are the oracle a
 decompiled implementation must reproduce - but the *rules* should come from the
 code.
+
+## Gameplay state lives on the STACK, not in DGROUP
+
+Chasing the game loop through the measured addresses failed at the first step,
+and the failure is the finding. `FindScalarRefs.java` was run for the grid,
+score and drops as DS offsets (`0x4884`, `0x4b57`, `0x4b2c`) and returned
+**none** for all three. Per the standing rule, suspect the search - and this one
+could not have succeeded.
+
+Measured live, mid-session:
+
+    DS = 0x1fa9   -> DGROUP linear 0x1fa90
+    SS = 0x2294   -> stack   linear 0x22940
+
+Every gameplay address measured this session is **above** `0x22940`, so it is
+inside the **stack segment**, not DGROUP:
+
+| variable | linear | as DS offset | as SS offset |
+|---|---|---|---|
+| atom array | `0x241a4` | `DS:0x4714` | `SS:0x1864` |
+| beaker grid | `0x24314` | `DS:0x4884` | `SS:0x19d4` |
+| drops | `0x245bc` | `DS:0x4b2c` | `SS:0x1c7c` |
+| tube struct | `0x245d0` | `DS:0x4b40` | `SS:0x1c90` |
+| score | `0x245e7` | `DS:0x4b57` | `SS:0x1ca7` |
+
+`SP` sampled at `0x1622..0x1628` and `BP` up to `0x19f2`, so these sit inside
+live frames. The grid is the clincher: it is 30 bytes at `SS:0x19d4`, and one
+sampled `BP` is `0x19f2` - exactly `0x1e` higher. **The grid is `[BP-0x1e]`.**
+
+Drops, tube and score sit *above* that `BP`, i.e. in the **enclosing** frame -
+which is exactly what the notes already said about the structure: `1000:3a67`
+is a nested Pascal procedure sharing `1000:9e53`'s locals, reached by static
+link. The addresses now confirm it from the data side.
+
+**Consequences for the logic transfer:**
+
+- Searching DGROUP offsets for gameplay state is futile; the values to chase are
+  **BP-relative displacements**, and they are negative. A past session already
+  lost 38 stack mutations to a regex that only matched positive displacements.
+- The measured *linear* addresses are only valid for one run's frame layout.
+  They are fine for the live rig, and useless as identifiers in the binary.
+- Sprite/table lookups are a different matter: `1000:3a67` references
+  `0x1da8` (ball table), `0x1df2`/`0x1df4` (fade table) and `0x2376` (page
+  index) as **absolute DS addresses**, matching the globals documented here.
+  So the split is: presentation tables in DGROUP, gameplay state on the stack.
+
+The decompilation of `1000:3a67` + `1000:9e53` is kept **outside this repo**, at
+`~/Dev/tubes-tooling/decomp-3a67-9e53.txt`, for the same reason the Ghidra
+project is: it is derived from copyrighted data.
