@@ -49,6 +49,19 @@ constexpr int8_t kFirstColour = kRedium;
 constexpr int8_t kLastColour = kPinkium;
 constexpr int kColourCount = 7;
 
+// The measured cell-to-pixel mapping. The column pitch is 18, not the 16 the
+// sprite width would suggest, and the x values are a six-entry table rather
+// than an arithmetic run in the original - they happen to be evenly spaced.
+constexpr int kColumnX[] = {107, 125, 143, 161, 179, 197};
+constexpr int kRowY0 = 121;
+constexpr int kRowPitchY = 13;
+
+inline int playColumnX(int col) {
+    if (col < 0) col = 0;
+    if (col > 5) col = 5;
+    return kColumnX[col];
+}
+
 // How a run of matching atoms is oriented. The original scores these
 // differently - see awardForRun().
 enum class RunKind : uint8_t { kHorizontal, kVertical, kDiagonal };

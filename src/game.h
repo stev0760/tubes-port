@@ -33,11 +33,26 @@ enum class Difficulty {
     k301,   // 3 drops
 };
 
+// Which leg of the dispenser path an atom is on. The route was measured by
+// sampling the live atom array over time - static analysis never found the
+// code that moves atoms, and did not need to:
+//
+//     spawn -> bottom of an outer vertical tube (y = 187)
+//           -> ascends, x constant
+//           -> crosses the top (y ~ 0)
+//           -> descends into a play column
+//
+enum class Leg : uint8_t { kRise, kCross, kDescend };
+
 struct Falling {
     bool active = false;
     int8_t colour = kEmpty;
-    int column = 0;
-    float y = 0.0f;     // pixels from the top of the play area
+    Leg leg = Leg::kRise;
+    // Original screen pixels, the same space the beaker geometry uses, so a
+    // position here can be compared straight against a captured trace.
+    float x = 0.0f;
+    float y = 0.0f;
+    int column = 0;     // destination play column, 0..5
 };
 
 class Game {
@@ -92,6 +107,10 @@ private:
     int8_t nextColour();
     void award(int points);
     void advanceScore();
+    // The original moves things a whole number of pixels per frame, so the
+    // simulation steps in frames and `update()` only converts real time into
+    // them.
+    void stepFrame(uint8_t buttons, uint8_t pressed);
 
     Board board_;
     Falling falling_;
@@ -108,15 +127,19 @@ private:
     int chains_ = 0;
     bool gameOver_ = false;
 
-    float fallSpeed_ = 34.0f;    // pixels per second
-    float fallHeight_ = 130.0f;
-    float spawnTimer_ = 0.0f;
+    float fallHeight_ = 130.0f;   // retained for callers; unused by the path
+    int spawnTimer_ = 0;          // frames since the last dispense
+    float frameAccum_ = 0.0f;     // real time carried between frames
 
-    // Held directions repeat, so the tube keeps sliding rather than moving a
-    // single column per press.
-    float moveTimer_ = 0.0f;
+    // The tube slides at 6 px/frame over an 18 px column pitch, so a column
+    // change takes three frames.
+    int moveTimer_ = 0;
 
     uint8_t prevButtons_ = 0;
+    // Press edges seen since the last frame was stepped. The caller may update
+    // faster than the fixed step, so a press can arrive on a call that steps no
+    // frames; without holding it here that press would be swallowed.
+    uint8_t pendingPressed_ = 0;
     uint32_t rng_ = 1;
 };
 

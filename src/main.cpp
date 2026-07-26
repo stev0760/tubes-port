@@ -416,11 +416,18 @@ int main(int argc, char** argv) {
         game.update(scriptedInput(game), 1.0f / 60.0f);
     }
     if (opt.autoFrames) {
+        const tubes::Falling& fa = game.falling();
+        const char* legName = !fa.active            ? "none"
+                              : fa.leg == tubes::Leg::kRise  ? "rise"
+                              : fa.leg == tubes::Leg::kCross ? "cross"
+                                                             : "descend";
         std::printf(
-            "simulated %d frames: %d atoms, score %d, chains %d, drops %d/%d%s\n",
+            "simulated %d frames: %d atoms, score %d, chains %d, drops %d/%d%s\n"
+            "  dispenser: %s at (%.0f,%.0f) -> column %d\n",
             opt.autoFrames, game.board().count(), game.score(), game.chains(),
             game.dropsRemaining(), game.startingDrops(),
-            game.gameOver() ? ", GAME OVER" : "");
+            game.gameOver() ? ", GAME OVER" : "",
+            legName, fa.x, fa.y, fa.column);
     }
 
     // Music is best-effort: a missing DRIVERS.RES or a busy audio device
@@ -478,9 +485,12 @@ int main(int argc, char** argv) {
             }
         }
 
+        // The atom follows the measured dispenser path - up an outer tube,
+        // across the top, then down a play column - so it carries its own
+        // screen position rather than being placed from its column.
         const tubes::Falling& f = game.falling();
         if (f.active && f.colour != tubes::kEmpty) {
-            screen.draw(atoms[f.colour], kGridX + f.column * kPitchX,
+            screen.draw(atoms[f.colour], static_cast<int>(f.x),
                         static_cast<int>(f.y));
         }
         const int tubeX = kGridX + game.tubeColumn() * kPitchX;
