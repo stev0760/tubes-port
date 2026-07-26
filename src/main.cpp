@@ -340,6 +340,10 @@ int main(int argc, char** argv) {
     }
     tubes::Sprite testTube;
     bool haveTube = loadSprite(res, "TESTUBE1.CSP", testTube);
+    // The beaker's interior is exactly the grid: 106 x 65, with 4px walls, so
+    // it sits 4px left of column 1 and level with row 1.
+    tubes::Sprite beaker;
+    const bool haveBeaker = loadSprite(res, "BEAKER.CSP", beaker);
     std::printf("loaded %d/%d atoms, test tube %s\n", loaded,
                 static_cast<int>(tubes::kAtomCount),
                 haveTube ? "ok" : "missing");
@@ -438,6 +442,8 @@ int main(int argc, char** argv) {
         screen.clear(0);
         if (haveBg) screen.blit(background);
         if (haveFg) screen.blit(foreground);
+
+        if (haveBeaker) screen.draw(beaker, kGridX - 4, kGridY);
 
         const tubes::Board& b = game.board();
         for (int r = 0; r < b.rows(); ++r) {

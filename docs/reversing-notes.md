@@ -766,9 +766,39 @@ Note also that `SS:SP = 1a70:2000` from the EXE header points *past* the
 99,728-byte image. SS is not DGROUP here, and assuming it was is what sent the
 first search to the wrong address.
 
-`BEAKER.CSP` remains a dead end: 114x65 with an 82-pixel interior clear span,
-matching neither the 18-pixel column pitch nor the 6-column span. Its height
-of 65 equals 5 x 13, but that is coincidence.
+#### `BEAKER.CSP` is the container after all - a measurement error, corrected
+
+This was written off twice as "not the playfield container" on the strength of
+an 82-pixel interior clear span. That measurement was wrong: it took the
+widest gap between drawn pixels at three sample rows, and the sprite has an
+internal vertical line, so it was measuring between structures rather than the
+interior.
+
+Measuring column occupancy over the full height instead gives walls at x 4-5
+and 108-109:
+
+- interior **106 px** - exactly the grid span, x 107..212
+- height **65** - exactly the grid height, y 134..198
+- the gap from the wall at 5 to the internal line at 23 is **18**, the column
+  pitch
+
+So it is drawn at `(kGridX - 4, kGridY)` = (103, 134). Confirmed against a
+reference screenshot of the original running under DOSBox-X.
+
+The lesson generalises: "widest gap at a few sample rows" is a fragile way to
+measure a shape. Occupancy over the whole extent is not much more work and
+does not depend on picking lucky rows.
+
+#### Test tube sizes
+
+`TESTUBE1/2/3` are 22x65, 20x42 and 20x27 - roughly 5, 3 and 2 cells tall at
+the 13-pixel row pitch. Three sizes for three capacities, which fits the drop
+limits of 9/6/3 stated in TUBES.DOC. The `S` suffix throughout the sprite set
+means shadow, not "small": `TESTUBES`, `BEAKERS`, `TUBEVS`, `TUBEHS` are all
+thin slivers 1-10 px wide.
+
+The tube therefore **holds several atoms stacked**, which the port does not
+model - it holds at most one.
 
 ### Difficulty seed and progression
 
