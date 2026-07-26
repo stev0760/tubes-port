@@ -43,9 +43,26 @@ constexpr int kTestTubeH = 65;
 constexpr int kTubeY = kGridY - kTestTubeH;
 constexpr float kFallHeight = static_cast<float>(kTubeY - 16);
 
-const char* kAtomSprites[tubes::kAtomCount] = {
-    "REDBALL.CSP",  "BLUEBALL.CSP", "GRENBALL.CSP", "YELWBALL.CSP",
-    "PURPBALL.CSP", "CYANBALL.CSP", "PINKBALL.CSP", "GOLDBALL.CSP",
+// Indexed by the original's atom type number, so index 0 is "empty" and the
+// seven ordinary colours occupy 1..7 in the game's own order. Entries left
+// null are types the engine does not draw yet.
+//
+// Flashium (8) is deliberately null: it has no sprite of its own and cycles
+// the seven colours as it flashes.
+const char* kAtomSprites[tubes::kTypeCount] = {
+    nullptr,                                        // 0  empty
+    "REDBALL.CSP",                                  // 1  Redium
+    "GRENBALL.CSP",                                 // 2  Greenium
+    "BLUEBALL.CSP",                                 // 3  Bluium
+    "CYANBALL.CSP",                                 // 4  Cyanium
+    "PURPBALL.CSP",                                 // 5  Purplium
+    "YELWBALL.CSP",                                 // 6  Yellowium
+    "PINKBALL.CSP",                                 // 7  Pinkium
+    nullptr,                                        // 8  Flashium
+    "ANTIBALL.CSP",                                 // 9  AntiMatter
+    "GOLDBALL.CSP",                                 // 10 Bonus
+    "XENBALL.CSP",                                  // 11 Xenon
+    nullptr, nullptr, nullptr, nullptr, nullptr,    // 12..16 letter balls
 };
 
 struct Options {
@@ -337,9 +354,12 @@ int main(int argc, char** argv) {
     bool haveBg = loadImage(res, "GAMEBG1.GFX", background, -1);
     bool haveFg = loadImage(res, "GAMEFG.GFX", foreground, 0);
 
-    tubes::Sprite atoms[tubes::kAtomCount];
+    tubes::Sprite atoms[tubes::kTypeCount];
     int loaded = 0;
-    for (int i = 0; i < tubes::kAtomCount; ++i) {
+    int drawable = 0;
+    for (int i = 0; i < tubes::kTypeCount; ++i) {
+        if (!kAtomSprites[i]) continue;
+        ++drawable;
         if (loadSprite(res, kAtomSprites[i], atoms[i])) ++loaded;
     }
     tubes::Sprite testTube;
@@ -348,8 +368,7 @@ int main(int argc, char** argv) {
     // it sits 4px left of column 1 and level with row 1.
     tubes::Sprite beaker;
     const bool haveBeaker = loadSprite(res, "BEAKER.CSP", beaker);
-    std::printf("loaded %d/%d atoms, test tube %s\n", loaded,
-                static_cast<int>(tubes::kAtomCount),
+    std::printf("loaded %d/%d atoms, test tube %s\n", loaded, drawable,
                 haveTube ? "ok" : "missing");
 
     tubes::Game game(kCols, kRows, tubes::Difficulty::k101, 0x9E3779B9u);
@@ -400,7 +419,8 @@ int main(int argc, char** argv) {
         std::printf(
             "simulated %d frames: %d atoms, score %d, chains %d, drops %d/%d%s\n",
             opt.autoFrames, game.board().count(), game.score(), game.chains(),
-            game.drops(), game.dropLimit(), game.gameOver() ? ", GAME OVER" : "");
+            game.dropsRemaining(), game.startingDrops(),
+            game.gameOver() ? ", GAME OVER" : "");
     }
 
     // Music is best-effort: a missing DRIVERS.RES or a busy audio device

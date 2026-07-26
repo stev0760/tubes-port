@@ -1,9 +1,9 @@
 // The beaker: a grid of atoms, with match detection and settling.
 //
-// Grid dimensions and scoring are NOT reverse engineered - see
-// docs/reversing-notes.md. They are chosen to play sensibly against the
-// original artwork and should be replaced once the playfield renderer at
-// 1000:9e53 is decompiled.
+// The grid is 6 x 5, measured off the loop bounds in 1000:3a67, and the
+// cell-to-pixel mapping is measured too - see docs/reversing-notes.md.
+// Scoring is only partly recovered; awardForRun() in game.cpp says exactly
+// which part is measured and which is fitted.
 
 #pragma once
 
@@ -12,18 +12,50 @@
 
 namespace tubes {
 
-// The eight elements of the story. Sprite names in the same order.
+// Atom types, numbered exactly as the original numbers them. This is not an
+// arbitrary internal encoding: a settled beaker cell holds the atom record's
+// type byte (+0x0b) directly, confirmed at 96.2% over 79 settle events, so
+// these values are what the original's own grid contains. Keeping them
+// identical means a trace captured from the original can be compared against
+// this engine's board without a translation table.
+//
+// Note the ordering is NOT the sprite-file order that an earlier version of
+// this enum used (Red, Blue, Green, Yellow, Purple, Cyan, Pink): green and
+// blue are transposed, as are yellow and cyan/purple.
 enum Atom : int8_t {
-    kEmpty = -1,
-    kRed = 0,
-    kBlue,
-    kGreen,
-    kYellow,
-    kPurple,
-    kCyan,
-    kPink,
-    kGold,
-    kAtomCount
+    kEmpty = 0,
+    kRedium = 1,
+    kGreenium = 2,
+    kBluium = 3,
+    kCyanium = 4,
+    kPurplium = 5,
+    kYellowium = 6,
+    kPinkium = 7,
+    kFlashium = 8,          // wildcard; has no sprite, cycles the 7 colours
+    kAntiMatter = 9,
+    kBonus = 10,            // becomes Flashium when caught, awards a drop
+    kXenon = 11,            // inert
+    kMultiplier = 12,
+    kEvilMultiplier = 13,
+    kConvertor = 14,
+    kBlocker = 15,
+    kFiller = 16,
+    kTypeCount = 17,        // 0..16 inclusive
+};
+
+// Types 1..7 are the ordinary colours: the ones that spawn freely and match
+// each other. Everything from 8 up is a special.
+constexpr int8_t kFirstColour = kRedium;
+constexpr int8_t kLastColour = kPinkium;
+constexpr int kColourCount = 7;
+
+// How a run of matching atoms is oriented. The original scores these
+// differently - see awardForRun().
+enum class RunKind : uint8_t { kHorizontal, kVertical, kDiagonal };
+
+struct Run {
+    RunKind kind = RunKind::kHorizontal;
+    int length = 0;
 };
 
 class Board {
@@ -47,7 +79,11 @@ public:
 
     // Marks every atom belonging to a run of 3 or more - horizontal,
     // vertical, or either diagonal. Returns how many cells were marked.
-    int findMatches(std::vector<uint8_t>& marked) const;
+    // When `runs` is given it also reports each run's orientation and length,
+    // which scoring needs; the original pays a diagonal differently from a
+    // line.
+    int findMatches(std::vector<uint8_t>& marked,
+                    std::vector<Run>* runs = nullptr) const;
 
     // Removes marked cells and lets the atoms above settle downward.
     void removeMarked(const std::vector<uint8_t>& marked);

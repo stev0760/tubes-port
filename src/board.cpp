@@ -9,8 +9,12 @@ namespace {
 // the end that has no same-coloured neighbour behind it.
 struct Dir {
     int dc, dr;
+    RunKind kind;
 };
-constexpr Dir kDirs[] = {{1, 0}, {0, 1}, {1, 1}, {1, -1}};
+constexpr Dir kDirs[] = {{1, 0, RunKind::kHorizontal},
+                         {0, 1, RunKind::kVertical},
+                         {1, 1, RunKind::kDiagonal},
+                         {1, -1, RunKind::kDiagonal}};
 
 constexpr int kMinRun = 3;
 
@@ -51,8 +55,10 @@ bool Board::drop(int c, int8_t colour) {
     return true;
 }
 
-int Board::findMatches(std::vector<uint8_t>& marked) const {
+int Board::findMatches(std::vector<uint8_t>& marked,
+                       std::vector<Run>* runs) const {
     marked.assign(cells_.size(), 0);
+    if (runs) runs->clear();
 
     for (int r = 0; r < rows_; ++r) {
         for (int c = 0; c < cols_; ++c) {
@@ -68,6 +74,7 @@ int Board::findMatches(std::vector<uint8_t>& marked) const {
                 while (at(c + d.dc * len, r + d.dr * len) == colour) ++len;
                 if (len < kMinRun) continue;
 
+                if (runs) runs->push_back(Run{d.kind, len});
                 for (int i = 0; i < len; ++i) {
                     int cc = c + d.dc * i;
                     int rr = r + d.dr * i;

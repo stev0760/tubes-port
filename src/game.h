@@ -53,9 +53,11 @@ public:
 
     int tubeColumn() const { return tubeColumn_; }
 
-    // The test tube holds several atoms, stacked. Index 0 is the mouth - the
-    // one the next A press tips into the beaker. Capacity comes from the tube
-    // sprite for the difficulty; see tubeCapacity().
+    // The test tube holds up to five atoms, stacked. Index 0 is the mouth -
+    // the one the next A press tips into the beaker. Five is not inferred from
+    // sprite heights any more: the game's own Detailed Instructions state "The
+    // test tube you control to collect and release atoms can hold up to 5
+    // atoms at a time", with no mention of difficulty.
     const std::vector<int8_t>& tubeAtoms() const { return tube_; }
     int tubeCapacity() const { return tubeCapacity_; }
     bool tubeFull() const {
@@ -65,9 +67,19 @@ public:
         return tube_.empty() ? static_cast<int8_t>(kEmpty) : tube_.front();
     }
 
-    int drops() const { return drops_; }
-    int dropLimit() const { return dropLimit_; }
+    // Drops are a single pool that counts DOWN, not misses counting up. It is
+    // seeded once per game from the difficulty (9/6/3), decremented by a miss,
+    // incremented by a caught Bonus atom, and left alone by clearing a wave -
+    // every one of those measured against the running original. The HUD shows
+    // this number, labelled "Drops".
+    int dropsRemaining() const { return dropsRemaining_; }
+    int startingDrops() const { return startingDrops_; }
+
+    // The displayed score ramps toward the awarded total rather than jumping;
+    // the original's own score variable does this, in roughly sixths.
     int score() const { return score_; }
+    int scoreTarget() const { return score_ + scorePending_; }
+
     int chains() const { return chains_; }
     bool gameOver() const { return gameOver_; }
 
@@ -78,6 +90,8 @@ private:
     void spawn();
     void resolveMatches();
     int8_t nextColour();
+    void award(int points);
+    void advanceScore();
 
     Board board_;
     Falling falling_;
@@ -86,9 +100,11 @@ private:
     std::vector<int8_t> tube_;
     int tubeCapacity_ = 5;
 
-    int drops_ = 0;
-    int dropLimit_ = 9;
+    int dropsRemaining_ = 9;
+    int startingDrops_ = 9;
     int score_ = 0;
+    int scorePending_ = 0;    // awarded but not yet ramped in
+    int scoreStep_ = 0;
     int chains_ = 0;
     bool gameOver_ = false;
 
