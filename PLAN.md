@@ -20,15 +20,26 @@ answered most of the remaining mechanics without any of it reaching the engine.
   falling / 6 for the tube), the 19-entry ball and fade type tables, the input
   bit map, the scoring values, tube capacity and the drop mechanic, wave
   definitions, and part of the save format.
-- **The engine: ~35%.** The measured *rules* have now landed, though the
-  presentation has not. Implemented: the original's atom type numbering (so a
-  trace from the original can be diffed against this board with no translation),
-  the drop pool counting down from 9/6/3 with Bonus granting +1, a flat tube
-  capacity of 5, scoring in units of 250 with the score ramping toward its
-  award, and run orientation reported by the board so a diagonal can be paid
-  differently. AntiMatter and Xenon now draw (10/10 atom sprites load).
-  Still missing: the dispenser arc - atoms drop straight down - the specials'
-  behaviours, the HUD, sound effects, and any wave structure.
+- **The engine: ~45%.** The measured *rules* have landed; the presentation has
+  not. Implemented:
+  - the original's **atom type numbering**, so a trace captured from the
+    original can be diffed against this board with no translation table;
+  - the **dispenser path** - up an outer tube at 4 px/frame, across the top at
+    y=0, down a play column at 18 px/frame, caught at the y=68 lane - replacing
+    "atoms fall straight down", which was the long-standing flagship gap;
+  - a **fixed frame step**, because every speed the original uses is a whole
+    number of pixels per frame;
+  - the **drop pool** counting down from 9/6/3, +1 per Bonus caught (which also
+    becomes Flashium), untouched by a wave clear;
+  - **tube capacity 5**, flat;
+  - **scoring by chain orientation** - 250 vertical / 500 horizontal / 1000
+    diagonal, straight from the Instructions - with chains counted as
+    `length - 2`, and the score ramping toward its award;
+  - **inert specials**: Xenon and friends settle without matching.
+
+  Still missing: **Flashium's wildcard** (see the note in `board.h` - it has a
+  genuine unknown and would silently change what the board tests assert), the
+  other specials' behaviours, the HUD, sound effects, and any wave structure.
 
 So the bottleneck is no longer knowledge. **The dispenser path - long recorded
 here as "the single genuine unknown left" - is solved.**

@@ -1594,8 +1594,21 @@ Four "chains" = vertical, horizontal and the two diagonals. Chain counting:
 > 5 atom molecules count as 3 chains. Forming multiple chains all at once will
 > create a chain bonus point multiplier!"
 
-So chains = atoms - 2, and simultaneous chains apply a multiplier. This replaces
-the invented `kScorePerAtom` / `kChainBonus` in `src/game.cpp`.
+So chains = atoms - 2, and simultaneous chains apply a multiplier. **Now
+implemented** in `src/game.cpp`, replacing the invented `kScorePerAtom` /
+`kChainBonus`.
+
+Note the award is by **orientation only** - there is no length scaling - and
+that reproduces both live measurements exactly: a vertical run of 3 paid 250,
+and a diagonal run of 4 paid 1000 rather than a multiple of it. An attempt to
+fit a curve `250*(len-2)^2` through those two points matched them by
+coincidence and was thrown away once this table was re-read. The answer was in
+the Instructions the whole time, which is the same lesson as `.MUS`: read the
+second consumer of the data rather than modelling the first.
+
+The simultaneous-chain multiplier is **not** implemented, because a 5-cell
+clear was observed paying exactly 1250 = 250 + 1000 - two chains summed with no
+multiplier at all. Nothing measured so far distinguishes the two readings.
 
 Also: "in combination with Flashium atoms" is the game confirming the wildcard.
 

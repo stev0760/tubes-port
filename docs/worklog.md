@@ -1644,3 +1644,32 @@ formula.
 19/19 tests pass and the headless render was checked visually - the atom
 renumbering would have silently swapped every colour otherwise, and only
 looking at the output would catch it.
+
+### Implementation, same session
+
+The measured rules went into the port, and one of them arrived by correcting
+myself. `awardForRun()` first fitted a curve `250*(len-2)^2` through the two
+live measurements (a vertical 3 paying 250, a diagonal 4 paying 1000) and noted
+that length and orientation were confounded. They are not confounded at all -
+the game's Detailed Instructions state the table outright, **Vertical 250 /
+Horizontal 500 / Diagonal 1000**, award by orientation with no length scaling.
+The curve matched both points by coincidence. The evidence had been sitting in
+`reversing-notes.md` since the Instructions were transcribed.
+
+That is the project's oldest lesson in a new place: read the other consumer of
+the data rather than modelling the first one.
+
+The dispenser path is the headline change - "atoms currently just fall" has
+been in `game.h` since the beginning. It now follows the measured route and was
+verified by tracing the simulation, not just by eye: rise holds x constant at
+270 while y runs 159 -> 63, cross runs x 262 -> 210 along y=0, and the catch
+lands at (197,72), where 197 is play column 5 and 72 is one 18 px step past the
+measured mouth lane at 68.
+
+Moving to a fixed frame step introduced a bug worth keeping: the caller updates
+at 60 Hz, the step runs at ~18 Hz, so most calls advance zero frames - but
+`prevButtons_` updated on every call, so a press arriving on a zero-step call
+had its edge consumed and never reached the simulation. The scripted player
+caught nothing and burned eight of nine drops. The symptom was a plausible
+"the AI just plays badly", which is exactly the kind of result that gets
+explained away rather than investigated.
