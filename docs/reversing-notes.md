@@ -1630,11 +1630,15 @@ That the game bothers to distinguish the case with a dedicated sound is itself
 the argument that the case arises. A wildcard that could never form a chain
 unaided would have nothing to play it for.
 
-**Still open** - and now flagged in `board.cpp` rather than assumed away: when a
-wildcard sits between two different colours, which side claims it. In `1 8 3 3`
-giving the 8 to the 1 yields no match, while giving it to the 3s clears three.
-The port resolves greedily left-to-right and says so; the original's rule is
-untested.
+**Flashium matches everything adjacent, simultaneously** - confirmed in play:
+
+    2 8 2 2      the whole line clears (one Greenium run of four)
+    2 2 8 1 1    the WHOLE line clears - the 8 completes 2-2-8 and 8-1-1 at once
+
+So there is no tie-break and no ownership: a wildcard belongs to every run it
+can complete. That was briefly written up here as an "unresolved ambiguity in
+the original", which was wrong twice over - it was a bug in the port's greedy
+line-walk, and the game's behaviour is the simplest possible option.
 
 ### The test tube
 
