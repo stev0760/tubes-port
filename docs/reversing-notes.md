@@ -3437,3 +3437,62 @@ is known.
 used, but it stayed zero across every sample taken so far - including a fast
 poll. Both failures to observe it are sampling limits, not evidence of disuse:
 the decompiled draw loop tests it, which settles that it does something.
+
+## Plane C is an overlay marker, and the tube layout is selected by `DS:0x1d4e`
+
+### Plane C: a per-cell overlay sprite
+
+The draw loop reads plane C as:
+
+    if (*(char *)0x1d4e == 6) {
+        if (acStack_62[row*6 + col] == 1)
+            Draw(<sprite ptr from the enclosing frame, -0x16e/-0x16c>,
+                 col + 1, <row y>);
+    }
+
+So plane C flags cells that get an **extra sprite drawn over them**, and only
+when the global at `DS:0x1d4e` holds 6. That matches the **red X marks** seen
+sitting on top of beaker balls in a wave-50 screenshot: an overlay plane, not a
+different atom type - which is why the type grid never showed anything unusual
+for those cells.
+
+It also explains why plane C read zero in every sample: those runs were not in
+whatever mode `0x1d4e == 6` denotes.
+
+### `DS:0x1d4e` selects the tube network layout
+
+The same global gates large blocks of furniture drawing, taking at least the
+values `0, 1, 4, 5, 6`:
+
+    if (*(char *)0x1d4e == 4) { ... }
+    if (*(char *)0x1d4e == 6) { ... }
+    if (*(char *)0x1d4e == 5) { ... }
+    if ((*(char *)0x1d4e != 1) && (*(char *)0x1d4e != 0)) { ... }
+
+Inside those blocks the tube network is drawn from **literal coordinates**, one
+call per segment, each with a different segment sprite taken from the enclosing
+frame's locals:
+
+    Draw(<seg sprite -0x90>, 0x1a, 0x22)     // y = 26, x = 34
+    Draw(<seg sprite -0x90>, 0x1a, 0x10e)    // y = 26, x = 270
+    Draw(<seg sprite -0x90>, 0x1a, 0x3a)     // y = 26, x = 58
+    Draw(<seg sprite -0x90>, 0x1a, 0xf6)     // y = 26, x = 246
+    Draw(<seg sprite -0x94>, 0x0d, 0x3a)     // y = 13, x = 58
+    Draw(<seg sprite -0x94>, 0x0d, 0xf6)     // y = 13, x = 246
+
+Those are exactly the furniture positions recorded earlier from literal draw
+coordinates (`y=13: 58, 107, 197, 246` and `y=26: 34, 58, 107, 125, 179, 197,
+246, 270`), and exactly the x values atoms were observed to dwell on.
+
+**Two consequences.**
+
+The tube network is **not one static backdrop**. It is assembled per layout from
+individual segment sprites, and `0x1d4e` chooses the layout - so the arc an atom
+travels differs between layouts, which is why a single hard-coded path cannot be
+right. The port currently invents a three-leg route (rise, cross, descend) with
+entry columns picked at random from observed dwell points; the original walks
+whatever network the current layout drew.
+
+And the port's tube rendering is wrong for the same reason: it does not compose
+the network from segments at all. Getting either right means porting the layout
+selection and the per-segment draw list, not tuning coordinates.
