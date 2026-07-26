@@ -163,18 +163,19 @@ void testFlashiumWildcard() {
     tubes::Board pure = make({"....", "....", "888."});
     check(matchCount(pure) == 3, "three Flashium match on their own");
 
-    // A wildcard must not merge two DIFFERENT colours into a single run.
+    // A wildcard matches wherever a match is possible. Here the 8 completes
+    // 8-3-3 even though a Redium sits to its left; the 1 does not get to claim
+    // the wildcard and block the match.
     tubes::Board bridge = make({"....", "....", "1833"});
-    check(matchCount(bridge) == 0, "Flashium does not bridge two colours");
+    check(matchCount(bridge) == 3, "Flashium completes the run it can");
 
-    // Pins down our AMBIGUITY resolution rather than a known behaviour: the 8
-    // sits between a lone 1 and a pair of 3s and could join either. The greedy
-    // left-to-right walk gives it to the 1, so nothing reaches three. Handing
-    // it to the 3s would instead clear three cells. Which the original does is
-    // untested - if this check ever fails, that is the question to settle, not
-    // a bug to paper over.
-    check(matchCount(make({"....", "....", ".183"})) == 0,
-          "wildcard resolved leftward (our choice, not a measured rule)");
+    // But it must not merge two colours into one run: 1 and 3 never join.
+    tubes::Board split = make({"....", "....", ".183"});
+    check(matchCount(split) == 0, "neither side reaches three");
+
+    // One wildcard can serve two runs at once, and both clear.
+    tubes::Board shared = make({".....", ".....", "11833"});
+    check(matchCount(shared) == 5, "a shared wildcard completes both runs");
 
     // It works on a diagonal too, which is the highest-scoring chain.
     tubes::Board diag = make({"..3.", ".8..", "3...", "...."});

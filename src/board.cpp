@@ -60,61 +60,77 @@ int Board::findMatches(std::vector<uint8_t>& marked,
     marked.assign(cells_.size(), 0);
     if (runs) runs->clear();
 
-    // Walk each line once and cut it into maximal runs, rather than testing
-    // every cell as a possible run start. Flashium is a wildcard, so "is this
-    // the beginning of a run" is no longer a local test - a wildcard can bridge
-    // into a run that started earlier - and segmenting whole lines keeps each
-    // run reported exactly once.
-    for (const Dir& d : kDirs) {
-        for (int r = 0; r < rows_; ++r) {
-            for (int c = 0; c < cols_; ++c) {
-                // Only start from a cell that begins a line in this direction.
-                if (inBounds(c - d.dc, r - d.dr)) continue;
+    // Scan once per colour. A wildcard matches wherever a match is possible, so
+    // asking "what run is this cell in" is the wrong question - the same
+    // Flashium can complete a run of Redium and a run of Greenium at the same
+    // time, and both clear. Asking instead, for each colour, "where are the
+    // runs of that colour" gives each one independently and needs no tie-break.
+    //
+    // A single greedy pass got this wrong: walking `1 8 2 2` left to right let
+    // the 1 claim the 8, leaving 1-8 and 2-2 and clearing nothing, when 8-2-2
+    // is plainly a run of three.
+    auto scan = [&](int8_t want, bool wildcardsOnly) {
+        for (const Dir& d : kDirs) {
+            for (int r = 0; r < rows_; ++r) {
+                for (int c = 0; c < cols_; ++c) {
+                    // Start only from a cell that begins a line in this
+                    // direction, then cut that line into maximal runs.
+                    if (inBounds(c - d.dc, r - d.dr)) continue;
 
-                int cc = c, rr = r;
-                while (inBounds(cc, rr)) {
-                    // Extend a run for as far as the cells stay compatible.
-                    //
-                    // AMBIGUITY, unresolved: a wildcard between two different
-                    // colours could belong to either side. In `1 8 2 2` this
-                    // greedy left-to-right walk gives the 8 to the 1, leaving
-                    // 1-8 and 2-2 and so no match at all - where handing it to
-                    // the 2s would have made a run of three. Which the original
-                    // does has not been tested. It only matters when a wildcard
-                    // sits exactly between two colours and one side is short.
-                    int8_t runColour = kEmpty;   // first real colour seen
-                    int len = 0;
-                    int sc = cc, sr = rr;
+                    int cc = c, rr = r;
                     while (inBounds(cc, rr)) {
-                        const int8_t v = at(cc, rr);
-                        if (!isMatchable(v)) break;
-                        if (!isWildcard(v)) {
-                            if (runColour == kEmpty) {
-                                runColour = v;
-                            } else if (v != runColour) {
-                                break;
+                        const int sc = cc, sr = rr;
+                        int len = 0;
+                        bool hasElement = false;
+                        while (inBounds(cc, rr)) {
+                            const int8_t v = at(cc, rr);
+                            const bool ok = wildcardsOnly
+                                                ? isWildcard(v)
+                                                : (isWildcard(v) || v == want);
+                            if (!ok) break;
+                            if (!isWildcard(v)) hasElement = true;
+                            ++len;
+                            cc += d.dc;
+                            rr += d.dr;
+                        }
+
+                        // A colour's run needs at least one atom of that
+                        // colour, or every colour would claim a row of
+                        // wildcards. Those are handled by the wildcard pass.
+                        if (len >= kMinRun && (wildcardsOnly || hasElement)) {
+                            bool fresh = false;
+                            for (int i = 0; i < len; ++i) {
+                                const size_t k =
+                                    static_cast<size_t>(sr + d.dr * i) * cols_ +
+                                    (sc + d.dc * i);
+                                if (!marked[k]) fresh = true;
+                            }
+                            // A pure-wildcard run only counts where no colour
+                            // run already took those cells, so `8 8 8 2` clears
+                            // once as Greenium rather than twice.
+                            if (!wildcardsOnly || fresh) {
+                                if (runs) runs->push_back(Run{d.kind, len});
+                                for (int i = 0; i < len; ++i) {
+                                    marked[static_cast<size_t>(sr + d.dr * i) *
+                                               cols_ +
+                                           (sc + d.dc * i)] = 1;
+                                }
                             }
                         }
-                        ++len;
-                        cc += d.dc;
-                        rr += d.dr;
-                    }
-
-                    if (len >= kMinRun) {
-                        if (runs) runs->push_back(Run{d.kind, len});
-                        for (int i = 0; i < len; ++i) {
-                            marked[static_cast<size_t>(sr + d.dr * i) * cols_ +
-                                   (sc + d.dc * i)] = 1;
+                        if (len == 0) {      // step over the blocking cell
+                            cc += d.dc;
+                            rr += d.dr;
                         }
-                    }
-                    if (len == 0) {          // step over the blocking cell
-                        cc += d.dc;
-                        rr += d.dr;
                     }
                 }
             }
         }
+    };
+
+    for (int8_t want = kFirstColour; want <= kLastColour; ++want) {
+        scan(want, false);
     }
+    scan(kEmpty, true);      // three Flashium match on their own
 
     return static_cast<int>(std::count(marked.begin(), marked.end(), 1));
 }
