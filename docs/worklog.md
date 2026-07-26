@@ -159,21 +159,81 @@ Also fixed movement that was purely edge-detected, so holding a direction
 moved one column and stopped. Only the scripted player exposed it — the first
 version accidentally masked the bug by oscillating its target.
 
-### Music — unsolved
+### Music — partial
 
 `.MUS` is OPL2, proven by disassembling the canonical AdLib register-write
-sequence in `FMMUSIC.DRV`. The body opens with 14-byte instrument records.
+sequence in `FMMUSIC.DRV`. The body appears to open with 14-byte records.
 
 Ruled out by measurement: not a raw register log, not fixed 4-byte events.
 Best-case register validity is ~50% against ~39% expected by chance, with the
 winning phase differing per file.
 
-Blocked because instrument ids are not sequential in general, so the table
-length cannot be inferred, and the event stream cannot be aligned without it.
-Next step is disassembling the sequencer in `FMMUSIC.DRV`; statistical
-probing of the data is exhausted.
+Stuck. Statistical probing of the data is exhausted; next step is the
+sequencer inside `FMMUSIC.DRV`.
 
 ### State at end of session
 
-16 commits. Every asset format solved except `.MUS`. Engine renders and
+17 commits. Every asset format solved except `.MUS`. Engine renders and
 plays. `.SPR`, `.ANM` and `.BIN` never examined.
+
+---
+
+## 2026-07-25 — Session 2
+
+The user reports the engine runs against their own copy: it renders, the
+basics work, the beaker is invisible and stuck at the top of the screen.
+Goal restated as a faithful 1:1 recreation plus quality-of-life additions.
+
+### Music — solved
+
+Picked `.MUS` back up. The previous session left it blocked on "the
+instrument-table length cannot be inferred", which turned out to be the wrong
+question — there is no instrument table. Those `00 1n` records are ordinary
+events that happen to carry a delta of 0.
+
+What broke it open was reading `GMMUSIC.DRV` next to `FMMUSIC.DRV`. Both
+drivers consume the identical byte stream, one emitting OPL2 register writes
+and the other General MIDI, so every field is pinned twice. Guessing stopped
+being necessary.
+
+The grammar is `<delta:u8> <cmd:u8> <args>` with the command's high nibble
+selecting one of six handlers and the low nibble selecting a channel. Framing
+confirmed by an oracle before any semantics were assigned: **all 10 resources
+parse to exactly EOF with zero trailing bytes.**
+
+Two things had made this look impossible:
+
+- Channel indices run to 10, which cannot be right for a 9-voice chip. The
+  operator table at `cs:0x3a` explains it — the driver enables OPL2 rhythm
+  mode permanently, giving 6 melodic voices plus BD, SD, TT, CY, HH.
+- The leading records looked like a table because every one carries delta 0.
+  They are just setup events sharing timestamp zero.
+
+Tempo needed no guessing either: `init` programs the PIT with divisor
+`0x4000`, so ticks run at 1193182/16384 = 72.827 Hz, and the ISR runs a
+Bresenham divider so the BIOS keeps its 18.2 Hz.
+
+Independent confirmation, in ascending order of hardness to fake: durations
+match filenames (3.1 s logo, 5.5 s death, 87 s title); the melodic instrument
+byte decodes to GM program 32, Acoustic Bass, on a channel playing E2/G2; and
+the percussion instrument bytes come out 36, 38, 42 — Bass Drum, Acoustic
+Snare, Closed Hi-Hat in the standard GM drum map — on exactly the channels the
+operator table assigns to BD, SD and HH. That map is an external standard, so
+it cannot be an artifact of the decoding.
+
+`tools/mus_decode.py` dumps events and exports two things: MIDI, which is a
+transcription of the game's own GM driver rather than an approximation of it,
+and DRO v2, an OPL2 register log transcribed from the FM driver write-for-
+write. Splitting them deliberately isolates "are the notes and timing right?"
+from "is the FM synthesis right?" — so a bad result names its own cause.
+
+Rendered through fluidsynth and confirmed by ear, then confirmed again by the
+user through `adplay` on both exports.
+
+One real limit hit: the driver's reset sweep blanks registers `0x01..0xf5`,
+245 of them, which overflows DRO's 127-entry codemap. Pruning writes that do
+not change chip state fixes it and is lossless from reset, since OPL registers
+are state rather than triggers. The C++ player will keep the full sweep.
+
+The lesson worth keeping: a whole session of histograms and stride tests
+produced nothing, and reading a second driver produced everything.

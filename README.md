@@ -20,15 +20,16 @@ No original files or assets extracted from them are ever committed here — see
 
 ## Status
 
-Renders. Every asset format bar music is decoded, and the engine draws a
-composited 320x200 scene from the original data.
+Renders and plays. Every asset format is decoded, including music, and the
+engine draws a composited 320x200 scene from the original data.
 
 - [x] Decompress `TUBES.EXE` (LZEXE v0.91) into an analyzable binary
 - [x] Map the `TUBES.RES` container format and its LZSS compression
 - [x] Decode sprites, images, palettes, fonts, sound effects, demo recording
 - [x] Engine: resource loading and Mode X-faithful rendering
 - [x] Playfield logic, matching and input
-- [ ] `.MUS` FM/Adlib music
+- [x] `.MUS` FM/Adlib music (event grammar, instruments, 72.827 Hz tempo)
+- [ ] Play music in-engine: OPL2 core driven from SDL audio
 - [ ] Recover real gameplay constants (grid size, scoring, wave curves)
 - [ ] Beaker and test tube presentation, sound effects, wave/endurance modes
 

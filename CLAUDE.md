@@ -102,10 +102,30 @@ float, and the test tube's vertical placement is approximate.
 
 ## Open work
 
-`.MUS` is the only unsolved format. It is OPL2 (proven by disassembling the
-register writes in `FMMUSIC.DRV`) but the event stream is variable-length and
-the instrument-table length cannot be inferred from the data. Progressing it
-means disassembling the sequencer in `FMMUSIC.DRV`, not more statistical
-probing — that avenue is exhausted and documented.
+Every format the game loads is now decoded, `.MUS` included. What remains is
+engine work:
 
-`.SPR` (2), `.ANM` (1) and `.BIN` (1) have never been examined.
+- **Music playback.** `tools/mus_decode.py` is the reference implementation
+  of the sequencer, transcribed from `FMMUSIC.DRV`. The C++ side needs the
+  same sequencer plus an OPL2 core, driven from SDL audio.
+- **Beaker and test tube presentation.** `BEAKER.CSP` is not drawn and the
+  tube sits at the top of the screen, so atoms appear to float.
+- Sound effects through SDL_mixer; wave and endurance modes.
+
+`.SPR` (2), `.ANM` (1) and `.BIN` (1) have never been examined. Nothing
+appears to need them yet.
+
+## Reversing method that has actually worked
+
+Ranked by how often it produced the answer:
+
+1. **Find a second consumer of the same data.** `.MUS` fell apart in an hour
+   once `GMMUSIC.DRV` was read alongside `FMMUSIC.DRV` — two drivers eating
+   one byte stream pin down every field between them. A whole session of
+   statistical probing before that produced nothing.
+2. **Read the code, don't stare at the bytes.** LZSS, the container, and the
+   `.MUS` event grammar all came off the disassembly directly. Every
+   histogram-and-stride guess was wrong.
+3. **Look for external standards in the decoded output.** GM program and drum
+   numbers, 768-byte VGA palettes, equal-tempered frequencies — these can't
+   be artifacts of a wrong decode, so they confirm independently.
