@@ -612,3 +612,62 @@ state, fixable only by restart; Mode X planes are not readable at `0xa0000`, so
 the framebuffer cannot be used as a cheap screen-state test; and menu navigation
 must not be timed, because the cutscene length varies - pressing Enter until the
 breakpoint fires is crude but the only thing that worked repeatably.
+
+### Gameplay from the user, and what the resources confirmed
+
+The user supplied behaviour from play. Rather than just filing it, each claim was
+checked against the resource inventory, and the inventory turned out to settle
+two open questions.
+
+Reported: `ANTIBALL` is antimatter and destroys any balls in the beaker on
+contact; `GOLDBALL` is an orange bonus ball that travels the tube **very fast**,
+scores a bonus when caught and is believed to become a random ordinary ball;
+`XENBALL` is an inert grey sphere; **Flashium has no static sprite of its own** -
+it matches any colour and displays the other sprites while settled, and only
+three Flashiums matched together give a distinct animation. Provenance matters
+here and is recorded: this is the shareware release, whose preview modes
+demonstrated the bonus ball and antimatter, so those two are solid; the crystal
+and the letter balls are unknown to the user.
+
+**Rendering the sprites corrected one of my assumptions.** I had guessed
+`XENBALL` might be the "X ball". It is not - it is a featureless grey sphere. The
+X ball is `EVILBALL`, one of six grey **letter balls** marked `?` `X` `M` `B` `C`
+`F` (`MYSTBALL`, `EVILBALL`, `MULTBALL`, `BLOCBALL`, `CONVBALL`, `FILLBALL`). The
+names alone were ambiguous; looking at them was decisive, which is the same
+lesson this project keeps relearning.
+
+Measured while there: 25 ball sprites split exactly, seventeen at 16x13 and eight
+at 8x7, so the `S*` family is half-size versions of the seven colours plus a pale
+`SWBALL`. Where the small ones are drawn is still unknown.
+
+**Flashium explains a loop we had already recorded but not understood.** The
+playfield notes said cell values run 1..7 and the draw loop "increments a cell
+and wraps 8 back to 1 - a colour-cycling effect", with no reason offered. The
+reason is Flashium: a wildcard with no sprite, rendered by cycling its cell
+through the ordinary colours. Two independent sources meeting from opposite
+directions - a loop in the binary and behaviour in play.
+
+**The 66 fade sprites then decoded themselves.** `11 families x 6 frames` had
+never been broken down. The families are the seven colours plus `AFADE`,
+`GLDFADE`, `CRFADE` and `FFADE` - anti, gold, crystal and Flashium. So there is
+no `FLASHBALL` anywhere in `TUBES.RES` but there *is* a complete `FFADE` family,
+which independently confirms the user's account; and `FFADE1` is a ball made of
+every colour at once. It also delimits the **matchable set**: only those eleven
+have fade families, so the letter balls, `XENBALL`, `OBSTBALL` and the small
+balls are not cleared by matching and must do something else.
+
+New: `CRYSTAL` is a red rounded block, not a sphere, and has a fade family - so
+it is clearable, function unknown. `MARKER` is a red X crosshair, unidentified.
+
+Two concrete leads for the debugger, both cheaper than blind search:
+
+1. **Atom speed.** `GOLDBALL` moving very fast means speed is not global - it
+   varies by ball type. The record's only type field is the colour/sprite index
+   at `+0x0b`, so look for a speed *selected by type* rather than a speed
+   variable. It also gives Experiment 4 a far better second condition than
+   holding B: gold versus ordinary from one save state.
+2. **The Flashium marker.** If a Flashium's cell value is being cycled through
+   the ordinary colours, the cell cannot also record that it *is* a Flashium, or
+   the three-Flashium match could not be detected. The beaker grid is three
+   parallel arrays of stride 6, so the marker is very likely in one of the other
+   two. Dump all three with a Flashium settled.

@@ -67,13 +67,21 @@ Listed first because building on them wastes work.
    the 9/6/3 drop limits. The tube stacks several atoms.
 3. **Scoring and pacing.** `kScorePerAtom`, `kChainBonus`, `kSpawnInterval`,
    `fallSpeed` are invented. Real values are in `1000:3a67`.
-4. **Atom colour count.** The engine uses 8 flat colours. The cutscene names
-   **eight** elements - Redium, Greenium, Bluium, Cyanium, Purplium, Yellowium,
-   Pinkium and **Flashium** - while grid cells cycle **1..7** with 0 empty. So
-   seven ordinary colours plus one special is the likely split, and `Flashium`
-   is the obvious candidate, which would fit the `ANTIBALL` / `GOLDBALL` /
-   `XENBALL` sprites `entry` loads and nothing uses. Check the cell encoding
-   before building on this.
+4. **Atom colour count, and the special balls.** The engine's 8 flat colours are
+   wrong in both directions. There are **seven** ordinary colours, and
+   **Flashium** is a wildcard with no static sprite of its own - settled in the
+   beaker it displays the other colours in turn, which is precisely the
+   "increment the cell and wrap 8 back to 1" loop already noted in
+   `docs/reversing-notes.md`. That reconciles the eight named elements with
+   1..7 cell values, and explains the seven-entry settled-sprite table.
+
+   Beyond that there are **25 ball sprites**, measured: seventeen at 16x13 and
+   eight at 8x7. The 16x13 set is the seven colours, four unlettered specials
+   (`ANTIBALL`, `GOLDBALL`, `XENBALL`, `OBSTBALL`) and six **letter balls** -
+   grey spheres marked `?` `X` `M` `B` `C` `F` (`MYSTBALL`, `EVILBALL`,
+   `MULTBALL`, `BLOCBALL`, `CONVBALL`, `FILLBALL`). None of this is implemented.
+   Behaviour known from play: `ANTIBALL` destroys any balls in the beaker on
+   contact; `GOLDBALL` is a fast bonus ball. See `docs/reversing-notes.md`.
 
 ---
 
@@ -405,6 +413,13 @@ That last point is the useful one: whatever drives atom position is computed,
 not accumulated, so there may be no "speed field" in the record at all - the
 speed could be a divisor applied to a shared frame counter.
 
+**A lead from play: `GOLDBALL` travels the tube *very fast*.** So speed is not a
+single global - it varies by ball type. Since the record's only type-ish field is
+the colour/sprite index at `+0x0b`, the thing to look for is a **speed selected
+by ball type** (a small lookup, or a branch on the type) rather than a per-record
+speed variable. That also gives Experiment 4 a much better second condition than
+holding **B**: compare a gold ball against an ordinary one, same save state.
+
 **Recommended change of technique.** Reading one 9382-byte Pascal procedure
 with nested frames has produced five self-corrections in a single session, and
 every one came from a tool being wrong rather than the binary being obscure:
@@ -442,7 +457,11 @@ hangs at **y = 134 - 65 = 69**.
 
 Cheap and high-impact once the mechanic is settled.
 
-- 66 fade sprites: 11 families x 6 frames, the atom-clear animation
+- 66 fade sprites: 11 families x 6 frames, the atom-clear animation. The
+  families are now identified - the seven colours plus `AFADE` (anti),
+  `GLDFADE` (gold), `CRFADE` (crystal) and `FFADE` (Flashium). That list is
+  also the **matchable set**: the letter balls, `XENBALL`, `OBSTBALL` and the
+  eight small balls have no fade family, so they are not cleared by matching.
 - `.SFX` through SDL audio, mixed alongside the OPL output
 - HUD: the reference screenshot shows chains, score and drops across the top
 - Fonts are decoded but never drawn

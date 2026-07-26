@@ -1233,3 +1233,117 @@ the cell encoding is what to check.
 
 The in-play HUD reads **`Chains`** top-left and **`Drops`** top-right, with two
 counters between them.
+
+
+## The ball inventory - 25 sprites, measured
+
+Dimensions from the rendered `.CSP` output. The split is exact and informative:
+
+**16 x 13 - seventeen playfield balls**
+
+| group | sprites |
+|---|---|
+| the seven ordinary colours | `REDBALL` `GRENBALL` `BLUEBALL` `CYANBALL` `PURPBALL` `YELWBALL` `PINKBALL` |
+| specials without a letter | `ANTIBALL` `GOLDBALL` `XENBALL` `OBSTBALL` |
+| **letter balls** | `MYSTBALL` **?** - `EVILBALL` **X** - `MULTBALL` **M** - `BLOCBALL` **B** - `CONVBALL` **C** - `FILLBALL` **F** |
+
+**8 x 7 - eight half-size balls**
+
+`SRBALL` `SGBALL` `SBBALL` `SCBALL` `SPBALL` `SYBALL` `SPNKBALL` `SWBALL` -
+exactly half the playfield size, so `S` = small. Seven match the ordinary
+colours; the eighth, `SWBALL`, is pale/white with no full-size counterpart.
+Where they are drawn is **not established** - a next-ball preview in the HUD and
+the stack inside the test tube are both plausible.
+
+The letter balls are grey spheres with a dark red character on them. Rendering
+them is what identified the set; the names alone are ambiguous.
+
+### Special ball behaviour (reported from play, not yet read from the binary)
+
+Marked as such deliberately - this is play observation, and belongs on the
+guessed side of the line until the code confirms it.
+
+| ball | behaviour |
+|---|---|
+| `ANTIBALL` | antimatter. Destroys **any** balls in the beaker on contact. |
+| `GOLDBALL` | bonus ball, orange/gold. Travels the tube **very fast**, awards bonus score when caught, and is believed to become a random ordinary ball once captured (uncertain). |
+| `XENBALL` | unknown. A featureless grey sphere. **Not** the "X ball" - that is `EVILBALL`. |
+| letter balls | each performs some function; `?` mystery, `X` evil, `M`, `B`, `C`, `F` unidentified. |
+
+### Flashium explains the 1..7 cell cycling
+
+This reconciles a code observation that was recorded without an explanation.
+The playfield notes say cell values are 0 for empty and 1..7 for colours, and
+that the draw loop *increments a cell and wraps 8 back to 1* - written up as "a
+colour-cycling effect" with no reason given.
+
+The reason: **Flashium is a wildcard that matches any colour, and has no static
+sprite of its own.** Settled in the beaker it continuously displays the other
+colours in turn - so a Flashium cell is rendered by cycling its value through
+1..7, which is exactly what that loop does. Only three Flashiums matched
+together produce a distinct animation.
+
+Two independent sources agreeing, from opposite directions: the increment-and-
+wrap loop in the binary, and the behaviour visible in play. That also explains
+why the settled-cell far-pointer table at `DS:0x1da6`/`DS:0x1da8` needs only
+**seven** entries - there is no eighth sprite to point at.
+
+It raises a concrete follow-up. If a Flashium's cell value is being cycled
+through the ordinary colours, the cell cannot also be what marks it *as* a
+Flashium, or the three-Flashium match would be impossible to detect. The beaker
+grid is already known to be **three parallel arrays of stride 6**, so the natural
+place for a type/flag marker is one of the other two. That is the thing to read
+next, and it is cheap now: dump all three arrays with a Flashium settled.
+
+
+## The 66 fade sprites decode - and they name the matchable set
+
+`11 families x 6 frames` was recorded as "the atom-clear animation" without the
+families being identified. They are, and the list is more informative than the
+ball inventory:
+
+| family | what clears |
+|---|---|
+| `RFADE` `GFADE` `BFADE` `CFADE` `PFADE` `YFADE` `PNKFADE` | the seven ordinary colours |
+| `AFADE` | `ANTIBALL` |
+| `GLDFADE` | `GOLDBALL` |
+| `CRFADE` | **`CRYSTAL`** |
+| `FFADE` | **Flashium** |
+
+Two things follow directly.
+
+**Flashium is confirmed to have no static sprite.** There is no `FLASHBALL` (or
+any variant) anywhere in `TUBES.RES` - but there *is* a full six-frame `FFADE`
+family. A wildcard that renders as the other colours while settled, and has its
+own clear animation only when three of them match, is exactly the shape of that
+evidence. `FFADE1` is a ball made of **every colour at once**, a multicoloured
+mosaic, which is the visual counterpart.
+
+**The matchable set is these eleven, not the twenty-five balls.** Only things
+that can be cleared need a fade family, so the six letter balls, `XENBALL`,
+`OBSTBALL` and the eight small balls are *not* cleared by matching - they do
+something else.
+
+### `CRYSTAL` and `MARKER`
+
+- `CRYSTAL` (16 x 13) is a solid red rounded **block**, visibly not a sphere,
+  and it has a fade family - so it is a clearable playfield object rather than
+  decoration. Its function is **unknown**.
+- `MARKER` (12 x 11) is a red **X** crosshair. Unidentified; a cursor or a
+  target indicator are the obvious guesses.
+
+## Provenance of the gameplay descriptions
+
+Worth recording, because it sets how much weight each claim carries. The
+gameplay accounts above come from the user playing the **shareware** release,
+not the full version, so coverage is uneven:
+
+- **Reliable:** `GOLDBALL` and `ANTIBALL`. The shareware had preview modes that
+  demonstrated both in action.
+- **Partial:** `GOLDBALL` becoming a random ordinary ball once captured is
+  believed but not certain.
+- **Unknown:** `CRYSTAL`, `MARKER`, the six letter balls, and whatever `XENBALL`
+  is properly called - it behaves as an inert grey sphere.
+
+None of this is a substitute for reading the code; it is a set of hypotheses to
+aim the debugger at, which is much cheaper than finding them blind.
