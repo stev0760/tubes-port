@@ -3496,3 +3496,31 @@ whatever network the current layout drew.
 And the port's tube rendering is wrong for the same reason: it does not compose
 the network from segments at all. Getting either right means porting the layout
 selection and the per-segment draw list, not tuning coordinates.
+
+### The furniture segment list (positions solid, layout attribution NOT yet)
+
+Extracted draw calls, sprite variable plus coordinates:
+
+    pass 1   seg[-0x92]  y=26  x = 34, 270, 58, 246, 107, 197, 179
+             seg[-0x9a]  y=26  x = 125
+             seg[-0x96]  y=13  x = 58, 246, 107, 197
+    pass 2   seg[-0xb2]  y=26  x = 34, 179
+             seg[-0xaa]  y=26  x = 270, 125
+
+Two things follow. The network is drawn in **multiple passes over the same x
+positions with different segment sprites**, which is what a layered tube would
+need - and the port draws none of it. And `x = 125` takes a *different* sprite
+from its neighbours in the same pass, so the segments are not interchangeable.
+
+Layout conditions on `DS:0x1d4e` sit at four places in `1000:3a67`, testing
+`== 4`, `== 6`, `== 5` and `!= 1`.
+
+**Which draws belong to which layout is not established.** The extraction above
+groups calls by line range between successive conditions, which is wrong: a
+block can close early and leave following draws unconditional, and the `== 5`
+range swallowed 47 calls that are unlikely to all be inside it. Grouping needs
+brace-aware parsing of the decompiler output, or reading each block directly.
+
+Recording it this way on purpose. The coordinates are evidence; the grouping is
+an artefact of how they were gathered, and a table of "layout 5 draws these
+segments" would look equally authoritative while being unverified.
