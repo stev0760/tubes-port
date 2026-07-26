@@ -3622,3 +3622,39 @@ composited backdrop cannot reproduce it.
 
 Draws whose coordinates are expressions rather than literals are omitted here;
 those are the moving atoms and the test tube, not furniture.
+
+### The render order - why the tubes look hollow
+
+The furniture is not a backdrop drawn once. Each frame `1000:3a67` interleaves
+atom drawing **between** furniture passes, so later passes overpaint the atoms:
+
+     1  TUBEH   y=26  x = 34, 270, 58, 246, 107, 197, 179   (TUBEHR at 125)
+     2  TUBEHS  y=13  x = 58, 246, 107, 197
+     3  TUBEVLS y=26 / TUBEVRS y=26
+    ->  ATOMS
+     4  TUBEH   y=13  (TUBEHR at 107)
+     5  TUBEVL  y=26 / TUBEVR y=26
+     6  TUBEVLS y=13 / TUBEVRS y=13
+     7  TUBEVS  y=26
+    ->  ATOMS
+     8  TUBEVL  y=13 / TUBEVR y=13
+     9  TUBEV   y=26
+    10  TESTUBES                      (test tube shadow)
+    ->  ATOM in the test tube
+    11  BEAKERS                       (beaker shadow, y=135 x=186)
+    ->  settled beaker atoms, 6 per row
+    12  MARKER x6                     (the overlay on flagged cells)
+    ->  ATOM
+    13  BEAKER  y=134 x=103           (the glass front - drawn LAST)
+
+So an atom travelling the network is drawn, and then the **solid** tube pieces
+are drawn over it. The tubes are hollow and the atom is visibly *inside* them,
+with tubes overlapping one another - a genuinely good effect for 1994, and
+impossible to reproduce by compositing a single foreground image.
+
+The same applies at the beaker: `BEAKER.CSP` is drawn **after** the settled
+atoms, so the glass front overlaps the balls.
+
+**The port currently has this inverted** - `src/main.cpp` draws the beaker
+first and the atoms on top of it, and draws no tube furniture at all. Both are
+now fully specified by the list above.
