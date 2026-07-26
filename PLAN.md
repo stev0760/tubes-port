@@ -56,13 +56,12 @@ developer splash but is not decoded.
 Things currently implemented on assumptions the binary has since contradicted.
 Listed first because building on them wastes work.
 
-1. **The dispenser model.** `src/game.cpp` has atoms falling straight down to
-   be caught by a tube. That is still wrong, but the replacement is not yet
-   known - see "the dispenser" under Next. The earlier guess that it is a
-   *tile routing network* is **not supported by the code** and should not be
-   built on either: the whole frame update contains only two multiplies by the
-   13-pixel row pitch, both in the settled-grid draw. Whatever the tubes do,
-   they are not walked cell by cell each frame.
+1. **The dispenser path.** `src/game.cpp` still has atoms falling straight
+   down. Really they enter bottom-right, travel up, arc over the top and come
+   down along the tube artwork. The stacking tube and its controls are now
+   implemented; the *path* is not, and is approximated by a vertical fall.
+   Do not model it as per-cell tile routing - the frame update contains no
+   13px-pitch arithmetic outside the settled-grid draw.
 2. **The test tube holds one atom.** `TESTUBE1/2/3` are 22x65, 20x42 and 20x27
    - about 5, 3 and 2 cells at the 13px row pitch. Three capacities, matching
    the 9/6/3 drop limits. The tube stacks several atoms.
@@ -78,30 +77,52 @@ Listed first because building on them wastes work.
 
 ### 1. The dispenser and test tube mechanic
 
-The last real unknown. Partially investigated; here is what is established so
-far, and what is not.
+**How it actually works** (described by the user from play, and corroborated
+by the binary):
 
-**Established, from the disassembly of `1000:3a67` (9382 bytes):**
+- Atoms enter at the **bottom right**, travel **up** the right-hand side, arc
+  over the **top** of the screen, and come back **down** - tracing the tube
+  artwork rather than falling straight.
+- The player slides the test tube along a horizontal rail and catches them.
+  The tube **holds several atoms stacked**.
+- **Button A** tips the tube, dumping **one** atom at a time into the beaker.
+- **Button B** speeds an atom along, sucking it out of the tube faster.
 
-- The dynamic game state is an array of **12 records of 28 bytes**. It
-  dominates the frame update: of 20 small-constant multiplies, 18 are the
-  0x1c record stride and only 2 are the 13-pixel row pitch (both in the
-  settled-grid draw).
-- Records are initialised to a parked value - two coordinate-shaped pairs of
-  (303, 186). x=303 is off-screen right, past the play area which ends at 245.
-- Drawing is *not* driven by that array. Of 18 record-index computations only
-  one is followed by a sprite draw. The 126 calls to the draw routine are
-  mostly unrolled with literal or table coordinates, exactly like the
-  six-per-row grid draw.
+The binary corroborates the entry point exactly. The 12 records of 28 bytes
+initialise to **(303, 186)** - x=303 is off the right of the play area, which
+ends at 245, and y=186 is the bottom grid row. That is the spawn point, not
+the "parked" sentinel it was first read as. So the 12 records are the atoms in
+transit along the path.
 
-**Not established:** what the 12 records represent, how atoms reach the tube,
-how the tube stacks. One loop sets a field across records 1..5 to
-99, 93, 87, 81, 73 - descending by 6, and in the x range of the play area -
-but what it drives is unknown.
+**Implemented so far:** the tube stacks, A dumps one at a time, B accelerates.
+Capacity 5/3/2 by difficulty, inferred from the `TESTUBE1/2/3` sprite heights
+of 65/42/27 at the 13px row pitch - which sprite goes with which difficulty is
+not proven.
 
-**Do not** assume tile routing (see Known wrong). The next step is to identify
-the 12-record structure, most usefully by finding which of the 126 draw calls
-reads from it.
+**Still unknown:** the path itself. Atoms clearly follow a fixed route, so
+there is very likely a waypoint table in DGROUP. Finding it is the next step
+and would make the dispenser exact rather than approximated.
+
+**Do not** assume per-cell tile routing - the frame update contains no
+arithmetic on the 13px row pitch outside the settled-grid draw.
+
+#### Static furniture, from literal draw coordinates in `1000:3a67`
+
+84 of the 126 sprite draws use literal coordinates:
+
+| y | x positions | what |
+|---|---|---|
+| 13 | 58, 107, 197, 246 | upper tube arcs |
+| 26 | 34, 58, 107, 125, 179, 197, 246, 270 | lower tube arcs |
+| 134 | 103 | the beaker |
+| 135 | 186 | unidentified |
+
+All symmetric about screen centre 160 once the 16px sprite width is added.
+The beaker at (103, 134) independently confirms the placement derived from the
+grid geometry.
+
+The test tube is 65 tall and its mouth meets the top of the beaker, so it
+hangs at **y = 134 - 65 = 69**.
 
 ### 2. Presentation
 

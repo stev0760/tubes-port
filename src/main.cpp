@@ -36,7 +36,11 @@ constexpr int kRows = 5;
 // Row y is computed inline as `row * 13 + 121` for row = 1..5.
 constexpr int kGridX = 107;
 constexpr int kGridY = 121 + kPitchY;
-constexpr int kTubeY = kGridY - kCellH - 2;
+// TESTUBE1 is 65 tall and its mouth meets the top of the beaker, so it hangs
+// from y = 134 - 65 = 69. Matches the original; the previous value sat 10px
+// low and left the tube overlapping the beaker.
+constexpr int kTestTubeH = 65;
+constexpr int kTubeY = kGridY - kTestTubeH;
 constexpr float kFallHeight = static_cast<float>(kTubeY - 16);
 
 const char* kAtomSprites[tubes::kAtomCount] = {
@@ -459,13 +463,15 @@ int main(int argc, char** argv) {
             screen.draw(atoms[f.colour], kGridX + f.column * kPitchX,
                         static_cast<int>(f.y));
         }
-        if (haveTube) {
-            screen.draw(testTube, kGridX + game.tubeColumn() * kPitchX - 3,
-                        kTubeY - 40);
-        }
-        if (game.heldAtom() != tubes::kEmpty) {
-            screen.draw(atoms[game.heldAtom()],
-                        kGridX + game.tubeColumn() * kPitchX, kTubeY);
+        const int tubeX = kGridX + game.tubeColumn() * kPitchX;
+        if (haveTube) screen.draw(testTube, tubeX - 3, kTubeY);
+
+        // Atoms stack in the tube, mouth downwards: index 0 sits at the
+        // bottom and is the next one an A press tips out.
+        const std::vector<int8_t>& stack = game.tubeAtoms();
+        for (size_t i = 0; i < stack.size(); ++i) {
+            const int y = kGridY - kCellH - static_cast<int>(i) * kPitchY;
+            screen.draw(atoms[stack[i]], tubeX, y);
         }
 
         screen.toRgba(pal, rgba);

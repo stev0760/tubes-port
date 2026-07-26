@@ -16,6 +16,18 @@ constexpr float kSpawnInterval = 1.6f;   // seconds between dispensed atoms
 constexpr float kFastFallScale = 3.0f;   // holding Down accelerates the atom
 constexpr float kMoveRepeat = 0.09f;     // seconds between repeats while held
 
+// How many atoms the test tube holds. Inferred from the sprite heights:
+// TESTUBE1/2/3 are 65, 42 and 27 pixels, about 5, 3 and 2 cells at the 13px
+// row pitch. Which sprite belongs to which difficulty is not yet proven.
+int tubeCapacityFor(Difficulty d) {
+    switch (d) {
+        case Difficulty::k101: return 5;
+        case Difficulty::k201: return 3;
+        case Difficulty::k301: return 2;
+    }
+    return 5;
+}
+
 int dropsFor(Difficulty d) {
     switch (d) {
         case Difficulty::k101: return 9;
@@ -38,10 +50,12 @@ float speedFor(Difficulty d) {
 
 Game::Game(int cols, int rows, Difficulty diff, uint32_t seed)
     : board_(cols, rows),
+      tubeCapacity_(tubeCapacityFor(diff)),
       dropLimit_(dropsFor(diff)),
       fallSpeed_(speedFor(diff)),
       rng_(seed ? seed : 1) {
     tubeColumn_ = cols / 2;
+    tube_.reserve(static_cast<size_t>(tubeCapacity_));
 }
 
 int8_t Game::nextColour() {
@@ -98,10 +112,11 @@ void Game::update(uint8_t buttons, float dt) {
         }
     }
 
-    // Release a held atom into the beaker beneath the tube.
-    if ((pressed & button::kA) && held_ != kEmpty) {
-        if (board_.drop(tubeColumn_, held_)) {
-            held_ = kEmpty;
+    // A tips the tube, dumping one atom into the beaker beneath it. The tube
+    // holds several, so each press releases only the one at the mouth.
+    if ((pressed & button::kA) && !tube_.empty()) {
+        if (board_.drop(tubeColumn_, tube_.front())) {
+            tube_.erase(tube_.begin());
             resolveMatches();
             if (board_.overflowing()) gameOver_ = true;
         }
@@ -116,19 +131,20 @@ void Game::update(uint8_t buttons, float dt) {
         return;
     }
 
+    // B sucks the atom along faster; Down does the same, pending the real
+    // dispenser being understood.
     float speed = fallSpeed_;
-    if (buttons & button::kDown) speed *= kFastFallScale;
+    if (buttons & (button::kDown | button::kB)) speed *= kFastFallScale;
     falling_.y += speed * dt;
 
     if (falling_.y < fallHeight_) return;
 
     // The atom has reached tube height. Catching it requires the tube to be
-    // in the right column and empty; anything else counts against the drop
-    // limit, per the manual.
-    const bool caught =
-        (falling_.column == tubeColumn_) && (held_ == kEmpty);
+    // in the right column and to have room; anything else counts against the
+    // drop limit, per the manual.
+    const bool caught = (falling_.column == tubeColumn_) && !tubeFull();
     if (caught) {
-        held_ = falling_.colour;
+        tube_.push_back(falling_.colour);
     } else {
         ++drops_;
         if (drops_ > dropLimit_) gameOver_ = true;

@@ -1,12 +1,12 @@
 // Game state: the dispenser, the player's test tube, and the beaker.
 //
-// Rules follow TUBES.DOC: catch atoms falling from the dispenser tubes with
-// the test tube, place them into the beaker, and line up three or more of a
-// colour horizontally, vertically, or diagonally. The game ends when the drop
-// limit is exceeded or the beaker fills.
+// Atoms enter at the bottom right, travel up and arc over the top along the
+// tube artwork, then come down. The player slides the test tube to catch them;
+// it holds several stacked. A tips one into the beaker, B speeds an atom along.
+// Line up three or more of a colour to clear.
 //
-// Timings, scoring and grid size are tuned by hand, not recovered from the
-// original. See docs/reversing-notes.md.
+// The path itself is not yet recovered, so the travel here is a placeholder
+// vertical fall. Timings and scoring are hand-tuned too. See PLAN.md.
 
 #pragma once
 
@@ -53,7 +53,18 @@ public:
     const Falling& falling() const { return falling_; }
 
     int tubeColumn() const { return tubeColumn_; }
-    int8_t heldAtom() const { return held_; }
+
+    // The test tube holds several atoms, stacked. Index 0 is the mouth - the
+    // one the next A press tips into the beaker. Capacity comes from the tube
+    // sprite for the difficulty; see tubeCapacity().
+    const std::vector<int8_t>& tubeAtoms() const { return tube_; }
+    int tubeCapacity() const { return tubeCapacity_; }
+    bool tubeFull() const {
+        return static_cast<int>(tube_.size()) >= tubeCapacity_;
+    }
+    int8_t heldAtom() const {
+        return tube_.empty() ? static_cast<int8_t>(kEmpty) : tube_.front();
+    }
 
     int drops() const { return drops_; }
     int dropLimit() const { return dropLimit_; }
@@ -73,7 +84,8 @@ private:
     Falling falling_;
 
     int tubeColumn_ = 0;
-    int8_t held_ = kEmpty;
+    std::vector<int8_t> tube_;
+    int tubeCapacity_ = 5;
 
     int drops_ = 0;
     int dropLimit_ = 9;
