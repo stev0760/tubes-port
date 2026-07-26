@@ -2817,3 +2817,61 @@ an extra life.
 **Confirming test, not yet run:** edit `0x207` to something other than 11 and
 load. If the briefing announces that number, the case is closed. This is cheap
 and should be done before the model is relied on.
+
+### The live drop counter is `0x245bc` - measured
+
+Found by scanning DGROUP for the HUD's current value and keeping only bytes that
+**decrement by one**, which is the drop counter's signature and not a generic
+"a byte changed" filter.
+
+Confirmed against the game's own display rather than against itself: with the
+logger reading `0x245bc = 8`, a screenshot taken in the same script showed
+`8 Drops` on the HUD. Reading back a value you predicted is evidence; reading
+back a value you *wrote* is not, which is the trap the `MYSTBALL` injection fell
+into.
+
+Independently corroborated by a run that predates the identification. The
+parked-tube experiment recorded, and dismissed as noise:
+
+    0x245bc:   9 ->  8 ->  7 ->  6 ->  5 -> ... -> 1
+
+With the tube parked in one column every atom missed, so a steady countdown to
+zero is exactly what the drop counter must do. The observation was right; only
+the label was missing.
+
+It sits inside the session locals, just below the tube:
+
+| linear | field |
+|---|---|
+| `0x245bc` | **drops remaining**, u8 |
+| `0x245d0` | tube struct |
+| `0x245e7` | score, u32 |
+
+Note this address was **inside** the window the previous hunt scanned
+(`0x23f00 + 0x900`) and was not in its exclusion list. That hunt failed for a
+reason worth keeping: the game was frozen for the whole of its run, so no drop
+was ever lost and the transition it was watching for could not occur. Another
+search that could not have found what it was looking for.
+
+### Open: does clearing a wave refill the drops?
+
+Play reports repeatedly returning to exactly 11 - "playing the game just gets me
+back to 11" - attributed to **clearing the level**. If a wave clear refills to a
+constant, then the "persistent pool carried between waves" reading above is
+wrong for the second time, and the fifty briefings all read 11 simply because
+that is the refill value.
+
+Three mechanisms are now in play and have been confused for one another:
+
+| event | effect | status |
+|---|---|---|
+| a miss | `drops -= 1` | measured, twice (`11 -> 10`) |
+| a Bonus atom | `drops += 1` | measured (`10 -> 11`) |
+| clearing a wave | `drops = ?` | **claimed, not yet measured** |
+
+`watch_drops.py` measures the third: it logs every change to `0x245bc` in either
+direction and marks the wave boundary *independently*, by the beaker emptying,
+so a refill is attributed to the transition rather than inferred from the number
+alone. A cap at 11 and a refill to 11 predict different things - a cap holds a
+Bonus at 11, a refill lets misses fall and restores only at the boundary - and
+the log distinguishes them.
