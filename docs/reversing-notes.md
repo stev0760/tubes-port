@@ -1325,7 +1325,7 @@ already recorded for the settled-cell table, and gives its length.
 | 9 | `ANTIBALL` | `AFADE` | AntiMatter |
 | 10 | `GOLDBALL` | `GLDFADE` | Bonus |
 | 11 | `XENBALL` | none | **Xenon** |
-| 12 | `MULTBALL` | none | Multiplier |
+| 12 | `MULTBALL` | none | Multiplier - fills the tube with **random** balls |
 | 13 | `EVILBALL` | none | Evil Multiplier |
 | 14 | `CONVBALL` | none | Convertor |
 | 15 | `BLOCBALL` | none | Blocker |
@@ -1346,6 +1346,25 @@ One sample cannot distinguish "the pointer is rewritten as it flashes" from
 "permanently aliased to blue". **The check is two reads a second apart**: if
 type 8's pointer walks the colour sprites, it is confirmed outright. Cheap, and
 not yet done.
+
+### How Flashium can "inherit the stack's colour animation"
+
+Worth resolving, because it looks like a contradiction and is not. Reported from
+play: a wildcard cleared as part of a coloured stack uses **that colour's** fade,
+and `FFADE` appears only when three wildcards match each other. But the fade
+table is indexed by **type**, and Flashium is type 8 with its own `FFADE` - so a
+type-8 lookup could never produce a red animation.
+
+The reconciling model: **a settled Flashium's cell does not hold 8.** It holds
+the colour it matched, so the type-indexed lookup naturally yields that colour's
+fade, and `FFADE` is reached only when the cell genuinely holds 8 - three
+wildcards together, matching nothing but each other. That also fits the cell
+value cycling `1..7` while unmatched: the cell is being walked through the
+candidate colours, and settles on whichever one pays off.
+
+**Not proven.** The test is direct: settle a wildcard next to two of one colour
+and read the cell value before and after the match, against the second and third
+of the three parallel grid arrays.
 
 ### Only types 1-10 and 18 can be cleared
 

@@ -82,7 +82,7 @@ Listed first because building on them wastes work.
    | 9 | AntiMatter - destroys the surrounding atoms |
    | 10 | Bonus - travels fast, turns into Flashium when caught, grants a bonus drop |
    | 11 | Xenon - inert, will not react with any colour |
-   | 12 | Multiplier - fills the test tube with atoms |
+   | 12 | Multiplier - fills the test tube with **random** balls |
    | 13 | Evil Multiplier - fills the test tube with Xenons |
    | 14 | Convertor - turns the atoms it lands on into Xenons |
    | 15 | Blocker - fills the beaker column it lands in with Xenons |

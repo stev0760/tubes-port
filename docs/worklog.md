@@ -773,3 +773,21 @@ screen and RGB say 1994, MobyGames and the Internet Archive item say 1993.
 
 Still unexplained: `OBSTBALL` (type 17), `MYSTBALL` (type 19), `SWBALL`, and
 where the seven half-size balls at `DS:0x200a` are drawn.
+
+#### `MULTBALL` confirmed as the Multiplier
+
+The user identified the mix-up themselves: `MULTBALL` is the `M` ball and fills
+the test tube with **random** balls when caught - the "matches any colour" and
+"inherits the stack's colour animation" descriptions were Flashium's all along.
+Three sources now agree: the measured type table (type 12, no fade family, so
+never cleared by matching), the published description, and play.
+
+The "inherits the stack's colour animation" detail is still worth an answer,
+since fades are looked up by type and a type-8 lookup could not yield a red
+animation. The model that reconciles it: a settled Flashium's cell holds the
+colour it **matched**, not 8 - so the type-indexed lookup gives that colour's
+fade naturally, and `FFADE` is reached only when the cell really holds 8, i.e.
+three wildcards matching each other. Which is also what the cell cycling `1..7`
+looks like from outside: the cell walks the candidate colours and settles on the
+one that pays off. Recorded as a hypothesis with a direct test - settle a wildcard
+beside two of one colour and watch the cell value across the match.
