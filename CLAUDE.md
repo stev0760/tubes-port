@@ -129,15 +129,33 @@ float, and the test tube's vertical placement is approximate.
 
 ## Open work
 
-See `PLAN.md`. In short: the dispenser/test-tube mechanic is the last real
-unknown, and the current model of it in `src/game.cpp` is known to be wrong
-rather than merely incomplete. Everything else is mapped.
+**Read `PLAN.md` first - it opens with the next step.** In short: static
+disassembly of `1000:3a67` has hit its limit, and the next move is DOSBox-X's
+debugger with a memory breakpoint on the atom array. `PLAN.md` has the exact
+addresses and what to watch.
 
 Ports to other platforms are an eventual goal, so keep SDL at the platform
 edge - it is the portability layer, not something to avoid. Only `main.cpp`
 and `opl.cpp` include it today; `res`, `gfx`, `mus`, `board`, `game` and even
-`screen` are platform-agnostic and should stay that way. `PLAN.md` has the
-rest.
+`screen` are platform-agnostic and should stay that way.
+
+## When a search comes back empty, suspect the search
+
+Five wrong conclusions in one session, every one from a tool rather than the
+binary (all in `docs/worklog.md`):
+
+- a DGROUP scan requiring runs of 8+ words missed a 6-word table
+- a correlation window of 25 instructions "disproved" a correct reading
+- a regex matching only positive displacements hid every stack local, and
+  reported 9 mutations where there were 38
+- two structures were assumed to share a base pointer, repeatedly
+- a sprite was measured by "widest gap at three sample rows" instead of
+  occupancy over its full extent, and written off twice
+
+A negative result is only as good as the filter that produced it. Before
+reporting "there is no X", check that the search could have found X. The
+tell each time was an implausible number - zero mutations in 1392 bytes of
+code is not a finding, it is a bug.
 
 ## Reversing method that has actually worked
 

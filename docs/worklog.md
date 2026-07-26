@@ -269,3 +269,102 @@ distinct OPL patches, but a standard OPL bank (OP2, WOPL) cannot hold them,
 because those formats key on GM program number and this game reuses program 0
 for four unrelated patches. The engine needs no bank at all — patches arrive
 inside each `.MUS` and load at runtime.
+
+### Playfield geometry, and a whole-program map
+
+Picked up the gameplay constants. First result was a correction: `1000:9e53`
+had been labelled "the playfield renderer" and is nothing of the sort - it is
+the game *session*, which loads the play-area art, seeds difficulty, and runs
+the frame loop. `1000:3a67` takes no arguments yet reads its caller's frame,
+so it is a **nested Pascal procedure** sharing `9e53`'s locals. That single
+structural fact explains why decompiling `3a67` alone had been so unrewarding.
+
+Wrote `ghidra_scripts/MapProgram.java`, which pairs the call graph with the
+ShortStrings each function references. Borland Pascal puts one unit per code
+segment and leaves literals in plain sight, so what a function does is usually
+answerable from the text and resource names it touches. It identified every
+interface stage in one pass - both splashes, the title/menu, the blackboard
+cutscene, the test-tube screen, the game session - and incidentally explained
+`SOFT.ANM`, the one `.ANM` in the game, which belongs to the developer splash.
+
+The playfield array turned out to be **6 x 5**, not the 7 x 10 taken from the
+manual - three parallel arrays indexed `[i * 6 + j]` with the inner loop
+running 1..6 and the outer 1..5. Wrong in both dimensions.
+
+Then the cell-to-pixel mapping, off the draw loop at instruction level:
+`y = row * 13 + 121`, and x from a six-entry table giving 107, 125, 143, 161,
+179, 197. **Column pitch is 18 while the sprites are 16 wide** - assuming the
+pitch equalled the cell size was the single wrong assumption doing all the
+damage. Two independent checks agreed: the table is stored as two descending
+triples that only read as a uniform progression under the derived column
+order, and the resulting grid centres on 160, exactly the centre of the
+x 74..245 gap measured earlier from `GAMEFG.GFX`.
+
+### The dispenser, and five self-corrections
+
+The user described the mechanic from play: atoms spawn bottom-right, trace up
+and over the tube arc as a colour preview, then fall. The test tube slides on
+a rail and holds several atoms; A tips one out, B speeds an atom along.
+
+That description immediately explained a number already in hand. The 12
+records of 28 bytes initialise to (303, 186) - off the right of the play area,
+at the bottom row. Read as a "parked" sentinel while atoms were assumed to
+fall downward; read as the **spawn point** the moment their direction was
+known.
+
+The rest of the session was mostly being wrong in instructive ways. Five
+corrections, every one caused by a *tool* being wrong rather than the binary
+being obscure:
+
+1. **`BEAKER.CSP` dismissed twice.** Measured as "widest clear gap at three
+   sample rows", which read the space between internal structures rather than
+   across the interior. Occupancy over the full height gave walls at 4-5 and
+   108-109: interior 106 px and height 65, both exactly the grid. It had even
+   been noted that 65 = 5 x 13 and written off as coincidence.
+2. **"No waypoint table in DGROUP."** The scan required smooth runs of 8 or
+   more words. The table has 6. The filter excluded the answer, which was
+   sitting at `DS:0x26` immediately after the column-x table.
+3. **A correct finding withdrawn.** "How many `*28` index computations are
+   followed by a sprite draw" returned 1 of 18, taken as disproof that the
+   records were drawable objects. That one site *was* the draw, and the only
+   one that needed to be.
+4. **Two structures conflated repeatedly.** `parent - 0x163` (12 x 28, the
+   atoms) and `parent - 0x16a` (a single struct) were assumed to share a base.
+5. **A mutation census reporting 9 instead of 38.** The regex matched only
+   positive displacements, so every stack local was invisible. Caught because
+   the same regex claimed zero mutations across 1392 bytes of a sibling
+   function, which cannot be true of real code.
+
+The largest correction came out of chasing the dwell timer: the single struct
+at `parent - 0x16a` is **the player's test tube**, not a travelling atom. It
+acts only when stopped, then calls the input driver and branches on button
+bits. Its waypoint targets are the six column x's minus 3 - the exact offset
+the test tube is drawn at, a number already sitting in our own rendering code.
+Button A puts it in state 3, which runs a four-phase counter indexing a sprite
+table: the tipping animation. Which in turn means `TESTUBE1/2/3` at 22x65,
+20x42 and 20x27 are **tipping frames**, a tube foreshortening as it tips, not
+three capacities for three difficulties.
+
+Atom speed was not found. It is not in the tube struct, not in any sibling
+function, and the atom array's x/y are never incremented - they are written
+whole, so positions are computed rather than accumulated and there may be no
+speed field at all.
+
+### Where the method stopped paying
+
+The reliable move all session was *targeted* disassembly against one specific
+question: searching for `imul ax,ax,0xd` produced the cell mapping outright,
+and reading a single draw call gave the record layout. Reading the decompiler's
+output for a 9382-byte Pascal procedure with nested frames produced almost
+nothing but the five errors above.
+
+Recorded in `PLAN.md`: the next step is DOSBox-X's debugger, already installed
+on this machine. A memory breakpoint on the atom array identifies the writing
+code directly rather than inferring it, and speed settles by observation.
+
+### State at end of session
+
+37 commits. Every asset format solved, music playing in-engine through
+Nuked-OPL3 with a byte-verified sequencer, playfield geometry measured, the
+whole interface mapped. The port is roughly 40% - reversing well ahead of the
+game itself.

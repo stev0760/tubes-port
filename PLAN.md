@@ -75,6 +75,43 @@ Listed first because building on them wastes work.
 
 ## Next
 
+### 0. START HERE: switch to the DOSBox-X debugger
+
+Static disassembly has hit its limit on this function. Five self-corrections
+in one session, every one caused by a tool being wrong rather than the binary
+being obscure - a scan threshold too high, a correlation window too narrow, a
+regex that silently dropped negative displacements, two structures assumed to
+share a base, a shape measured from three sample rows. See `docs/worklog.md`.
+
+DOSBox-X is already installed and the game runs under it. Watching memory
+answers directly what inference keeps getting wrong.
+
+**What to watch.** The atom array is 12 records of 28 bytes, based at the
+frame of `1000:9e53` minus `0x163`, reached from `1000:3a67` through the
+Pascal static link at `[bp+4]`. Known fields:
+
+| offset | field |
+|---|---|
+| +0x00 | x |
+| +0x02 | y |
+| +0x0b | colour / sprite index |
+| +0x14, +0x16 | saved x, one per video page |
+| +0x18, +0x1a | saved y, one per video page |
+
+**What to do.**
+
+1. Break in `3a67` (image offset `0x3a67`, file offset `+0x2200`) and read
+   `[bp+4]` to get the live base. Everything else is an offset from it.
+2. Set a memory write breakpoint on a record's `+0x00`. Whatever traps is the
+   code that moves atoms - the thing a whole session of grepping did not find.
+3. For speed: run, hold **B**, and watch the write rate change. That settles
+   whether speed is a record field, a divisor on a shared frame counter, or
+   something else, by observation rather than inference.
+
+Also worth watching once attached: the beaker grid (three parallel arrays,
+stride 6) to confirm 6 x 5 live, and the scoring counters, which are still
+entirely invented in the port.
+
 ### 1. The dispenser and test tube mechanic
 
 **How it actually works** (described by the user from play, and corroborated
@@ -339,3 +376,24 @@ the full list.
 - Read the context around a grep hit before believing it. This binary has
   produced at least four coincidences that looked like findings.
 - Separate proven from guessed, in writing.
+
+
+---
+
+## Before publishing to GitHub
+
+The repository has never contained game data and `.gitignore` is aggressive
+about keeping it that way, so publishing is mostly a matter of paperwork:
+
+- **Choose a licence.** There is none yet. Note that `third_party/nuked-opl3`
+  is **LGPL 2.1**, which constrains the options for the whole distribution -
+  decide deliberately rather than dropping in an MIT file out of habit.
+- `README.md` already leads with "you need your own copy" and explains why.
+  Keep that first; it is the thing that makes the project defensible.
+- Re-read `.gitignore` before the first push, and check `git log --stat` for
+  anything game-derived that slipped in early. `git ls-files` should show only
+  source, docs, scripts and the vendored emulator.
+- `assets-extracted/` is ignored wholesale, including every rendered PNG, WAV,
+  MIDI and DRO produced during analysis. None of it should ever be committed.
+- Consider whether the Ghidra project should be mentioned in the README as
+  *deliberately* outside the repo, since it is derived from copyrighted data.
