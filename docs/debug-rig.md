@@ -312,7 +312,12 @@ suspect again, and doubled step values are the tell.
 
 - **`pkill -9 -f dosbox-x` on startup.** `DOSBoxInstance.start()` calls
   `_kill_existing()`, which kills *every* DOSBox-X on the machine, not just its
-  own. Do not start a run while a manual DOSBox-X session matters.
+  own. Do not start a run while a manual DOSBox-X session matters. The way
+  around it is a **second instance**, not a shutdown - see below.
+- **ESC out of a submenu lands on "Exit Tubes?" with YES highlighted.** Pressing
+  ESC repeatedly to get back to a known screen walks past the main menu into the
+  quit confirmation, one RET from ending the session. Cancel with `Down` then
+  `Enter` (No). Two play sessions have already been lost to ESC.
 - **One client at a time.** The GDB stub services a single connection.
   Two MCP instances, or the MCP plus a `gdb`, will fight.
 - **Listener up != DOS ready.** The TCP ports open about a second after launch;
@@ -322,6 +327,57 @@ suspect again, and doubled step values are the tell.
   halted. Fine for inspection, wrong for anything that expects time to pass.
 - **Sticky keystrokes.** A partial line left in the input buffer gets committed
   by the next `\r`. Reset input, or restart, if unsure.
+
+## Run a second instance instead of killing the first
+
+An automated experiment normally cannot run while someone is playing, because
+`DOSBoxInstance` kills every DOSBox-X on the machine. A second instance with its
+own ports sidesteps that entirely, and both survive:
+
+    sed -e 's/^gdbserver port = 2159/gdbserver port = 2160/' \
+        -e 's/^qmpserver port = 4444/qmpserver port = 4445/' \
+        -e 's#/gamedrive#/sweepdrive#' tubes.conf > tubes-sweep.conf
+
+Three things must be separated, not just the ports:
+
+| | why |
+|---|---|
+| `gdbserver port`, `qmpserver port` | each stub serves **one** client |
+| the mounted drive | experiments rewrite `TUBES.SAV`; a shared drive would corrupt a live save |
+| `captures` | both instances write `tubes_NNN.png` into it and the "newest file" rule picks the wrong one |
+
+Launch it with `subprocess.Popen` directly - **not** `DOSBoxInstance`, whose
+constructor is the thing being avoided. Used today to walk the menus while a
+53-minute play session continued untouched on the other instance.
+
+## Suspected: heavy GDB polling can stall the guest
+
+A sampling logger reading **2.3 KB every 0.35 s** ran for 390 s during which the
+game did not advance by a single frame - identical beaker, identical atom array,
+an atom frozen mid-flight - while music kept playing and the player could not
+unpause. Killing the logger resumed it immediately.
+
+What was ruled out, because "the game is stuck" had several plausible causes:
+
+| checked | result |
+|---|---|
+| QMP `query-status` | `running`, `emulator-paused: false`, `debug.paused: false` |
+| BIOS pause hold, BDA `0040:0018` bit 3 | clear - not the Pause/hold loop |
+| stuck modifier, BDA `0040:0017` | only Scroll Lock; no Ctrl/Alt latched |
+| keyboard buffer head/tail | equal - empty, nothing jammed |
+| timer ticks at `0040:006c` | +18 in one second - IRQ0 alive |
+
+So the emulator was executing and the *game* was not progressing. **This is a
+correlation, not a demonstrated cause** - the A/B test (restart the heavy
+logger, watch it stall, kill it, watch it resume) has not been run. Earlier
+sessions logged live gameplay fine with a smaller window, which fits.
+
+Until it is settled, keep continuous loggers **light**. `watch_drops.py` reads
+35 bytes/s and recorded an entire play session with no sign of trouble. Reading
+a wide window "just in case" is what created the problem, and it also produced
+the session's most expensive dead end: the drop-counter hunt scanned a window
+that *contained* the right address and found nothing, because the game was
+frozen for its whole run and no drop was ever lost.
 
 ## Provenance
 

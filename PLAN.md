@@ -570,14 +570,25 @@ Cheap and high-impact once the mechanic is settled.
   fifty screenshots read 11 only because the sweep always loaded a save holding
   11 at `TUBES.SAV 0x207`. The Bonus atom is therefore an extra life - the only
   known way to replenish a resource that otherwise only decreases.
+  **A new game seeds the counter from the difficulty** - Tubes 101/201/301 give
+  9/6/3, confirmed by playing all three - which finally reconciles the binary's
+  measured `9/6/3` with the 11 seen in saves: they were never competing claims,
+  one is the seed and the other is a run that collected Bonuses. There is **no
+  cap** (a wave 6 save started at 12), so the port should treat drops as a plain
+  byte counter seeded once per game.
 - special atoms; Endurance vs Wave mode selection sits under a Game Mode menu,
   and saved games are filtered by mode
-- save/load. `TUBES.SAV` is 960 bytes and very sparse. **Partly decoded and
-  confirmed against the running game**: player name at `0x1e0` (Pascal
-  ShortString), score u32 at `0x1ff`, wave number at `0x206`, **drops remaining at
-  `0x207`** (a carried pool, confirmed by play), and `0x20d` matching the wave's
-  atom target from one sample. Editing `0x206` warps to any wave - there is no
-  checksum. See `docs/reversing-notes.md`.
+- save/load. `TUBES.SAV` is 960 bytes and **structurally decoded**: two `0x1e0`
+  banks, one per game mode, each holding five `0x50` slots plus a trailer.
+  Per-slot fields, confirmed against the running game: player name at `+0x00`
+  (Pascal ShortString), score u32 at `+0x1f`, wave at `+0x26`, **drops remaining
+  at `+0x27`**, atom target at `+0x2d`. Bank 0 is Endurance, bank 1 is Wave mode,
+  which is why Endurance listed five `(UNAVAILABLE)` entries for a save Wave Mode
+  showed at once. The stride also explains the two previously unaccounted bytes:
+  `0x1bb` and `0x39b` are the same `+0x2b` field of each bank's trailer.
+  There is no checksum, so editing a slot's wave byte warps to any wave - but
+  note that is `bank + slot*0x50 + 0x26`, and the familiar `0x206` is merely
+  bank 1 slot 0. See `docs/reversing-notes.md`.
 
 ### 4. The other screens
 

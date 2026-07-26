@@ -1479,3 +1479,97 @@ vocabulary. The type field itself is now a correlation experiment: follow one
 atom's whole record through a catch and a tip, and see which offset's value turns
 up in the grid cell. `+0x0e` (spans 1..7) and `+0x11` (reaches 12) are the
 candidates.
+
+## 2026-07-26 — Session 4
+
+Drove the game live under the debugger for a full play session, and let play
+settle three questions that static analysis and automated sweeps had each got
+wrong.
+
+### The game "stuck paused" — and what it actually was
+
+Reported symptom: music playing, game frozen, unpausable. The obvious readings
+were all wrong, and were checked rather than assumed:
+
+- QMP `query-status` returned `running`, `emulator-paused: false` — not an
+  emulator pause;
+- BDA `0040:0018` bit 3 clear — not the BIOS Pause/hold loop;
+- BDA `0040:0017` = `0x10` — Scroll Lock only, no latched Ctrl/Alt;
+- keyboard buffer head == tail — nothing jammed;
+- `0040:006c` advancing 18 ticks/s — IRQ0 alive.
+
+So the emulator was executing and the game was not. The 390-second freeze
+covered exactly the lifetime of a sampling logger reading 2.3 KB every 0.35 s,
+and killing it resumed play instantly. **Correlation only** — the A/B test has
+not been run — but continuous loggers are now kept light on that basis, and the
+suspicion is written up in `docs/debug-rig.md`.
+
+That freeze also explains the session's most expensive dead end. The
+drop-counter hunt scanned a window that *contained* the right address and
+reported nothing, because the game was frozen for its entire run and no drop was
+ever lost. Another search that could not have found what it was looking for —
+the fourth this project has logged.
+
+### The live drop counter, and the end of the drops confusion
+
+`0x245bc`, u8. Found by scanning DGROUP for the HUD's value and keeping only
+bytes that **decrement by one**, then confirmed against the display: the script
+read 8 while the HUD showed `8 Drops`. Predicted-then-observed, not the
+read-back-your-own-write mistake that voided the MYSTBALL work.
+
+It had already been recorded — the parked-tube run logged `0x245bc` counting
+`9 -> 1` and dismissed it as an unidentified counter. With the tube parked every
+atom missed, which is precisely what the drop counter must do. Right
+observation, missing label.
+
+Every mechanism is now measured separately, and the long-standing contradiction
+between the binary's `9/6/3` and the 11 in every save is resolved — they were
+never competing claims:
+
+    new game         drops = 9 / 6 / 3 by difficulty (101 / 201 / 301)
+    a miss           -1
+    a Bonus atom     +1
+    clearing a wave  unchanged
+    the briefing     reports the current value, it does not set it
+
+The wave-clear case is the one play had wrong: the repeated return to exactly 11
+was attributed to clearing, but the log shows the `+1`s landing mid-wave twelve
+seconds apart with a populated beaker — Bonus atoms. The count read 8 on both
+sides of the 52/53 boundary, and wave 53's briefing then announced "8 drops
+allocated". That is also the confirming test the notes had queued (edit `0x207`,
+see whether the briefing echoes it), delivered by play without tampering.
+
+A cap at 11 was floated here and is **withdrawn**: gains stopping at 11 twice
+was sampling, and play reports starting a wave 6 save at 12.
+
+What made the boundary readable was detecting it *independently*, by the beaker
+emptying rather than by the drop count doing something interesting. A detector
+keyed to the change it hopes to see cannot report that change's absence.
+
+### `TUBES.SAV` is two banks of five slots
+
+A second save, written under a different name, landed `0x50` after the first
+with every field repeating at that stride. So a slot is `0x50` bytes and the
+960-byte file is two `0x1e0` banks — one per game mode — of five slots plus a
+trailer.
+
+This is not arithmetic fitted to a guess: it accounts for the two bytes the old
+notes listed as unexplained. `0x1bb` and `0x39b` are both at `+0x2b` of their
+bank's trailer. And it matches the menu, which lists five slots and showed five
+`(UNAVAILABLE)` entries under Endurance for a save Wave Mode displayed at once —
+bank 0 Endurance and empty, bank 1 Wave with both saves.
+
+Consequence: the `0x206` wave byte every level-warp sweep edited is **bank 1,
+slot 0's** field, not a global. It only ever worked because one slot was
+occupied.
+
+### Smaller findings
+
+- Between waves: a `Wave <n> Stats` blackboard with **two** chain counters,
+  per-wave and cumulative, plus score and a `High Score!` line.
+- Game Options holds only Music / Sound FX / Input Device — difficulty is chosen
+  on the Start Game path.
+- The main menu wraps: from index 2, six `Up` presses landed on index 4.
+- Running a second DOSBox on its own ports, drive and capture directory lets
+  automation run while someone plays, avoiding `DOSBoxInstance`'s
+  `pkill -9 -f dosbox-x`. Used today with both instances surviving.

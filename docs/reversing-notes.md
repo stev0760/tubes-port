@@ -1734,34 +1734,89 @@ Previously an open question. Loading the save under the debugger and comparing
 what the game displays against the file settles several fields, because the
 displayed values can be read straight off the screen.
 
-The file is 960 bytes and extremely sparse - the sample here has **24 non-zero
+The file is 960 bytes and extremely sparse - the first sample had **24 non-zero
 bytes**, which is why it was briefly mistaken for an empty file.
 
-| offset | bytes | meaning | how confirmed |
+### The structure: two banks of five slots
+
+A second save, written by play under a different name, exposed the layout. It
+landed at `0x230` - `0x50` after the first - and **every field repeats at that
+stride**:
+
+| field | `+off` | slot at `0x1e0` | slot at `0x230` |
 |---|---|---|---|
-| `0x1e0` | `07` + `"Stephen"` | Pascal ShortString, player name | slot list shows `Stephen` |
-| `0x1ff` | `b4 5f 00 00` = 24500 | score (u32 LE) | in-play HUD shows **24500** |
-| `0x206` | `06` | wave number | slot list shows **Wave 6** |
-| `0x207` | `0b` = 11 | drops allowed | briefing says "You are allowed **11** drops" |
-| `0x20d` | `1e` = 30 | atoms to survive | briefing says "live through **30** atoms" |
+| player name | `+0x00` | `07 "Stephen"` | `0b "Stephen Hax"` |
+| score, u32 LE | `+0x1f` | 24500 | 81250 |
+| wave number | `+0x26` | 50 | 54 |
+| drops remaining | `+0x27` | 11 | 11 |
+| atoms to survive | `+0x2d` | 30 | 30 |
 
-The first three are confirmed - the game renders those exact values. The last two
-are a strong correspondence from a **single** save; confirming them needs a
-second save at a different wave and a diff.
+plus matching singles at `+0x23`, `+0x28`, `+0x2a`, `+0x2b`, `+0x2c`, `+0x2e`,
+`+0x30`, `+0x31`. A slot is therefore **`0x50` bytes**, and `960 = 0x3c0` divides
+into **two banks of `0x1e0`**:
 
-Other non-zero bytes not yet accounted for: `0x1bb` = `eb`, `0x204` = `18`,
-`0x20b` = `41`, `0x39b` = `f3`, and singles at `0x203`, `0x208`, `0x20a`, `0x20c`,
-`0x20e`, `0x210`, `0x211`.
+    bank 0   0x000 .. 0x1df    slots at 0x000 0x050 0x0a0 0x0f0 0x140, trailer 0x190
+    bank 1   0x1e0 .. 0x3bf    slots at 0x1e0 0x230 0x280 0x2d0 0x320, trailer 0x370
+
+**Five slots and a trailer per bank, one bank per game mode.** That is not a
+guess fitted to the arithmetic - it explains the two loose ends the old notes
+listed as unaccounted for. `0x1bb` and `0x39b` are at `0x190 + 0x2b` and
+`0x370 + 0x2b`: *the same offset within each bank's trailer*. A stray byte in
+each half of the file becomes one field appearing twice.
+
+It also matches the menu exactly. The saved-game list shows **five** slots, and
+choosing Endurance listed five `(UNAVAILABLE)` entries for a save that Wave Mode
+displayed immediately - bank 0 is Endurance and empty, bank 1 is Wave mode and
+holds both saves, in its first two slots.
+
+The trailer's `+0x2b` byte differs between samples (`0xeb` -> `0xe2`,
+`0xf3` -> `0xbc`) including in the bank that stayed empty, so it is **not** a
+checksum over slot contents. Purpose unknown.
+
+**Consequence for every earlier experiment:** the wave byte at `0x206` that the
+level-warp sweep edited is **bank 1, slot 0's** wave field - not a global. A
+save in a different slot is warped by a different address, `0x230 + 0x26` for
+slot 1. This never bit the sweep because only one slot was occupied at the time.
+
+The name, score and wave fields are confirmed - the game renders those exact
+values. Drops is confirmed separately and more strongly below. The atom target
+at `+0x2d` is a strong correspondence across two saves that happen to share the
+value 30, so it remains the weakest of the five.
 
 ## Menu structure, and Wave mode
 
-    Main menu
+    Main menu                                    (8 items, selection WRAPS)
       Start Game / Continue Saved Game / Game Options / High Scores /
       Instructions / View Demo / Credits / Exit Tubes
     -> Game Mode
       Endurance Mode / Wave Mode / Exit
     -> Saved Games Available
       five slots, each "<name>  Wave <n>", or "(UNAVAILABLE)"
+
+    Game Options                                 (captured, no difficulty here)
+      Toggle Music <yes/no> / Toggle Sound FX <yes/no> /
+      Redefine Input Device / Exit
+
+The main menu **wraps**, which is measurable rather than assumed: from Game
+Options (index 2), six `Up` presses landed on Instructions, and
+`(2 - 6) mod 8 = 4` is exactly Instructions' index.
+
+Difficulty is **not** in Game Options - it is chosen on the Start Game path.
+Worth stating because the name "Game Options" is where one would look for it,
+and the 9/6/3 allowance is per-difficulty.
+
+### Between waves: the stats blackboard
+
+Clearing a wave shows a blackboard slide before the next briefing:
+
+    Wave <n> Stats
+      Molecule Chains        <chains this wave>
+      Total Molecule Chains  <chains across the run>
+      Score                  <score>
+      High Score!            (shown only when the run beats the table)
+
+Two chain counters, one per-wave and one cumulative, which the port tracks
+neither of. The `Chains` figure in the HUD is the per-wave one.
 
 **The slot list is filtered by mode.** Choosing Endurance showed five
 `(UNAVAILABLE)` entries for a save that Wave Mode lists immediately - so saves
@@ -2887,3 +2942,43 @@ Settled, with each mechanism measured separately:
 Marking the boundary *independently* - by the beaker emptying, rather than by
 the drop count doing something interesting - is what made this readable. A
 detector keyed to the change it hopes to see cannot report its absence.
+
+### The 9 / 6 / 3 triple is the *starting* allowance - confirmed
+
+The measured `9 / 6 / 3` constants and the 11 seen in every save looked like a
+contradiction for most of this project. They are not: **9/6/3 is what a new game
+seeds, and Bonus atoms raise it from there.**
+
+The log caught the seeding by accident. A new session began mid-capture:
+
+    [  668.3] drops 11 -> 3   beaker=0 score=0
+    [  725.7] drops  3 -> 2   beaker=14 score=1000
+
+`score=0` and `beaker=0` mark a fresh session, not a miss - the logger's `MISS`
+label there is wrong, and the score reset is the tell. The new game seeded **3**.
+
+Confirmed across all three settings by play, which is where the mapping to the
+difficulty names comes from:
+
+| difficulty | starting drops |
+|---|---|
+| Tubes 101 | 9 |
+| Tubes 201 | 6 |
+| Tubes 301 | 3 |
+
+So the full model, every part measured:
+
+    new game        drops = 9 / 6 / 3   by difficulty
+    a miss          drops -= 1
+    a Bonus atom    drops += 1
+    clearing a wave drops unchanged
+    the briefing    reports the current value, it does not set it
+
+**There is no cap at 11.** A cap was floated here after gains stopped at 11
+twice; that was sampling, not a ceiling - "no further Bonus appeared" explains
+it identically. Play reports starting a wave 6 save at **12**, and the field is
+a whole byte in both the save and the session. The reading is withdrawn.
+
+That also retires the last of the "drops are a wave property" family of errors.
+The number was never stored per wave, never reset per wave, and never capped -
+it is one counter, seeded once by difficulty and carried until the game ends.
