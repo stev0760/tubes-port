@@ -204,14 +204,34 @@ This follows directly, and **corrects an earlier inference**. The sprites are
 capacities for three difficulties. The capacity 5/3/2 currently in
 `src/game.cpp` is therefore unfounded and should be treated as a placeholder.
 
-### Speed: still not found, and now known not to be here
+### Atom speed: still not found, and static analysis is hitting its limit
 
-Neither candidate survives. Travel is a flat 6 px/frame with the divider
-threshold and the 4-phase limit both hardcoded, and this struct is the tube
-rather than an atom - so the bonus atom's speed cannot live here at all.
+Ruled out so far:
 
-Atom speed must be in the 12-record array at `parent - 0x163`, which has not
-been examined for it yet. That is where to look next.
+- **Not in the test-tube struct.** Travel is a flat 6 px/frame with the
+  divider threshold and 4-phase limit both hardcoded, and the struct is the
+  tube, not an atom.
+- **Not in a sibling function.** All 18 of the `*28` atom-array accesses are
+  in `3a67`; `86b8`, `8da5`, `8c38`, `9499`, `9111` and `96db` contain none.
+- **The atom array's x/y are never incremented.** They are written whole by
+  `mov` - the spawn at `0x6b94` sets `x = ax` and `y = 187`. So atoms are
+  positioned from other state each frame rather than stepped.
+
+That last point is the useful one: whatever drives atom position is computed,
+not accumulated, so there may be no "speed field" in the record at all - the
+speed could be a divisor applied to a shared frame counter.
+
+**Recommended change of technique.** Reading one 9382-byte Pascal procedure
+with nested frames has produced five self-corrections in a single session, and
+every one came from a tool being wrong rather than the binary being obscure:
+a scan threshold set too high, a correlation window too narrow, a regex that
+silently excluded negative displacements, two structures assumed to share a
+base. Static disassembly is past the point of diminishing returns here.
+
+The better tool is the one already on this machine: **DOSBox-X's debugger**.
+Set a memory breakpoint on the atom array and watch what writes it. That
+identifies the code directly instead of inferring it, and it also settles
+speed by observation - run the game, hold B, and watch the rate change.
 
 **Do not** assume per-cell tile routing - the frame update contains no
 arithmetic on the 13px row pitch outside the settled-grid draw.
