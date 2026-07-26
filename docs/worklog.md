@@ -1102,3 +1102,35 @@ to claim it was still correct, and it cost nothing to verify properly.
 
 Contrast worth carrying into the port: the **test tube** moves 6 px/frame from
 static analysis, atoms move 4. Different rates.
+
+### Chasing `dy = +18`: it is the descent speed
+
+Left flagged as "real but unexplained" - 62 occurrences, not a multiple of the
+4 px step, not the 13 px row pitch. The fix was methodological rather than
+clever: a histogram of deltas discards *where* each transition happened, so it
+cannot answer this. Re-running with the full context of every change - record,
+from-position, to-position - answered it on the first run.
+
+Every `+18` and `+36` has **`dx = 0`** and sits at a **play column**. One
+descent, per frame:
+
+    x=125:  46 -> 68 -> 68 -> 104 -> 122 -> 140 -> 140 -> 158 -> 176 -> 176
+
+So atoms have **two speeds**: 4 px/frame travelling the tube network, and
+**18 px/frame** falling down a play column. `+36` is two steps across a missed
+boundary; `+29` and `+11` are compound and partial steps where an atom enters
+the descent around y = 48.
+
+`68` is the top lane already on record for the tube struct, and the descent runs
+68, 86, 104, 122, 140, 158, 176 - 18 px from wherever the atom entered, so the
+lattice is per-atom. It is **not** the beaker's 13 px row pitch: falling is free
+motion, and settling into a grid cell is a separate step.
+
+Left explicitly unsettled: the frames where nothing moves. That could be a real
+cadence - 18 px every other frame, averaging 9 - or a sampling artefact at
+~5 reads/frame. Saying which needs more oversampling or a genuine per-frame
+breakpoint, and it is not worth guessing.
+
+Three different speeds in one game - 4 in the tubes, 18 falling, 6 for the test
+tube - which is enough on its own to retire the single `fallSpeed` constant in
+`src/game.cpp`.

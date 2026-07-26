@@ -1932,3 +1932,52 @@ right by luck. It is now right by measurement.
 Note the contrast with the **test tube**, which static analysis showed moving
 `x -= 6` / `x += 6` per frame. The tube travels at 6 px/frame and atoms at 4 -
 different rates, which is worth carrying into the port.
+
+
+## Atoms have two speeds: 4 px/frame in the tubes, 18 px/frame falling
+
+`dy = +18` appeared 62 times in the per-frame measurement and was recorded as
+real but unexplained - not a multiple of the 4 px step, not the 13 px row pitch.
+It is not an anomaly. It is the **descent**.
+
+A histogram of deltas cannot answer a question like this because it discards
+*where* each transition happened. Re-running with full context - record index,
+from-position, to-position for every frame-to-frame change - settles it at once.
+
+Every `+18` and `+36` event has **`dx = 0`** and occurs at a **play column**
+(107, 125, 143, 179, 197). One record's descent, sampled per frame:
+
+    x=125:  46 -> 68 -> 68 -> 104 -> 122 -> 140 -> 140 -> 158 -> 176 -> 176 -> 176
+    deltas:    +22   0    +36   +18   +18    0    +18   +18     0      0
+
+So:
+
+| phase | step |
+|---|---|
+| travelling the tube network (up the outer tubes, across the top) | **4 px/frame** |
+| descending a play column | **18 px/frame** |
+| the test tube sliding on its rail (static analysis) | **6 px/frame** |
+
+`+36` is two descent steps across a missed sampling boundary; `+29` and `+11`
+are compound and partial steps seen around y = 48-49, where an atom is
+transitioning into the descent.
+
+`68` is the top lane already recorded for the tube struct ("y snaps between two
+lanes: 187 at the bottom where they enter, and 68 at the top"), and the descent
+runs 68, 86, 104, 122, 140, 158, 176 from there - each atom stepping 18 px from
+whatever y it entered the column at, so the lattice is per-atom rather than
+global. The trace above ends with the atom holding at 176 for several frames,
+which is presumably where it settles before becoming a grid cell.
+
+Note the descent lattice is **not** the beaker's 13 px row pitch. Falling is free
+motion at 18 px/frame; the conversion to a settled grid cell happens separately.
+
+**Not established:** the frames where position does not change (`0` deltas in the
+trace above) could be a genuine movement cadence - 18 px every other frame,
+averaging 9 - or sampling artefacts. The sampler detects frames from the page
+index and was running at ~5 reads/frame, so a spurious repeat is possible.
+Distinguishing them needs either a higher oversampling ratio or a real per-frame
+breakpoint.
+
+Three speeds in one game, all different, is worth carrying into the port: the
+current `fallSpeed` constant in `src/game.cpp` cannot be right for both phases.
