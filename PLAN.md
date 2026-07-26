@@ -108,23 +108,46 @@ Pascal static link at `[bp+4]`. Known fields:
    whether speed is a record field, a divisor on a shared frame counter, or
    something else, by observation rather than inference.
 
-**Tooling options, cheapest first.**
+**Tooling: `jdmichaud/dosbox-mcp`** (decided). 24 tools over a DOSBox-X fork
+with a GDB stub - memory read/write, registers, linear-address breakpoints
+that account for real-mode segmentation, stepping, input injection and **save
+states**. Building the fork from autotools source is accepted cost.
 
-1. **DOSBox-X's own debugger.** Already installed. Breakpoints, memory dumps,
-   register display - most of what is needed, driven by hand. Check the build
-   has it: it requires `--enable-debug` at compile time and distro packages
-   often ship without it. Try this first; one session of manual poking says
-   whether the approach cracks this at all.
-2. **`jdmichaud/dosbox-mcp`** - an MCP server exposing 24 tools over a
-   DOSBox-X fork (`dosbox-x-remotedebug`) with a GDB stub: memory read/write,
-   register read/write, linear-address breakpoints that account for real-mode
-   segmentation, stepping, input injection, and **save states**.
+The save states are the point. Every wrong turn this session came from an
+unrepeatable inference. A save state turns each question into a controlled
+experiment: identical starting state, one variable changed, re-runnable.
 
-   The save states matter most. Every wrong turn this session came from an
-   unrepeatable inference; a save state makes each measurement re-runnable.
-   The cost is building a bespoke DOSBox-X from autotools source, and the fork
-   has no independent activity - so spend that time only once the manual loop
-   has proven the method and become the bottleneck.
+**First: fix the segment bookkeeping.** Ghidra's base segment is an arbitrary
+`0x1000`. Under DOS the program loads wherever DOS puts it, so before any
+address here is usable, break at the program entry, read `CS`, and record it.
+Every Ghidra address then maps as:
+
+        live_segment = CS_at_entry + (ghidra_segment - 0x1000)
+        so 1000:3a67  ->  CS_at_entry:3a67
+
+Getting this wrong invalidates every measurement, so confirm it by reading
+back a known constant - e.g. the column-x table should read 107, 125, 143,
+161, 179, 197 at `DGROUP:0x1a`.
+
+**Experiment 1 - find the live atom array.** Break at `1000:3a67`, read `BP`,
+then read the static link at `[bp+4]`. Array base is that minus `0x163`. Dump
+12 x 28 = 336 bytes and confirm it looks like records: x in 0..320, y in
+0..200, colour in 0..7.
+
+**Experiment 2 - watch atoms move.** Free-run and re-dump each frame. Is x
+stepped by a constant, interpolated, or recomputed from elsewhere? Static
+analysis says the fields are written whole rather than incremented, so this
+should show what actually drives them.
+
+**Experiment 3 - find the mover.** Set a write breakpoint on record 0's `+0x00`.
+Whatever traps is the code a full session of grepping failed to find. This is
+the single highest-value moment in the whole plan.
+
+**Experiment 4 - settle speed (controlled).** Save state with an atom mid-arc.
+Then: load, run N frames untouched, record positions. Load again, run N frames
+holding **B**, record positions. Same start, one variable. The difference *is*
+the speed mechanism, measured rather than inferred. Repeat with a bonus atom
+on screen for the second speed.
 
 Also worth watching once attached: the beaker grid (three parallel arrays,
 stride 6) to confirm 6 x 5 live, and the scoring counters, which are still
