@@ -603,25 +603,73 @@ Traps encountered building the C++ renderer that the Python tools did not hit:
 Cross-checking a new decoder against the Python tools (`csp_decode.py INFO`
 prints dimensions, origin and pixel count) catches both immediately.
 
-## Gameplay constants - NOT reverse engineered
+## Gameplay constants - partly reverse engineered
 
-The engine's playfield logic follows TUBES.DOC, not the binary. These values
-are hand-tuned to play sensibly and should be replaced with real ones:
+The engine's playfield logic still follows TUBES.DOC rather than the binary
+for most values. What has been measured, and what has not:
 
 | Constant | Current | Source |
 |---|---|---|
 | cell size | 16 x 13 | **real** - measured from atom sprites |
-| playfield x range | 74..245 | **real** - gap between tube walls in `GAMEFG.GFX` |
-| grid columns / rows | 7 x 10 | guess |
-| spawn interval | 1.6 s | guess |
-| fall speed | 30 / 42 / 56 px/s | guess, scaled by difficulty |
-| score per atom | 10 | guess |
-| chain bonus | 25 per extra round | guess |
+| playfield x range | 74..245 | **real** - confirmed twice, see below |
 | drop limits | 9 / 6 / 3 | **real** - stated in TUBES.DOC |
+| difficulty seed values | see below | **real** - read off `1000:9e53` |
+| difficulty progression | see below | **real** - read off `1000:9e53` |
+| grid columns / rows | 7 x 10 | still a guess |
+| spawn interval | 1.6 s | still a guess |
+| fall speed | 30 / 42 / 56 px/s | still a guess |
+| score per atom / chain bonus | 10 / 25 | still a guess |
 
-The playfield renderer at `1000:9e53` should yield the true grid dimensions
-and cell origin; the scoring tables live somewhere in the main loop at
-`1000:3a67`.
+### Playfield extent
+
+`GAMEFG.GFX` is the play-area overlay: nested tube outlines down both sides.
+From row 60 to the bottom its drawn runs are constant, the left bundle ending
+at x=73 and the right beginning at x=246. So the clear interior is
+**x 74..245**, 172 pixels. This now agrees with an earlier measurement taken
+by a different route.
+
+172 does not divide by the 16-pixel atom width, so the grid does not span the
+full interior and the column count cannot be inferred from this alone.
+
+### `BEAKER.CSP` is not the playfield container
+
+Worth recording as a dead end. Its walls sit at sprite columns 4-5, 22-26 and
+108-109, which do not divide into 16-pixel cells on any reading. It is 114x65
+with a plain rectangular outline - probably the "beakers remaining" indicator
+or a cutscene prop, not the thing atoms fall into.
+
+### `1000:9e53` is the game session, not the playfield renderer
+
+An earlier note called this the playfield renderer. It is not. It:
+
+1. loads the play-area art - `TESTUBE1..3`, `GAMEFG`, `BEAKER`, `BEAKERS`,
+   `TUBEH`, and the `GAMEBG1..10` series, the last built by concatenating
+   `GAMEBG` with a loop counter into a 19-entry-per-index pointer table;
+2. seeds the difficulty state, either from a saved game or from defaults;
+3. runs the frame loop, calling `1000:3a67`.
+
+`1000:3a67` takes no arguments yet reads its caller's stack frame, which
+means it is a **nested Pascal procedure** of `9e53` and shares its locals.
+That is why the difficulty variables are locals rather than globals, and it
+is the reason to decompile the two together rather than separately.
+
+### Difficulty seed and progression
+
+Read directly off the new-game branch. The variables are not yet named - what
+each one controls still has to be traced into `3a67`:
+
+        seed:  3, 30, 2, 0, 3, 8      plus globals [0x1d49]=50, [0x1d4a]=25
+
+        every 15 levels:  one counter += 32, another += 11
+        every 20 levels:  three counters += 1, and one += 10
+
+A saved game restores these from globals at `0x1d10`..`0x1d19` instead.
+
+**Caution recorded deliberately:** this function compares a level counter
+against `0x4a` = 74, which is also the playfield's left edge in pixels. The
+two are unrelated. Grepping decompiler output for a known constant will find
+coincidences, so every hit needs its surrounding context read before it is
+believed.
 
 Input uses the same bit layout as a recorded `.SCR` demo (`0x01` up, `0x02`
 down, `0x04` left, `0x08` right, `0x10` A, `0x20` B) so a recording can later

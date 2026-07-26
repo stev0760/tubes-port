@@ -98,11 +98,15 @@ paid off. Keep it up.
 
 ## Things known to be provisional
 
-Gameplay constants are hand-tuned, not recovered — the grid is a guess at
-7x10, as are spawn rate, fall speeds and scoring. Real values should come
-from the playfield renderer at `1000:9e53` and the main loop at `1000:3a67`.
-Measured-real values: 16x13 cells, playfield x range 74..245, drop limits
-9/6/3.
+Gameplay constants are partly recovered. **Measured:** 16x13 cells,
+playfield x range 74..245, drop limits 9/6/3, and the difficulty seed and
+progression rules in `1000:9e53`. **Still guessed:** grid columns and rows
+(7x10), spawn rate, fall speeds, scoring.
+
+`1000:9e53` is the game *session* — it loads the play-area art, seeds
+difficulty, then runs the frame loop. `1000:3a67` is a **nested Pascal
+procedure** inside it, sharing its locals, which is why it appears to take no
+arguments. Decompile the two together.
 
 Presentation is incomplete: `BEAKER.CSP` is not drawn, so atoms appear to
 float, and the test tube's vertical placement is approximate.
