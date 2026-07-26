@@ -974,3 +974,52 @@ Incidentally: the in-play HUD in this mode shows only `Chains` and `Drops`, with
 no colour counters - consistent with the report that ball and match-type counters
 appear only in certain modes, which is where the seven half-size balls at
 `DS:0x200a` most likely live.
+
+### Loading the save: waves, the save format, and the half-size balls
+
+Loading the user's saved game answered three open questions at once, and started
+with a mistake worth recording.
+
+`TUBES.SAV` has 24 non-zero bytes in 960, and I looked at that sparsity and said
+there was no level-6 save on disk. Wrong - it *was* the save, just a sparse
+record. Reading it properly gave a Pascal ShortString "Stephen" at `0x1e0`, a u32
+at `0x1ff`, and `06` at `0x206`. The lesson is a familiar one in this project: a
+low byte count is not evidence of an empty file, and the fix was to decode rather
+than to eyeball a hexdump.
+
+Loading it under the debugger then **confirmed three fields against the running
+game**, which is the strongest kind of check available for a save format - the
+program renders the values:
+
+    0x1e0  "Stephen"   -> slot list shows Stephen
+    0x1ff  24500       -> in-play HUD shows 24500
+    0x206  6           -> slot list shows Wave 6
+
+and two more match a single sample: `0x207` = 11 against "You are allowed 11
+drops", `0x20d` = 30 against "live through 30 atoms".
+
+**The slot list is filtered by game mode.** Endurance showed five
+`(UNAVAILABLE)` entries for a save that Wave Mode listed immediately. So the
+first attempt looked like a missing save and was not.
+
+**Wave briefings are the wave definition, in prose.** Wave 6: survive 30 atoms,
+**Yellowium disabled for the wave and will not disappear**, 11 drops allowed. So
+waves carry an objective, a disabled element, and their own drop allowance - which
+refines the 9/6/3 triple to being the *Endurance* difficulty setting. A
+disabled-but-still-spawning element is a mechanic the port has no concept of.
+
+**The seven half-size balls are Wave-mode HUD counters** - the open question about
+their draw site. Drawn top-left beneath `Chains`, with the count overlaid, and
+absent in Endurance, which is why earlier captures never showed them.
+
+And a correction inside the same session: I sampled the counter every 3.5 s,
+saw cyan and magenta, and wrote it up as a two-colour blink with the semantics
+unresolved. The user suspected rotation; re-sampling at 0.6 s showed **all seven
+element colours** cycling. A sampling interval chosen for convenience aliased a
+7-cycle into a 2-cycle - the same class of error as the wall-clock sampler in
+Experiment 2, twice in one session.
+
+That connects to Flashium, which cycles `1..7` for want of a sprite. Two things
+rotating the same seven colours points at one shared rendering path, and gives a
+concrete explanation for the type-8 pointer being caught on `BLUEBALL`: an index
+mid-rotation. Testable by reading that pointer repeatedly.

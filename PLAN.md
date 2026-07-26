@@ -514,8 +514,18 @@ Cheap and high-impact once the mechanic is settled.
   25, stepping every 15 and every 20 levels, with level bands at
   30 / 60 / 75 / 90 / 95 / 101. Variables not yet named; trace them from
   `9e53` into `3a67` through the Pascal static link.
-- special atoms, wave and endurance modes
-- save/load (`TUBES.SAV` is 960 bytes)
+- **wave definitions.** A wave briefing carries an objective ("live through 30
+  atoms"), a **disabled element** that still spawns but cannot be cleared, and its
+  own **drop allowance** (11 on wave 6). So the measured 9/6/3 triple is the
+  Endurance difficulty setting; Wave mode overrides it per wave. The
+  disabled-element rule has no equivalent in the port yet.
+- special atoms; Endurance vs Wave mode selection sits under a Game Mode menu,
+  and saved games are filtered by mode
+- save/load. `TUBES.SAV` is 960 bytes and very sparse. **Partly decoded and
+  confirmed against the running game**: player name at `0x1e0` (Pascal
+  ShortString), score u32 at `0x1ff`, wave number at `0x206`; `0x207` and `0x20d`
+  match the wave's drop allowance and atom target from one sample. See
+  `docs/reversing-notes.md`.
 
 ### 4. The other screens
 

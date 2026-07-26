@@ -1725,3 +1725,98 @@ returns the lowest record still parked at the spawn marker and record 0 happened
 to be in flight. **The lowest parked record is not necessarily record 0.** Anchor
 on the lowest hit whose spacing to the others is a multiple of 28 *and* extend
 downwards while the stride holds.
+
+
+## `TUBES.SAV` - partly decoded, and confirmed against the running game
+
+Previously an open question. Loading the save under the debugger and comparing
+what the game displays against the file settles several fields, because the
+displayed values can be read straight off the screen.
+
+The file is 960 bytes and extremely sparse - the sample here has **24 non-zero
+bytes**, which is why it was briefly mistaken for an empty file.
+
+| offset | bytes | meaning | how confirmed |
+|---|---|---|---|
+| `0x1e0` | `07` + `"Stephen"` | Pascal ShortString, player name | slot list shows `Stephen` |
+| `0x1ff` | `b4 5f 00 00` = 24500 | score (u32 LE) | in-play HUD shows **24500** |
+| `0x206` | `06` | wave number | slot list shows **Wave 6** |
+| `0x207` | `0b` = 11 | drops allowed | briefing says "You are allowed **11** drops" |
+| `0x20d` | `1e` = 30 | atoms to survive | briefing says "live through **30** atoms" |
+
+The first three are confirmed - the game renders those exact values. The last two
+are a strong correspondence from a **single** save; confirming them needs a
+second save at a different wave and a diff.
+
+Other non-zero bytes not yet accounted for: `0x1bb` = `eb`, `0x204` = `18`,
+`0x20b` = `41`, `0x39b` = `f3`, and singles at `0x203`, `0x208`, `0x20a`, `0x20c`,
+`0x20e`, `0x210`, `0x211`.
+
+## Menu structure, and Wave mode
+
+    Main menu
+      Start Game / Continue Saved Game / Game Options / High Scores /
+      Instructions / View Demo / Credits / Exit Tubes
+    -> Game Mode
+      Endurance Mode / Wave Mode / Exit
+    -> Saved Games Available
+      five slots, each "<name>  Wave <n>", or "(UNAVAILABLE)"
+
+**The slot list is filtered by mode.** Choosing Endurance showed five
+`(UNAVAILABLE)` entries for a save that Wave Mode lists immediately - so saves
+belong to a mode, and a missing save is not necessarily absent.
+
+### Wave briefings define the wave
+
+Each wave opens on a briefing slide. Wave 6 reads:
+
+> **Wave 6.** Form as many chains as you possibly can to live through 30 atoms.
+> **Yellowium is disabled for the duration of this wave and will not disappear.**
+> You are allowed 11 drops.
+
+So a wave definition carries at least: an **objective** (survive N atoms), a
+**disabled element** - which still spawns but cannot be cleared - and a **drop
+allowance**.
+
+That last point refines the drop limits. The measured `9 / 6 / 3` triple is not
+the whole story: **waves carry their own allowance** (11 here), so 9/6/3 is
+presumably the Endurance difficulty setting while Wave mode overrides it
+per-wave.
+
+"Disabled ... and will not disappear" is a mechanic the port has no concept of:
+an element that participates but is unmatchable for the duration.
+
+## The half-size balls are HUD counters (solved)
+
+The seven 8x7 sprites at `DS:0x200a` had no known draw site. They are **Wave mode
+HUD elements**, drawn top-left beneath `Chains`, with a count overlaid on the
+ball in the HUD font.
+
+Measured across samples in Wave 6: the count runs **24 -> 22**, decreasing, which
+matches the briefing's "live through 30 atoms" counting down.
+
+**The counter cycles through all seven element colours.** A first pass sampling
+every 3.5 s caught only cyan and magenta and read it as a two-colour blink - that
+was an aliasing artefact. Re-sampled at 0.6 s intervals, twelve consecutive
+captures render in yellow, purple, cyan, green, red, magenta and blue: the
+complete ordinary-colour set, rotating.
+
+That is the **same** behaviour as Flashium, which cycles `1..7` because it has no
+sprite of its own. Two HUD-and-playfield elements cycling the same seven colours
+strongly suggests one shared rendering path - a frame-driven index into the
+`DS:0x1da6` type table - rather than two coincidental effects. It also offers an
+explanation for the type-8 measurement: the ball pointer caught holding
+`BLUEBALL` would be that index mid-rotation, which is exactly what "rewritten as
+it flashes" predicted.
+
+Worth testing directly, and now cheap: read the type-8 ball pointer repeatedly
+and see whether it walks the same seven sprites in the same order.
+
+Wave-mode HUD layout:
+
+    Chains <n>          <score>            <n> Drops
+    <small ball + count>
+
+Endurance mode showed `Chains` and `Drops` only, with no ball counter - which is
+why this never appeared in earlier captures, and matches the report that these
+counters exist "in certain modes".
