@@ -245,9 +245,60 @@ suggests a shadow or mask variant alongside each sprite. Unconfirmed.
 Both `.RES` files begin with the ASCII banner `Absolute Magic Resource File!`
 followed by `\r\n\x1a` (32 bytes total), then what appears to be a table.
 
-`TUBES.RES` bulk data shows a strongly regular pattern of `FF` followed by
-8-byte groups, suggesting a run/literal marker scheme over VGA pixel data.
-Unconfirmed.
+The container format is **solved**, recovered by decompiling the loader at
+`2407:0146`. See `tools/res_extract.py`.
+
+    header (39 bytes)
+      [0..31]   "Absolute Magic Resource File!\r\n\x1a"
+      [32]      format version (always 1)
+      [33..34]  entry count            u16
+      [35..38]  directory file offset  u32
+
+    directory: `count` x 26-byte entries at the directory offset,
+    running exactly to end of file
+      [0]       name length (Pascal ShortString)
+      [1..12]   name, NUL-padded to 12 bytes (8.3)
+      [13]      type / flags (always 1 in both shipped files)
+      [14..17]  uncompressed size      u32
+      [18..21]  stored size            u32
+      [22..25]  file offset            u32
+
+Validated against both shipped containers with zero discrepancies: payloads
+start at offset 39 immediately after the header, are laid out contiguously
+with no gaps, end exactly where the directory begins, and the directory ends
+exactly at EOF.
+
+| | `TUBES.RES` | `DRIVERS.RES` |
+|---|---|---|
+| entries | 228 | 11 |
+| directory at | 518,092 | 7,166 |
+| stored -> raw | 518,053 -> 1,437,240 (36.0%) | 7,127 -> 8,952 (79.6%) |
+
+Content of `TUBES.RES` by extension:
+
+| Ext | Count | Likely |
+|---|---|---|
+| `CSP` | 108 | sprites |
+| `GFX` | 73 | images / bitmaps |
+| `SFX` | 24 | digital sound effects |
+| `MUS` | 10 | FM/Adlib music |
+| `816`, `88` | 5 | fonts? (8x16 / 8x8) |
+| `PAL` | 3 | palettes |
+| `SPR` | 2 | sprites, second form |
+| `SCR` | 1 | `DEMO.SCR` - cutscene script |
+| `ANM` | 1 | animation |
+| `BIN` | 1 | raw data |
+
+`DRIVERS.RES` holds 11 `.DRV` payloads, compressing far less well (79.6%),
+consistent with them being 8086 code rather than pixel data.
+
+### Payload compression - still open
+
+Payloads are compressed (2.8:1 overall). `tools/res_extract.py EXTRACT`
+writes the raw stored bytes; the codec is not yet implemented. The `FF`
+followed by 8-byte groups pattern noted earlier is the next thing to chase,
+and the decompressor should be reachable from the fetch routines at
+`21ea:03c4` and `21ea:035b`, which are called with individual asset names.
 
 `DRIVERS.RES` contains real 8086 code — `55 8B EC ... CA 02 00`
 (`push bp; mov bp,sp; ... retf 2`), i.e. far-called driver entry points for
