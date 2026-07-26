@@ -399,7 +399,7 @@ Both reached through the Pascal static link from `9e53`'s frame:
 | base | shape | what |
 |---|---|---|
 | `parent - 0x163` | 12 x 28 bytes | the atoms |
-| `parent - 0x16a` | one struct | **the player's test tube** - *not confirmed live*: diffing a +/-1 KiB window around the atom array while moving the tube found no word holding a waypoint target or stepping by 6 |
+| `parent - 0x16a` | one struct | **the player's test tube** - now **located live at `0x245d0`**, but *not* where this implies: it sits `0x432` bytes **above** the atom array, not 7 bytes below. The field layout is confirmed; the parent-relative relationship is wrong |
 
 The single struct was read for most of a session as "the atom currently
 travelling the arc". It is not. At `0x66f0` it only acts when its direction is
@@ -417,14 +417,21 @@ Five things corroborate it, none of which fit a travelling atom:
   (`phase << 2` at `0x7b2f`) - an animation, and A is the dump action.
 - Its y values are 68 and 187, and the tube hangs at 69.
 
-### The test tube's state machine
+### The test tube's state machine - **confirmed live**
 
-| `+0x04` | meaning |
-|---|---|
-| 0 | parked at a column, accepting input |
-| 1 | sliding left, `x -= 6` per frame |
-| 2 | sliding right, `x += 6` per frame |
-| 3 | tipping: 4-frame animation, one frame per 2 game frames |
+Struct at **`0x245d0`**; x `+0x00`, state `+0x04`, waypoint index `+0x1e`,
+target x `+0x1f`, all bytes. Driving each input and reading `+0x04`:
+
+| `+0x04` | meaning | observed |
+|---|---|---|
+| 0 | parked at a column, accepting input | idle |
+| 1 | sliding left, `x -= 6` per frame | hold Left |
+| 2 | sliding right, `x += 6` per frame | hold Right |
+| 3 | tipping: 4-frame animation | press Button A |
+
+x was seen stepping 104, 110, 116, ... 194 - the 6 px/frame rail speed - and the
+targets are exactly 104, 122, 140, 158, 176, 194 with the index tracking 1..6.
+The **live score** is a `u32` at `0x245e7`.
 
 Left and right also step the waypoint index at `+0x1e` (`dec`/`inc`), bounded
 at 6, so the tube stops on column centres.

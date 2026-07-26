@@ -2222,3 +2222,70 @@ So the type array is confirmed and located; whether two companion arrays sit
 immediately below it is **open**. The test is to settle a *special* - the flag
 that distinguishes one, if it exists, should appear in one of those blocks while
 the type array holds the special's type.
+
+
+## The test tube struct, located and confirmed
+
+`PLAN.md` described this struct from static analysis and it had never been found
+in a running game. An earlier hunt diffed +/-1 KiB around the atom array while
+nudging the tube two columns, and found nothing.
+
+**What worked was reversibility.** Park left, park right, park left again, and
+keep only the bytes that changed *and returned*. Frame counters, RNG state and
+score do not go back, so that one constraint removes almost all the churn that
+made the earlier diff useless. Three bytes survived:
+
+    0x245d0 : 104 -> 194 -> 104
+    0x245ee :   1 ->   6 ->   1
+    0x245ef : 104 -> 194 -> 104
+
+`104` and `194` are the outermost waypoint targets, and `0x245ee`/`0x245ef` are
+adjacent holding an index/target pair - exactly the `+0x1e` / `+0x1f` layout the
+static reading gave. That puts the base at `0x245ee - 0x1e` = **`0x245d0`**, and
+that byte holds x.
+
+### Confirmed against the state machine, which was not used to find it
+
+Fitting a base to three numbers proves nothing on its own, so it was tested
+against a field it had not been fitted to - `+0x04`, the state:
+
+| input | `+0x04` observed | x |
+|---|---|---|
+| idle | `0` | 158 |
+| hold **Left** | `0`, **`1`** | 104, 110, 116, 122, ... 158 |
+| hold **Right** | `0`, **`2`** | ... 164, 170, up to 194 |
+| press **Button A** (Left Ctrl) | **`3`** | 194 |
+
+Exactly the documented machine - 0 parked, 1 sliding left, 2 sliding right,
+3 tipping. Three further things fall out of the same run:
+
+- **x steps by 6**, taking 104, 110, 116, 122, 128, 134, 140, 146, 152, 158,
+  164, 170 - the 6 px/frame rail speed, confirmed live.
+- **The waypoint targets are exactly** 104, 122, 140, 158, 176, 194, and the
+  index runs 1..6 in step with them.
+- Button A driving state 3 **independently re-confirms A = Left Ctrl**.
+
+| offset | field | width |
+|---|---|---|
+| `+0x00` | x | byte |
+| `+0x04` | state: 0 parked, 1 left, 2 right, 3 tipping | byte |
+| `+0x1e` | waypoint index, 1..6 | byte |
+| `+0x1f` | target x | byte |
+
+### Two corrections
+
+**The tube is not adjacent to the atom array.** `PLAN.md` has the atoms at
+`parent - 0x163` and the tube at `parent - 0x16a`, i.e. seven bytes apart with
+the tube *below*. Measured, the tube is at `0x245d0` and the array at `0x2419e` -
+**`0x432` bytes apart, with the tube above**. The two static offsets are right
+about the field layout *within* each structure and wrong about the relationship
+between them.
+
+**It is probably not a self-contained record.** The 34 bytes read from
+`0x245d0` include the **score** as a `u32` at `+0x17` (`0x245e7`), reading 24500
+and matching both the HUD and `TUBES.SAV`. A tube record would not contain the
+score. These are more likely adjacent locals of `1000:9e53` - which is what a
+Pascal nested-procedure frame looks like - so "the tube struct" is a group of
+neighbouring variables rather than a record.
+
+Useful side effect: **the live score is at `0x245e7`**.

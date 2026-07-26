@@ -1288,3 +1288,39 @@ resource name, not a second grid. The 60 bytes before are all zero, which is
 consistent with two empty companion arrays but is equally consistent with
 nothing - zeroes are not evidence. Marked open, with a concrete test: settle a
 special and see whether a flag appears alongside its type.
+
+### The test tube struct, found by reversibility
+
+The earlier attempt diffed +/-1 KiB around the atom array while nudging the tube
+two columns and found nothing. Three things were wrong with it: the signal was
+small, the scan read 16-bit words when the fields turn out to be **bytes**, and
+there was no way to separate the tube from everything else that changes.
+
+What worked was a **reversibility control**. Park left, park right, park left
+again, and keep only bytes that changed *and returned to their original value*.
+Counters, RNG state and score never go back, so that single constraint removed
+essentially all the noise. Three bytes survived, two of them adjacent and holding
+an index/target pair matching the static `+0x1e`/`+0x1f` layout, which placed the
+base at `0x245d0`.
+
+Then - the part that makes it evidence rather than a fit - it was **tested
+against a field it had not been fitted to**. `+0x04`, the state, was driven
+deliberately: idle gave 0, hold Left gave 1, hold Right gave 2, Button A gave 3.
+Exactly the documented machine, from a struct located without reference to it.
+
+The same run confirmed x stepping by 6 (the rail speed), the six waypoint targets
+104..194 with the index tracking 1..6, and - independently for the third time -
+that Button A is Left Ctrl.
+
+**Two corrections.** `PLAN.md` puts the atoms at `parent - 0x163` and the tube at
+`parent - 0x16a`, seven bytes apart with the tube below. Measured, they are
+`0x432` apart with the tube **above**. The static offsets are right about the
+fields *within* each structure and wrong about the relationship between them.
+
+And it is probably not a self-contained record: the bytes read from `0x245d0`
+include the **score** as a u32 at `+0x17`, reading 24500 and matching both the
+HUD and the save file. A tube record would not contain the score, so these are
+adjacent locals of `1000:9e53` rather than a struct - which is what a Pascal
+nested-procedure frame looks like from the outside.
+
+Useful by-product: the live score is at `0x245e7`.
