@@ -457,11 +457,14 @@ hangs at **y = 134 - 65 = 69**.
 
 Cheap and high-impact once the mechanic is settled.
 
-- 66 fade sprites: 11 families x 6 frames, the atom-clear animation. The
-  families are now identified - the seven colours plus `AFADE` (anti),
-  `GLDFADE` (gold), `CRFADE` (crystal) and `FFADE` (Flashium). That list is
-  also the **matchable set**: the letter balls, `XENBALL`, `OBSTBALL` and the
-  eight small balls have no fade family, so they are not cleared by matching.
+- 66 fade sprites: 11 families x 6 frames, the atom-clear animation. Seven are
+  the ordinary colours; the others are `GLDFADE` (gold), `CRFADE` (crystal),
+  `FFADE` (**`MULTBALL`** - known from play, *not* from the initial) and
+  `AFADE` (anti, guessed from the initial alone). Do not trust initials here -
+  `FFADE` belongs to a ball marked `M`. The mapping is readable at runtime from
+  the sprite table `9e53` fills. The eleven families are also the **matchable
+  set**: `XENBALL`, `OBSTBALL`, the small balls and the other letter balls have
+  no fade family, so matching does not clear them.
 - `.SFX` through SDL audio, mixed alongside the OPL output
 - HUD: the reference screenshot shows chains, score and drops across the top
 - Fonts are decoded but never drawn

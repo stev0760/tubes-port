@@ -671,3 +671,34 @@ Two concrete leads for the debugger, both cheaper than blind search:
    the three-Flashium match could not be detected. The beaker grid is three
    parallel arrays of stride 6, so the marker is very likely in one of the other
    two. Dump all three with a Flashium settled.
+
+#### Correction, same session: `FFADE` is `MULTBALL`'s, not Flashium's
+
+I mapped the four non-colour fade families by their initials and presented the
+result as identified. The user corrected `FFADE` from play: the multicoloured
+mosaic is what three matched **`MULTBALL`s** produce. `F` belongs to a ball whose
+sprite is marked `M`, so the initials are not a reliable key, and `AFADE` -> anti
+is now flagged as resting on nothing but its letter.
+
+A claim was withdrawn with it. I had argued that `FFADE` existing independently
+confirmed Flashium having no static sprite, i.e. two sources agreeing. It does
+not, since `FFADE` is not Flashium's. What survives is the single weaker
+observation that no `FLASHBALL` exists anywhere in `TUBES.RES`.
+
+The mapping should be *measured*, not spelled: `9e53` fills the far-pointer table
+the draw code indexes, so settling a known ball and clearing it shows which fade
+sprites are used. Cheap now, and it retires the argument entirely.
+
+Then two further accounts closed the loop. Flashium "matches any colour, no
+static sprite, flashes the others while settled, three together give the unique
+animation" and `MULTBALL` "matches any colour but inherits that stack's colour
+animation when cleared" are descriptions of the **same ball** - the wildcard,
+called Flashium in the cutscene and `MULTBALL` in the resource. Which yields the
+rule that matters for the port: **the fade family is selected by the colour
+actually matched, not by the ball's identity**, with `FFADE` reserved for three
+wildcards together. That is also why eleven families suffice for twenty-five
+balls.
+
+Net: one wrong identification, caught by the user within minutes because it had
+been written down as a claim with its basis stated. Inferring from resource names
+is fine; presenting it as identification was the error.

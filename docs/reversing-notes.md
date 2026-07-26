@@ -1302,27 +1302,64 @@ next, and it is cheap now: dump all three arrays with a Flashium settled.
 families being identified. They are, and the list is more informative than the
 ball inventory:
 
-| family | what clears |
-|---|---|
-| `RFADE` `GFADE` `BFADE` `CFADE` `PFADE` `YFADE` `PNKFADE` | the seven ordinary colours |
-| `AFADE` | `ANTIBALL` |
-| `GLDFADE` | `GOLDBALL` |
-| `CRFADE` | **`CRYSTAL`** |
-| `FFADE` | **Flashium** |
+| family | what clears | how known |
+|---|---|---|
+| `RFADE` `GFADE` `BFADE` `CFADE` `PFADE` `YFADE` `PNKFADE` | the seven ordinary colours | initials, unambiguous |
+| `GLDFADE` | `GOLDBALL` | initials |
+| `CRFADE` | **`CRYSTAL`** | initials |
+| `FFADE` | **`MULTBALL`** (the `M` ball) | **from play** |
+| `AFADE` | `ANTIBALL`? | guessed from the initial only |
 
-Two things follow directly.
+**The `FFADE` row is a correction.** It was first written up as Flashium's,
+purely because `F` looked like it should mean "flash". The user has it from play:
+the multicoloured mosaic is what you see when **three `MULTBALL`s** are matched.
+So the letter-to-family mapping is *not* reliable for the non-colour families -
+`F` belongs to a ball whose sprite is marked `M`, and `AFADE` is therefore a
+guess too, resting on nothing but its initial.
 
-**Flashium is confirmed to have no static sprite.** There is no `FLASHBALL` (or
-any variant) anywhere in `TUBES.RES` - but there *is* a full six-frame `FFADE`
-family. A wildcard that renders as the other colours while settled, and has its
-own clear animation only when three of them match, is exactly the shape of that
-evidence. `FFADE1` is a ball made of **every colour at once**, a multicoloured
-mosaic, which is the visual counterpart.
+**Measure it rather than spelling it.** `1000:9e53` loads the sprites into the
+far-pointer table the draw code indexes, so the association is readable at
+runtime: settle a known ball, clear it, and see which fade pointers get used.
+That is cheap now and would replace the whole initials argument.
+
+**A claim withdrawn.** This section previously argued that the existence of
+`FFADE` independently confirmed Flashium having no static sprite. It does not -
+`FFADE` is `MULTBALL`'s. What survives is the weaker but still real observation
+that **no `FLASHBALL` sprite exists anywhere in `TUBES.RES`**, which is
+consistent with a wildcard drawn by borrowing other colours, but is one source
+rather than two.
+
+### The wildcard is `MULTBALL`, and Flashium is its element name
+
+Two separate accounts from play describe one ball, which is what ties this
+together. Flashium "matches any colour, has no static sprite of its own, flashes
+the other sprites while settled, and only three matched together give the unique
+animation"; `MULTBALL` "will match any colour, but inherits that stack's colour
+animation when cleared". Same ball, named once from the cutscene and once from
+the resource.
+
+So the wildcard is:
+
+- **Travelling:** the grey `M` sprite, so it stays legible in the tube.
+- **Settled:** no sprite of its own - it cycles the ordinary colours, which is
+  the `1..7` increment-and-wrap loop the playfield notes recorded.
+- **Cleared in a coloured stack:** uses **that colour's** fade family.
+- **Cleared as three wildcards:** uses `FFADE`, the multicoloured mosaic.
+
+That last pair is the useful bit for the port: **the fade family is chosen by the
+colour actually matched, not by the ball's own identity.** It also explains why
+eleven families cover twenty-five balls - the seven colour families are shared
+between the ordinary balls and any wildcard that matched them.
+
+The cutscene names eight elements and seven are plainly the ordinary colours, so
+the eighth - "Flashium", a flashing name - being this ball is as close to certain
+as an unread inference gets. Still, the *name* link is an inference; the
+behaviour is the reported part.
 
 **The matchable set is these eleven, not the twenty-five balls.** Only things
-that can be cleared need a fade family, so the six letter balls, `XENBALL`,
-`OBSTBALL` and the eight small balls are *not* cleared by matching - they do
-something else.
+that can be cleared need a fade family, so `XENBALL`, `OBSTBALL`, the eight small
+balls and the letter balls other than `MULTBALL` are *not* cleared by matching -
+they do something else.
 
 ### `CRYSTAL` and `MARKER`
 
