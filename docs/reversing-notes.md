@@ -794,3 +794,36 @@ than DRO's 127-entry codemap can name. OPL registers are state rather than
 triggers, so rewriting an identical value never retriggers an envelope and the
 pruning is lossless from reset. The C++ player keeps the full sweep, since it
 must also do the right thing on a chip with leftover state.
+
+### The instrument bank - 12 patches, and why a GM bank cannot hold them
+
+`tools/mus_decode.py bank` gathers every distinct patch across all ten songs.
+The entire soundtrack uses **12**: 7 melodic and 5 percussion.
+
+The obvious next step - export a standard OPL bank (DMX `OP2`, `WOPL`) so the
+music plays faithfully in an external MIDI player - **does not work**, and the
+reason is worth recording because it is not obvious:
+
+- Standard OPL banks are keyed by **GM program number**.
+- The game reuses **program 0 for four unrelated patches**. The composer
+  evidently treated it as "unlabelled" rather than "grand piano".
+
+So a GM-keyed bank silently merges four distinct instruments into one slot.
+Any faithful export must key patches by their own bytes, not by the GM number,
+and remap the program changes to match.
+
+This also means the *engine* needs no bank at all: patches arrive inside each
+`.MUS` as `0x1c` events and are loaded at runtime. A bank is only ever an
+interchange artifact for external tools.
+
+Other observations from the bank dump:
+
+- Every patch uses **waveform 0** (pure sine) on both operators, even though
+  init sets `reg 0x01 = 0x20` to unlock the other three OPL2 waveforms. The
+  composer never used them.
+- All five percussion patches sit on their own channels, and the bass drum is
+  the only two-operator one - matching the driver's `ch <= 6` test rather than
+  the `ch < 6` melodic/percussion split. The two boundaries differ by one, and
+  conflating them is an easy mistake to make.
+- Percussion patch reuse is musically coherent: one patch serves GM notes 35
+  and 36 (both bass drums), another serves 38 and 40 (both snares).

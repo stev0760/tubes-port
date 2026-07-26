@@ -557,6 +557,84 @@ def cmd_dump(args):
         print('... %d more events (--all to see them)' % (len(events) - limit))
 
 
+def decode_patch(regs, two_op=True):
+    """Spell out an 11-byte AdLib patch as OPL2 register fields."""
+    def op(av, tl, ad, sr, wf):
+        return dict(
+            trem=bool(av & 0x80), vib=bool(av & 0x40),
+            sustain=bool(av & 0x20), ksr=bool(av & 0x10), mult=av & 0x0F,
+            ksl=tl >> 6, level=tl & 0x3F,
+            attack=ad >> 4, decay=ad & 0x0F,
+            sus_level=sr >> 4, release=sr & 0x0F,
+            wave=wf & 0x07)
+    out = {'mod': op(regs[0], regs[2], regs[4], regs[6], regs[8])}
+    if two_op:
+        out['car'] = op(regs[1], regs[3], regs[5], regs[7], regs[9])
+        out['feedback'] = (regs[10] >> 1) & 0x07
+        out['connection'] = 'AM' if regs[10] & 1 else 'FM'
+    return out
+
+
+def fmt_op(o):
+    return ('mult %2d  lvl %2d  ksl %d  atk %2d dec %2d sus %2d rel %2d  '
+            'wave %d %s%s%s%s' % (
+                o['mult'], o['level'], o['ksl'], o['attack'], o['decay'],
+                o['sus_level'], o['release'], o['wave'],
+                'T' if o['trem'] else '-', 'V' if o['vib'] else '-',
+                'S' if o['sustain'] else '-', 'K' if o['ksr'] else '-'))
+
+
+def collect_bank(paths):
+    """Gather every distinct OPL patch, keyed by its own bytes.
+
+    Deliberately not keyed by GM program: the game reuses program 0 for
+    several unrelated patches, so a GM-keyed bank would silently merge them.
+    """
+    bank = {}
+    for path in paths:
+        events, _ = parse(open(path, 'rb').read())
+        for ev in events:
+            if ev.cmd != CMD_INSTRUMENT:
+                continue
+            patch = bytes(ev.args[1:])
+            entry = bank.setdefault(patch, {
+                'gm': set(), 'percussive': ev.channel >= PERCUSSION_BASE,
+                # The driver's two-operator test is `ch <= 6`, so the bass
+                # drum is percussive *and* two-operator. Do not conflate.
+                'two_op': ev.channel <= 6, 'uses': []})
+            entry['gm'].add(ev.args[0])
+            entry['uses'].append((os.path.basename(path), ev.channel))
+    return bank
+
+
+def cmd_bank(args):
+    paths = sorted(args.paths)
+    bank = collect_bank(paths)
+    melodic = [(p, e) for p, e in bank.items() if not e['percussive']]
+    drums = [(p, e) for p, e in bank.items() if e['percussive']]
+
+    print('%d distinct OPL patches across %d files '
+          '(%d melodic, %d percussion)\n'
+          % (len(bank), len(paths), len(melodic), len(drums)))
+
+    for label, group in (('MELODIC', melodic), ('PERCUSSION', drums)):
+        print('== %s ==' % label)
+        for i, (patch, e) in enumerate(group):
+            gm = ','.join(str(g) for g in sorted(e['gm']))
+            songs = sorted({s for s, _ in e['uses']})
+            chans = sorted({c for _, c in e['uses']})
+            tag = 'GM note' if e['percussive'] else 'GM prog'
+            print('  [%d] %s %-8s  channels %s' % (i, tag, gm, chans))
+            print('      bytes %s' % ' '.join('%02x' % b for b in patch))
+            d = decode_patch(patch, two_op=e['two_op'])
+            print('      mod  %s' % fmt_op(d['mod']))
+            if 'car' in d:
+                print('      car  %s' % fmt_op(d['car']))
+                print('      %s, feedback %d' % (d['connection'], d['feedback']))
+            print('      used by %s' % ', '.join(songs))
+        print()
+
+
 def cmd_midi(args):
     data = open(args.path, 'rb').read()
     events, _ = parse(data)
@@ -593,6 +671,11 @@ def main():
     p.add_argument('out')
     p.add_argument('--driver')
     p.set_defaults(func=cmd_midi)
+
+    p = sub.add_parser('bank', help='list every distinct OPL patch')
+    p.add_argument('paths', nargs='+')
+    p.add_argument('--driver')
+    p.set_defaults(func=cmd_bank)
 
     p = sub.add_parser('dro', help='export an OPL2 register log (DRO v2)')
     p.add_argument('path')
