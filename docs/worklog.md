@@ -1359,3 +1359,46 @@ turns catching an injected atom from luck into patience, and it would unblock th
 crystal too.
 
 `BUBBLE` was not reached.
+
+### Level-warping the save: the wave table, the crystal, and MARKER
+
+The crystal hunt was failing because it was aimed at the wrong wave. Waves have
+different objectives and constraints, and the crystal is gated to late ones - no
+amount of playing wave 6 would ever have produced it.
+
+The way in was already measured: `TUBES.SAV` holds the wave number at `0x206`.
+Editing that byte and loading warps to the wave, and **there is no checksum** -
+the slot list reads back "Wave 20" and the briefing that follows is that wave's.
+Validated on consecutive waves (10, 11, 12 all differ), so the byte really does
+select the definition rather than just relabel it.
+
+That turns the whole wave table into something readable without playing, and it
+answered three open questions at once.
+
+**The crystal is the "Mischief Crystal"** (wave 50): *"Using Anti-Matter remove
+all the Mischief Crystals that are contaminating the beaker."* So it is
+destroyed with **AntiMatter, not by matching** - which resolves the oddity of
+type 18 carrying a full `CRFADE` family while never forming a chain. It also
+corrects an earlier note of mine that called types 1-10 plus 18 "the matchable
+set": a fade family means *clearable*, which is not the same as *matchable*.
+
+**`MARKER` is solved** (wave 20): *"Form chains to remove marked atoms from the
+beaker. Marked Atoms: 3"*, illustrated with the red X that `MARKER.CSP` draws. It
+overlays beaker atoms a wave objective requires clearing. Previously filed as
+"unidentified; a cursor or a target indicator".
+
+**The half-size balls are the Task Display** (wave 25): "the colour specified in
+the Task Display". So they show the *required colour* for the current task -
+which also explains why wave 6's display cycled all seven colours: that wave has
+no required colour.
+
+Objective kinds seen across eight waves: survive N atoms; form N chains of a
+given orientation and colour; form N chains of a colour that changes per task;
+remove N marked atoms; remove N crystals with AntiMatter. Modifiers seen: an
+element disabled for the wave, beaker atoms morphing every 45 s, atoms hidden
+until they leave a tube. Every sampled wave allowed 11 drops.
+
+Worth noting the shape of this: the failing approach was *more* sophisticated -
+type injection, tube steering, frame-accurate sampling - and the thing that
+worked was editing one byte in a save file. The expensive machinery was aimed at
+a question the game answers on a slide.

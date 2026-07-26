@@ -2344,3 +2344,66 @@ atom becomes a matter of waiting rather than of luck.
 Until then, `MYSTBALL` (type 19) and the crystal (type 18) behaviours remain
 **unknown**. The play-derived hypothesis - that a `?` resolves into one of the
 other five letter balls (12..16) on capture - is untested.
+
+
+## Wave definitions, harvested by level-warping the save
+
+`TUBES.SAV` holds the wave number as a single byte at **`0x206`**. Editing it and
+loading the save warps to that wave - **there is no checksum**, the slot list
+reads back "Wave 20" for `0x14`, and the briefing that follows is that wave's.
+So the whole wave table can be read out of the game's own briefings without
+playing, which is how the crystal was finally found: it is gated to late waves,
+and no amount of playing wave 6 would ever have shown it.
+
+Validated on consecutive waves - 10, 11 and 12 give different briefings - so the
+byte genuinely selects the definition. (Waves 10 and 15 happen to share an
+objective; that is a coincidence, not a warp failure.)
+
+### Objective types seen
+
+| wave | objective | modifier |
+|---|---|---|
+| 6 | survive 30 atoms, forming as many chains as possible | **Yellowium disabled**, will not disappear |
+| 10, 15 | form **2 vertical chains using Cyanium** | - |
+| 11 | form 2 chains using any atom | beaker atoms **morph into another atom every 45 s** |
+| 20 | **remove marked atoms** from the beaker by forming chains | Marked Atoms: 3 |
+| 25 | form 2 chains in the colour named by the **Task Display** | the required colour **changes after each task** |
+| 30 | survive 30 atoms | atoms are **hidden until they leave a tube** |
+| 40 | form **2 horizontal chains using Purplium** | - |
+| 50 | **remove all Mischief Crystals using Anti-Matter** | Mischief Crystals: 1 |
+
+Every wave sampled allowed **11 drops**, so the allowance may be constant in Wave
+mode - eight samples, not proof.
+
+A wave definition therefore carries: an objective *kind* (survive N atoms / form
+N chains / remove N marked atoms / remove N crystals), optionally a **chain
+orientation** and **colour**, a **count**, a **modifier** (disabled element,
+morphing, hidden atoms, dynamic colour), and a drop allowance.
+
+### `CRYSTAL` is the "Mischief Crystal" - solved
+
+Wave 50: *"Using Anti-Matter remove all the Mischief Crystals that are
+contaminating the beaker."* The slide shows exactly the red rounded block that
+`CRYSTAL.CSP` renders.
+
+So a crystal **contaminates the beaker and is destroyed with AntiMatter, not by
+matching**. That resolves an apparent oddity in the type table: type 18 has a
+full `CRFADE` family despite never forming a chain. A fade family means a thing
+can be **cleared**, which is not the same as **matched** - and the earlier note
+calling types 1-10 plus 18 "the matchable set" was too strong. Corrected: 1-10
+are matchable; 18 is clearable by AntiMatter.
+
+### `MARKER` is the marked-atom indicator - solved
+
+Wave 20: *"Form chains to remove marked atoms from the beaker. Marked Atoms: 3"*,
+illustrated with a red **X** - which is `MARKER.CSP`, 12 x 11, previously
+recorded as "unidentified; a cursor or a target indicator". It overlays atoms in
+the beaker that a wave objective requires clearing.
+
+### The half-size balls are the **Task Display**
+
+Wave 25 names the HUD element: "the colour specified in the **Task Display**".
+So the seven 8x7 balls at `DS:0x200a` show the *required colour* for the current
+task. That also explains the rotation observed in wave 6: that wave's objective
+is "survive 30 atoms" with no required colour, so the display cycles rather than
+naming one.
