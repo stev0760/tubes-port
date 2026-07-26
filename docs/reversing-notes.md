@@ -3381,3 +3381,59 @@ Every ordinary atom in the beaker steps to the next colour, wrapping 7 -> 1.
 This is very likely the wave modifier described in the briefings as beaker atoms
 morphing on a timer. Nothing in any state trace suggested it, because no sampled
 wave exercised it.
+
+## The third plane, and what a beaker cell really holds
+
+The three 30-byte planes are contiguous in the frame, so in Pascal they are
+three consecutive `array[1..5, 1..6] of byte` declarations:
+
+    acStack_62 + 6   -0x5c .. -0x3f     plane C   (purpose still unknown)
+    local_3e         -0x3e .. -0x21     plane B   (animating flag)
+    abStack_27 + 7   -0x20 .. -0x03     plane A   (the beaker cell values)
+
+Live, plane A is at `0x24314`, so B is at `0x242f6` and C at `0x242d8`.
+
+### A cell holds `type + 19 * fadeFrame`, not a type
+
+Sampled fast enough to catch a clear in progress, plane B holds **1** at exactly
+the cell where plane A holds a large value that climbs by **19 every frame**:
+
+    A: ... 59 ... 78 ... 97 ... 116 ... 135      (+19 each)
+    B: ...  1 ...  1 ...  1 ...   1 ...   1
+
+19 is the number of entries in the ball table. So a cell being cleared does not
+hold an atom type at all - it holds **`type + 19 * frame`**, and plane B marks
+it as animating. `59 = 2 + 19*3`, `78 = 2 + 19*4`: Greenium, fade frames 3 and 4.
+
+This closes a loop with something derived separately and long ago. The fade
+table was recorded here as `DS:0x1df6 + 76*(frame-1) + 4*(type-1)`. Expand it:
+
+    0x1df6 + 76*(frame-1) + 4*(type-1)  ==  0x1da6 + 4*(type + 19*frame)
+
+which is the **ball table base** with the same `value * 4 + 0x1da6` indexing the
+draw loop already uses. The fade frames are simply consecutive 19-entry blocks
+following the ball table, so **one lookup draws both a settled atom and a fading
+one** - the drawing code never branches on whether a cell is animating. Two
+independent derivations, arrived at years apart in this project, agree exactly.
+
+### Why this matters for the port
+
+`src/board.h` models a cell as an atom type. That is **wrong at the
+representation level**, not merely incomplete:
+
+- a clearing cell holds an out-of-range value that is a table index, so any code
+  treating a cell as a type must exclude cells flagged in plane B;
+- the port has no second plane at all, so it has nowhere to record that a cell
+  is mid-animation;
+- and the clear animation is not a separate effects system - it *is* the cell
+  value walking the table.
+
+None of this is reachable by watching the grid: a state trace shows a cell going
+`2 -> 0` and nothing else. The intermediate values only appear if sampled inside
+the animation, and even then they look like corruption unless the table layout
+is known.
+
+**Plane C remains unidentified.** It is read in the draw loop as `== 1`, so it is
+used, but it stayed zero across every sample taken so far - including a fast
+poll. Both failures to observe it are sampling limits, not evidence of disuse:
+the decompiled draw loop tests it, which settles that it does something.
