@@ -3524,3 +3524,41 @@ brace-aware parsing of the decompiler output, or reading each block directly.
 Recording it this way on purpose. The coordinates are evidence; the grouping is
 an artefact of how they were gathered, and a table of "layout 5 draws these
 segments" would look equally authoritative while being unverified.
+
+### RETRACTED: `DS:0x1d4e` does not select a tube layout
+
+Grouping the draw calls by **brace depth** rather than by line range
+(`~/Dev/tubes-tooling/group_layouts.py`) reverses the earlier reading:
+
+| group | draws |
+|---|---|
+| guarded by `0x1d4e == 6` | **12**, all using sprite `-0x16e` |
+| **no `0x1d4e` guard at all** | **114**, including every tube segment |
+
+The tube network is drawn **unconditionally**. It is one fixed layout, built up
+in roughly five layered passes over the same x positions with different segment
+sprites:
+
+    y=26  x = 34, 270, 58, 246, 107, 197, 179   seg[-0x92]   (125 -> seg[-0x9a])
+    y=13  x = 58, 246, 107, 197                 seg[-0x96]
+    y=26  x = 34, 179 / 270, 125                seg[-0xb2] / seg[-0xaa]
+    y=13  x = 58, 246 / 107, 197                seg[-0x92] / seg[-0x9a]
+    y=26  x = 34, 179 / 270, 125                seg[-0xae] / seg[-0xa6]
+    ... and further passes with seg[-0xa2], seg[-0x9e]
+
+`-0x16e` is the same sprite pointer the plane C overlay draw uses, so
+**`0x1d4e == 6` gates the overlay, not the network**.
+
+The earlier claim that `0x1d4e` selects the tube layout came from grouping by
+line range between successive conditions, which attributes shared code to
+whichever layout was tested last. It was flagged as unverified when written,
+and it was wrong. Worth noting the direction of the error: it implied the port
+needed per-layout networks and layout-dependent atom routing, which is
+substantially more work than the truth - one fixed network, drawn in layers.
+
+**Caveat on the coordinates.** The extractor takes the last two numeric tokens
+of each call, which is only correct when the arguments are literals. The
+furniture draws are literal and their `y`/`x` are trustworthy. The `== 6`
+group's arguments are expressions (`local_1b6[0] + 1`, `*(int *)0x1e + 2`), so
+its reported coordinates are fragments of those expressions and mean nothing -
+the grouping is sound, the numbers in that row are not.
