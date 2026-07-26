@@ -108,7 +108,28 @@ playfield array is 6 x 5, read off the loop bounds in `1000:3a67` (the old
 7x10 came from the manual and was wrong in both dimensions).
 **Also measured:** the full
 cell-to-pixel mapping - x = {107,125,143,161,179,197} (pitch 18, not 16),
-y = row * 13 + 121. **Still guessed:** spawn rate, fall speeds, scoring.
+y = row * 13 + 121.
+
+**Also measured, from attract mode** (`DEMO.SCR` replays through the normal
+game loop, so the demo is a full play session with no human pacing it, and it
+is deterministic - verified by diffing two cold-boot runs):
+
+- the **atom type field is `+0x0b`**, at 96.2% over 79 settle events. The
+  earlier "refutation" of it used an array base six bytes early.
+- **atom type numbers**: 1..7 the ordinary colours in the order Red, Green,
+  Blue, Cyan, Purple, Yellow, Pink, then 8 Flashium, 9 AntiMatter, 10 Bonus,
+  11 Xenon, 12..16 the letter balls. A settled beaker cell holds this byte.
+- **drops are one pool that counts down**: seeded 9/6/3 by difficulty,
+  -1 per miss, +1 per Bonus caught, untouched by clearing a wave.
+- **the test tube holds 5**, stated by the in-game Instructions, not 5/3/2 by
+  difficulty as the sprite heights suggested.
+- **scoring is in units of 250**, and the score *ramps* toward its award in
+  roughly sixths rather than snapping.
+
+**Still guessed:** spawn rate, fall speeds, the special atoms' spawn rates, and
+how run length versus orientation splits the award (the two measured awards -
+a vertical 3 paying 250 and a diagonal 4 paying 1000 - differ in both, so they
+are confounded; a horizontal 4 or a run of 5 would separate them).
 
 When chasing a DS-relative global, establish which segment DS actually holds
 first. Two separate wrong turns came from this: `SS:SP` in the EXE header

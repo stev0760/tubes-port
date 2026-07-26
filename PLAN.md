@@ -20,9 +20,15 @@ answered most of the remaining mechanics without any of it reaching the engine.
   falling / 6 for the tube), the 19-entry ball and fade type tables, the input
   bit map, the scoring values, tube capacity and the drop mechanic, wave
   definitions, and part of the save format.
-- **The engine: ~25%, unchanged.** None of the above is implemented. It still
-  drops atoms straight down, uses 8 flat colours and invented scoring, and has
-  no specials, no HUD, no sound effects and no wave structure.
+- **The engine: ~35%.** The measured *rules* have now landed, though the
+  presentation has not. Implemented: the original's atom type numbering (so a
+  trace from the original can be diffed against this board with no translation),
+  the drop pool counting down from 9/6/3 with Bonus granting +1, a flat tube
+  capacity of 5, scoring in units of 250 with the score ramping toward its
+  award, and run orientation reported by the board so a diagonal can be paid
+  differently. AntiMatter and Xenon now draw (10/10 atom sprites load).
+  Still missing: the dispenser arc - atoms drop straight down - the specials'
+  behaviours, the HUD, sound effects, and any wave structure.
 
 So the bottleneck is no longer knowledge. **The dispenser path - long recorded
 here as "the single genuine unknown left" - is solved.**

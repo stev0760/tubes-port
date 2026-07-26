@@ -1575,3 +1575,72 @@ occupied.
 - Running a second DOSBox on its own ports, drive and capture directory lets
   automation run while someone plays, avoiding `DOSBoxInstance`'s
   `pkill -9 -f dosbox-x`. Used today with both instances surviving.
+
+## 2026-07-26 — Session 5 (autonomous)
+
+Ran the game agentically through attract mode, probed the remaining menus, and
+landed the measured rules in the port.
+
+### Attract mode as the rig's player
+
+`DEMO.SCR` replays through the normal game loop, so the demo is a full play
+session with nobody at the keyboard. Determinism was verified first, since it
+is the premise for everything else and the header u32 is only *inferred* to be
+an RNG seed: two cold-boot runs produced identical ordered grid transitions,
+identical score sequences and identical drop sequences.
+
+With that established, `+0x0b` was settled as the atom type field - 96.2% over
+79 settle events, against 7.6% for the next best offset. The test predicted a
+*different* structure (does the beaker cell take the value this offset held?)
+rather than checking value ranges, which several offsets satisfy. The earlier
+observation that appeared to refute `+0x0b` had used array base `0x2419e`, six
+bytes early. So the original static reading was right, and the MYSTBALL
+injection technique is sound after all - those particular runs stay void only
+because they wrote at the wrong base.
+
+Also measured: the score **ramps** toward its award in roughly sixths rather
+than jumping, in the game's own variable rather than a display layer.
+
+### Two failures worth more than the successes
+
+**Ctrl+F11 via QMP does nothing here.** An adaptive harness measured the state
+rate after each batch of presses and it never trended down. Two runs were
+aliased before this surfaced - and the aliased run cheerfully produced a smear
+of "per-frame" deltas (-16, +36, +18, +27...) that were differences across an
+unknown number of frames. The technique is recorded as not working so it is not
+retried.
+
+**Both frame-counter candidates were filter artefacts.** A scan for
+strictly-increasing fields across 7 snapshots, over ~28,000 candidate offsets,
+will throw up hits by chance; checking the full series killed both (`0x24dc0`
+reads 2568, 2319, 1553, 513 across one trace). This project's standing rule is
+"when a search comes back empty, suspect the search" - the same scepticism is
+owed to a search that comes back **full**, and the tell was immediate: a frame
+counter that disagrees with itself is not a finding.
+
+### Menus
+
+The flow is Main menu -> Start Game -> Game Mode -> **DIFFICULTY (Tubes 101 /
+201 / 301)** -> play. Difficulty is *not* in Game Options, which holds only
+music, sound effects and input device. High Scores is headed "Endurance Mode
+High Scores", so each mode keeps its own table - corroborating the two-bank
+`TUBES.SAV` layout from an entirely different direction.
+
+### The port
+
+Atom types now use the original's numbers, which matters beyond tidiness: a
+settled beaker cell holds the type byte directly, so a captured trace can be
+compared against this engine's board with no translation table. The old order
+had green/blue and yellow/cyan transposed.
+
+Drops were modelled backwards - the port counted misses up to a limit, where
+the original seeds a pool and counts down. Tube capacity is a flat 5, per the
+in-game Instructions, retiring the 5/3/2 guess taken from sprite heights.
+Scoring uses the measured 250 unit, with the board now reporting run
+orientation, and `awardForRun()` states plainly that the two measured awards
+are confounded between length and orientation rather than hiding it behind a
+formula.
+
+19/19 tests pass and the headless render was checked visually - the atom
+renumbering would have silently swapped every colour otherwise, and only
+looking at the output would catch it.
