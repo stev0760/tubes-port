@@ -533,9 +533,24 @@ is copied verbatim.
     tools/sfx_decode.py INFO <file.SFX>...
     tools/sfx_decode.py WAV  <outdir> <file.SFX>...
 
-### Next unknowns
-- `.SCR` cutscene script format (`DEMO.SCR`, 11,976 bytes decompressed)
-- `.MUS` FM/Adlib music format
+### Format status
+
+| Format | Count | Status |
+|---|---|---|
+| container + LZSS | - | solved |
+| `.CSP` compiled sprites | 108 | solved, all 108 render |
+| `.GFX` raster images | 73 | solved, all 73 render |
+| `.SFX` digital audio | 24 | solved, all 24 convert to WAV |
+| `.MUS` FM/Adlib music | 10 | **open** |
+| `.816` / `.88` fonts | 5 | solved |
+| `.PAL` palettes | 3 | solved |
+| `.SPR` sprites | 2 | not examined |
+| `.SCR` demo recording | 1 | solved |
+| `.ANM` animation | 1 | not examined |
+| `.BIN` raw data | 1 | not examined |
+
+`.MUS` is the only format actively blocking a complete port. `.SPR`, `.ANM`
+and `.BIN` are one or two resources each and have not been looked at yet.
 
 
 `DRIVERS.RES` contains real 8086 code — `55 8B EC ... CA 02 00`
