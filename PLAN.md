@@ -108,6 +108,24 @@ Pascal static link at `[bp+4]`. Known fields:
    whether speed is a record field, a divisor on a shared frame counter, or
    something else, by observation rather than inference.
 
+**Tooling options, cheapest first.**
+
+1. **DOSBox-X's own debugger.** Already installed. Breakpoints, memory dumps,
+   register display - most of what is needed, driven by hand. Check the build
+   has it: it requires `--enable-debug` at compile time and distro packages
+   often ship without it. Try this first; one session of manual poking says
+   whether the approach cracks this at all.
+2. **`jdmichaud/dosbox-mcp`** - an MCP server exposing 24 tools over a
+   DOSBox-X fork (`dosbox-x-remotedebug`) with a GDB stub: memory read/write,
+   register read/write, linear-address breakpoints that account for real-mode
+   segmentation, stepping, input injection, and **save states**.
+
+   The save states matter most. Every wrong turn this session came from an
+   unrepeatable inference; a save state makes each measurement re-runnable.
+   The cost is building a bespoke DOSBox-X from autotools source, and the fork
+   has no independent activity - so spend that time only once the manual loop
+   has proven the method and become the bottleneck.
+
 Also worth watching once attached: the beaker grid (three parallel arrays,
 stride 6) to confirm 6 x 5 live, and the scoring counters, which are still
 entirely invented in the port.
