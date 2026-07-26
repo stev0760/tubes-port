@@ -1169,9 +1169,10 @@ exact **28-byte stride**, spanning precisely twelve slots:
 
 Ten of twelve parked, and the two missing slots were records 1 and 2. The
 screenshot taken during the same halt shows **exactly two atoms on screen**. That
-correspondence is the confirmation: the twelve records are the atoms, parked at
-`(303, 186)` while unused, and a record leaves the marker exactly when its atom
-is in transit.
+correspondence is the confirmation: the twelve records are the atoms.
+
+**But `(303, 186)` is an initial value, not a parking space.** See the lifecycle
+section below - records never return to it.
 
 So `12 records x 28 bytes` is confirmed, and `(303, 186)` is the spawn marker
 rather than the "parked sentinel" it was first read as.
@@ -2068,7 +2069,14 @@ Frames observed per play column, over 379 frames:
 The contrast is total. In the tube's column atoms **arrive at the mouth and stop
 there**, accumulating for hundreds of frames, and **never once** appear below
 y=120. In every other column they cross the mouth in a handful of frames and
-plunge to the beaker floor at y = 177..186.
+fall away to y = 177..186.
+
+**They are not landing in the beaker.** An earlier draft of this section said
+they "plunge to the beaker floor", which was an interpretation laid on top of the
+data. Atoms that miss the test tube are **lost** - that is a *drop*, and it is
+what the drop allowance counts. The beaker is filled only by catching atoms in
+the tube and tipping them in with **Button A**. Nothing reaches the beaker
+without passing through the tube first.
 
 ### So the difference is not speed, it is what happens at the mouth
 
@@ -2107,3 +2115,38 @@ inside the window searched.
 So either the tube's position is not stored as one of those values, or the struct
 is somewhere else entirely. The static reading remains unconfirmed against a
 running game, and the window should be widened before trusting it.
+
+
+## The record lifecycle: slots are overwritten, never recycled through the marker
+
+Predicted, then measured, then wrong - which is the useful kind.
+
+Since a missed atom is *lost* rather than deposited, its record must become
+reusable somehow, and the obvious candidate was a reset to the spawn marker
+`(303, 186)` that all twelve initialise to. Every earlier analysis had **filtered
+spawn-marker transitions out** as uninteresting, so precisely the evidence needed
+was being discarded.
+
+Recording them instead, over 382 frames of live play:
+
+| | count |
+|---|---|
+| records transitioning **into** `(303, 186)` | **0** |
+| records transitioning **out of** it | **0** |
+
+So the hypothesis is dead. Combined with the large positional jumps already seen
+in the per-frame data (`dx` of `+/-49`, `+/-91`, `+/-133`, and `dy` in the
+hundreds), the model is:
+
+- The twelve records are a **pool of slots**.
+- `(303, 186)` is the **initial value of a slot that has never been used**. It is
+  not a parked state and not a recycle target - nothing ever returns to it.
+- A slot is reused by **overwriting x and y directly** with the atom's new entry
+  position. That is what the large jumps are: not motion, allocation.
+- A lost atom's record simply **retains its final position** (y = 177..186) until
+  that slot is allocated again.
+
+This is why the spawn-marker signature reliably locates the array: early in a
+wave most slots are still untouched. It also means the signature gets **less**
+reliable the longer a wave runs, as fewer slots retain the initial value - worth
+knowing before relying on it late in a session.

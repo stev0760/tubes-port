@@ -1220,3 +1220,35 @@ array while pressing Right turned up no word holding a waypoint target
 below the array base and well inside that window. So either the position is not
 stored as one of those values or the struct is elsewhere; the static reading is
 still unconfirmed against a running game, and is now marked as such.
+
+### Two corrections: misses are lost, and slots are overwritten
+
+The user corrected a mechanic I had quietly interpreted rather than measured. I
+wrote that missed atoms "plunge to the beaker floor" - they do not. A missed atom
+is **lost**; that is a *drop*, which is what the drop allowance counts. The beaker
+is filled only by catching atoms in the test tube and tipping them in with Button
+A. Nothing reaches the beaker without going through the tube.
+
+The phrasing was the tell: "plunge to the beaker floor" is a description of what
+I assumed was happening, sitting in a document that otherwise separates measured
+from inferred line by line. The data said only that y reached 177..186.
+
+That correction predicted something testable. If a missed atom is lost, its
+record must become reusable - and the obvious mechanism was a reset to the spawn
+marker `(303, 186)` all twelve initialise to. Every previous analysis had
+**filtered spawn-marker transitions out as uninteresting**, so exactly the
+evidence needed had been thrown away every time.
+
+Measured: over 382 frames, **zero** transitions into the marker and **zero** out
+of it. The hypothesis is dead.
+
+The surviving model, which also explains the large positional jumps already in
+the data: the twelve records are a **pool of slots**; `(303, 186)` is the initial
+value of a slot never yet used; a slot is reused by **overwriting x and y
+directly**; and a lost atom's record just retains its final position until
+reallocated. The `+/-49`, `+/-91`, `+/-133` jumps are allocation, not movement.
+
+One practical consequence: the spawn-marker signature that locates the array
+works because early in a wave most slots are untouched, and becomes **less**
+reliable the longer a wave runs. Worth knowing before leaning on it late in a
+session.
