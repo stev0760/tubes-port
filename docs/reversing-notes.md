@@ -2681,3 +2681,82 @@ documented layout was wrong.
 a *different* field of the same record will silently return a shifted base, and
 every downstream offset inherits it. The tell was there and I misread it: a field
 that never varies is more likely a wrong offset than a wrong document.
+
+
+## The Mischief Crystal, observed (wave 50)
+
+First direct sighting of type 18, captured by a background logger sampling the
+grid ~3x/second while the game was played normally.
+
+**It starts in the beaker.** At wave start the grid already reads
+
+        .   .   .   .   .   .
+        .   .   .   .   .   .
+        .   .   .   .   .   .
+        .   .   .   .   .   .
+        .   . CRYSTAL .   .  Pnk
+
+so it is placed as initial contamination, not delivered through a tube.
+
+**It teleports.** Over 99 seconds of play it moved once, r5c3 -> r5c2, seen in
+memory as type 18 leaving one cell and appearing in another between consecutive
+samples. The destination cell had held a Yellowium; a Yellowium appears one row
+above 0.4 s later, which is consistent with the crystal displacing it upward,
+though a newly-landed atom cannot be ruled out from one event.
+
+### `CRFADE` is the teleport animation, not a clear animation
+
+This corrects the framing used throughout these notes. Reported from play and
+consistent with everything measured: the crystal **does not match**, so it has no
+clear animation. `CRFADE` runs **forward as it vanishes and in reverse as it
+reappears** - it is how the teleport is drawn.
+
+That explains a measurement that never fitted: type 18's *static* sprite pointer
+resolves to **`CRFADE1`**, not to `CRYSTAL.CSP`. Frame 1 is the solid crystal,
+because the animation exists to take it away and bring it back.
+
+And when AntiMatter destroys a crystal, it gets the **AntiMatter** animation -
+as does everything else caught in a blast.
+
+### So "a fade family means clearable" was wrong
+
+Earlier notes reasoned that only types 1-10 and 18 have fade families, therefore
+those are the things that can be cleared. That inference is retired. A fade
+family is an **effect animation**, and what triggers it differs by type:
+
+| family | what it actually is |
+|---|---|
+| the seven colour fades | match-clear, one per colour |
+| `FFADE` | the wildcard's own clear, when wildcards match each other |
+| `GLDFADE` | the Bonus atom |
+| `AFADE` | the **AntiMatter blast**, applied to everything caught in it - not "ANTIBALL's clear" |
+| `CRFADE` | the crystal's **teleport**, forward out and reverse back |
+
+Which also dissolves the puzzle of why types 11-17 and 19 have none: they need no
+effect of their own. Xenon just sits there, the penalty balls act on the tube or
+the beaker and are gone, and anything destroyed by AntiMatter borrows `AFADE`.
+
+## Live confirmations from the same session
+
+**Vertical chain = 250 points, measured.** Cyanium sat at r4c5 and r5c5; a third
+was tipped into column 5, both cells cleared, and the score went
+**24500 -> 24750, exactly +250** - the value the Instructions state, now observed
+in play.
+
+**AntiMatter settles before it detonates.** Two AntiMatter atoms were visible in
+the grid as type 9 at r3c6 and r4c6, and had vanished one sample later. So it
+lands as an ordinary cell first, then explodes. Notably the Pinkium directly
+below at r5c6 **survived**, which constrains the blast shape - it is not simply
+"everything adjacent".
+
+**Atoms wait at the tube exits.** Records sat unchanged at `(107,63)`,
+`(125,60)`, `(161,62)` and `(197,63)` - four columns at once, for nine seconds
+and more. The test tube can only be under one column, so these are atoms
+**queued at their own tube exits**, not caught.
+
+That refines the earlier caught-vs-missed result. It measured a long dwell in the
+y 40..75 band at the tube's column and read it as atoms being held in the test
+tube. The dwell is real, but it is where atoms wait at the *end of a tube* -
+which is also what "increase the speed of any atoms in the tube directly above
+the test tube" refers to. Whether a caught atom is additionally parked there is
+no longer established either way.

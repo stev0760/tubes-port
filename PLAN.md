@@ -98,12 +98,14 @@ Listed first because building on them wastes work.
    | 15 | Blocker - fills the beaker column it lands in with Xenons |
    | 16 | Filler - permanently reduces tube capacity by one |
    | 17 | almost certainly the immovable atom `FILLBALL` parks at the bottom of the tube - near-black, no fade family, and play reports a "sticky black one that cannot be dumped" |
-   | 18 | the **Mischief Crystal** - contaminates the beaker and is removed with **AntiMatter**, not by matching (wave 50's objective). Static sprite is `CRFADE1` |
+   | 18 | the **Mischief Crystal** - starts in the beaker as contamination and **teleports** between cells; removed with **AntiMatter**, never by matching. `CRFADE` is its *teleport* animation (forward out, reverse back), which is why its static sprite is `CRFADE1` |
    | 19 | `MYSTBALL`, still unidentified |
 
-   Only 1-10 and 18 have fade families. 1-10 are cleared by **matching**; 18 is
-   cleared by **AntiMatter** - a fade family means "can be cleared", which is not
-   the same as "can be matched".
+   A fade family is an **effect animation**, not a "can be cleared" marker: the
+   seven colours are match-clears, `FFADE` the wildcard's, `GLDFADE` the Bonus,
+   `AFADE` the **AntiMatter blast** applied to everything caught in it, and
+   `CRFADE` the crystal's **teleport**. Types 11-17 and 19 need no effect of
+   their own.
    Cell values are therefore **not** limited to 1..7 - the table runs to 19.
    Behaviours for 8-16 come from published descriptions whose ordering matches
    the measured type order exactly; 17 and 19 are unknown.
