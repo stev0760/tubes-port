@@ -791,3 +791,33 @@ three wildcards matching each other. Which is also what the cell cycling `1..7`
 looks like from outside: the cell walks the candidate colours and settles on the
 one that pays off. Recorded as a hypothesis with a direct test - settle a wildcard
 beside two of one colour and watch the cell value across the match.
+
+#### Retraction: Flashium always uses `FFADE`; the *sound* is what varies
+
+The hypothesis recorded a few entries above - that a settled Flashium's cell
+holds the colour it matched, so a type-indexed lookup would produce that colour's
+fade - is **withdrawn**. It existed only to explain a reported behaviour that the
+user has since corrected: a Flashium fades with the multicoloured `FFADE`
+animation *always*, regardless of what it matched with. Which is exactly what the
+measured table says without any reconciliation. The elaborate model was invented
+to rescue a misremembered detail, and the plain reading of the measurement had
+been right the whole time.
+
+The real variable is audio, and checking the inventory corroborated it
+immediately: **eleven of the twenty-four `.SFX` resources carry names identical
+to the eleven fade sprite families** - `RFADE`, `GFADE`, `BFADE`, `CFADE`,
+`PFADE`, `YFADE`, `PNKFADE`, `FFADE`, `AFADE`, `GLDFADE`, `CRFADE`. One match
+sound per family, named in lockstep with the animation.
+
+So the two are indexed differently: animation per **ball** by its own type (a
+Flashium in a red match still shows `FFADE`), sound per **match** by the colour
+the stack resolved to (`FFADE.SFX` only for an all-Flashium chain). The animation
+half is measured; the sound half is reported and coherent but unproven - and
+checkable the same way the sprite tables were, since sounds are loaded resources
+and a type-indexed pointer table should exist in DGROUP.
+
+Worth noting the shape of this exchange: two of the last three corrections came
+from the user re-examining their own recollection, and in both cases the
+measurement had already been right. Play memory is good for pointing the
+debugger at a question and poor as evidence - which is why the notes keep
+reported and measured claims on separate lines.

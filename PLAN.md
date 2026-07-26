@@ -475,7 +475,12 @@ Cheap and high-impact once the mechanic is settled.
   types 1-7 the colours, 8 Flashium (`FFADE`), 9 AntiMatter, 10 Bonus,
   18 the crystal. Types 11-17 and 19 have **null** fade pointers, so they are
   never cleared by matching.
-- `.SFX` through SDL audio, mixed alongside the OPL output
+- `.SFX` through SDL audio, mixed alongside the OPL output. The match sounds are
+  already mapped: eleven `.SFX` share the exact names of the eleven fade sprite
+  families (`RFADE`, ... `FFADE`, `AFADE`, `GLDFADE`, `CRFADE`), so there is one
+  per family. Reported from play: the sound is chosen by the colour the **stack**
+  matched as, while each ball's fade animation follows its **own** type - so a
+  mixed chain shows mixed animations under a single sound.
 - HUD: the reference screenshot shows chains, score and drops across the top
 - Fonts are decoded but never drawn
 

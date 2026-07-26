@@ -1347,24 +1347,55 @@ One sample cannot distinguish "the pointer is rewritten as it flashes" from
 type 8's pointer walks the colour sprites, it is confirmed outright. Cheap, and
 not yet done.
 
-### How Flashium can "inherit the stack's colour animation"
+### Flashium always clears with `FFADE` - and the match *sound* is the variable
 
-Worth resolving, because it looks like a contradiction and is not. Reported from
-play: a wildcard cleared as part of a coloured stack uses **that colour's** fade,
-and `FFADE` appears only when three wildcards match each other. But the fade
-table is indexed by **type**, and Flashium is type 8 with its own `FFADE` - so a
-type-8 lookup could never produce a red animation.
+An earlier note here hypothesised that a settled Flashium's cell holds the colour
+it matched, so that a type-indexed fade lookup would yield that colour's
+animation. **Retracted.** It was built on a misremembered detail. A Flashium
+fades with the multicoloured `FFADE` animation *always*, whether it matched two
+other Flashiums or two reds - which is simply what the measured table says, type 8
+to `FFADE`, with no reconciliation needed. The straightforward reading was right.
 
-The reconciling model: **a settled Flashium's cell does not hold 8.** It holds
-the colour it matched, so the type-indexed lookup naturally yields that colour's
-fade, and `FFADE` is reached only when the cell genuinely holds 8 - three
-wildcards together, matching nothing but each other. That also fits the cell
-value cycling `1..7` while unmatched: the cell is being walked through the
-candidate colours, and settles on whichever one pays off.
+What actually varies is the **sound**. There is one match sound per family, and
+the `.SFX` inventory proves it: eleven of the twenty-four sounds carry names
+*identical* to the eleven fade sprite families -
 
-**Not proven.** The test is direct: settle a wildcard next to two of one colour
-and read the cell value before and after the match, against the second and third
-of the three parallel grid arrays.
+        RFADE  GFADE  BFADE  CFADE  PFADE  YFADE  PNKFADE
+        FFADE  AFADE  GLDFADE  CRFADE
+
+So animation and audio are named in lockstep. Reported from play: the sound
+played is the one for **the colour the stack matched as**, and `FFADE.SFX` is
+heard only when three Flashiums match each other.
+
+Put together, the model is that the two are indexed differently:
+
+- **Animation** is per **ball**, by its own type. A Flashium in a red match still
+  shows `FFADE` while the reds show `RFADE` - a mixed match shows mixed
+  animations.
+- **Sound** is per **match**, by the colour the stack resolved to. One sound for
+  the whole chain, `FFADE.SFX` only for an all-Flashium chain.
+
+The animation half is measured. The sound half is reported and coherent but
+**not proven** - and it is directly checkable, because the sounds are loaded
+resources like the sprites, so a pointer table indexed the same way should exist
+in DGROUP and can be located by matching `.SFX` payloads against guest RAM,
+exactly as the sprite tables were.
+
+### The rest of the sound inventory
+
+The other thirteen, with likely events - **all guesses** except where a name is
+unambiguous:
+
+| sound | likely use |
+|---|---|
+| `DROP` | dumping an atom from the tube into the beaker |
+| `HITATOM` | atom landing on settled atoms |
+| `HITGLASS` | atom landing in the test tube |
+| `SLIDE` | the tube sliding along its rail |
+| `SWITCH` `SELECT` | menu movement and confirmation |
+| `BUBBLE` | unidentified - beaker ambience, or a clear |
+| `CLAP` `NOOOO` `WHATTHE` | reactions: wave complete, loss, something unexpected |
+| `WOOSH` `LIGHTN` `ABSMAGIC` | the Absolute Magic splash (already attributed) |
 
 ### Only types 1-10 and 18 can be cleared
 
