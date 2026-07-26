@@ -1054,3 +1054,51 @@ Three independent observations - the always-`FFADE` behaviour, the type-indexed
 fade table, and the measured pointer rotation - now agree, where before two of
 them were in tension and I had invented a model to reconcile them. The model was
 wrong and the measurement was cheap.
+
+### The frame-synchronised sampler, and why the obvious design failed
+
+Experiment 2 refused to claim a per-frame step size, correctly - the sampler was
+wall-clock paced and slower than a frame. Fixing that properly took two attempts,
+and the failed one is the more useful record.
+
+**Attempt 1: breakpoint once per frame, so the guest waits.** The textbook
+inversion. Finding the anchor looked easy - search the image for `mov dx,0x3da`
+(retrace) and `mov dx,0x3d4` (CRTC) and a tight cluster turns up at image
+`0x1331e`..`0x133ea`, plainly a Mode X setup followed by a page flip:
+
+    mov  bx, [0x2376]      ; page index - the address the notes already had
+    xor  bx, 1             ; toggle
+    mov  [0x2376], bx
+    shl  bx, 1
+    mov  ax, [bx+0x2366]   ; that page's start address
+
+Textbook, corroborated by an address we already knew, and **never executed**.
+Zero breakpoint hits: it belongs to code this game does not use. A diagnostic
+that armed every site referencing `0x2376` plus every retrace site found exactly
+two that fire, and the hot one (`0x11aa2`, a per-sprite dirty-rect save) fires
+**thousands of times per frame** - servicing it over RSP never completed a single
+frame in five minutes. There was no cheap once-per-frame anchor to be had.
+
+Also worth recording: I read `lcall 1321:014f` near that anchor as pointing into
+"a second graphics unit" and expected the real flip there. Wrong - segment
+`0x1321` just addresses part of CODE_0, and image `0x335f` is ordinary game code.
+The segment arithmetic was right; the inference about unit boundaries was not.
+
+**Attempt 2: slow the guest instead.** Cycles change how fast the guest computes,
+never what it computes - so game logic per frame is untouched and only wall-clock
+per frame changes. DOSBox-X drops cycles on Ctrl+F11, which QMP can send. 42
+presses from `cycles=fixed 20000` gave **5.3 reads per frame**, comfortably
+oversampled, with frame boundaries read off the page index changing.
+
+**Result: atoms move 4 px per frame**, in both axes - `dy=-4` 503 times against
+`-8` 87 times, and the `8`s are exactly `2x4`, occurring at about the rate a
+boundary is missed at 5.3 reads/frame. Not a second step size. Larger jumps are
+records being reassigned to another tube column, and a few absurd values are torn
+reads mid-update.
+
+That confirms the `-4` Experiment 2 saw and declined to claim. The 50 ms interval
+had happened to sit near one frame, so the value was right by luck - the refusal
+to claim it was still correct, and it cost nothing to verify properly.
+
+Contrast worth carrying into the port: the **test tube** moves 6 px/frame from
+static analysis, atoms move 4. Different rates.

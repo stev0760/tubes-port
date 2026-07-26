@@ -19,6 +19,13 @@ holds copyrighted game data, so it sits outside:
       peek_startup.py           run the game and dump the text screen
       sweep_env.py              try conf variants against a startup guard
       holdkey.py                hold/release one key via QMP
+      exp2_atom_paths.py        Experiment 2: the dispenser path
+      exp3_type8_rotation.py    Flashium's rotating sprite pointer
+      exp4b_slowmo_sampler.py   per-frame motion, via a slowed guest
+      exp_sprite_tables2.py     the 19-type ball and fade tables
+      grab_instructions.py      capture the in-game Instructions slides
+      load_save.py              load a saved game and capture the HUD
+      diag_frameclock.py        find which candidate sites execute per frame
       build.log                 the fork's build transcript
 
 `gamedrive/` is symlinks to the game files in `..`, plus **copies** of the two
@@ -254,6 +261,37 @@ BIOS mode byte. So `0x449 == 0x13` is the right "game is up" signal.
   repeatedly walks cutscene -> title -> menu -> Start Game, and once a
   breakpoint fires the CPU is halted so overshooting is harmless. Crude, but it
   is the only approach here that worked repeatably.
+
+## Sampling faster than the guest: slow the guest, don't chase a clock
+
+Any wall-clock sampler is slower than the guest: an RSP read is 40-80 ms and a
+frame is ~15 ms. Motion aliases, and this has produced three wrong or
+unclaimable results here - a 7-colour rotation read as a 2-colour blink, an
+unclaimable atom step size, and a "clean" 4 px step that was luck.
+
+The textbook fix - breakpoint once per frame so the guest waits - **did not work
+in this game**:
+
+- The Mode X page flip at image `0x1335f` is never executed; it belongs to unused
+  code. Zero breakpoint hits.
+- The only page-index site that does execute during play, image `0x11aa2`, fires
+  thousands of times per frame. Servicing it never completed one frame in five
+  minutes.
+
+What works is the other inversion: **slow the emulator**. Cycles change how fast
+the guest computes, never what it computes, so game logic per frame is identical
+and only wall-clock per frame changes. DOSBox-X decreases cycles on **Ctrl+F11**,
+and QMP can send it:
+
+    for _ in range(42):
+        dbx.qmp.send_key(["ctrl", "f11"])
+
+From `cycles=fixed 20000` that gives roughly 5 reads per frame - comfortably
+oversampled. Detect frame boundaries from the page index at `ds:0x2376`
+changing, and take deltas between *frames*, not between reads.
+
+Check the oversampling ratio and report it. If it approaches 1, the numbers are
+suspect again, and doubled step values are the tell.
 
 ## Footguns
 

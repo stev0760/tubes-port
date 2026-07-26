@@ -1867,3 +1867,68 @@ mutation - worth re-reading with that in mind.
 
 It also explains the Wave-mode HUD counter cycling the same seven colours: one
 shared rotation, not two coincidences.
+
+
+## Per-frame atom motion: 4 pixels (measured)
+
+Experiment 2 recovered the path's *shape* but explicitly refused to claim a step
+size, because the sampler was wall-clock paced and slower than a frame. This
+measures it properly.
+
+**The problem is a ratio.** An RSP read costs 40-80 ms; a frame is ~15 ms. Any
+wall-clock sampler is slower than the thing it measures, so motion aliases - the
+failure behind three separate wrong or unclaimable results in this work.
+
+### Two ways to invert the ratio, and why the obvious one failed
+
+**Make the guest wait (breakpoint per frame).** This is the textbook answer and it
+did not work here:
+
+- The clean Mode X page flip at image `0x1335f` - `mov bx,[0x2376]; xor bx,1;
+  mov [0x2376],bx` - is **never executed**. It belongs to code this game does not
+  use. Verified by breakpoint, zero hits.
+- The only site found that *does* execute during play and touches the page index,
+  image `0x11aa2` (a per-sprite dirty-rect save), fires **thousands of times per
+  frame**. Servicing it over RSP never completed a single frame in five minutes.
+
+So there was no cheap once-per-frame anchor to break on.
+
+**Make the guest slower (what worked).** Cycles affect only how fast the guest
+computes, never what it computes, so slowing the emulator changes wall-clock per
+frame and nothing else. DOSBox-X drops cycles on **Ctrl+F11**, which QMP can
+send - 42 presses from `cycles=fixed 20000`. Frames then take far longer than a
+read, and frame boundaries become observable directly from the page index at
+`ds:0x2376` changing.
+
+Result: 3044 reads over 150 s caught **577 page flips at 5.3 reads per frame** -
+comfortably oversampled, so boundaries are rarely missed.
+
+### The measurement
+
+Deltas between consecutive *frames*, across all records:
+
+| dy | count | | dx | count |
+|---|---|---|---|---|
+| **-4** | **503** | | **-4** | **126** |
+| -8 | 87 | | +4 | 70 |
+| +4 | 95 | | -8 | 33 |
+| +18 | 62 | | +8 | 32 |
+
+**Atoms move 4 pixels per frame**, in both axes. `-4` dominates because most
+observed travel is the ascent up an outer tube.
+
+The `8`s are exactly `2 x 4` and occur at roughly the rate a boundary would be
+missed at 5.3 reads/frame - they are sampling artefacts, not a second step size.
+The scattered large values (`+/-49`, `+/-91`, `+/-133`) are records being
+reassigned to a different tube column, i.e. teleports rather than motion, and the
+handful of absurd ones (`35927`, `-15156`) are torn reads of a record mid-update.
+`dy = +18` at 62 occurrences is real but unexplained - not a multiple of 4, and
+not the 13 px row pitch either.
+
+This **confirms** the tentative `-4` Experiment 2 saw and refused to claim: the
+50 ms wall-clock interval had happened to sit near one frame, so the value was
+right by luck. It is now right by measurement.
+
+Note the contrast with the **test tube**, which static analysis showed moving
+`x -= 6` / `x += 6` per frame. The tube travels at 6 px/frame and atoms at 4 -
+different rates, which is worth carrying into the port.
