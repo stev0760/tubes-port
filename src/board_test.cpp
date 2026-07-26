@@ -97,10 +97,15 @@ void testGravityAfterClear() {
 }
 
 void testCascade() {
-    // The 8s sit at staggered heights so they do not match initially. Once
+    // The 2s sit at staggered heights so they do not match initially. Once
     // the bottom row of 1s clears they all settle onto the floor, forming a
     // second match that must resolve in its own round.
-    tubes::Board b = make({"....", ".8..", "8.8.", "1111"});
+    //
+    // This used 8s until atoms were renumbered to the original's scheme, where
+    // 8 is Flashium - a wildcard. As wildcards the staggered atoms bridged
+    // diagonally into the row of 1s and matched immediately, which is correct
+    // behaviour but not what this test is about. Greenium keeps the intent.
+    tubes::Board b = make({"....", ".2..", "2.2.", "1111"});
     check(matchCount(b) == 4, "only the bottom row matches to begin with");
 
     std::vector<uint8_t> marked;
@@ -147,11 +152,41 @@ void testInertSpecialsDoNotMatch() {
     check(matchCount(split) == 0, "Xenon breaks a run rather than joining it");
 }
 
+// Flashium (8) is a wildcard: chains form "of the same element or in
+// combination with Flashium atoms".
+void testFlashiumWildcard() {
+    tubes::Board mixed = make({"....", "....", "181."});
+    check(matchCount(mixed) == 3, "Flashium completes a run of one colour");
+
+    // Three Flashium and no element of their own still match, and have their
+    // own clear animation and sound in the original.
+    tubes::Board pure = make({"....", "....", "888."});
+    check(matchCount(pure) == 3, "three Flashium match on their own");
+
+    // A wildcard must not merge two DIFFERENT colours into a single run.
+    tubes::Board bridge = make({"....", "....", "1833"});
+    check(matchCount(bridge) == 0, "Flashium does not bridge two colours");
+
+    // Pins down our AMBIGUITY resolution rather than a known behaviour: the 8
+    // sits between a lone 1 and a pair of 3s and could join either. The greedy
+    // left-to-right walk gives it to the 1, so nothing reaches three. Handing
+    // it to the 3s would instead clear three cells. Which the original does is
+    // untested - if this check ever fails, that is the question to settle, not
+    // a bug to paper over.
+    check(matchCount(make({"....", "....", ".183"})) == 0,
+          "wildcard resolved leftward (our choice, not a measured rule)");
+
+    // It works on a diagonal too, which is the highest-scoring chain.
+    tubes::Board diag = make({"..3.", ".8..", "3...", "...."});
+    check(matchCount(diag) == 3, "Flashium completes a diagonal");
+}
+
 }  // namespace
 
 int main() {
     testHorizontal();
     testInertSpecialsDoNotMatch();
+    testFlashiumWildcard();
     testVertical();
     testDiagonalDown();
     testDiagonalUp();

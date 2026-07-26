@@ -57,14 +57,20 @@ inline bool isMatchable(int8_t v) {
     return v >= kRedium && v <= kFlashium;
 }
 
-// NOT YET IMPLEMENTED: Flashium is a wildcard. The Instructions say chains form
-// "of the same element **or in combination with Flashium atoms**", so a run may
-// mix one real colour with Flashium. It is left out deliberately rather than
-// guessed at, for two reasons: whether a run of three Flashium and no element
-// matches at all is unknown from any evidence gathered so far, and the board
-// tests encode atoms as digits - `testCascade` uses 8s, which now means
-// Flashium - so turning it into a wildcard silently changes what those tests
-// assert. Both need settling before the mechanic goes in.
+// Flashium is a wildcard: the Instructions say chains form "of the same
+// element **or in combination with Flashium atoms**", so a run may mix one real
+// colour with Flashium.
+//
+// Three Flashium with no element of their own DO match. That was briefly
+// recorded here as an open question; it is not one. Reported from play: a
+// three-Flashium match has its own clear animation, a multicoloured
+// checkerboard, and its own sound. The checkerboard is used by any Flashium
+// that fades, but the sound plays only for a three-Flashium match - which is
+// itself the game distinguishing that case, and would make no sense if the
+// case could not arise.
+inline bool isWildcard(int8_t v) {
+    return v == kFlashium;
+}
 
 // The measured cell-to-pixel mapping. The column pitch is 18, not the 16 the
 // sprite width would suggest, and the x values are a six-entry table rather

@@ -1612,6 +1612,30 @@ multiplier at all. Nothing measured so far distinguishes the two readings.
 
 Also: "in combination with Flashium atoms" is the game confirming the wildcard.
 
+### Flashium matches three-of-a-kind on its own - reported from play
+
+**Three Flashium with no element of their own DO form a chain.** This was
+briefly written up here as an open question; it is not one, and the answer had
+been reported in play before that - it was simply never written down, and was
+lost when the session's context was compacted. Recording it properly is the
+fix, and the lesson is that anything learned from play belongs in this file the
+moment it is said, not in the conversation.
+
+- A three-Flashium match has **its own sound**, which no other match makes.
+- Its clear animation is a **multicoloured checkerboard**. The checkerboard is
+  used by *any* Flashium that fades, so the animation is not unique to the
+  three-Flashium case - but the **sound** is.
+
+That the game bothers to distinguish the case with a dedicated sound is itself
+the argument that the case arises. A wildcard that could never form a chain
+unaided would have nothing to play it for.
+
+**Still open** - and now flagged in `board.cpp` rather than assumed away: when a
+wildcard sits between two different colours, which side claims it. In `1 8 3 3`
+giving the 8 to the 1 yields no match, while giving it to the 3s clears three.
+The port resolves greedily left-to-right and says so; the original's rule is
+untested.
+
 ### The test tube
 
 > "The test tube you control to collect and release atoms can hold up to 5 atoms
