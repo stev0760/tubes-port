@@ -805,7 +805,7 @@ loads the shared sprites (the eight balls, `ANTIBALL`, `GOLDBALL`, `XENBALL`,
 | `1b2e:1651` | 2323 | blackboard cutscene | `WRITE0..9.GFX`, `EXPLOD1..4.GFX` |
 | `1b2e:2d63` | 4510 | (test-tube screen) | `TESTUBE1.CSP`, `TESTUBES.CSP` |
 | `1000:9e53` | 2173 | game session | the whole playfield set |
-| `1000:3a67` | 9382 | frame update | nested inside `9e53` |
+| `1000:3a67` | 9382 | the game loop - **not** a per-frame call; entered once and loops internally | nested inside `9e53` |
 
 Two useful consequences:
 
@@ -1643,3 +1643,85 @@ consistent with the slides documenting them.
 This matters for coverage: the shareware's preview modes are why AntiMatter and
 Bonus behaviour was known from play, while the crystal was not - it is
 registered-only content that had never been seen.
+
+
+## The dispenser path - observed (Experiment 2)
+
+`PLAN.md` called this "the single genuine unknown left", and static analysis
+never found the code that moves atoms. It did not need to be found: the atom
+array holds live x/y, so **sampling it over time is the trajectory**.
+`exp2_atom_paths.py` reads the 12 records 400 times without halting and prints
+each record's route.
+
+### The route
+
+    spawn (303,186)
+      -> bottom of an outer vertical tube, y = 187
+      -> ascends, y decreasing, x constant
+      -> reaches the top, y ~ 0..7
+      -> traverses horizontally across the top, y ~ 0..3
+      -> descends into a play column
+
+Two real traces, abridged:
+
+    rec A: (303,186) (34,187) (34,183) (34,179) ... (34,39) (34,35)
+    rec B: (58,95) ... (58,11) (58,7) (60,7) (60,3) (67,3) (67,0)
+           (69,0) (73,0) ... (97,0) (97,1) (101,1) (101,3) (105,3) (105,9)
+
+`rec B` is the whole shape in one line: straight up the x=58 tube, over the top
+along y=0, then turning down again at x=105 - which is the left-hand play column
+(107) less the 2px the sprites are drawn at.
+
+So the description from play - "enter bottom right, travel up, arc over the top,
+come back down" - is confirmed, with coordinates.
+
+### The tube columns
+
+x values where atoms dwell, by sample count:
+
+    294  246  34  270  58  197  107  179  161
+
+Compare the static furniture already read from literal draw coordinates:
+
+    y=13:  58, 107, 197, 246
+    y=26:  34, 58, 107, 125, 179, 197, 246, 270
+
+The observed vertical runs land on those same x positions, plus **294** which is
+outermost and was not in the furniture list. The six *play* columns are
+107, 125, 143, 161, 179, 197 - overlapping the tube set at 107, 179 and 197, so a
+tube column and a play column can share an x.
+
+Most-visited y values are 26, 13, 0, 19, 15 - the top band, where atoms spend
+their time crossing. That matches the arcs drawn at y=13 and y=26.
+
+### What this does *not* establish
+
+**Per-frame step size is not measured.** The sampler runs at a fixed 50 ms, which
+is coarser than the game's frame rate, so positions are aliased. Vertical runs
+show a clean `-4` in y between consecutive samples over dozens of samples, which
+is suggestive - but the arc shows mixed deltas of 2, 4 and 7 px, which a single
+uniform step cannot produce. Either the motion tick is ~20 Hz and 4 px, or the
+sampling is beating against a faster tick. **Do not take 4 px/frame as measured.**
+Settling it needs a sampler synchronised to the game rather than to wall-clock.
+
+### `1000:3a67` is not the frame update
+
+The stage table in these notes lists `1000:3a67` as "frame update". **It is not.**
+A breakpoint at `3a73` re-fired **zero** times in four seconds of active play: the
+procedure is entered *once* and loops internally. That single fact explains why
+Experiment 1's frame-relative offset stayed open - the static link can only be
+read at that one entry, and at that moment the difficulty menu is up and no atoms
+exist yet.
+
+It also means any plan of the form "break in the frame loop each frame" needs a
+different address - somewhere *inside* `3a67`'s loop body, not its prologue.
+
+### Array address is stable, and a caveat about finding it
+
+The array base is `0x2419e` in this configuration, the same across runs - the
+DOS memory layout is deterministic given a fixed conf. Note the locator in
+`exp2_atom_paths.py` reported `0x241ba`, exactly one record high, because it
+returns the lowest record still parked at the spawn marker and record 0 happened
+to be in flight. **The lowest parked record is not necessarily record 0.** Anchor
+on the lowest hit whose spacing to the others is a multiple of 28 *and* extend
+downwards while the stride holds.

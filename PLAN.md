@@ -56,12 +56,13 @@ developer splash but is not decoded.
 Things currently implemented on assumptions the binary has since contradicted.
 Listed first because building on them wastes work.
 
-1. **The dispenser path.** `src/game.cpp` still has atoms falling straight
-   down. Really they enter bottom-right, travel up, arc over the top and come
-   down along the tube artwork. The stacking tube and its controls are now
-   implemented; the *path* is not, and is approximated by a vertical fall.
-   Do not model it as per-cell tile routing - the frame update contains no
-   13px-pitch arithmetic outside the settled-grid draw.
+1. **The dispenser path.** `src/game.cpp` still has atoms falling straight down.
+   **The real path is now observed** (Experiment 2, `docs/reversing-notes.md`):
+   spawn at `(303,186)`, placed at the bottom of an outer vertical tube at
+   `y = 187`, ascend at constant x, cross the top along `y ~ 0..3`, then descend
+   into a play column. Tube columns seen: 34, 58, 107, 179, 197, 246, 270, 294 -
+   the same x values as the tube artwork, plus 294. Per-frame step size is **not**
+   measured; the sampler was wall-clock paced and aliases the motion.
 2. **The test tube holds one atom.** It holds **five** - both published
    descriptions of the game say so outright. `TESTUBE1/2/3` are tipping frames,
    not capacities (see below), and the varying capacity is far better explained

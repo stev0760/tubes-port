@@ -926,3 +926,51 @@ Four things in it are wrong and should not be carried into the port:
    a 19-entry ball table and a 19 x 6 fade table, adjacent in DGROUP.
 4. **"Sound effects - if any (likely PC speaker or AdLib)."** Both: 8-bit 8 kHz
    PCM `.SFX` and OPL2 `.MUS`, with selectable `PCSOUND.DRV` / `SBSOUND.DRV`.
+
+### Experiment 2: the dispenser path, observed
+
+`PLAN.md` called this "the single genuine unknown left", and a whole session had
+failed to find the code that moves atoms. It turned out not to need finding: the
+atom array holds live x/y, so **sampling it over time is the trajectory**. Four
+hundred reads without halting, and the route prints itself.
+
+    spawn (303,186) -> bottom of an outer vertical tube at y=187
+                    -> ascend at constant x
+                    -> across the top, y ~ 0..3
+                    -> descend into a play column
+
+One trace carries the whole shape: `(58,95)` up to `(58,7)`, over the top along
+`y=0` to `(97,0)`, then turning down at `(105,9)` - and 105 is the left play
+column (107) less the 2 px the sprites are drawn at.
+
+The x histogram lands on the tube artwork: 34, 58, 107, 179, 197, 246, 270 are
+all positions already read from literal draw coordinates, plus **294** which is
+outermost and had not been seen. Most-visited y values are 26, 13 and 0 - the top
+band, matching the arcs drawn at y=13 and y=26.
+
+So the account from play was right in every particular, and now has coordinates.
+
+**What it does not establish, stated because it would be easy to over-read:** the
+sampler is wall-clock paced at 50 ms, coarser than the game's frame rate, so
+positions alias. Vertical runs show a clean `-4` in y between consecutive samples
+over dozens of samples, which is tempting - but the arc shows deltas of 2, 4 and
+7 px, which no single uniform step produces. 4 px/frame is **not** measured.
+A game-synchronised sampler is needed for that.
+
+**`1000:3a67` is not the frame update.** The stage table said it was. A
+breakpoint at `3a73` re-fired **zero** times in four seconds of active play: it is
+entered once and loops internally. That one measurement explains why Experiment 1
+never got a usable frame offset - the static link is readable only at that single
+entry, which happens while the difficulty menu is up and no atoms exist. Both the
+notes and `PLAN.md` are corrected.
+
+A locator bug worth remembering: the array base came back one record high,
+because the finder returns the lowest record still parked at the spawn marker and
+record 0 happened to be in flight. **The lowest parked record is not necessarily
+record 0.** The true base is stable at `0x2419e` for this conf across runs, DOS
+memory layout being deterministic.
+
+Incidentally: the in-play HUD in this mode shows only `Chains` and `Drops`, with
+no colour counters - consistent with the report that ball and match-type counters
+appear only in certain modes, which is where the seven half-size balls at
+`DS:0x200a` most likely live.
