@@ -377,7 +377,7 @@ Both reached through the Pascal static link from `9e53`'s frame:
 | base | shape | what |
 |---|---|---|
 | `parent - 0x163` | 12 x 28 bytes | the atoms |
-| `parent - 0x16a` | one struct | **the player's test tube** |
+| `parent - 0x16a` | one struct | **the player's test tube** - *not confirmed live*: diffing a +/-1 KiB window around the atom array while moving the tube found no word holding a waypoint target or stepping by 6 |
 
 The single struct was read for most of a session as "the atom currently
 travelling the arc". It is not. At `0x66f0` it only acts when its direction is

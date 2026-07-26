@@ -2042,3 +2042,68 @@ experiment cannot resolve: with no left/right input the test tube stays in one
 column, so the `y > 68` band mixes atoms descending *into* the tube with atoms
 falling *past* it. Separating those needs the tube deliberately positioned under
 a known column, and is not yet done.
+
+
+## Caught vs missed, separated
+
+The speed A/B could not tell a caught atom from a missed one, because with no
+left/right input the test tube never moved and the `y > 68` band mixed both. So
+the tube was driven to a known column - hold **Left** to park it at the leftmost -
+and every atom classified by whether its x matched.
+
+Parking confirmed two ways: a screen capture shows the tube at the far left, and
+the behaviour below is unambiguous on its own.
+
+Frames observed per play column, over 379 frames:
+
+| column | near the mouth (y 40..75) | deep below it (y >= 120) |
+|---|---|---|
+| **107 - the tube's column** | **226** | **0** |
+| 125 | 4 | 303 |
+| 143 | 8 | 197 |
+| 161 | 8 | 205 |
+| 179 | 8 | 159 |
+| 197 | 4 | 276 |
+
+The contrast is total. In the tube's column atoms **arrive at the mouth and stop
+there**, accumulating for hundreds of frames, and **never once** appear below
+y=120. In every other column they cross the mouth in a handful of frames and
+plunge to the beaker floor at y = 177..186.
+
+### So the difference is not speed, it is what happens at the mouth
+
+Both cases descend at the same 18 px/frame. What distinguishes them:
+
+- **Caught** - the atom decelerates to a halt in the `y 40..75` band and stays
+  there. Visually, an atom that stops.
+- **Missed** - the atom continues through the mouth without interruption at a
+  constant 18 px/frame until it reaches the beaker. Visually, an unbroken plunge.
+
+That accounts for the reported impression that a missed atom's fall "looks
+different" from a boosted atom in the tube, without needing a fourth speed: the
+distinction is continuity, not rate.
+
+### An open question this raised
+
+Caught atoms never appear below **y = 120**, yet the test tube hangs from y=69 to
+y=134 and holds five atoms of 13 px each - which would fill it to y=134. If
+caught atoms were still tracked in the 12-record array at their drawn positions,
+some would have to appear below 120. They do not.
+
+The likely reading is that an atom **leaves the 12-record array once caught** and
+the tube's contents are held in a separate structure - which would also fit the
+tube being a LIFO stack rather than twelve free-moving sprites. Not proven, and
+worth chasing: it means the array is "atoms in transit" only, exactly as its
+initialisation to the spawn marker suggests.
+
+### The test tube struct was not located
+
+Snapshotting a +/-1 KiB window around the atom array, pressing Right, and
+diffing found **no** word behaving like the tube - nothing holding a waypoint
+target (104, 122, 140, 158, 176, 194) and nothing stepping by 6. `PLAN.md` places
+the struct at `parent - 0x16a`, which would put it 7 bytes below the array base,
+inside the window searched.
+
+So either the tube's position is not stored as one of those values, or the struct
+is somewhere else entirely. The static reading remains unconfirmed against a
+running game, and the window should be widened before trusting it.

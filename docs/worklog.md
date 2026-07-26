@@ -1179,3 +1179,44 @@ distinction this experiment cannot make, because with no left/right input the
 tube sits in one column and the `y > 68` band mixes atoms descending *into* the
 tube with atoms falling *past* it. Separating them needs the tube deliberately
 parked under a known column.
+
+### Caught vs missed: the difference is continuity, not speed
+
+Parked the test tube at the leftmost column by holding Left, confirmed by screen
+capture, then classified every atom by whether its x matched the tube's column.
+
+Over 379 frames, frames near the mouth (y 40..75) against frames deep below it
+(y >= 120):
+
+    x=107 (tube column)   226 near     0 deep
+    x=125                   4 near   303 deep
+    x=143                   8 near   197 deep
+    x=161                   8 near   205 deep
+    x=179                   8 near   159 deep
+    x=197                   4 near   276 deep
+
+Total contrast, and the absence is the signal: in the tube's column atoms arrive
+at the mouth, **stop**, and accumulate for hundreds of frames without ever
+appearing below y=120. Everywhere else they cross the mouth in a handful of
+frames and plunge to the beaker floor.
+
+So the reported impression that a missed atom looks different from a boosted one
+does **not** need a fourth speed. Both descend at 18 px/frame; what differs is
+that a caught atom decelerates to a halt at the mouth while a missed one
+continues without interruption to the beaker. Continuity, not rate.
+
+Two things fell out of it.
+
+**Caught atoms may leave the array.** They never appear below y=120, yet the tube
+hangs 69..134 and holds five 13 px atoms, which would fill it to 134. If caught
+atoms were still tracked in the 12-record array at their drawn positions, some
+would have to show up below 120. They do not - suggesting an atom leaves the
+array on capture and the tube's contents live elsewhere, which also fits the tube
+being a LIFO stack. Not proven.
+
+**The test tube struct was not found.** Diffing a +/-1 KiB window around the
+array while pressing Right turned up no word holding a waypoint target
+(104..194) or stepping by 6. `PLAN.md` puts it at `parent - 0x16a`, seven bytes
+below the array base and well inside that window. So either the position is not
+stored as one of those values or the struct is elsewhere; the static reading is
+still unconfirmed against a running game, and is now marked as such.
