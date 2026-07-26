@@ -1252,3 +1252,39 @@ One practical consequence: the spawn-marker signature that locates the array
 works because early in a wave most slots are untouched, and becomes **less**
 reliable the longer a wave runs. Worth knowing before leaning on it late in a
 session.
+
+### The beaker grid, located and proven
+
+The last core data structure. A before/after diff around the tipping action
+failed first - the region churns every frame and the candidate list filled with
+atom-record bytes - even with a volatile-byte control pass. Diffing was the wrong
+instrument.
+
+**The shape was the signature.** With the tube parked under the leftmost column
+every tipped atom lands in column 1, so in a row-major stride-6 array every
+filled cell must sit at an offset that is a multiple of 6. Scanning for 30-byte
+windows that are zero except for bytes at offsets `% 6 == 0` holding 1..19 cut
+straight through the noise.
+
+Then the layout was **proven rather than assumed**, because a single column of
+values cannot distinguish row-major from column-major. Tip into column 1, move
+one column right, tip again:
+
+    column 1 filled  0x2432c
+    column 2 filled  0x2432d     <- exactly +1, so row-major
+
+with two stacked atoms landing 6 apart. Grid base `0x24314`, 30 bytes, 6 per row,
+bottom row at `+24`, cells holding ball types.
+
+**A settled cell was caught holding 8.** That was the model recorded earlier -
+the cell holds 8 permanently while the flashing lives in the sprite pointer -
+which had been flagged as unproven because it was inferred from three facts
+agreeing rather than observed. Now read directly out of the grid. It also
+confirms cell values are not limited to 1..7.
+
+**One claim did not survive.** `PLAN.md` called the beaker three parallel arrays
+of stride 6. The 30 bytes after the grid hold a Pascal string `"CRFADE6.CSP"`, a
+resource name, not a second grid. The 60 bytes before are all zero, which is
+consistent with two empty companion arrays but is equally consistent with
+nothing - zeroes are not evidence. Marked open, with a concrete test: settle a
+special and see whether a flag appears alongside its type.

@@ -2150,3 +2150,75 @@ This is why the spawn-marker signature reliably locates the array: early in a
 wave most slots are still untouched. It also means the signature gets **less**
 reliable the longer a wave runs, as fewer slots retain the initial value - worth
 knowing before relying on it late in a session.
+
+
+## The beaker grid, located and proven
+
+The last core data structure. Found by shape rather than by diffing - a
+before/after diff drowns in per-frame churn (atom positions, animation counters,
+the rotating Flashium pointer), and its candidate list filled with atom-record
+bytes.
+
+**The shape is the signature.** With the test tube parked under the leftmost
+column, every atom tipped lands in column 1, so in a row-major array of stride 6
+every filled cell must sit at an offset that is a multiple of 6. Scanning
+conventional RAM for 30-byte windows that are zero except for a few bytes at
+offsets `% 6 == 0` holding 1..19 is demanding enough to cut through the noise.
+
+### Layout, proven by tipping into two columns
+
+Consistency is not proof: one column of values cannot distinguish row-major from
+column-major. So tip into column 1, move one column right, tip again:
+
+    column 1 filled  0x2432c
+    column 2 filled  0x2432d      <- exactly +1
+
+`+1` for adjacent columns is row-major with 6 cells per row; column-major would
+have put it 5 away. And two atoms stacked in one column landed at `0x24326` and
+`0x2432c` - exactly 6 apart, one row.
+
+| | |
+|---|---|
+| base | **`0x24314`** |
+| size | 30 bytes, 5 rows x 6 columns |
+| order | **row-major**, 6 cells per row |
+| rows | increase *downward* with address - row 1 at `+0`, **row 5 (bottom) at `+24`** |
+| cell | `0` = empty, otherwise a **ball type 1..19** from the sprite type table |
+
+A live grid with three atoms settled:
+
+    row 1:  0  0  0  0  0  0
+    row 2:  0  0  0  0  0  0
+    row 3:  0  0  0  0  0  0
+    row 4:  0  2  0  0  0  0
+    row 5:  2  2  0  0  0  0        type 2 = Greenium
+
+### A settled Flashium's cell really does hold 8
+
+Recorded earlier as the model that made three facts consistent - fades are
+type-indexed, a Flashium always clears with `FFADE`, and a cell cycling 1..7
+could never produce a type-8 lookup - but flagged as unproven.
+
+An earlier pass caught a settled cell holding **8** at `0x2432c`. Since type 8 is
+Flashium in the measured sprite table, that is the value read directly out of the
+grid. The cell holds 8 permanently and the flashing lives entirely in the sprite
+pointer, exactly as the rotation measurement implied. **Confirmed.**
+
+It also confirms cell values are *not* limited to 1..7: the grid stores the full
+type range, so specials settle as themselves.
+
+### The "three parallel arrays" claim is not supported here
+
+`PLAN.md` describes the beaker as three parallel arrays of stride 6. The memory
+does not obviously bear that out:
+
+- The 30 bytes **after** the grid (`0x24332`) are not a grid at all - they hold a
+  Pascal string, `0b "CRFADE6.CSP"`, i.e. a resource name.
+- The 60 bytes **before** it (`0x242d8`, `0x242f6`) are entirely zero. Two more
+  empty arrays would look exactly like that with only ordinary atoms settled, so
+  they are plausible candidates, but zeroes are not evidence.
+
+So the type array is confirmed and located; whether two companion arrays sit
+immediately below it is **open**. The test is to settle a *special* - the flag
+that distinguishes one, if it exists, should appear in one of those blocks while
+the type array holds the special's type.

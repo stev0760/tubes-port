@@ -284,9 +284,18 @@ holding **B**, record positions. Same start, one variable. The difference *is*
 the speed mechanism, measured rather than inferred. Repeat with a bonus atom
 on screen for the second speed.
 
-Also worth watching once attached: the beaker grid (three parallel arrays,
-stride 6) to confirm 6 x 5 live, and the scoring counters, which are still
-entirely invented in the port.
+**The beaker grid is located and proven** - base `0x24314`, 30 bytes, row-major,
+6 cells per row, row 5 (bottom) at `+24`, cell 0 = empty and otherwise a ball
+type 1..19. Layout proven by tipping into two adjacent columns and seeing the
+filled cells land exactly 1 byte apart. A settled cell was caught holding **8**,
+which confirms a settled Flashium's cell really does hold 8. See
+`docs/reversing-notes.md`.
+
+The "three parallel arrays" part of this claim is **not** supported: the 30 bytes
+after the grid hold a Pascal string (`"CRFADE6.CSP"`), and the 60 before are
+merely zero. Settle a special to find out whether a companion flag array exists.
+
+Still to watch: the scoring counters, which are entirely invented in the port.
 
 ### 1. The dispenser and test tube mechanic
 
