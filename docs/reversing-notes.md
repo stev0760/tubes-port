@@ -602,3 +602,27 @@ Traps encountered building the C++ renderer that the Python tools did not hit:
 
 Cross-checking a new decoder against the Python tools (`csp_decode.py INFO`
 prints dimensions, origin and pixel count) catches both immediately.
+
+## Gameplay constants - NOT reverse engineered
+
+The engine's playfield logic follows TUBES.DOC, not the binary. These values
+are hand-tuned to play sensibly and should be replaced with real ones:
+
+| Constant | Current | Source |
+|---|---|---|
+| cell size | 16 x 13 | **real** - measured from atom sprites |
+| playfield x range | 74..245 | **real** - gap between tube walls in `GAMEFG.GFX` |
+| grid columns / rows | 7 x 10 | guess |
+| spawn interval | 1.6 s | guess |
+| fall speed | 30 / 42 / 56 px/s | guess, scaled by difficulty |
+| score per atom | 10 | guess |
+| chain bonus | 25 per extra round | guess |
+| drop limits | 9 / 6 / 3 | **real** - stated in TUBES.DOC |
+
+The playfield renderer at `1000:9e53` should yield the true grid dimensions
+and cell origin; the scoring tables live somewhere in the main loop at
+`1000:3a67`.
+
+Input uses the same bit layout as a recorded `.SCR` demo (`0x01` up, `0x02`
+down, `0x04` left, `0x08` right, `0x10` A, `0x20` B) so a recording can later
+be fed into the same update path as live input.

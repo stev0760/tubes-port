@@ -10,16 +10,38 @@
 #include <string>
 #include <vector>
 
+#include "game.h"
 #include "gfx.h"
 #include "res.h"
 #include "screen.h"
 
 namespace {
 
+// Playfield geometry.
+//
+// The cell size is real: atom sprites measure 16x13. The tube walls in
+// GAMEFG.GFX occupy x 10..73 and x 246..309, leaving x 74..245 clear, so the
+// grid sits in that gap. Column and row counts are a playable guess, not
+// recovered from the original - see docs/reversing-notes.md.
+constexpr int kCellW = 16;
+constexpr int kCellH = 13;
+constexpr int kCols = 7;
+constexpr int kRows = 10;
+constexpr int kGridX = (tubes::kScreenWidth - kCols * kCellW) / 2;
+constexpr int kGridY = 190 - kRows * kCellH;
+constexpr int kTubeY = kGridY - kCellH - 2;
+constexpr float kFallHeight = static_cast<float>(kTubeY - 16);
+
+const char* kAtomSprites[tubes::kAtomCount] = {
+    "REDBALL.CSP",  "BLUEBALL.CSP", "GRENBALL.CSP", "YELWBALL.CSP",
+    "PURPBALL.CSP", "CYANBALL.CSP", "PINKBALL.CSP", "GOLDBALL.CSP",
+};
+
 struct Options {
     std::string gameDir = ".";
     int scale = 0;              // 0 = pick the largest that fits
     std::string screenshot;     // render one frame here and exit
+    int autoFrames = 0;         // simulate N scripted frames first
     bool help = false;
 };
 
@@ -33,6 +55,8 @@ Options parseArgs(int argc, char** argv) {
             o.scale = std::atoi(argv[++i]);
         } else if (a == "--screenshot" && i + 1 < argc) {
             o.screenshot = argv[++i];
+        } else if (a == "--auto" && i + 1 < argc) {
+            o.autoFrames = std::atoi(argv[++i]);
         } else if (a == "--help" || a == "-h") {
             o.help = true;
         } else {
@@ -49,23 +73,21 @@ void usage() {
         "\n"
         "  --gamedir DIR     directory holding your TUBES.RES (default: .)\n"
         "  --scale N         integer scale factor (default: fit the display)\n"
-        "  --screenshot PNG  render one frame to a BMP and exit\n"
+        "  --screenshot FILE render one frame to a BMP and exit\n"
+        "  --auto N          simulate N scripted frames first (for testing)\n"
         "  --help\n"
+        "\n"
+        "Controls: left/right move the test tube, Down speeds the atom,\n"
+        "Ctrl or Space releases a held atom into the beaker, Esc quits.\n"
         "\n"
         "You need your own copy of Tubes; no game data ships with this.\n");
 }
 
-// Pulls one resource and decodes it, reporting rather than aborting so a
-// partially-present game directory still gets a useful message.
 bool loadImage(const tubes::Archive& res, const std::string& name,
                tubes::Image& out, int transparent) {
     tubes::Bytes raw;
     std::string err;
-    if (!res.read(name, raw, err)) {
-        std::fprintf(stderr, "  %s\n", err.c_str());
-        return false;
-    }
-    if (!tubes::decodeGfx(raw, out, err)) {
+    if (!res.read(name, raw, err) || !tubes::decodeGfx(raw, out, err)) {
         std::fprintf(stderr, "  %s: %s\n", name.c_str(), err.c_str());
         return false;
     }
@@ -77,15 +99,73 @@ bool loadSprite(const tubes::Archive& res, const std::string& name,
                 tubes::Sprite& out) {
     tubes::Bytes raw;
     std::string err;
-    if (!res.read(name, raw, err)) {
-        std::fprintf(stderr, "  %s\n", err.c_str());
-        return false;
-    }
-    if (!tubes::decodeCsp(raw, out, err)) {
+    if (!res.read(name, raw, err) || !tubes::decodeCsp(raw, out, err)) {
         std::fprintf(stderr, "  %s: %s\n", name.c_str(), err.c_str());
         return false;
     }
     return true;
+}
+
+uint8_t readKeyboard() {
+    const Uint8* k = SDL_GetKeyboardState(nullptr);
+    uint8_t b = 0;
+    if (k[SDL_SCANCODE_UP]) b |= tubes::button::kUp;
+    if (k[SDL_SCANCODE_DOWN]) b |= tubes::button::kDown;
+    if (k[SDL_SCANCODE_LEFT]) b |= tubes::button::kLeft;
+    if (k[SDL_SCANCODE_RIGHT]) b |= tubes::button::kRight;
+    if (k[SDL_SCANCODE_LCTRL] || k[SDL_SCANCODE_RCTRL] ||
+        k[SDL_SCANCODE_SPACE]) {
+        b |= tubes::button::kA;
+    }
+    if (k[SDL_SCANCODE_LALT] || k[SDL_SCANCODE_RALT]) b |= tubes::button::kB;
+    return b;
+}
+
+// A scripted player, used by --auto so the game loop can be exercised
+// headless. It stacks like colours together, which is enough to drive real
+// matches and cascades rather than scattering atoms at random.
+uint8_t scriptedInput(const tubes::Game& game) {
+    uint8_t b = tubes::button::kDown;
+
+    if (game.heldAtom() != tubes::kEmpty) {
+        const tubes::Board& board = game.board();
+        int target = -1;
+
+        // Prefer a column whose topmost atom already matches what we hold.
+        for (int c = 0; c < board.cols(); ++c) {
+            int free = board.dropRow(c);
+            if (free < 0) continue;
+            if (free + 1 < board.rows() &&
+                board.at(c, free + 1) == game.heldAtom()) {
+                target = c;
+                break;
+            }
+        }
+        // Otherwise use the emptiest column, to keep the beaker level.
+        if (target < 0) {
+            int best = -1;
+            for (int c = 0; c < board.cols(); ++c) {
+                int free = board.dropRow(c);
+                if (free > best) {
+                    best = free;
+                    target = c;
+                }
+            }
+        }
+        if (target < 0) return b;
+
+        if (game.tubeColumn() < target) return b | tubes::button::kRight;
+        if (game.tubeColumn() > target) return b | tubes::button::kLeft;
+        return b | tubes::button::kA;
+    }
+
+    // Nothing held: line up under the falling atom to catch it.
+    if (game.falling().active && game.falling().column != game.tubeColumn()) {
+        return b | (game.falling().column > game.tubeColumn()
+                        ? tubes::button::kRight
+                        : tubes::button::kLeft);
+    }
+    return b;
 }
 
 }  // namespace
@@ -118,27 +198,24 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Colour 0 is the transparent index for the playfield overlay.
     tubes::Image background;
     tubes::Image foreground;
     bool haveBg = loadImage(res, "GAMEBG1.GFX", background, -1);
     bool haveFg = loadImage(res, "GAMEFG.GFX", foreground, 0);
 
-    // A representative spread of atoms for the demo scene.
-    const char* atomNames[] = {"REDBALL.CSP",  "BLUEBALL.CSP", "GRENBALL.CSP",
-                               "YELWBALL.CSP", "PURPBALL.CSP", "CYANBALL.CSP"};
-    std::vector<tubes::Sprite> atoms;
-    for (const char* n : atomNames) {
-        tubes::Sprite s;
-        if (loadSprite(res, n, s)) {
-            size_t set = 0;
-            for (uint8_t m : s.mask) set += m;
-            std::printf("  %-14s %dx%d origin(%d,%d) %zu px\n", n, s.width,
-                        s.height, s.originX, s.originY, set);
-            atoms.push_back(std::move(s));
-        }
+    tubes::Sprite atoms[tubes::kAtomCount];
+    int loaded = 0;
+    for (int i = 0; i < tubes::kAtomCount; ++i) {
+        if (loadSprite(res, kAtomSprites[i], atoms[i])) ++loaded;
     }
-    std::printf("loaded %zu atom sprites\n", atoms.size());
+    tubes::Sprite testTube;
+    bool haveTube = loadSprite(res, "TESTUBE1.CSP", testTube);
+    std::printf("loaded %d/%d atoms, test tube %s\n", loaded,
+                static_cast<int>(tubes::kAtomCount),
+                haveTube ? "ok" : "missing");
+
+    tubes::Game game(kCols, kRows, tubes::Difficulty::k101, 0x9E3779B9u);
+    game.setFallHeight(kFallHeight);
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -152,7 +229,6 @@ int main(int argc, char** argv) {
         if (SDL_GetCurrentDisplayMode(0, &dm) == 0) {
             int fit = std::min(dm.w / tubes::kScreenWidth,
                                dm.h / tubes::kScreenHeight);
-            // Leave headroom so the window isn't flush with the screen edge.
             scale = std::max(1, std::min(fit - 1, 6));
         }
     }
@@ -161,32 +237,38 @@ int main(int argc, char** argv) {
         "Tubes", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         tubes::kScreenWidth * scale, tubes::kScreenHeight * scale,
         SDL_WINDOW_RESIZABLE);
-    if (!win) {
-        std::fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
+    SDL_Renderer* ren =
+        win ? SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED) : nullptr;
+    if (win && !ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
+    if (!win || !ren) {
+        std::fprintf(stderr, "SDL init failed: %s\n", SDL_GetError());
         SDL_Quit();
         return 1;
     }
 
-    SDL_Renderer* ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
-    if (!ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
-    if (!ren) {
-        std::fprintf(stderr, "SDL_CreateRenderer: %s\n", SDL_GetError());
-        SDL_DestroyWindow(win);
-        SDL_Quit();
-        return 1;
-    }
-
-    // Nearest-neighbour: this is a 320x200 game and must stay crisp.
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
     SDL_Texture* tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32,
                                          SDL_TEXTUREACCESS_STREAMING,
                                          tubes::kScreenWidth,
                                          tubes::kScreenHeight);
 
+    // Run the scripted player before drawing, so a headless screenshot shows
+    // a populated beaker rather than the empty opening frame.
+    for (int f = 0; f < opt.autoFrames; ++f) {
+        (void)f;
+        game.update(scriptedInput(game), 1.0f / 60.0f);
+    }
+    if (opt.autoFrames) {
+        std::printf(
+            "simulated %d frames: %d atoms, score %d, chains %d, drops %d/%d%s\n",
+            opt.autoFrames, game.board().count(), game.score(), game.chains(),
+            game.drops(), game.dropLimit(), game.gameOver() ? ", GAME OVER" : "");
+    }
+
     tubes::Screen screen;
     std::vector<uint8_t> rgba;
     bool running = true;
-    int frame = 0;
+    Uint32 last = SDL_GetTicks();
 
     while (running) {
         SDL_Event ev;
@@ -199,31 +281,50 @@ int main(int argc, char** argv) {
             }
         }
 
+        Uint32 now = SDL_GetTicks();
+        float dt = static_cast<float>(now - last) / 1000.0f;
+        last = now;
+        if (dt > 0.1f) dt = 0.1f;    // a stall must not teleport atoms
+
+        if (opt.screenshot.empty()) game.update(readKeyboard(), dt);
+
         screen.clear(0);
         if (haveBg) screen.blit(background);
         if (haveFg) screen.blit(foreground);
 
-        // Drop the atoms down the dispenser tubes so the scene is obviously
-        // live rather than a still frame.
-        for (size_t i = 0; i < atoms.size(); ++i) {
-            int x = 26 + static_cast<int>(i) * 46;
-            int y = 12 + ((frame * 2 + static_cast<int>(i) * 37) % 160);
-            screen.draw(atoms[i], x, y);
+        const tubes::Board& b = game.board();
+        for (int r = 0; r < b.rows(); ++r) {
+            for (int c = 0; c < b.cols(); ++c) {
+                int8_t v = b.at(c, r);
+                if (v == tubes::kEmpty) continue;
+                screen.draw(atoms[v], kGridX + c * kCellW, kGridY + r * kCellH);
+            }
+        }
+
+        const tubes::Falling& f = game.falling();
+        if (f.active && f.colour != tubes::kEmpty) {
+            screen.draw(atoms[f.colour], kGridX + f.column * kCellW,
+                        static_cast<int>(f.y));
+        }
+        if (haveTube) {
+            screen.draw(testTube, kGridX + game.tubeColumn() * kCellW - 3,
+                        kTubeY - 40);
+        }
+        if (game.heldAtom() != tubes::kEmpty) {
+            screen.draw(atoms[game.heldAtom()],
+                        kGridX + game.tubeColumn() * kCellW, kTubeY);
         }
 
         screen.toRgba(pal, rgba);
         SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kScreenWidth * 4);
 
-        // Integer scaling, centred, with letterboxing around it.
         int winW = 0, winH = 0;
         SDL_GetRendererOutputSize(ren, &winW, &winH);
         int s = std::max(1, std::min(winW / tubes::kScreenWidth,
                                      winH / tubes::kScreenHeight));
-        SDL_Rect dst;
-        dst.w = tubes::kScreenWidth * s;
-        dst.h = tubes::kScreenHeight * s;
-        dst.x = (winW - dst.w) / 2;
-        dst.y = (winH - dst.h) / 2;
+        SDL_Rect dst{(winW - tubes::kScreenWidth * s) / 2,
+                     (winH - tubes::kScreenHeight * s) / 2,
+                     tubes::kScreenWidth * s, tubes::kScreenHeight * s};
 
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
@@ -242,7 +343,6 @@ int main(int argc, char** argv) {
             running = false;
         }
 
-        ++frame;
         SDL_Delay(16);
     }
 

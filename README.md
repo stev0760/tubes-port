@@ -27,9 +27,10 @@ composited 320x200 scene from the original data.
 - [x] Map the `TUBES.RES` container format and its LZSS compression
 - [x] Decode sprites, images, palettes, fonts, sound effects, demo recording
 - [x] Engine: resource loading and Mode X-faithful rendering
+- [x] Playfield logic, matching and input
 - [ ] `.MUS` FM/Adlib music
-- [ ] Recover gameplay constants (scoring, wave curves, spawn RNG)
-- [ ] Input and gameplay
+- [ ] Recover real gameplay constants (grid size, scoring, wave curves)
+- [ ] Beaker and test tube presentation, sound effects, wave/endurance modes
 
 ## Building and running
 
