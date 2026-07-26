@@ -1394,7 +1394,7 @@ unambiguous:
 | `HITATOM` | atom landing on settled atoms | guess |
 | `SLIDE` | the tube sliding along its rail | guess |
 | `SWITCH` `SELECT` | menu movement and confirmation | guess |
-| `BUBBLE` | unidentified | - |
+| `BUBBLE` | the **intro cutscene** - the beaker foams and bubbles as the elements go unstable | from play |
 | `CLAP` `NOOOO` `WHATTHE` | **cutscene** reactions, not gameplay | from play |
 | `WOOSH` `LIGHTN` `ABSMAGIC` | the Absolute Magic splash | already attributed |
 
@@ -2407,3 +2407,31 @@ So the seven 8x7 balls at `DS:0x200a` show the *required colour* for the current
 task. That also explains the rotation observed in wave 6: that wave's objective
 is "survive 30 atoms" with no required colour, so the display cycles rather than
 naming one.
+
+
+## The sound inventory is fully attributed
+
+`BUBBLE` was the last unknown, and it is **not a gameplay sound**: it belongs to
+the intro cutscene, where the beaker foams and bubbles as Lanny's elements go
+unstable. Three things had already pointed away from gameplay without settling
+it - it is **0.865 s**, far longer than the blips the game uses for actions; its
+internal name is *"Bubbles"*, plural; and it was the only sound with no
+counterpart anywhere else in the resources. The blackboard cutscene also already
+owned `CLAP`, `NOOOO` and `WHATTHE`, and its resource list is `WRITE0..9.GFX`
+plus **`EXPLOD1..4.GFX`** - an explosion sequence, which is exactly that scene.
+
+All 24 `.SFX` now have an owner:
+
+| group | count | sounds |
+|---|---|---|
+| match / clear, one per fade family | 11 | `RFADE` `GFADE` `BFADE` `CFADE` `PFADE` `YFADE` `PNKFADE` `FFADE` `AFADE` `GLDFADE` `CRFADE` |
+| gameplay events | 6 | `DROP` (a miss) `HITATOM` `HITGLASS` (landing in the tube) `SLIDE` `SWITCH` `SELECT` |
+| cutscene | 4 | `BUBBLE` `CLAP` `NOOOO` `WHATTHE` |
+| splash screens | 3 | `WOOSH` `LIGHTN` `ABSMAGIC` |
+
+Worth recording how it was resolved: not by analysis. The duration, the plural
+name and the orphan status all *suggested* "not gameplay" but could not say what
+it was. Someone recognising it settled it in one line - the same way the
+`MULTBALL`, `DROP` and miss-mechanic corrections arrived. Play memory has been
+unreliable as evidence and excellent at pointing, which is why these notes keep
+the two on separate lines.

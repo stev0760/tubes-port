@@ -1402,3 +1402,25 @@ Worth noting the shape of this: the failing approach was *more* sophisticated -
 type injection, tube steering, frame-accurate sampling - and the thing that
 worked was editing one byte in a save file. The expensive machinery was aimed at
 a question the game answers on a slide.
+
+### `BUBBLE` identified: the intro cutscene
+
+The last unattributed sound, and it is not a gameplay effect at all - it is the
+intro cutscene, where the beaker foams and bubbles as the elements go unstable.
+
+Everything measurable had pointed away from gameplay without being able to say
+what it *was*: 0.865 s is far longer than the blips used for actions, the
+internal name is "Bubbles" plural, and it was the only sound in the set with no
+counterpart among the fade families, UI actions, collisions or splash screens.
+The blackboard cutscene already owned `CLAP`, `NOOOO` and `WHATTHE`, and its
+resources are `WRITE0..9.GFX` plus `EXPLOD1..4.GFX` - an explosion sequence,
+which is that scene exactly.
+
+All 24 `.SFX` now have an owner: 11 match/clear (one per fade family), 6 gameplay
+events, 4 cutscene, 3 splash.
+
+Recognition settled it in one line, where analysis had only narrowed it - the
+same pattern as the `MULTBALL`, `DROP` and missed-atom corrections. Play memory
+keeps proving unreliable as *evidence* and excellent at *pointing*, which is the
+reason these notes keep reported and measured claims on separate lines rather
+than merging them.

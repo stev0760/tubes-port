@@ -511,7 +511,11 @@ Cheap and high-impact once the mechanic is settled.
   types 1-7 the colours, 8 Flashium (`FFADE`), 9 AntiMatter, 10 Bonus,
   18 the crystal. Types 11-17 and 19 have **null** fade pointers, so they are
   never cleared by matching.
-- `.SFX` through SDL audio, mixed alongside the OPL output. The match sounds are
+- `.SFX` through SDL audio, mixed alongside the OPL output. **All 24 are now
+  attributed**: 11 match/clear sounds (one per fade family), 6 gameplay events
+  (`DROP` = a miss, `HITATOM`, `HITGLASS`, `SLIDE`, `SWITCH`, `SELECT`), 4
+  cutscene (`BUBBLE` - the beaker foaming in the intro - `CLAP`, `NOOOO`,
+  `WHATTHE`) and 3 splash (`WOOSH`, `LIGHTN`, `ABSMAGIC`). The match sounds are
   already mapped: eleven `.SFX` share the exact names of the eleven fade sprite
   families (`RFADE`, ... `FFADE`, `AFADE`, `GLDFADE`, `CRFADE`), so there is one
   per family. Reported from play: the sound is chosen by the colour the **stack**
