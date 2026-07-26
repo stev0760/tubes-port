@@ -99,9 +99,25 @@ Capacity 5/3/2 by difficulty, inferred from the `TESTUBE1/2/3` sprite heights
 of 65/42/27 at the 13px row pitch - which sprite goes with which difficulty is
 not proven.
 
-**Still unknown:** the path itself. Atoms clearly follow a fixed route, so
-there is very likely a waypoint table in DGROUP. Finding it is the next step
-and would make the dispenser exact rather than approximated.
+**The atom record is solved.** From the one record-indexed draw site:
+
+        push word es:[di]        ; x      - record +0
+        push word es:[di+2]      ; y      - record +2
+        mov  al,  es:[di+0xb]    ; colour - record +0x0b
+        call 1321:0905           ; Draw(x, y, sprite)
+        ...
+        mov  es:[di+0x14], dx    ; saved x, one slot per video page
+
+So each of the 12 records is a free-moving sprite carrying its own position,
+plus saved positions per page for dirty-rect erase (the page index lives at
+`ds:0x2376`). 28 bytes: x, y, colour, and two saved pairs.
+
+**There is no waypoint table.** DGROUP holds only 3392 bytes of initialised
+data in total, and the only smooth coordinate-like runs in it are a
+multiplication table (11, 22, 33, ...) and an 8-word fragment. The path is
+**procedural** - a phase counter drives increments and decrements of the
+record's x and y, so it needs to be read as a state machine rather than
+recovered as data.
 
 **Do not** assume per-cell tile routing - the frame update contains no
 arithmetic on the 13px row pitch outside the settled-grid draw.

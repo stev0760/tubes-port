@@ -1,12 +1,11 @@
 // Game state: the dispenser, the player's test tube, and the beaker.
 //
-// Atoms enter at the bottom right, travel up and arc over the top along the
-// tube artwork, then come down. The player slides the test tube to catch them;
-// it holds several stacked. A tips one into the beaker, B speeds an atom along.
-// Line up three or more of a colour to clear.
+// Atoms spawn at the bottom right and trace up and over the tube arc, which
+// gives the player a preview of the colours coming, then fall out of the tube
+// into the play area. The test tube slides on a rail and holds several atoms
+// stacked; A tips one into the beaker, B speeds an atom along.
 //
-// The path itself is not yet recovered, so the travel here is a placeholder
-// vertical fall. Timings and scoring are hand-tuned too. See PLAN.md.
+// The arc is not implemented - atoms currently just fall. See PLAN.md.
 
 #pragma once
 
