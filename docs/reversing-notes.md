@@ -626,3 +626,52 @@ and cell origin; the scoring tables live somewhere in the main loop at
 Input uses the same bit layout as a recorded `.SCR` demo (`0x01` up, `0x02`
 down, `0x04` left, `0x08` right, `0x10` A, `0x20` B) so a recording can later
 be fed into the same update path as live input.
+
+## .MUS - FM/Adlib music (NOT solved)
+
+Partial findings only. This is the one format still open.
+
+### Confirmed
+
+- Header is 32 bytes: marker `0xf5` (cf. `0xf1` for `.SFX`) followed by an
+  all-zero name field. Unlike `.SFX` there is no length or rate field, so the
+  body must be self-delimiting. Data begins at `0x20`.
+- The target hardware is **OPL2**, confirmed by disassembling `FMMUSIC.DRV`
+  from `DRIVERS.RES`. At offset `0xc9`:
+
+        ba 88 03    mov dx, 0x388     ; register select port
+        ee          out dx, al
+        ec x6                         ; port delay reads
+        42          inc dx            ; -> 0x389, data port
+        8a c4       mov al, ah
+        ee          out dx, al
+
+  This is the canonical Adlib register-write sequence. Note `0x389` never
+  appears as a literal, which is why searching for it finds nothing.
+- `FMMUSIC.DRV` opens with a 15-entry `u16` offset table (`0x920`..`0xaba`) -
+  the driver's API entry points.
+- The body opens with 14-byte records: a `u16` id followed by 12 bytes. In
+  `DEATH.MUS` the ids run `0x0010`..`0x0015` and pair up (`0x10`/`0x11`
+  identical, `0x12`/`0x13` identical), consistent with per-channel
+  instrument assignments sharing a patch. Six such records end at `0x54`,
+  exactly where a plausible event stream begins.
+
+### Ruled out
+
+- **Not a raw OPL register log.** No stride from 2 to 14, at any phase,
+  yields a high proportion of valid OPL register addresses.
+- **Not fixed 4-byte events.** After splitting off the leading records, the
+  best phase reaches only ~50% valid registers - barely above the ~39%
+  expected by chance - the best phase differs per file, and event-region
+  lengths are not multiples of 4.
+
+### Blocked on
+
+The instrument ids are **not** sequential in general: `AMTHEME.MUS` uses
+`0x10, 0x16, 0x17, 0x1a`. So the table length cannot be inferred by pattern,
+and without knowing where the table ends the event stream cannot be aligned.
+
+The event encoding is most likely variable-length (delta time plus event,
+MIDI-fashion). Cracking it means disassembling the sequencer inside
+`FMMUSIC.DRV` - roughly 2.7KB of 8086 code with the parser somewhere below
+the entry-point table - rather than more statistical probing of the data.
