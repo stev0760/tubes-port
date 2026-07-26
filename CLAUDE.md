@@ -1,7 +1,8 @@
 # CLAUDE.md
 
-Working notes for this repository. Read `docs/reversing-notes.md` for format
-details and `docs/worklog.md` for what happened when.
+Working notes for this repository. **`PLAN.md` is what is left to do** - read
+it first when picking work up. `docs/reversing-notes.md` has the format
+details, `docs/worklog.md` what happened when.
 
 ## What this is
 
@@ -36,6 +37,7 @@ blindly.
 | `third_party/` | vendored deps, unmodified — currently Nuked-OPL3 (LGPL 2.1) |
 | `docs/reversing-notes.md` | every format, with what is proven vs guessed |
 | `docs/worklog.md` | chronological record of the work |
+| `PLAN.md` | roadmap, current status, and what is known-wrong |
 
 The original game files live in the parent directory, `..`. The Ghidra
 project is at `../ghidra-project` — outside this repo on purpose, since it is
@@ -127,15 +129,13 @@ float, and the test tube's vertical placement is approximate.
 
 ## Open work
 
-Every format the game loads is now decoded, `.MUS` included. What remains is
-engine work:
+See `PLAN.md`. In short: the dispenser/test-tube mechanic is the last real
+unknown, and the current model of it in `src/game.cpp` is known to be wrong
+rather than merely incomplete. Everything else is mapped.
 
-- **Beaker and test tube presentation.** `BEAKER.CSP` is not drawn and the
-  tube sits at the top of the screen, so atoms appear to float.
-- Sound effects through SDL_mixer; wave and endurance modes.
-
-`.SPR` (2), `.ANM` (1) and `.BIN` (1) have never been examined. Nothing
-appears to need them yet.
+A PSP port is the eventual goal, so keep the engine free of SDL - `res`,
+`gfx`, `mus`, `board` and `game` are platform-agnostic today and should stay
+that way. `PLAN.md` has the rest of the portability notes.
 
 ## Reversing method that has actually worked
 
