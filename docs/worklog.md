@@ -1442,3 +1442,40 @@ Recorded with its caveat: a string's position shows the unit that emitted it, no
 every unit that uses it. `SELECT` is in the gameplay block while the program map
 has the title/menu referencing it, because a far pointer crosses units freely. So
 adjacency is good evidence of grouping and poor evidence of exclusive ownership.
+
+### The atom record layout is largely wrong, and it voids the MYSTBALL work
+
+The wave-30 test returned "type 19 seen 0 times" in both the test and the
+control - a clean negative. The line above the verdict is what mattered though:
+"types seen in transit: Redium=141", i.e. **every atom in the game reading as
+type 1**, in both waves. A field that never varies cannot be the colour, and the
+beaker grid plainly holds 2, 3, 4 and 8 in settled cells.
+
+Dumping whole records and tallying every offset over 2242 in-transit samples
+confirms `+0x00` = x and `+0x02` = y, and contradicts the rest. `+0x0b` only ever
+holds 0 or 1. `+0x14`..`+0x19`, the claimed saved-position slots, are **always
+zero**. There are undocumented x-like fields at `+0x06`, `+0x0a`, `+0x1a` and
+y-like at `+0x04`, `+0x08` - plausibly the saved pairs, stored as (y, x) at
+different offsets than the static read gave.
+
+**The MYSTBALL injection experiments are void.** They wrote 19 to `+0x0b` and
+read the same byte back to confirm the injection "worked". Reading back a byte
+you just wrote proves the write landed and nothing else - there was never a check
+that the *game* reads that field. So no atom was ever turned into a `?` ball, and
+the wave-30 negative means only that nothing was set to 19 anywhere the game
+looks. The hidden-atom hypothesis is **untested, not disproved**.
+
+Worth being precise about the mistake, because it is not "the notes were wrong".
+The static read of a single draw site was reasonable evidence. The error was
+building three experiments on it without once checking the field against
+observation - and then treating a read-back of my own write as confirmation. A
+control was available the whole time and cost nothing: does this field ever hold
+a value the grid also holds?
+
+What survives is everything resting on `+0x00`/`+0x02` - the dispenser path, the
+speed table, caught vs missed, the slot lifecycle - and everything measured
+independently: the grid, the tube struct, the sprite tables, the sounds, the wave
+vocabulary. The type field itself is now a correlation experiment: follow one
+atom's whole record through a catch and a tip, and see which offset's value turns
+up in the grid cell. `+0x0e` (spans 1..7) and `+0x11` (reaches 12) are the
+candidates.

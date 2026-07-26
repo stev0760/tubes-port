@@ -2506,3 +2506,67 @@ seeds and level bands already recorded above.
 The full template list with offsets is in `wave-templates.md` in the tooling
 directory, alongside per-wave screenshots in `capture/waves/`. Kept outside this
 repository because it is the game's own text.
+
+
+## The atom record layout is wrong - correction
+
+The record layout in these notes came from a single draw site read statically:
+
+        push word es:[di]        ; x      - record +0
+        push word es:[di+2]      ; y      - record +2
+        mov  al,  es:[di+0xb]    ; colour - record +0x0b
+        ...
+        mov  es:[di+0x14], dx    ; saved x, one slot per video page
+
+Dumping whole records from a live game and tallying the values seen at every
+offset contradicts most of it. Over 2242 in-transit samples:
+
+| offset | values observed | verdict |
+|---|---|---|
+| `+0x00` | 125, 161, 143, 179, 107, 58, 197, 246 | **x** - confirmed |
+| `+0x02` | 177, 186, 175, 176, 49, 185 | **y** - confirmed |
+| `+0x04`, `+0x08` | y-like | further y fields, undocumented |
+| `+0x06`, `+0x0a`, `+0x1a` | x-like | further x fields, undocumented |
+| `+0x0b` | **only 0 and 1** | **not the colour** |
+| `+0x14`..`+0x19` | **always 0** | **not the saved x/y** claimed above |
+| `+0x0e` | 0,1,2,3,5,6,7 | candidate colour (1..7) |
+| `+0x11` | 0,1,3,4,6,7,8,10,12 | candidate type, range includes specials |
+| `+0x12` | 0,2,3,4,5,6 | candidate |
+
+`+0x0b` never varies beyond 0/1 across thousands of samples while the beaker
+grid plainly holds 2, 3, 4 and 8 in settled cells. A field that never takes a
+colour value is not the colour. The x-like and y-like fields at `+0x04`..`+0x0a`
+look like the two saved position pairs - stored as (y, x) rather than at
+`+0x14`/`+0x18` - but that is a reading, not a measurement.
+
+### What this invalidates
+
+**The `MYSTBALL` injection experiments are void.** They wrote 19 to `+0x0b` and
+then read the same byte back to confirm "the injection worked" - which proves the
+write landed, not that the game reads that byte. Since `+0x0b` is not the type,
+the atom was never made into a `?` ball, and **the negative wave-30 result means
+nothing**: the type-19 count was zero because nothing was ever set to 19 in a
+field the game uses. The hidden-atom hypothesis is untested, not disproved.
+
+Also void: the "colours" columns in the dispenser-path and delta-context runs,
+which read `+0x0b` and therefore reported 0/1 throughout.
+
+### What survives
+
+Everything that used only `+0x00`/`+0x02`, which are confirmed:
+
+- the dispenser path and its coordinates;
+- the speed table (4 travelling, 18 boosted and falling, 6 for the tube);
+- caught vs missed;
+- the record lifecycle - slots overwritten, never recycled through the marker.
+
+And everything measured independently of the record: the beaker grid, the tube
+struct, the 19-entry sprite tables, the sound grouping, the wave vocabulary.
+
+### How to settle the type field
+
+Correlate rather than guess: watch a single atom's whole record while it is
+caught and tipped, then read the grid cell it produces. The cell holds the atom's
+type, so the field whose value appears there is the type. `+0x0e` and `+0x11` are
+the candidates - `+0x0e` spans exactly 1..7, `+0x11` reaches 12, which would
+cover the specials.
