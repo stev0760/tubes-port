@@ -3124,3 +3124,45 @@ is "when a search comes back empty, suspect the search"; the same scepticism is
 owed to a search that comes back **full**. The tell was available immediately -
 a frame counter that disagrees with itself is not a finding, it is a filter
 artefact.
+
+### The full menu flow, captured
+
+    Main menu  (8 items, selection wraps)
+      Start Game / Continue Saved Game / Game Options / High Scores /
+      Instructions / View Demo / Credits / Exit Tubes
+
+    Start Game
+      -> Game Mode      Endurance Mode / Wave Mode / Exit
+      -> DIFFICULTY     Tubes 101 / Tubes 201 / Tubes 301 / Exit
+      -> play
+
+Difficulty is chosen **after** the mode, on the Start Game path - not in Game
+Options, which holds only Toggle Music / Toggle Sound FX / Redefine Input
+Device / Exit. Worth stating because "Game Options" is where one would look,
+and the 9/6/3 drop allowance is the difficulty's main effect.
+
+`Tubes 101 / 201 / 301` are the difficulty names in the game's own words,
+confirming the reading of those strings in the binary.
+
+### High Scores are per mode
+
+The table is headed **"Endurance Mode High Scores"**, so each mode keeps its
+own - which independently corroborates the two-bank `TUBES.SAV` layout, where
+bank 0 is Endurance and bank 1 is Wave.
+
+Ten entries, seeded with names and a clean 1000-down-to-100 ladder in steps of
+100:
+
+    Ken Heckbert 1000   Kelly Rogers 900   Glenda Moore 800   Jerry Herrin 700
+    Rik Pierce    600   Doug Howell  500   Joe Siegler  400   Bob Mandel  300
+    Larry Nelson  200   Adam Pedersen 100
+
+The regular 100-point step marks these as **placeholder defaults**, not real
+play. (Joe Siegler was Apogee's long-time webmaster, so the list is likely
+staff.)
+
+The screen does **not** dismiss on Enter - a probe that assumed it did carried
+on pressing keys into a screen that never changed, and captured the same
+blackboard three times while believing it was walking the Start Game path. Any
+harness stepping through menus should verify the screen changed rather than
+counting keystrokes.
