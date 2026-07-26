@@ -298,9 +298,17 @@ by the binary):
 
 The binary corroborates the entry point exactly. The 12 records of 28 bytes
 initialise to **(303, 186)** - x=303 is off the right of the play area, which
-ends at 245, and y=186 is the bottom grid row. That is the spawn point, not
-the "parked" sentinel it was first read as. So the 12 records are the atoms in
-transit along the path.
+ends at 245. **Measured:** that is the initial value of a *never-used slot*, not
+a parked state and not a recycle target - over 382 frames of play, **no** record
+ever transitioned into or out of it. The twelve records are a pool of slots,
+reused by overwriting x/y directly; the large positional jumps in the per-frame
+data are allocation, not motion. A lost atom's record simply keeps its final
+position until the slot is reallocated.
+
+**Also measured, and correcting the line above:** a missed atom is **lost**, not
+deposited in the beaker. That is a "drop", and it is what the drop allowance
+counts. The beaker fills *only* by catching atoms in the test tube and tipping
+them in with Button A - nothing reaches it without passing through the tube.
 
 **Implemented so far:** the tube stacks, A dumps one at a time, B accelerates.
 Capacity 5/3/2 by difficulty, inferred from the `TESTUBE1/2/3` sprite heights
