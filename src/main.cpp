@@ -43,26 +43,40 @@ constexpr int kTestTubeH = 65;
 constexpr int kTubeY = kGridY - kTestTubeH;
 constexpr float kFallHeight = static_cast<float>(kTubeY - 16);
 
-// Indexed by the original's atom type number, so index 0 is "empty" and the
-// seven ordinary colours occupy 1..7 in the game's own order. Entries left
-// null are types the engine does not draw yet.
+// The ball table, transliterated from the original's own initialiser. The game
+// builds it at `DS:0x1da6 + 4 * type`, and the entry program assigns each slot
+// a resource name in order, so this is not inferred from sprite filenames - it
+// is the game's table:
 //
-// Flashium (8) is deliberately null: it has no sprite of its own and cycles
-// the seven colours as it flashes.
+//     0x1daa REDBALL   0x1dae GRENBALL  0x1db2 BLUEBALL  0x1db6 CYANBALL
+//     0x1dba PURPBALL  0x1dbe YELWBALL  0x1dc2 PINKBALL  0x1dc6 (none)
+//     0x1dca ANTIBALL  0x1dce GOLDBALL  0x1dd2 XENBALL   0x1dd6 MULTBALL
+//     0x1dda EVILBALL  0x1dde CONVBALL  0x1de2 BLOCBALL  0x1de6 FILLBALL
+//     0x1dea OBSTBALL  0x1dee CRYSTAL   0x1df2 MYSTBALL
+//
+// The gap at 0x1dc6 is type 8, Flashium, which has no sprite of its own -
+// confirming from the code what was previously only observed.
 const char* kAtomSprites[tubes::kTypeCount] = {
-    nullptr,                                        // 0  empty
-    "REDBALL.CSP",                                  // 1  Redium
-    "GRENBALL.CSP",                                 // 2  Greenium
-    "BLUEBALL.CSP",                                 // 3  Bluium
-    "CYANBALL.CSP",                                 // 4  Cyanium
-    "PURPBALL.CSP",                                 // 5  Purplium
-    "YELWBALL.CSP",                                 // 6  Yellowium
-    "PINKBALL.CSP",                                 // 7  Pinkium
-    nullptr,                                        // 8  Flashium
-    "ANTIBALL.CSP",                                 // 9  AntiMatter
-    "GOLDBALL.CSP",                                 // 10 Bonus
-    "XENBALL.CSP",                                  // 11 Xenon
-    nullptr, nullptr, nullptr, nullptr, nullptr,    // 12..16 letter balls
+    nullptr,            // 0  empty
+    "REDBALL.CSP",      // 1  Redium
+    "GRENBALL.CSP",     // 2  Greenium
+    "BLUEBALL.CSP",     // 3  Bluium
+    "CYANBALL.CSP",     // 4  Cyanium
+    "PURPBALL.CSP",     // 5  Purplium
+    "YELWBALL.CSP",     // 6  Yellowium
+    "PINKBALL.CSP",     // 7  Pinkium
+    nullptr,            // 8  Flashium - no sprite, cycles the seven colours
+    "ANTIBALL.CSP",     // 9  AntiMatter
+    "GOLDBALL.CSP",     // 10 Bonus
+    "XENBALL.CSP",      // 11 Xenon
+    "MULTBALL.CSP",     // 12 Multiplier
+    "EVILBALL.CSP",     // 13 EvilMultiplier
+    "CONVBALL.CSP",     // 14 Convertor
+    "BLOCBALL.CSP",     // 15 Blocker
+    "FILLBALL.CSP",     // 16 Filler
+    "OBSTBALL.CSP",     // 17 obstacle
+    "CRYSTAL.CSP",      // 18 Crystal
+    "MYSTBALL.CSP",     // 19 the "?" concealment sprite, not a ball
 };
 
 // The tube network furniture, decompiled out of 1000:3a67. It is NOT a

@@ -3658,3 +3658,100 @@ atoms, so the glass front overlaps the balls.
 **The port currently has this inverted** - `src/main.cpp` draws the beaker
 first and the atoms on top of it, and draws no tube furniture at all. Both are
 now fully specified by the list above.
+
+## MYSTBALL is a rendering state, not a ball - proven from code
+
+Three experiments failed to settle this. It is settled now, and not by
+observation: `1000:3a67` draws each travelling atom like this -
+
+    if (hidden == 0)
+        Draw(ball[type], x, y);          // DS:0x1da6 + 4*type
+    else
+        Draw(*(u16 *)0x1df2, ..., x, y); // the same x, y
+
+and `DS:0x1df2` is **`MYSTBALL.CSP`**, established from the entry program's
+resource table below. So a concealed atom keeps its real type in its record and
+is merely *drawn* as a `?`. The flag lives in `9e53`'s frame at `-0x189`.
+
+That is exactly the reading the wave 30 briefing implied - "atoms hidden until
+they leave a tube" - and it explains every earlier failure to find it:
+
+- **it is not a type**, so scanning the atom array for the value 19 could never
+  find it, no matter how the sampler was written;
+- injecting 19 into a record's type byte could not produce it either, because
+  the branch is on a *separate flag*, not on the type;
+- and it never appears in the beaker, which is why type 19 has no fade family -
+  a concealment sprite resolves before landing and never needs a clear
+  animation.
+
+The lesson is the one the port-wide pivot was about. Three experiments were
+built to detect a value that does not exist anywhere in the data, and each was
+capable only of reporting its absence. The branch that decides it is two lines
+of code.
+
+## The entry program's resource table, decoded
+
+`1000:aaba` assigns every graphics global its resource name through a repeated
+`(name pointer, destination)` pair feeding `FUN_21ea_035b`. Decoding all 77
+assignments gives the game's own name for each global.
+
+**The ball table** at `DS:0x1da6 + 4 * type`:
+
+| addr | type | resource | | addr | type | resource |
+|---|---|---|---|---|---|---|
+| `0x1daa` | 1 | REDBALL | | `0x1dd6` | 12 | MULTBALL |
+| `0x1dae` | 2 | GRENBALL | | `0x1dda` | 13 | EVILBALL |
+| `0x1db2` | 3 | BLUEBALL | | `0x1dde` | 14 | CONVBALL |
+| `0x1db6` | 4 | CYANBALL | | `0x1de2` | 15 | BLOCBALL |
+| `0x1dba` | 5 | PURPBALL | | `0x1de6` | 16 | FILLBALL |
+| `0x1dbe` | 6 | YELWBALL | | `0x1dea` | 17 | OBSTBALL |
+| `0x1dc2` | 7 | PINKBALL | | `0x1dee` | 18 | CRYSTAL |
+| `0x1dc6` | 8 | **absent** | | `0x1df2` | 19 | MYSTBALL |
+| `0x1dca` | 9 | ANTIBALL | | | | |
+| `0x1dce` | 10 | GOLDBALL | | | | |
+| `0x1dd2` | 11 | XENBALL | | | | |
+
+This confirms the type numbering **from the code**, where it had previously
+rested on a settle correlation. The gap at type 8 is Flashium, which genuinely
+has no sprite of its own - previously an inference from watching it cycle
+colours, now a hole in the game's own table.
+
+Also recovered: the seven small HUD balls at `DS:0x200a` (`SRBALL`, `SGBALL`,
+`SBBALL`, `SCBALL`, `SPBALL`, `SYBALL`, `SPNKBALL`), the blackboard and
+cutscene art (`BLACKBRD`, `TALK1..5`, `CLAP1..3`, `JUMP1..3`, `BOOKS`,
+`POINTER0..3`, `POINTERT`), the four fonts (`SCRIPT.816`, `TINY6X8.88`,
+`FUTURE.816`, `STARTREK.816`), `TUBES.PAL`, `CLASS.MUS` and three `.SFX`.
+
+## Rendering is dirty-rect over double-buffered pages
+
+The per-atom draw is:
+
+    FUN_2321_0874(0xd, 0x10, prevX[page], prevY[page]);   // 13 x 16 rect
+    if (active) {
+        Draw(ball or MYSTBALL, x, y);
+        FUN_2321_0874(0xd, 0x10, x, y);
+        prevY[page] = y;  prevX[page] = x;
+    }
+
+`FUN_2321_0874` takes **dimensions, not a sprite**, so it registers a 13 x 16
+region rather than drawing - the classic dirty-rectangle pattern. The previous
+position is stored **per page**, indexed by the page counter at `DS:0x2376`
+already documented, because each of the two Mode X pages needs its own restore
+list.
+
+That is why the atom cell is 16 x 13 everywhere: it is the unit of redraw.
+
+## Still not located: the movement code
+
+The routing that walks an atom through the network has **not** been found. The
+tube x positions (`34, 58, 107, 125, 179, 197, 246, 270`) appear in `1000:3a67`
+**only inside draw calls** - never in a comparison - so the path is not a series
+of hard-coded position tests in this function. Candidates not yet examined: a
+waypoint table in DGROUP, or a called routine.
+
+Record fields seen being used but not yet identified: `+0x07`, `+0x09`,
+`+0x0f` (compared against 6, so plausibly a destination column), `+0x13`, and
+`+0x21` used as a record index.
+
+Until that is found, `src/game.cpp`'s three-leg route stays a placeholder, and
+it is marked as one.

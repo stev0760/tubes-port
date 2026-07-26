@@ -40,7 +40,14 @@ enum Atom : int8_t {
     kConvertor = 14,
     kBlocker = 15,
     kFiller = 16,
-    kTypeCount = 17,        // 0..16 inclusive
+    kObstacle = 17,
+    kCrystal = 18,
+    // MYSTBALL is a RENDERING STATE, not a ball. 1000:3a67 draws it in place
+    // of the real atom when a hidden-atom wave is active:
+    //     if (hidden == 0) Draw(ball[type], x, y); else Draw(MYSTBALL, x, y);
+    // so an atom keeps its true type underneath and is merely concealed.
+    kMystery = 19,
+    kTypeCount = 20,        // 0..19 inclusive
 };
 
 // Types 1..7 are the ordinary colours: the ones that spawn freely and match
