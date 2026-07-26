@@ -65,6 +65,61 @@ const char* kAtomSprites[tubes::kTypeCount] = {
     nullptr, nullptr, nullptr, nullptr, nullptr,    // 12..16 letter balls
 };
 
+// The tube network furniture, decompiled out of 1000:3a67. It is NOT a
+// backdrop: the network is built from individual segment sprites in layered
+// passes, and the atoms are drawn *between* those passes so the solid pieces
+// overpaint them. That is what makes the tubes read as hollow, with atoms
+// visibly inside them and tubes overlapping one another.
+enum Furn {
+    kTubeH, kTubeHS, kTubeHR,
+    kTubeV, kTubeVS, kTubeVR, kTubeVRS, kTubeVL, kTubeVLS,
+    kBeakerFront, kBeakerShadow, kTestTubeShadow, kMarker,
+    kFurnCount
+};
+
+const char* kFurnFiles[kFurnCount] = {
+    "TUBEH.CSP",  "TUBEHS.CSP",  "TUBEHR.CSP",
+    "TUBEV.CSP",  "TUBEVS.CSP",  "TUBEVR.CSP", "TUBEVRS.CSP",
+    "TUBEVL.CSP", "TUBEVLS.CSP",
+    "BEAKER.CSP", "BEAKERS.CSP", "TESTUBES.CSP", "MARKER.CSP",
+};
+
+struct FurnDraw {
+    uint8_t sprite;
+    int16_t y, x;
+};
+
+// Transcribed in order from the decompiled draw sequence. The two ATOMS marks
+// in that sequence split this into three groups; see kFurnGroup* below.
+const FurnDraw kFurniture[] = {
+    // --- group 0: back layers, drawn before any atom ---
+    {kTubeH,   26,  34}, {kTubeH,   26, 270}, {kTubeH,   26,  58},
+    {kTubeH,   26, 246}, {kTubeH,   26, 107}, {kTubeH,   26, 197},
+    {kTubeHR,  26, 125}, {kTubeH,   26, 179},
+    {kTubeHS,  13,  58}, {kTubeHS,  13, 246}, {kTubeHS,  13, 107},
+    {kTubeHS,  13, 197},
+    {kTubeVLS, 26,  34}, {kTubeVRS, 26, 270}, {kTubeVRS, 26, 125},
+    {kTubeVLS, 26, 179},
+    // --- group 1: mid layers ---
+    {kTubeH,   13,  58}, {kTubeH,   13, 246}, {kTubeHR,  13, 107},
+    {kTubeH,   13, 197},
+    {kTubeVL,  26,  34}, {kTubeVR,  26, 270}, {kTubeVR,  26, 125},
+    {kTubeVL,  26, 179},
+    {kTubeVLS, 13,  58}, {kTubeVRS, 13, 246}, {kTubeVRS, 13, 107},
+    {kTubeVLS, 13, 197},
+    {kTubeVS,  26,  58}, {kTubeVS,  26, 246}, {kTubeVS,  26, 107},
+    {kTubeVS,  26, 197},
+    // --- group 2: front layers ---
+    {kTubeVL,  13,  58}, {kTubeVR,  13, 246}, {kTubeVR,  13, 107},
+    {kTubeVL,  13, 197},
+    {kTubeV,   26,  58}, {kTubeV,   26, 246}, {kTubeV,   26, 107},
+    {kTubeV,   26, 197},
+};
+constexpr int kFurnGroup0 = 16;   // atoms are drawn after this many
+constexpr int kFurnGroup1 = 32;   // and again after this many
+constexpr int kFurnTotal = static_cast<int>(sizeof(kFurniture) /
+                                            sizeof(kFurniture[0]));
+
 struct Options {
     std::string gameDir = ".";
     int scale = 0;              // 0 = pick the largest that fits
@@ -364,6 +419,16 @@ int main(int argc, char** argv) {
     }
     tubes::Sprite testTube;
     bool haveTube = loadSprite(res, "TESTUBE1.CSP", testTube);
+
+    tubes::Sprite furn[kFurnCount];
+    bool haveFurn[kFurnCount] = {};
+    int furnLoaded = 0;
+    for (int i = 0; i < kFurnCount; ++i) {
+        haveFurn[i] = loadSprite(res, kFurnFiles[i], furn[i]);
+        if (haveFurn[i]) ++furnLoaded;
+    }
+    std::printf("loaded %d/%d tube network sprites\n", furnLoaded,
+                static_cast<int>(kFurnCount));
     // The beaker's interior is exactly the grid: 106 x 65, with 4px walls, so
     // it sits 4px left of column 1 and level with row 1.
     tubes::Sprite beaker;
@@ -474,7 +539,52 @@ int main(int argc, char** argv) {
         if (haveBg) screen.blit(background);
         if (haveFg) screen.blit(foreground);
 
-        if (haveBeaker) screen.draw(beaker, kGridX - 4, kGridY);
+        // Draw order transcribed from 1000:3a67. The atoms go BETWEEN the
+        // furniture passes, not on top of them, so the solid tube pieces
+        // overpaint them and the network reads as hollow glass.
+        auto drawFurn = [&](int from, int to) {
+            for (int i = from; i < to; ++i) {
+                const FurnDraw& d = kFurniture[i];
+                if (haveFurn[d.sprite]) screen.draw(furn[d.sprite], d.x, d.y);
+            }
+        };
+
+        const tubes::Falling& f = game.falling();
+        auto drawFlyingAtom = [&]() {
+            if (f.active && f.colour != tubes::kEmpty) {
+                screen.draw(atoms[f.colour], static_cast<int>(f.x),
+                            static_cast<int>(f.y));
+            }
+        };
+
+        drawFurn(0, kFurnGroup0);
+        // The original draws different atom records at each of the two
+        // interleave points, presumably split by which layer they occupy.
+        // With a single in-flight atom the first point is the faithful
+        // choice: everything from the mid layers onward paints over it.
+        drawFlyingAtom();
+        drawFurn(kFurnGroup0, kFurnGroup1);
+        drawFurn(kFurnGroup1, kFurnTotal);
+
+        // Test tube: its shadow goes down before the tube and its contents.
+        const int tubeX = kGridX + game.tubeColumn() * kPitchX;
+        if (haveFurn[kTestTubeShadow]) {
+            screen.draw(furn[kTestTubeShadow], tubeX - 3, kTubeY);
+        }
+        if (haveTube) screen.draw(testTube, tubeX - 3, kTubeY);
+
+        // Atoms stack in the tube, mouth downwards: index 0 sits at the
+        // bottom and is the next one an A press tips out.
+        const std::vector<int8_t>& stack = game.tubeAtoms();
+        for (size_t i = 0; i < stack.size(); ++i) {
+            const int y = kGridY - kCellH - static_cast<int>(i) * kPitchY;
+            screen.draw(atoms[stack[i]], tubeX, y);
+        }
+
+        // Beaker shadow, then its contents, then the glass FRONT last - the
+        // original draws BEAKER.CSP after the settled atoms, so the glass
+        // overlaps the balls. The port used to draw it first.
+        if (haveFurn[kBeakerShadow]) screen.draw(furn[kBeakerShadow], 186, 135);
 
         const tubes::Board& b = game.board();
         for (int r = 0; r < b.rows(); ++r) {
@@ -485,24 +595,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        // The atom follows the measured dispenser path - up an outer tube,
-        // across the top, then down a play column - so it carries its own
-        // screen position rather than being placed from its column.
-        const tubes::Falling& f = game.falling();
-        if (f.active && f.colour != tubes::kEmpty) {
-            screen.draw(atoms[f.colour], static_cast<int>(f.x),
-                        static_cast<int>(f.y));
-        }
-        const int tubeX = kGridX + game.tubeColumn() * kPitchX;
-        if (haveTube) screen.draw(testTube, tubeX - 3, kTubeY);
-
-        // Atoms stack in the tube, mouth downwards: index 0 sits at the
-        // bottom and is the next one an A press tips out.
-        const std::vector<int8_t>& stack = game.tubeAtoms();
-        for (size_t i = 0; i < stack.size(); ++i) {
-            const int y = kGridY - kCellH - static_cast<int>(i) * kPitchY;
-            screen.draw(atoms[stack[i]], tubeX, y);
-        }
+        if (haveBeaker) screen.draw(beaker, kGridX - 4, kGridY);
 
         screen.toRgba(pal, rgba);
         SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kScreenWidth * 4);
