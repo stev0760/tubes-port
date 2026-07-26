@@ -2570,3 +2570,44 @@ caught and tipped, then read the grid cell it produces. The cell holds the atom'
 type, so the field whose value appears there is the type. `+0x0e` and `+0x11` are
 the candidates - `+0x0e` spans exactly 1..7, `+0x11` reaches 12, which would
 cover the specials.
+
+
+## Grid decoding validated against a live screenshot
+
+The beaker grid was located and its layout proven by construction, but never
+checked against what the player actually sees. Read during a paused wave 31:
+
+    row 4:  Yellowium  Purplium  Redium    .         .        .
+    row 5:  Xenon      Yellowium Yellowium Purplium  Redium   Cyanium
+
+which matches the screenshot cell for cell, including the grey ball at the
+bottom-left corner reading **Xenon (11)**. Base `0x24314`, row-major, 6 per row,
+bottom row at `+24` - confirmed visually, not just structurally.
+
+That also settles a point previously only inferred: **specials settle in the grid
+as themselves**, so cell values genuinely run past 1..7 into the full type range.
+
+### The HUD `Drops` field counts down
+
+Observed across a session: the field reads `8`, then `4`, then `0`, and the
+label becomes **"No Drops"** when exhausted. So it is drops **remaining**,
+starting from the wave's allowance, not drops used. Reaching "No Drops" is the
+lose condition, matching the Instructions' "both games end if you drop more atoms
+than allowed".
+
+### The Convertor settles as a Xenon
+
+Reported from play, with the observation boundary stated: a `C` ball
+(`CONVBALL`, type 14) caught and tipped into an **empty** beaker settled as a
+**Xenon** - the grid cell read `11`, and the grey ball was visible in the
+screenshot.
+
+The in-game Instructions say the Convertor "will change all occurrences of the
+atom it lands on into Xenons". They do **not** say what becomes of the Convertor
+itself, and this shows it becomes a Xenon too. The conversion behaviour was *not*
+observed here, because the beaker was empty and there was nothing to convert.
+
+This resolves something structural. `CONVBALL` is type 14 and has **no fade
+family** - which looked odd for something that reaches the beaker. It never
+settles as itself: it becomes Xenon (11), which also has no fade family because
+Xenon cannot be matched. The type table and the behaviour agree.
