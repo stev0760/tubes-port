@@ -497,10 +497,46 @@ defines only 97, essentially the printable ASCII range.
     tools/fnt_decode.py RENDER <outdir> <font>...
     tools/fnt_decode.py SHOW   <font> <char>
 
+## .SFX - digital sound effects (solved)
+
+    [0]        0xf1 marker
+    [1..0x1f]  Pascal ShortString name, zero-padded (1 length + 30 chars)
+    [0x20..23] u32 sample rate
+    [0x24]     unknown, 0 in every shipped sound
+    [0x25..26] u16 sample count
+    [0x27..]   unsigned 8-bit PCM, silence at 0x80
+
+Verified across all 24 resources: the marker is always `0xf1`, the rate is
+always 8000 Hz, and the count at `0x25` equals `filesize - 0x27` exactly
+every time. Durations run 0.03s to 2.4s.
+
+Two independent confirmations that the PCM interpretation is right:
+
+- Every file has a mean sample value of 125-130, i.e. centred on `0x80`.
+  A wrong sign convention or offset would scatter these.
+- Plotted waveforms show real acoustic structure: `HITATOM` is a single
+  sharp transient decaying to silence, `CLAP` is six discrete evenly spaced
+  spikes separated by true silence (hence its 85.6% silent measurement),
+  `BUBBLE` is repeated bursts.
+
+The sounds carry human-readable names in the header, which conveniently
+document themselves - "Smack!", "Glass Clink", "Bubbles!", "Wooosshh!",
+"Switch On/Off", "Lightning". `GLDFADE.SFX` has a zero-length name.
+
+The byte at `0x24` is zero everywhere, so the shipped data cannot constrain
+its meaning. It may be a format flag or the high byte of a wider length
+field; nothing distinguishes those when every sound is under 64KB.
+
+Conversion to WAV is direct - WAV 8-bit is also unsigned, so the sample data
+is copied verbatim.
+
+    tools/sfx_decode.py INFO <file.SFX>...
+    tools/sfx_decode.py WAV  <outdir> <file.SFX>...
+
 ### Next unknowns
 - `.SCR` cutscene script format (`DEMO.SCR`, 11,976 bytes decompressed)
 - `.MUS` FM/Adlib music format
-- `.SFX` digital sound format
+
 
 `DRIVERS.RES` contains real 8086 code — `55 8B EC ... CA 02 00`
 (`push bp; mov bp,sp; ... retf 2`), i.e. far-called driver entry points for
