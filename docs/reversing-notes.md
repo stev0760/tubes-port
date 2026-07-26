@@ -3562,3 +3562,63 @@ furniture draws are literal and their `y`/`x` are trustworthy. The `== 6`
 group's arguments are expressions (`local_1b6[0] + 1`, `*(int *)0x1e + 2`), so
 its reported coordinates are fragments of those expressions and mean nothing -
 the grouping is sound, the numbers in that row are not.
+
+## The tube network draw list, with real sprite names
+
+The furniture sprites are held in `1000:9e53`'s frame and referenced by
+`1000:3a67` through the static link. `9e53` assigns each slot a **resource name
+string** via `FUN_21ea_035b(dest, SS, off, 0x21ea)` - a Pascal string copy - so
+the slots can be named.
+
+### Recovering the names
+
+The string addresses (`21ea:9c43` upwards) did not resolve through the usual
+segment arithmetic, so the strings were located by **spacing fingerprint**
+instead: the gaps between the 16 string addresses are known exactly
+(`0, 13, 26, 39, 63, ...`), and only one position in the image holds printable
+Pascal strings at every one of those spacings. That anchor is image offset
+`0xbe43`, i.e. `file = 0x2200 + <ghidra offset>` for this segment.
+
+    local_8c  BEAKER.CSP     local_a0  TUBEV.CSP      local_166 TESTUBE1.CSP
+    local_90  BEAKERS.CSP    local_a4  TUBEVS.CSP     local_162 TESTUBE2.CSP
+    local_94  TUBEH.CSP      local_a8  TUBEVR.CSP     local_15e TESTUBE3.CSP
+    local_98  TUBEHS.CSP     local_ac  TUBEVRS.CSP    local_15a TESTUBES.CSP
+    local_9c  TUBEHR.CSP     local_b0  TUBEVL.CSP     local_170 MARKER.CSP
+                             local_b4  TUBEVLS.CSP
+
+`3a67`'s `link - X` corresponds to `9e53`'s `local_(X + 2)`. That is **not**
+asserted from arithmetic - Ghidra's frame bases differ by two between the
+functions, so the offset alone proves nothing. It is confirmed by two
+independent semantic checks:
+
+- `-0x16e` maps to `MARKER.CSP`, and `-0x16e` is exactly the sprite the plane C
+  overlay draws on flagged cells - which is what the **red X marks** on beaker
+  balls are;
+- `-0x8a` maps to `BEAKER.CSP`, drawn at `y=134, x=103`, and the port already
+  draws the beaker at `(103, 134)` from geometry measured independently.
+
+All twelve names are present in `TUBES.RES`, a third confirmation.
+
+### The list (static furniture, in draw order)
+
+    TUBEH     y= 26  x = 34, 270, 58, 246, 107, 197        TUBEHR y=26 x=125
+    TUBEH     y= 26  x = 179
+    TUBEHS    y= 13  x = 58, 246, 107, 197
+    TUBEVLS   y= 26  x = 34, 179          TUBEVRS y= 26  x = 270, 125
+    TUBEH     y= 13  x = 58, 246, 197     TUBEHR  y= 13  x = 107
+    TUBEVL    y= 26  x = 34, 179          TUBEVR  y= 26  x = 270, 125
+    TUBEVLS   y= 13  x = 58, 197          TUBEVRS y= 13  x = 246, 107
+    TUBEVS    y= 26  x = 58, 246, 107, 197
+    TUBEVL    y= 13  x = 58, 197          TUBEVR  y= 13  x = 246, 107
+    TUBEV     y= 26  x = 58, 246, 107, 197
+    BEAKERS   y=135  x = 186
+    BEAKER    y=134  x = 103
+
+Reading the suffixes: **`S` = shadow**, always drawn in an earlier pass than the
+solid piece it sits under; **`L`/`R`** are left and right elbow variants;
+`H`/`V` horizontal and vertical. The network is therefore built shadow-layer
+first, then solids, over two lanes at `y=13` and `y=26` - which is why a single
+composited backdrop cannot reproduce it.
+
+Draws whose coordinates are expressions rather than literals are omitted here;
+those are the moving atoms and the test tube, not furniture.
