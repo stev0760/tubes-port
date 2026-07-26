@@ -2780,3 +2780,40 @@ the dwell is caught atoms freezing there, which is why nothing appeared deeper.
 The conclusion of that experiment - caught atoms halt at the mouth, missed ones
 continue at 18 px/frame - stands. Only my later "queued at tube exits" gloss was
 wrong.
+
+
+## Drops are a persistent pool, not a per-wave allowance - correction
+
+Earlier notes concluded the drop allowance was "a Wave-mode constant" because
+every wave sampled announced **11 drops** and no per-wave drops table could be
+found in the image. Both observations were real. The conclusion was wrong, and
+the experiment that produced it could not have found otherwise.
+
+**The blind spot:** the wave sweep warped by editing **only** the wave byte at
+`TUBES.SAV 0x206`. The drops byte at `0x207` was left at 11 in every single run.
+So all fifty briefings echoed the same number because they were all loading the
+same drop count - the sweep had no way to show variation. A negative result is
+only as good as the thing that varied, and here nothing did.
+
+**What is actually happening**, from play:
+
+- The save carries the drop count at `0x207` (11 in this save).
+- A **miss decrements it** - observed 11 -> 10.
+- A **Bonus atom increments it** - observed 10 -> 11 on catching one, which is
+  exactly what the Instructions say: "awards you an extra drop".
+- The briefing line "You are allowed *n* drops" is reporting the **current pool**,
+  not a per-wave constant.
+- The pool **carries across waves**, which is why a save made at wave 6 with 11
+  drops still showed 11 after warping to wave 50.
+
+This also explains, without any special pleading, why no per-wave drops table
+exists in the binary: **there is nothing to store.** The number lives in the save
+and in the session, and waves do not set it.
+
+It makes the Bonus atom considerably more valuable than a scoring pickup - it is
+the only known way to replenish a resource that otherwise only decreases, i.e.
+an extra life.
+
+**Confirming test, not yet run:** edit `0x207` to something other than 11 and
+load. If the briefing announces that number, the case is closed. This is cheap
+and should be done before the model is relied on.
