@@ -1820,3 +1820,50 @@ Wave-mode HUD layout:
 Endurance mode showed `Chains` and `Drops` only, with no ball counter - which is
 why this never appeared in earlier captures, and matches the report that these
 counters exist "in certain modes".
+
+
+## Flashium's sprite pointer rotates - measured, with a control
+
+Type 8's ball pointer had been caught once holding `BLUEBALL`, which left two
+readings open: permanently aliased to blue, or rewritten as the wildcard flashes.
+Polling settles it.
+
+`DS:0x1da6 + 4*8` sampled 500 times, alongside **type 3 as a control**:
+
+| | distinct values in 500 samples |
+|---|---|
+| type 3 (`BLUEBALL`, an ordinary colour) | **1** - static |
+| type 8 (Flashium) | **7** - every colour sprite |
+
+The control never moved, so the polling itself is sound. Type 8 cycles:
+
+    REDBALL -> GRENBALL -> BLUEBALL -> CYANBALL -> PURPBALL -> YELWBALL
+      -> PINKBALL -> (wrap)
+
+which is types **1 -> 7 in table order, wrapping 7 back to 1**, with near-uniform
+dwell (74, 73, 72, 71, 71, 70, 69 samples each). Observed at ~12 samples/s with
+runs of consistently 3, so roughly **4 colours a second**, full cycle ~1.7 s -
+though treat the *rate* as approximate and the *order* as certain, since a fixed
+sample interval has aliased twice already in this work.
+
+### What this settles: the cell holds 8, only the pointer moves
+
+The playfield notes recorded a loop that "increments a cell and wraps 8 back to
+1" and called it a colour-cycling effect. That reading implied a settled
+Flashium's **cell value** walks 1..7. The measurement says otherwise, and a third
+fact decides between them:
+
+- Fades are indexed by **type** - measured from the table layout.
+- A Flashium **always** clears with `FFADE`, whatever it matched with - reported
+  from play, and the reason an earlier "cell holds the matched colour"
+  hypothesis was withdrawn.
+- If the cell cycled 1..7, a type-indexed fade lookup could never yield `FFADE`.
+
+So a settled Flashium's cell holds **8**, permanently, and the flashing lives
+entirely in the *sprite pointer* being rewritten. That is cleaner, and it makes
+all three facts consistent at once. The "increments a cell and wraps 8 to 1" loop
+is then most likely the code driving this pointer rotation rather than a cell
+mutation - worth re-reading with that in mind.
+
+It also explains the Wave-mode HUD counter cycling the same seven colours: one
+shared rotation, not two coincidences.

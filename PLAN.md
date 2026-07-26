@@ -79,7 +79,7 @@ Listed first because building on them wastes work.
    | type | what |
    |---|---|
    | 1-7 | the ordinary colours: Redium, Greenium, Bluium, Cyanium, Purplium, Yellowium, Pinkium |
-   | 8 | **Flashium** - the wildcard, with **no sprite of its own**: its slot borrows a colour sprite |
+   | 8 | **Flashium** - the wildcard, with **no sprite of its own**: its table slot is *rewritten* ~4x/sec, cycling types 1..7 in order (measured, with a static control). The cell value stays 8, which is why it always clears with `FFADE` |
    | 9 | AntiMatter - destroys the surrounding atoms |
    | 10 | Bonus - travels fast, turns into Flashium when caught, grants a bonus drop |
    | 11 | Xenon - inert, will not react with any colour |

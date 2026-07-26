@@ -1023,3 +1023,34 @@ That connects to Flashium, which cycles `1..7` for want of a sprite. Two things
 rotating the same seven colours points at one shared rendering path, and gives a
 concrete explanation for the type-8 pointer being caught on `BLUEBALL`: an index
 mid-rotation. Testable by reading that pointer repeatedly.
+
+### Confirming the type-8 rotation
+
+Polled `DS:0x1da6 + 4*8` five hundred times with **type 3 as a control**. The
+control held `BLUEBALL` for all 500 samples; type 8 took seven distinct values -
+every colour sprite - cycling `RED -> GREN -> BLUE -> CYAN -> PURP -> YELW ->
+PINK -> wrap`, i.e. table types 1..7 in order, with near-uniform dwell.
+
+The control is the part that makes this worth anything. Without it, "the value
+changed while I polled it" is equally consistent with a flaky read path, and this
+session has already produced two aliasing artefacts from sampling intervals
+chosen for convenience. A static pointer polled the same way, through the same
+code, at the same rate, rules that out.
+
+Rate is ~4 colours/second, full cycle ~1.7 s, but that is stated as approximate:
+consistent runs of 3 samples at 83 ms could still be an alias. The *order* is not
+in doubt.
+
+**This settles a reading that had been carried for two sessions.** The playfield
+notes described a loop that "increments a cell and wraps 8 back to 1" as a
+colour-cycling effect, implying a settled Flashium's *cell* walks 1..7. Three
+facts now say otherwise: fades are type-indexed (measured), a Flashium always
+clears with `FFADE` (reported), and a cell cycling 1..7 could never produce a
+type-8 fade lookup. So the cell holds **8** permanently and the flashing is
+entirely in the sprite pointer. The loop in question is probably the code driving
+that pointer, not a cell mutation.
+
+Three independent observations - the always-`FFADE` behaviour, the type-indexed
+fade table, and the measured pointer rotation - now agree, where before two of
+them were in tension and I had invented a model to reconcile them. The model was
+wrong and the measurement was cheap.
