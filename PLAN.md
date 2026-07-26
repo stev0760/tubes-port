@@ -11,20 +11,25 @@ plan is worse than none.
 
 ## Where this stands
 
-Roughly **40%** of the port, with the risk front-loaded and already retired.
+The split is lopsided, and the gap has **widened**: a live-debugging session
+answered most of the remaining mechanics without any of it reaching the engine.
 
-The split is lopsided on purpose:
+- **Reversing: ~85%.** Every asset format decoded, the program mapped end to
+  end, music correct at the register level. Now also measured live: the
+  dispenser path with coordinates, atom speeds (4 travelling / 18 boosted and
+  falling / 6 for the tube), the 19-entry ball and fade type tables, the input
+  bit map, the scoring values, tube capacity and the drop mechanic, wave
+  definitions, and part of the save format.
+- **The engine: ~25%, unchanged.** None of the above is implemented. It still
+  drops atoms straight down, uses 8 flat colours and invented scoring, and has
+  no specials, no HUD, no sound effects and no wave structure.
 
-- **Reversing: ~70%.** Every asset format is decoded. The program structure is
-  mapped end to end. Music is provably correct at the register level. The
-  playfield geometry is measured rather than guessed. Nothing is still
-  resisting analysis.
-- **The game itself: ~25%.** One screen exists, with a partly-wrong mechanic
-  on it. Every other screen, every special atom, every animation, all sound
-  effects, scoring and the difficulty curve are absent.
+So the bottleneck is no longer knowledge. **The dispenser path - long recorded
+here as "the single genuine unknown left" - is solved.**
 
-What remains is mostly voluminous rather than uncertain. The single genuine
-unknown left is how the dispenser tubes route atoms.
+The one core data structure never yet examined live is the **beaker grid**
+(three parallel arrays, stride 6). That is what the match logic needs, and it is
+the natural last reversing step before the work becomes implementation.
 
 ---
 
