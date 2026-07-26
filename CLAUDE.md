@@ -100,8 +100,16 @@ paid off. Keep it up.
 
 Gameplay constants are partly recovered. **Measured:** 16x13 cells,
 playfield x range 74..245, drop limits 9/6/3, and the difficulty seed and
-progression rules in `1000:9e53`. **Still guessed:** grid columns and rows
-(7x10), spawn rate, fall speeds, scoring.
+progression rules in `1000:9e53`. **Also measured:** the
+playfield array is 6 x 5, read off the loop bounds in `1000:3a67` (the old
+7x10 came from the manual and was wrong in both dimensions).
+**Still guessed:** which index is the column, the cell-to-pixel mapping,
+spawn rate, fall speeds, scoring.
+
+`ghidra_scripts/MapProgram.java` dumps the call graph plus the strings each
+function references; that is what identified every interface stage (splashes,
+menu, blackboard cutscene, game session). Re-run it rather than guessing at
+what a function does.
 
 `1000:9e53` is the game *session* — it loads the play-area art, seeds
 difficulty, then runs the frame loop. `1000:3a67` is a **nested Pascal

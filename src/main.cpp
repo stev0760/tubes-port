@@ -27,8 +27,12 @@ namespace {
 // recovered from the original - see docs/reversing-notes.md.
 constexpr int kCellW = 16;
 constexpr int kCellH = 13;
-constexpr int kCols = 7;
-constexpr int kRows = 10;
+// Recovered from 1000:3a67: three parallel grids are indexed [i * 6 + j] with
+// the inner loop running 1..6 and the outer 1..5. So the playfield is 6 x 5,
+// not the 7 x 10 guessed from the manual. Which index is the column is not
+// yet proven - see docs/reversing-notes.md.
+constexpr int kCols = 6;
+constexpr int kRows = 5;
 constexpr int kGridX = (tubes::kScreenWidth - kCols * kCellW) / 2;
 constexpr int kGridY = 190 - kRows * kCellH;
 constexpr int kTubeY = kGridY - kCellH - 2;

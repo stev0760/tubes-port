@@ -653,6 +653,67 @@ means it is a **nested Pascal procedure** of `9e53` and shares its locals.
 That is why the difficulty variables are locals rather than globals, and it
 is the reason to decompile the two together rather than separately.
 
+### Program structure - the whole interface
+
+Recovered with `ghidra_scripts/MapProgram.java`, which pairs the call graph
+with the ShortStrings each function references. Borland Pascal emits one code
+segment per unit and leaves literals in plain sight, so "which function shows
+the menu" is usually answerable by asking what text and resource names it
+touches.
+
+23 units, 297 functions. `entry @ 1000:aaba` is the Pascal main program; it
+loads the shared sprites (the eight balls, `ANTIBALL`, `GOLDBALL`, `XENBALL`,
+`STAR1..4`) and then calls each stage in turn:
+
+| Function | Size | Stage | Identified by |
+|---|---|---|---|
+| `1b2e:11b0` | 55 | splash sequencer | calls the two splash screens |
+| `21d5:007b` | 198 | Software Creations splash | `SOFT.PAL/GFX/ANM` |
+| `2178:00eb` | 1173 | Absolute Magic splash | `AMLOGO.SPR`, `LIGHTN.SPR`, `AMTHEME.MUS`, `WOOSH.SFX` |
+| `1b2e:52bf` | 3782 | title / main menu | `TUBESBG.GFX`, `TUBESFG.GFX`, `TUBES.MUS`, `SELECT.SFX` |
+| `1b2e:1651` | 2323 | blackboard cutscene | `WRITE0..9.GFX`, `EXPLOD1..4.GFX` |
+| `1b2e:2d63` | 4510 | (test-tube screen) | `TESTUBE1.CSP`, `TESTUBES.CSP` |
+| `1000:9e53` | 2173 | game session | the whole playfield set |
+| `1000:3a67` | 9382 | frame update | nested inside `9e53` |
+
+Two useful consequences:
+
+- `SOFT.ANM` is consumed by the developer splash. That is the one `.ANM` in
+  the game and it had never been examined; now there is a reason to.
+- `1b2e:1651` is the teacher-at-the-blackboard sequence, which is where the
+  instructions and inter-level story live.
+
+### The playfield array is 6 x 5
+
+From `1000:3a67`. Three parallel arrays - `abStack_27` (the colours, 30 uses),
+`acStack_62` (12) and `acStack_45` - are all indexed `[i * 6 + j]`, with the
+inner loop running `j = 1..6` and the outer `i = 1..5`:
+
+        local_1b6[0] = 1;
+        while (true) {
+          local_1b6[1] = 1;
+          while (true) {
+            ... abStack_27[local_1b6[0] * 6 + local_1b6[1]] ...
+            if (local_1b6[1] == 6) break;
+            local_1b6[1]++;
+          }
+          if (local_1b6[0] == 5) break;
+          local_1b6[0]++;
+        }
+
+Row stride 6, five rows: a Pascal `array[1..5, 1..6]`. The guess of 7 x 10
+taken from the manual was wrong in both dimensions.
+
+Cell values are 0 for empty and 1..7 for colours - the loop above increments a
+cell and wraps 8 back to 1, which is a colour-cycling effect.
+
+**Not yet proven:** which index is the column, and how cells map to pixels.
+6 x 16 = 96 and 5 x 13 = 65 are the obvious readings, but they do not fit the
+art: the play area from `GAMEFG.GFX` is 172 pixels wide, and `BEAKER.CSP` has
+an interior clear span of only 82 pixels at every height. `BEAKER.CSP` is
+exactly 65 tall, which matches 5 x 13, but its width does not match 6 x 16 on
+any reading, so that is being treated as coincidence rather than evidence.
+
 ### Difficulty seed and progression
 
 Read directly off the new-game branch. The variables are not yet named - what
