@@ -2628,3 +2628,56 @@ The wave number is a single byte at `TUBES.SAV` `0x206`, so the format allows up
 to 255. Where the real ceiling sits is **not** established: warping to
 progressively higher waves and reading the briefing would settle it, since an
 out-of-range wave should either refuse to load or produce a degenerate briefing.
+
+
+## Correction to the correction: the record layout was right, the base was not
+
+The previous section claimed the atom record layout in these notes was wrong
+because `+0x0b` never varied. **That claim is withdrawn.** The layout is correct;
+the *array base* was wrong by six bytes, which shifted every field I read.
+
+Read at the corrected base `0x241a4`, records decode immediately:
+
+| rec | x | y | `+0x0b` |
+|---|---|---|---|
+| 0 | 125 | 187 | 2 - Greenium |
+| 1 | 58 | 15 | 4 - Cyanium |
+| 3 | 179 | 187 | **14 - Convertor** |
+| 4 | 161 | 47 | **16 - Filler** |
+
+x values are tube and play columns, y values are real lanes, and the types
+include specials. So the static read was right: **x `+0x00`, y `+0x02`, colour
+`+0x0b`, stride 28** - base `0x241a4`.
+
+### Why the base was six bytes early
+
+The locator scanned for the spawn marker `(303, 186)` as two consecutive words.
+But an **unused record holds `(0, 0)` as its current position and `(303, 186)` in
+its saved-position fields** - the raw bytes read `2f 01 2f 01 ba 00 ba 00`, i.e.
+x, saved-x, y, saved-y. The scan matched inside that saved pair and returned a
+base six bytes early, and every experiment inherited the shift.
+
+That also corrects a claim built on the bad base: "the 12 records initialise to
+(303, 186)" describes the **saved** fields, not the live position.
+
+### What the shift did, and did not, break
+
+At a base six bytes early, my `+0x00`/`+0x02` were the *previous* record's saved
+x and saved y. Saved positions are last frame's drawn position, kept for the
+dirty-rect erase - so they trace **the same path, one frame behind**, and
+frame-to-frame deltas of a lagged sequence are identical to the original's.
+
+**Survives unchanged:** the dispenser path and its coordinates, the speed table
+(4 travelling / 18 boosted and falling / 6 for the tube), caught vs missed, and
+the slot lifecycle. All of those measured trajectory shape and per-frame deltas,
+which a one-frame lag does not affect.
+
+**Was broken:** every reading of the type. My `+0x0b` was really `+0x05`, which
+is why it never left 0/1, and the `MYSTBALL` injection wrote to `+0x05` rather
+than the type. Those experiments stay void - but for this reason, not because the
+documented layout was wrong.
+
+**The lesson is the locator, not the layout.** A signature that can match inside
+a *different* field of the same record will silently return a shifted base, and
+every downstream offset inherits it. The tell was there and I misread it: a field
+that never varies is more likely a wrong offset than a wrong document.

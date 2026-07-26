@@ -131,7 +131,7 @@ Pascal static link at `[bp+4]`. Known fields:
 |---|---|
 | +0x00 | x |
 | +0x02 | y |
-| +0x0b | ~~colour / sprite index~~ **WRONG** - reads only 0/1 live; the real type is at `+0x0e` or `+0x11`, unsettled |
+| +0x0b | colour / sprite index - **confirmed live** at array base `0x241a4` (the earlier doubt was a 6-byte base error, not a layout error) |
 | +0x14, +0x16 | saved x, one per video page |
 | +0x18, +0x1a | saved y, one per video page |
 
@@ -386,7 +386,7 @@ top, just above the test tube at 69.
 | +0x00 | x |
 | +0x02 | y |
 | +0x04 | direction: 0 stopped, 1 left, 2 right |
-| +0x0b | ~~colour / sprite index~~ **WRONG** - reads only 0/1 live; the real type is at `+0x0e` or `+0x11`, unsettled |
+| +0x0b | colour / sprite index - **confirmed live** at array base `0x241a4` (the earlier doubt was a 6-byte base error, not a layout error) |
 | +0x14, +0x16 | saved x, one per video page (dirty-rect erase) |
 | +0x18, +0x1a | saved y, one per video page |
 
