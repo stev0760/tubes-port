@@ -1324,3 +1324,38 @@ adjacent locals of `1000:9e53` rather than a struct - which is what a Pascal
 nested-procedure frame looks like from the outside.
 
 Useful by-product: the live score is at `0x245e7`.
+
+### MYSTBALL and the crystal: a negative result and a retraction
+
+Four runs, no answer. Worth recording properly rather than quietly dropping.
+
+**The good part.** Type injection works: writing a type byte into an atom
+record's `+0x0b` takes effect and the record flies on with the new type, so rare
+atoms no longer have to be waited for. And it produced one real finding - an
+injected type-19 atom that fell past the tube had its type byte go `19 -> 0`, so
+**type 0 marks a free slot**. That completes the lifecycle: slots are not
+recycled through the spawn marker, the position is left where the atom died, and
+the type is what gets cleared.
+
+**The retraction.** An earlier run reported the value 19 appearing at `0x24546`
+and I read it as a caught `?` ball entering the tube's storage. Watching that
+address over time shows it counting down - 20, 19, 18, 17, 16, 15 - and
+`0x245bc` counting 9 down to 1. Both are **counters**, and my detector ("any byte
+holding 12..19 that was not there before") caught one passing through the type
+range. The instrument could not tell a value from a trend, which is exactly the
+kind of filter this project has been burned by before.
+
+**Why it stalled.** Catching an injected atom needs the atom and tube in the same
+column simultaneously. An atom descends at 18 px/frame, so the usable window is a
+couple of seconds; steering the tube costs about a second per column; parking
+first means the chosen column may get no atom at all; and the wave ends after 11
+drops, which with a parked tube arrives inside a minute. Two runs finished with
+nothing moving and the grid reading garbage because the locals had been reused.
+
+**The fix, not yet done:** freeze the drop counter. The rig can write memory, the
+drops value is on the HUD so a diff-on-change hunt would find it quickly, and
+holding it constant removes the time limit that makes all of this a race. That
+turns catching an injected atom from luck into patience, and it would unblock the
+crystal too.
+
+`BUBBLE` was not reached.

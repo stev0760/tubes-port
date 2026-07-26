@@ -2289,3 +2289,58 @@ Pascal nested-procedure frame looks like - so "the tube struct" is a group of
 neighbouring variables rather than a record.
 
 Useful side effect: **the live score is at `0x245e7`**.
+
+
+## `MYSTBALL` and the crystal: not determined
+
+Recording a **negative result** and a **retraction**, because both are more
+useful than a guess.
+
+### What was established
+
+**Type injection works.** Writing a type byte into an atom record's `+0x0b`
+takes effect - the record carries the new type and keeps flying - so behaviour
+does not have to be waited for. That is a usable technique for any future
+question about a rare atom.
+
+**A lost atom's type is zeroed.** An injected type-19 atom fell past the tube
+and its type byte went `19 -> 0`. So `type == 0` marks a **free slot** in the
+12-record pool, which fills in the lifecycle: a slot is never recycled through
+the spawn marker, its position is left where the atom died, and the *type* is
+what gets cleared.
+
+### Retracted: `0x24546` is not the tube contents
+
+An earlier run reported the value 19 appearing at `0x24546` and read it as a
+caught `?` ball landing in the tube's storage. **That was wrong.** Watching the
+same address over time shows it counting steadily downwards:
+
+    0x24546:  20 -> 19 -> 18 -> 17 -> 16 -> 15
+    0x245bc:   9 ->  8 ->  7 ->  6 ->  5 -> ... -> 1
+
+Both are **decrementing counters**, and the detector - "any byte holding 12..19
+that was not there before" - simply caught one passing through the type range.
+A filter that cannot distinguish a value from a *trend* was the wrong instrument.
+
+### Why it stalled, and what would fix it
+
+The experiment needs an injected atom to be **caught**, which needs the atom and
+the tube in the same column at the same moment. Four attempts failed on timing:
+
+- an atom descends at 18 px/frame, so the window between "high in a column" and
+  "past the mouth" is a couple of seconds even on a slowed guest;
+- steering the tube costs ~1 s per column, which is longer than that window;
+- parking first and waiting means the tube's column may simply receive no atom;
+- and **the wave ends after 11 drops**, which with a parked tube arrives in
+  under a minute - two runs ended with nothing moving and the grid reading
+  garbage, because the locals had been repurposed.
+
+The fix is available and not yet done: **freeze the drop counter**. The rig can
+write memory, so finding the drops value - it is on the HUD, so a
+diff-on-change hunt would locate it quickly - and holding it constant would
+remove the time limit entirely. With unlimited wave time, catching an injected
+atom becomes a matter of waiting rather than of luck.
+
+Until then, `MYSTBALL` (type 19) and the crystal (type 18) behaviours remain
+**unknown**. The play-derived hypothesis - that a `?` resolves into one of the
+other five letter balls (12..16) on capture - is untested.
