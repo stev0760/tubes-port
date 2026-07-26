@@ -182,15 +182,31 @@ patch mapping `Z2` onto the existing `CBreakpoint::AddMemBreakpoint`.
 
 Experiments 1, 2 and 4 need none of that and can run today.
 
-**Experiment 0 - settle the input bit map first.** Cheap, and it unblocks
-something else. `docs/reversing-notes.md` now records a contradiction: the six
-scancodes in `SETUP.CFG` are ordered up/**left**/**right**/down, while the
-`.SCR` bit assignments were inferred as up/**down**/**left**/right. Exactly one
-is wrong, neither is proven, and `PLAN.md` §5 wants to use `DEMO.SCR` as a
-correctness oracle - an oracle on a wrong bit map validates wrong behaviour.
-Inject one key at a time over QMP, watch the byte the input driver builds at
-`ds:0x2352`/`ds:0x2356`. Six injections settles it, and also says which of
-Ctrl and Alt is button A.
+**Experiment 0 - the input bit map. DONE, and it validated the `.SCR` oracle.**
+The apparent contradiction between `SETUP.CFG`'s scancode order and the `.SCR`
+bit assignments was not real: `KEYBOARD.DRV` maps slot *n* to bits
+`1, 4, 8, 2, 16, 32`, not the identity, which makes both readings correct at
+once. Measured live with six key injections, every bit matching the prediction
+from the driver's disassembly:
+
+| bit | control | key |
+|---|---|---|
+| `0x01` | up | Up |
+| `0x02` | down | Down |
+| `0x04` | left | Left |
+| `0x08` | right | Right |
+| `0x10` | button A | **Left Ctrl** |
+| `0x20` | button B | **Left Alt** |
+
+So the `.SCR` bit table - previously only inferred from run-length statistics -
+is confirmed against the input handler, and **`DEMO.SCR` is safe to use as the
+correctness oracle in §5**. Details in `docs/reversing-notes.md`; the runnable
+experiment is `exp0_input_bits.py` in the tooling directory.
+
+The live key mask is one byte at driver offset `+0x1f`, and the driver's base
+comes from the **INT 9 vector** at linear `0x24` - do not hardcode it. Reading
+that byte is the cheapest possible way to confirm any input-related theory from
+here on.
 
 **Experiment 1 - find the live atom array.** Break at `1000:3a67`, read `BP`,
 then read the static link at `[bp+4]`. Array base is that minus `0x163`. Dump

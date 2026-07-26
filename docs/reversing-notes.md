@@ -607,45 +607,58 @@ four arrows plus left Ctrl and left Alt, six consecutive words in an otherwise
 zeroed span, and the game takes exactly six inputs - four directions plus
 buttons A and B. So the remappable controls are arrows + Ctrl + Alt.
 
-### The scancode order contradicts the `.SCR` bit order
+### Slot order is not bit order - and that resolves an apparent contradiction
 
-This is the part to be careful with. Two independent readings disagree:
+`SETUP.CFG` lists the six scancodes as up/**left**/**right**/down/Ctrl/Alt,
+while the `.SCR` bits were read as `0x02`=down, `0x04`=left, `0x08`=right. Those
+look incompatible, and a session was nearly spent "resolving" it. They are not
+incompatible: **the driver does not map slot *n* to bit *n*.**
 
-| index | `SETUP.CFG` order | `.SCR` bit | `.SCR` reading |
+`KEYBOARD.DRV` is the second consumer of these scancodes, and it settles it
+outright. Its INT 9 handler compares the scancode - break bit masked off with
+`and bh, 0x7f` - against six slots at driver offsets `0x24`, `0x26`, `0x28`,
+`0x2a`, `0x2c`, `0x2e`, and ORs a bit into a mask byte at offset `0x1f`:
+
+        cmp  bh, [0x24]        ; slot 1
+        jne  next
+        and  ah, 0xfe          ; clear the bit
+        or   al, al
+        js   done              ; break code -> leave it cleared
+        or   ah, 0x01          ; make code -> set it
+        ...                    ; slot 2 -> 0x04, slot 3 -> 0x08,
+                               ; slot 4 -> 0x02, slot 5 -> 0x10, slot 6 -> 0x20
+
+So a bit is set only *while* the key is held, and the slot-to-bit map is
+`1, 4, 8, 2, 16, 32` - deliberately not the identity. Feed `SETUP.CFG`'s order
+through it and both readings come out right at once.
+
+**Measured live** (`exp0_input_bits.py`, six key injections, every bit matching
+the prediction from the disassembly):
+
+| bit | control | default key | scancode |
 |---|---|---|---|
-| 0 | Up | `0x01` | up |
-| 1 | **Left** | `0x02` | **down** |
-| 2 | **Right** | `0x04` | **left** |
-| 3 | **Down** | `0x08` | **right** |
-| 4 | Left Ctrl | `0x10` | button A |
-| 5 | Left Alt | `0x20` | button B |
+| `0x01` | up | Up arrow | `0x48` |
+| `0x02` | down | Down arrow | `0x50` |
+| `0x04` | left | Left arrow | `0x4b` |
+| `0x08` | right | Right arrow | `0x4d` |
+| `0x10` | **button A** | **Left Ctrl** | `0x1d` |
+| `0x20` | **button B** | **Left Alt** | `0x38` |
 
-The ends agree - up first, then the two buttons - which is what makes the
-middle disagreement worth taking seriously rather than dismissing. Exactly one
-of these is wrong, and neither is proven:
+This **confirms the `.SCR` bit table**, which had only ever been inferred from
+run-length statistics - so `DEMO.SCR` is safe to use as the correctness oracle
+`PLAN.md` §5 plans for. It also names the buttons, which was open.
 
-- The `.SCR` bits are explicitly **inferred from behaviour**, not read from the
-  input handler. The load-bearing step was reading `0x02` as "down, held to
-  drop faster" because it is the only bit held for long runs. But the mechanic
-  is now known to be a tube sliding on a horizontal rail, with **button B**
-  speeding an atom along - and B is the obvious candidate for a long hold.
-- The `SETUP.CFG` order is inferred from the scancodes alone. Nothing yet ties
-  index *n* in that table to bit *n* in the mask.
+Two details worth keeping:
 
-Against the sliding-tube reading of `SETUP.CFG`, `0x02`=left held for runs of
-30 frames would be 30 x 6 = 180 px of travel on a rail only 90 px wide
-(104..194), so it would have to be clamping constantly. That is an argument,
-not evidence, and arguments are what this file exists to keep separate.
-
-**This matters beyond bookkeeping.** `PLAN.md` §5 plans to replay `DEMO.SCR`
-through the game loop as a correctness oracle. An oracle wired through the
-wrong bit map silently validates the wrong behaviour.
-
-**How to settle it** (cheap, now that the debug rig exists - see
-`docs/debug-rig.md`): inject one key at a time over QMP and watch the input
-byte the driver builds at `ds:0x2352`/`ds:0x2356`. Six injections, six bits,
-done - measured rather than argued. Same run also settles which of Ctrl and
-Alt is A and which is B.
+- The game **patches the table at load time** from `SETUP.CFG`. The shipped
+  driver has the slots zeroed with its own defaults sitting in the *high* byte
+  of each word; live memory has the `SETUP.CFG` values in the low bytes. The
+  shipped defaults also have Ctrl and Alt the other way round, so `SETUP.CFG`
+  is what governs.
+- The driver's live base is not fixed: take it from the **INT 9 vector**
+  (linear `0x24`). The handler sits at driver offset `0x3c`, matching its offset
+  in the extracted `KEYBOARD.DRV`, so file offsets and memory offsets coincide.
+  The old vector is saved at driver `+0x18` and reads `F000:E987`.
 
 ## Startup checks (solved)
 

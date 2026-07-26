@@ -519,3 +519,42 @@ now in `reversing-notes.md`. And two rig quirks - QMP's screendump ignores its
 
 `dosbox-mcp` is installed local-scope to `tubes-port`, all 24 tools verified to
 list over stdio. Needs a Claude Code restart to appear as `dosbox_*` tools.
+
+### Experiment 0: the input bit map, settled
+
+Closed the contradiction recorded earlier the same day, and it turned out there
+was never one to close.
+
+`CLAUDE.md`'s top-ranked method - *find a second consumer of the same data* -
+applied directly: `KEYBOARD.DRV`, 641 bytes, already sitting extracted in
+`assets-extracted/drivers/`. Its INT 9 handler compares the scancode against six
+slots and ORs a bit into a mask byte, and the slot-to-bit map is
+`1, 4, 8, 2, 16, 32` - **not** the identity. That single fact makes
+`SETUP.CFG`'s slot order (up/left/right/down) and the `.SCR` bit reading
+(`0x02`=down, `0x04`=left, `0x08`=right) both correct simultaneously. The
+"contradiction" was manufactured by assuming slot *n* mapped to bit *n*.
+
+Verified live rather than left as a reading. The driver's base comes from the
+INT 9 vector; six key injections, six single-bit results, every one matching the
+prediction, each clearing on release:
+
+    0x01 up      0x02 down    0x04 left
+    0x08 right   0x10 A = Left Ctrl   0x20 B = Left Alt
+
+Two things this buys. The `.SCR` bit table had only ever been inferred from
+run-length statistics, and is now confirmed against the input handler - so
+**`DEMO.SCR` is safe as the correctness oracle** §5 depends on. And the buttons
+are named, which was open.
+
+Incidental findings: the game patches the driver's scancode table at load time
+from `SETUP.CFG` (the shipped driver keeps its own defaults in the high byte of
+each slot word, and has Ctrl/Alt the other way round, so `SETUP.CFG` governs);
+the old INT 9 vector is saved at driver `+0x18` and reads `F000:E987`.
+
+A tooling limit found doing it: held-key state cannot be observed through the
+MCP. `dosbox_press_key` blocks for its whole `hold_ms` and only returns after
+the release, and **both** the GDB stub and the QMP server are single-client, so
+a second connection cannot be bolted onto a running MCP instance - the socket is
+accepted but no QMP greeting arrives. Anything needing a key held across a
+memory read has to be a standalone script using `key_down`/`key_up`. That is
+what `exp0_input_bits.py` is.
