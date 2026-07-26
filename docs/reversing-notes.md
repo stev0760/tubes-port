@@ -331,9 +331,59 @@ head of each driver.
 `tools/res_extract.py EXTRACT <container> <outdir>` now writes fully
 decompressed assets.
 
+## .CSP - compiled sprites (solved)
+
+`CSP` stands for **Compiled Sprite**. A `.CSP` is not a bitmap: it is
+generated 16-bit x86 code that draws the sprite with unrolled stores and
+returns via `retf`. Transparency is implicit - undrawn pixels simply have no
+instruction. This was a common DOS speed technique: no per-pixel loop, no
+mask test.
+
+The entire instruction grammar:
+
+    c6 44 dd ii              mov byte [si+disp8],  imm8
+    c7 44 dd ii ii           mov word [si+disp8],  imm16
+    c6 84 dddd ii            mov byte [si+disp16], imm8
+    c7 84 dddd ii ii         mov word [si+disp16], imm16
+    d0 c0                    rol al,1
+    83 d6 00                 adc si,0
+    ee                       out dx,al
+    cb                       retf
+
+`si` is the destination byte offset, the immediate is the palette index, and
+the last three are the Mode X plane switch. They are **independent
+instructions, not a fixed block** - `rol`/`adc` may repeat with no
+intervening `out` to skip planes containing no pixels, so a decoder has to
+track the carry flag across instructions rather than pattern-match a group.
+Five shadow sprites (`TUBEVS`, `TUBEVRS`, `TUBEVLS`, ...) do exactly this.
+
+`al` holds the VGA sequencer map mask and starts at `0x11`. Rotating left
+gives `0x11 -> 0x22 -> 0x44 -> 0x88 -> 0x11`, so carry-out is set exactly
+once per four planes and `adc si,0` advances one byte per four pixels; the
+sequencer only reads the low nibble, making the plane `bit_index(al & 0x0f)`.
+
+Screen mapping with a Mode X plane stride of 80 bytes (320 / 4):
+
+    x = (byte_offset % 80) * 4 + plane
+    y =  byte_offset // 80
+
+`tools/csp_decode.py` implements this. **All 108 sprites parse cleanly** with
+no unknown opcodes and each `retf` landing exactly at end of file. Rendering
+them against `TUBES.PAL` produces correct, recognisable artwork with sane
+shading gradients, which independently confirms the palette decode and the
+plane mapping.
+
+Contents: atoms in eight colours (matching the eight elements of the story)
+with multi-frame fade/destruction sequences, lettered special atoms
+(`B`, `C`, `X`, `F`, `M`, `?`), test tube and beaker outlines, and the
+dispenser tube segments.
+
+    tools/csp_decode.py INFO   <file.CSP>...
+    tools/csp_decode.py RENDER <palette.PAL> <outdir> <file.CSP>...
+
 ### Next unknowns
 
-- `.GFX` / `.CSP` internal formats (image dimensions, planar layout, masks)
+- `.GFX` internal format (full-screen images / backgrounds)
 - `.SCR` cutscene script format (`DEMO.SCR`, 11,976 bytes decompressed)
 - `.MUS` FM/Adlib music format
 - `.SFX` digital sound format
