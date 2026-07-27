@@ -66,15 +66,30 @@ constexpr int kTubeSlideFrames = 3;      // 18 px pitch at the tube's 6 px/frame
 // bottom of a feed tube and y = 68 is the top lane where the test tube can
 // catch; both measured.
 constexpr int kEntryY = 187;
-constexpr int kTopY = 0;
 constexpr int kTubeMouthY = 68;
 constexpr int kLostY = 190;
 
-// Feed tubes, by side. Which tube feeds which column has NOT been recovered -
-// only that left-hand tubes serve columns 1..3 and right-hand ones 4..6, since
-// the router picks its turn direction with `column < 4`.
-const int kFeedLeft[] = {34, 58};
-const int kFeedRight[] = {246, 270, 294};
+// The network topology: each column is fed by ONE tube, along ONE lane. Read
+// off live records by pairing the x an atom rises at with the targetY and
+// column it turns with - the fields the router itself uses.
+//
+//   column   feed x   lane y   dest x
+//      1        10       26      143
+//      2        34       13      125
+//      3        58        0      107
+//      4       246        0      197
+//      5       270       13      179
+//      6       294       26      161
+//
+// It is mirror-symmetric about x = 152: 34+270, 58+246, 10+294, 125+179,
+// 107+197 and 143+161 all equal 304. The outermost tube takes the LOWEST lane
+// and travels furthest, landing on an inner column, so the arcs nest by
+// crossing over one another - which is exactly how the furniture is drawn.
+//
+// Five of the six were measured. **Column 1's feed x = 10 is inferred from the
+// symmetry**, because no atom used that column during sampling.
+const int kFeedX[7] = {0, 10, 34, 58, 246, 270, 294};
+const int kLaneY[7] = {0, 26, 13, 0, 0, 13, 26};
 
 // The corner is rounded by displacing the OTHER axis while within 9 px of the
 // turn. Transliterated rather than approximated, because the two tables are
@@ -182,16 +197,10 @@ void Game::spawn() {
     // turns right, and vice versa - that pairing is what `column < 4` in the
     // router encodes. WHICH tube feeds which column is not yet recovered.
     falling_.column = 1 + static_cast<int>(rng_ % 6);
-    if (falling_.column < 4) {
-        const size_t n = sizeof(kFeedLeft) / sizeof(kFeedLeft[0]);
-        falling_.x = kFeedLeft[rng_ % n];
-    } else {
-        const size_t n = sizeof(kFeedRight) / sizeof(kFeedRight[0]);
-        falling_.x = kFeedRight[rng_ % n];
-    }
+    falling_.x = kFeedX[falling_.column];
     falling_.anchorX = falling_.x;
     falling_.y = kEntryY;
-    falling_.targetY = kTopY;
+    falling_.targetY = kLaneY[falling_.column];
     falling_.state = atomstate::kRise;
     falling_.velocity = kNetworkVel;
 }
