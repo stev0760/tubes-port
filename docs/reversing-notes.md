@@ -3836,3 +3836,38 @@ approximated.
 The port's three-leg route (rise, cross at y=0, descend) is wrong in every
 respect: it has no fixed-point step, no column table, no turn direction rule,
 and square corners.
+
+### Two numbering schemes for the pipes - do not mix them
+
+A running source of confusion, worth stating plainly.
+
+**By mouth position** (what you see, left to right at the beaker):
+
+    top:   1 2 3 | 4 5 6        x = 107 125 143 | 161 179 197
+    base:  3 2 1 | 6 5 4        x =  10  34  58 | 246 270 294
+
+**By the game's internal column index**, which is the `DS:0x18` table order:
+
+    index:  1    2    3    4    5    6
+    dest x: 143  125  107  197  179  161
+
+So the game's index 3 is the *leftmost* mouth, and its index 1 is the third
+from the left. Confirmed from play: "at the top it is 123|456 and at the base
+321|654 - the 3,1 and 4,6 switch positions".
+
+**The pipes cross.** The tube entering furthest out comes out furthest in:
+
+| enters at | comes out at | lane |
+|---|---|---|
+| x=10 (outermost left) | x=143 (innermost left) | 26 |
+| x=34 | x=125 | 13 |
+| x=58 (innermost left) | x=107 (outermost left) | 0 |
+
+and mirrored on the right. The **longer the horizontal run, the lower the
+lane** - x=10 to x=143 travels 133 px on lane 26, x=58 to x=107 travels 49 px
+on lane 0. That is why the arches nest as drawn: the widest arc is furthest
+back, and the draw order follows.
+
+This also retro-explains the "two descending triples `143,125,107,197,179,161`
+indexed `3,2,1,6,5,4`" that was recorded from the sprite table long before the
+routing was understood. It was the crossing, seen from the table end.
