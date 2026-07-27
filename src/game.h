@@ -123,6 +123,16 @@ public:
     // Height of the play area in pixels; the dispenser drops across it.
     void setFallHeight(float h) { fallHeight_ = h; }
 
+    // --- state injection, for the pixel-diff harness --------------------
+    // Reproducing a frame captured from the original requires putting this
+    // engine into the original's exact state rather than simulating up to
+    // something similar. Comparing two runs that merely look alike cannot
+    // tell a rendering bug from a divergence in the simulation.
+    Board& boardMutable() { return board_; }
+    void setTubeColumn(int c) { tubeColumn_ = c; }
+    void setFalling(const Falling& f) { falling_ = f; }
+    void setTubeAtoms(const std::vector<int8_t>& v) { tube_ = v; }
+
 private:
     void spawn();
     void resolveMatches();

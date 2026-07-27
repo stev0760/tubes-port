@@ -142,9 +142,76 @@ struct Options {
     std::string music = "TUBES.MUS";   // song to play; empty disables audio
     std::string renderMus;      // render a song to WAV and exit
     std::string dumpRegs;       // print the OPL register stream and exit
+    std::string renderState;    // load a captured state, render it, exit
+    std::string gameBg = "GAMEBG1.GFX";   // backdrop, for matching a capture
     double renderSeconds = 0;   // 0 = one pass, songs loop forever
     bool help = false;
 };
+
+
+// Load a state captured from the original so this engine can render the exact
+// same frame. Text, one directive per line, because the harness that writes it
+// is a Python script talking to a debugger and a tiny format keeps both ends
+// obvious:
+//
+//     tubecol <0..5>
+//     grid <30 type values, row-major from the top>
+//     tube <types held in the test tube, mouth first>
+//     atom <x> <y> <state> <column> <type>
+//
+bool loadState(const std::string& path, tubes::Game& game) {
+    std::FILE* fh = std::fopen(path.c_str(), "r");
+    if (!fh) {
+        std::fprintf(stderr, "cannot open state %s\n", path.c_str());
+        return false;
+    }
+    char line[1024];
+    while (std::fgets(line, sizeof(line), fh)) {
+        char key[32] = {0};
+        if (std::sscanf(line, "%31s", key) != 1) continue;
+        const char* rest = line + std::strlen(key);
+        if (!std::strcmp(key, "tubecol")) {
+            game.setTubeColumn(std::atoi(rest));
+        } else if (!std::strcmp(key, "grid")) {
+            tubes::Board& b = game.boardMutable();
+            b.clear();
+            const char* p2 = rest;
+            for (int i = 0; i < 30; ++i) {
+                int v = 0;
+                if (std::sscanf(p2, "%d", &v) != 1) break;
+                b.set(i % 6, i / 6, static_cast<int8_t>(v));
+                while (*p2 == ' ') ++p2;
+                while (*p2 && *p2 != ' ') ++p2;
+            }
+        } else if (!std::strcmp(key, "tube")) {
+            std::vector<int8_t> v;
+            const char* p2 = rest;
+            int t = 0;
+            while (std::sscanf(p2, "%d", &t) == 1) {
+                v.push_back(static_cast<int8_t>(t));
+                while (*p2 == ' ') ++p2;
+                while (*p2 && *p2 != ' ') ++p2;
+                if (!*p2) break;
+            }
+            game.setTubeAtoms(v);
+        } else if (!std::strcmp(key, "atom")) {
+            tubes::Falling f;
+            int x=0, y=0, st=0, col=1, ty=0;
+            if (std::sscanf(rest, "%d %d %d %d %d", &x, &y, &st, &col, &ty) == 5) {
+                f.active = true;
+                f.x = x; f.y = y;
+                f.state = static_cast<uint8_t>(st);
+                f.column = col;
+                f.colour = static_cast<int8_t>(ty);
+                f.anchorX = x;
+                f.targetY = y;
+                game.setFalling(f);
+            }
+        }
+    }
+    std::fclose(fh);
+    return true;
+}
 
 Options parseArgs(int argc, char** argv) {
     Options o;
@@ -169,6 +236,10 @@ Options parseArgs(int argc, char** argv) {
             o.renderSeconds = std::atof(argv[++i]);
         } else if (a == "--dump-regs" && i + 1 < argc) {
             o.dumpRegs = argv[++i];
+        } else if (a == "--render-state" && i + 1 < argc) {
+            o.renderState = argv[++i];
+        } else if (a == "--gamebg" && i + 1 < argc) {
+            o.gameBg = argv[++i];
         } else if (a == "--help" || a == "-h") {
             o.help = true;
         } else {
@@ -425,7 +496,7 @@ int main(int argc, char** argv) {
 
     tubes::Image background;
     tubes::Image foreground;
-    bool haveBg = loadImage(res, "GAMEBG1.GFX", background, -1);
+    bool haveBg = loadImage(res, opt.gameBg, background, -1);
     bool haveFg = loadImage(res, "GAMEFG.GFX", foreground, 0);
 
     tubes::Sprite atoms[tubes::kTypeCount];
@@ -457,6 +528,7 @@ int main(int argc, char** argv) {
 
     tubes::Game game(kCols, kRows, tubes::Difficulty::k101, 0x9E3779B9u);
     game.setFallHeight(kFallHeight);
+    if (!opt.renderState.empty() && !loadState(opt.renderState, game)) return 1;
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -652,6 +724,11 @@ int main(int argc, char** argv) {
         // BEAKER.CSP is drawn last in the original and that one reads
         // correctly in play.
         const int tubeX = kGridX + game.tubeColumn() * kPitchX;
+        // The pixel diff puts our tube wall at x=166 against the original's
+        // 172 over the tube's full height, but simply shifting by 6 made the
+        // diff WORSE (4.6% -> 8.5%): the sprite has more than one wall and
+        // moving it misaligns the rest. The offset needs sweeping against the
+        // harness rather than deducing from one edge.
         if (haveFurn[kTestTubeShadow]) {
             screen.draw(furn[kTestTubeShadow], tubeX - 3, kTubeY);
         }

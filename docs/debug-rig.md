@@ -388,3 +388,59 @@ frozen for its whole run and no drop was ever lost.
 Neither is vendored into this repo; both are upstream clones, unmodified so
 far. If route 1 above is taken, the patch should be kept as a tracked diff
 somewhere in `~/Dev/tubes-tooling/` so a fresh clone can be brought back up.
+
+## The pixel-diff harness
+
+Comparing two runs that merely look alike cannot separate a rendering bug from
+a divergence in the simulation, and that ambiguity produced two wrong
+conclusions in one session. The harness removes it: capture the original's
+frame **together with the state that produced it**, put the port into that exact
+state, and diff per pixel.
+
+    capture_frame.py OUTDIR [count]     -> frameNN.png + frameNN.state
+    diff_frame.py FRAME.state           -> percentage + a diff image
+
+### Freezing the frame: use the game's PAUSE, not the debugger
+
+Halting via GDB **does not work** - QMP `screendump` times out while the CPU is
+stopped, because the emulator's main loop is blocked and never services the
+request. Halting and capturing are mutually exclusive.
+
+The game's own **Pause key** is the right instrument. It freezes the game loop
+while the emulator keeps running, so the framebuffer holds still *and* the
+screendump is still answered. Verified: state unchanged across 1.5 s while
+paused, changing across 1.0 s while running, screendump succeeding in both.
+
+Attract mode is no good for this - a keypress exits it - so the harness starts a
+real game: `Start Game -> Endurance -> Tubes 101 -> briefing -> play`, then
+pauses. (That briefing incidentally states "You are allowed 9 drops", the
+9/6/3 mapping again from the game's own text.)
+
+### Two calibrations, without which the numbers are meaningless
+
+**Exclude the backdrop.** It is one of `GAMEBG1..10` picked at random with
+`STAR1..4` animated over it, so it never matches and a full-screen mismatch
+swamps everything. Only **grey** pixels are compared - the tubes, test tube and
+beaker. The backdrop is blue and the balls are coloured, so both drop out.
+
+**Allow one unit of DAC slop.** DOSBox expands the 6-bit palette with `v << 2`
+and the port with `v * 255 / 63`, so every grey lands one apart - 152 against
+153, 100 against 101. Exact matching flagged **the entire network** as
+different, at 34% of structural pixels. With a tolerance of 6 - well under the
+12-plus gap between adjacent palette greys - the same frame reads **4.6%**.
+That 34% was a property of the comparison, not of the render, and it is exactly
+the kind of number that would otherwise start a hunt for a bug that does not
+exist.
+
+### What it found immediately
+
+- the test tube is misplaced: our wall sits at x=166 where the original's is at
+  172, over the tube's full 57 px height;
+- a handful of vertical pieces in the arcs that the original draws and we do
+  not;
+- and nothing else - the rest of the network matches within tolerance.
+
+**Do not fix an offset from one edge.** Shifting the tube by the measured 6 px
+made the diff *worse*, 4.6% to 8.5%, because the sprite has more than one wall
+and moving it misaligned the others. The offset has to be swept against the
+harness and the minimum taken.
