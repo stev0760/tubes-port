@@ -19,6 +19,10 @@ Two goals, in tension occasionally — the first one wins:
 
 ## The prime directive: transfer the logic, do not re-invent it
 
+**The goal is a faithful translation of the original Turbo Pascal into C++/SDL:
+the same game, playing virtually identically, on source that is readable and
+extensible.** Not a game inspired by Tubes. `PLAN.md` opens with this.
+
 **Every gameplay rule in `src/` must be derived from the original's code**, by
 decompiling the Turbo Pascal and transliterating it to C++/SDL. The Pascal
 source is almost certainly lost, so this binary is the only remaining record of

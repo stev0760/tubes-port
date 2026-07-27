@@ -44,9 +44,10 @@ answered most of the remaining mechanics without any of it reaching the engine.
 So the bottleneck is no longer knowledge. **The dispenser path - long recorded
 here as "the single genuine unknown left" - is solved.**
 
-The one core data structure never yet examined live is the **beaker grid**
-(three parallel arrays, stride 6). That is what the match logic needs, and it is
-the natural last reversing step before the work becomes implementation.
+The beaker grid is now decompiled, and it is **three parallel
+`array[1..5, 1..6] of byte` planes**: cell values, an animating flag, and a
+`MARKER` overlay. A cell holds `type + 19 * fadeFrame`, not a type. The port
+still models a single plane, which is the deepest remaining gap.
 
 ---
 
@@ -78,25 +79,17 @@ developer splash but is not decoded.
 Things currently implemented on assumptions the binary has since contradicted.
 Listed first because building on them wastes work.
 
-1. **The dispenser path.** `src/game.cpp` still has atoms falling straight down.
-   **The real path is now observed** (Experiment 2, `docs/reversing-notes.md`):
-   spawn at `(303,186)`, placed at the bottom of an outer vertical tube at
-   `y = 187`, ascend at constant x, cross the top along `y ~ 0..3`, then descend
-   into a play column. Tube columns seen: 34, 58, 107, 179, 197, 246, 270, 294 -
-   the same x values as the tube artwork, plus 294. **Speeds are measured**
-   (frame-synchronised sampler, input as a controlled variable): **4 px/frame**
-   travelling the tube network, **18 px/frame** when Down/Button B is held *and*
-   the atom is above the test tube, and **18 px/frame** below the tube mouth in
-   both conditions. The test tube itself moves 6 px/frame. The single
-   `fallSpeed` constant in `src/game.cpp` cannot cover this.
-2. **The test tube holds one atom.** It holds **five** - both published
-   descriptions of the game say so outright. `TESTUBE1/2/3` are tipping frames,
-   not capacities (see below), and the varying capacity is far better explained
-   by `FILLBALL`, which *permanently reduces the tube by one atom*, than by
-   difficulty. Treat the 5/3/2-by-difficulty figure in `src/game.cpp` as
-   unfounded.
-3. **Scoring and pacing.** `kScorePerAtom`, `kChainBonus`, `kSpawnInterval`,
-   `fallSpeed` are invented. Real values are in `1000:3a67`.
+1. ~~**The dispenser path.**~~ **DONE.** `game.cpp` now transliterates the
+   router `1000:0f80`: fixed-point motion at 1/128 px, states 3/5/6/7, the
+   `DS:0x18` column table, and the two hand-tuned arc offset tables
+   (`{9,6,4,2,1}` rising, `{9,6,3,2,1}` horizontally). The network topology -
+   which feed tube serves which column along which lane - is in `game.cpp`.
+2. ~~**The test tube holds one atom.**~~ **DONE.** Capacity is a flat 5, stated
+   by the in-game Instructions. The 5/3/2-by-difficulty guess is retired.
+3. ~~**Scoring and pacing.**~~ **MOSTLY DONE.** Scoring is by chain
+   orientation, 250/500/1000, from the Instructions, and the score ramps.
+   `kSpawnIntervalFrames` is **still an invented placeholder** and is the one
+   item here that remains genuinely wrong.
 4. **Atom colour count and the special balls - now measured.** The engine's 8
    flat colours are wrong. There are **19 ball types**, read out of the live
    sprite tables at `DS:0x1da6` (balls) and `DS:0x1df6` (fades), 19 entries
@@ -131,192 +124,55 @@ Listed first because building on them wastes work.
 
 ## Next
 
-### 0. START HERE: switch to the DOSBox-X debugger
+### 0. START HERE: transliterate `1000:3a67`, measured by the pixel diff
 
-Static disassembly has hit its limit on this function. Five self-corrections
-in one session, every one caused by a tool being wrong rather than the binary
-being obscure - a scan threshold too high, a correlation window too narrow, a
-regex that silently dropped negative displacements, two structures assumed to
-share a base, a shape measured from three sample rows. See `docs/worklog.md`.
+The project is in its **transliteration phase**. `CLAUDE.md` carries the prime
+directive: every gameplay rule in `src/` must come from decompiled Pascal, not
+from watching the game. Black-box recreation was tried for a session and was
+lossy in ways invisible from the inside - a scoring rule fitted to two points
+that was simply wrong, a wildcard rule wrong until a player described it, and
+an "ambiguity in the original" that was really a bug in our own matcher.
 
-DOSBox-X is already installed and the game runs under it. Watching memory
-answers directly what inference keeps getting wrong.
+**The measure of progress is now a number.** `~/Dev/tubes-tooling/` holds a
+pixel-diff harness (see `docs/debug-rig.md`):
 
-**What to watch.** The atom array is 12 records of 28 bytes, based at the
-frame of `1000:9e53` minus `0x163`, reached from `1000:3a67` through the
-Pascal static link at `[bp+4]`. Known fields:
+    python3 capture_frame.py frames 2      # original, PAUSED, + its state
+    python3 diff_frame.py frames/frame00.state
 
-| offset | field |
-|---|---|
-| +0x00 | x |
-| +0x02 | y |
-| +0x0b | colour / sprite index - **confirmed live** at array base `0x241a4` (the earlier doubt was a 6-byte base error, not a layout error) |
-| +0x14, +0x16 | saved x, one per video page |
-| +0x18, +0x1a | saved y, one per video page |
+It captures the original with the game's own **Pause** key - halting via GDB
+blocks the screendump - puts the port into that exact state with
+`tubes-port --render-state`, and diffs. Current reading: **4.6% of structural
+pixels**. Drive that down.
 
-**What to do.**
+Two calibrations are already in it and must not be removed: the backdrop is
+excluded (random, animated), and greys are compared with a tolerance of 6
+because DOSBox expands the DAC with `v<<2` and the port with `v*255/63`.
+Without the tolerance the harness reports 34% and sends you hunting a palette
+bug that does not exist.
 
-1. Break in `3a67` (image offset `0x3a67`, file offset `+0x2200`) and read
-   `[bp+4]` to get the live base. Everything else is an offset from it.
-2. Set a memory write breakpoint on a record's `+0x00`. Whatever traps is the
-   code that moves atoms - the thing a whole session of grepping did not find.
-   **Not possible over the GDB stub as built** - see Experiment 3 below.
-3. For speed: run, hold **B**, and watch the write rate change. That settles
-   whether speed is a record field, a divisor on a shared frame counter, or
-   something else, by observation rather than inference.
+**In priority order:**
 
-**Tooling: `jdmichaud/dosbox-mcp`** over `lokkju/dosbox-x-remotedebug`.
-**Built, installed and verified end to end** - see `docs/debug-rig.md` for where
-it lives, the config choices, and the footguns. The game runs headless and
-reaches its splash screens; segment bookkeeping is confirmed by two independent
-routes. 24 tools: memory read/write, registers, linear-address breakpoints,
-stepping, key injection and **save states**.
+1. **Sweep the test tube x offset** against the harness. Our wall sits at
+   x=166 where the original's is at 172, but shifting by that 6 px made the
+   diff *worse* (4.6% -> 8.5%) because the sprite has more than one wall.
+   Sweep, take the minimum; do not deduce from one edge.
+2. **The missing vertical pieces in the arcs** - a handful of red columns in
+   the diff image.
+3. **The corner sprites.** `game.cpp` draws no tube over an atom rounding a
+   bend, because which of `TUBEVL`/`TUBEVR`/`TUBEHR` the original picks per
+   corner is not decoded. A round ball on the bend is the current placeholder.
+4. **Descent velocity.** State 7's speed is inferred, not found in code.
+5. **Spawn interval** - `kSpawnIntervalFrames` is an outright placeholder.
+6. **The beaker representation.** A cell holds `type + 19*fadeFrame` with a
+   parallel animating plane and a third overlay plane (`MARKER`). The port
+   models a single plane of types, so it cannot show a clear animation at all.
+   This is the deepest remaining gap and it invalidates nothing above it.
 
-**One conf setting is mandatory:** `[dos] dos idle api = false`. Without it the
-game prints "This game requires complete control of your computer" and stops -
-it probes `INT 2Fh AX=1680h` for a multitasker at `21ea:0249` and DOSBox-X
-answers. Details in `docs/reversing-notes.md` under "Startup checks".
-
-The save states are the point. Every wrong turn last session came from an
-unrepeatable inference. A save state turns each question into a controlled
-experiment: identical starting state, one variable changed, re-runnable.
-
-**Debug the unpacked image, not the shipped one.** `assets-extracted/TUBES_UNP.EXE`
-is what Ghidra analysed and what every address in these notes refers to. The DOS
-drive presents it as `TUBES.EXE`; the shipped LZEXE-packed original is there as
-`TUBESPKD.EXE` for reference only. Run the packed one and break-on-exec stops in
-the decompressor stub, whose `CS` belongs to the packer - so the mapping below
-would be measuring the wrong program.
-
-**The segment bookkeeping is now settled, statically.** Ghidra's base segment is
-an arbitrary `0x1000` and DGROUP is Ghidra segment `0x2785`, so DGROUP sits
-`0x1785` paragraphs into the image - file offset `0x1785 * 16 + 0x2200 header =
-0x19a50`. Reading the waypoint-target table there out of the file gives
-`104, 122, 140, 158, 176, 194`, **byte-exact** against the measured values. Six
-values matching by chance is not credible, so this confirms both the DGROUP
-segment number and the file-offset formula without an emulator.
-
-What remains at runtime is only the load segment `L`. Entry `CS:IP` in the
-unpacked header is `0000:aaba` - image-relative segment 0 - so `CS` at the
-entry breakpoint *is* `L`, and:
-
-        live_segment = L + (ghidra_segment - 0x1000)
-        DGROUP       = L + 0x1785
-
-Confirm it two independent ways, and require them to agree - `bringup_tubes.py`
-does exactly this:
-
-- **A.** Break at entry, read `CS`, check `EIP - CS*16 == 0xaaba` (proves we
-  stopped in the right program), then read back `DS:0x26` at `L + 0x1785`.
-- **B.** Free-run, then scan conventional RAM for the 24 bytes the file holds at
-  `DS:0x1a` - verified to occur exactly once in the image:
-
-        8f 00 7d 00 6b 00 c5 00 b3 00 a1 00 68 00 7a 00 8c 00 9e 00 b0 00 c2 00
-
-  Its address must land where A predicts.
-
-A alone could be a wrong-but-self-consistent guess about the load address; B
-alone finds an address without proving what it is.
-
-**Careful - the column table is not stored ascending**, and the summary above
-glossed over it. `docs/reversing-notes.md` has this right already: the six x
-values live at `DS:0x1a`..`DS:0x24` as two *descending* triples,
-`143, 125, 107, 197, 179, 161`, and columns 1..6 index them in the order
-3, 2, 1, 6, 5, 4. The ascending `107, 125, 143, 161, 179, 197` is the mapping
-*after* that permutation, not a run of bytes to look for. Confirmed against the
-image: `DS:0x1a`=143, `0x1c`=125, `0x1e`=107, `0x20`=197, `0x22`=179,
-`0x24`=161. Anything scanning for the ascending form finds nothing - read the
-notes before inventing a signature.
-
-**Experiment 3 cannot be run as written.** The GDB stub
-supports **software execution breakpoints only**; `Z2`/`Z3`/`Z4` watchpoints
-are declined outright (`gdbserver.cpp`, `handle_breakpoint`). There is no
-memory-write breakpoint over the wire. DOSBox-X's internal debugger *does*
-have one (`BPM`, and this build has `C_HEAVY_DEBUG=1`) - it is just not
-exposed. `docs/debug-rig.md` sizes the three routes; the good one is a small
-patch mapping `Z2` onto the existing `CBreakpoint::AddMemBreakpoint`.
-
-Experiments 1, 2 and 4 need none of that and can run today.
-
-**Experiment 0 - the input bit map. DONE, and it validated the `.SCR` oracle.**
-The apparent contradiction between `SETUP.CFG`'s scancode order and the `.SCR`
-bit assignments was not real: `KEYBOARD.DRV` maps slot *n* to bits
-`1, 4, 8, 2, 16, 32`, not the identity, which makes both readings correct at
-once. Measured live with six key injections, every bit matching the prediction
-from the driver's disassembly:
-
-| bit | control | key |
-|---|---|---|
-| `0x01` | up | Up |
-| `0x02` | down | Down |
-| `0x04` | left | Left |
-| `0x08` | right | Right |
-| `0x10` | button A | **Left Ctrl** |
-| `0x20` | button B | **Left Alt** |
-
-So the `.SCR` bit table - previously only inferred from run-length statistics -
-is confirmed against the input handler, and **`DEMO.SCR` is safe to use as the
-correctness oracle in §5**. Details in `docs/reversing-notes.md`; the runnable
-experiment is `exp0_input_bits.py` in the tooling directory.
-
-The live key mask is one byte at driver offset `+0x1f`, and the driver's base
-comes from the **INT 9 vector** at linear `0x24` - do not hardcode it. Reading
-that byte is the cheapest possible way to confirm any input-related theory from
-here on.
-
-**Experiment 1 - the live atom array. MOSTLY DONE.** `12 records x 28 bytes` is
-confirmed, and so is `(303, 186)` as the spawn marker. Found by signature rather
-than frame arithmetic: search RAM for `2f 01` plus a plausible y, and ten hits
-land at an exact 28-byte stride spanning precisely twelve slots. The two slots
-*not* on the marker matched the two atoms visible on screen in the same halt -
-that correspondence is the proof. `exp1_atom_array.py` in the tooling directory.
-
-**Two corrections it forced:**
-
-- `+0x1e`/`+0x1f` are not atom fields (`0x1f` = 31 > 28); they are the test
-  tube's. See the record table above.
-- **`1000:3a67`'s first call is the difficulty-selection screen**, not the game
-  loop - its parent frame holds `Tubes 101`, `Tubes 201`, `Tubes 301` and `Exit`.
-  So breaking at `3a67` and reading the static link gives a frame containing no
-  atoms, and `parent - 0x163` scores 3/12 there, i.e. noise.
-
-**What is left:** the stable frame-relative offset. `parent - 0x163` is still
-unverified. Re-arm the breakpoint *after* difficulty selection and read `DI` at
-`3a73` during actual play, then compare against the base the signature search
-finds in the same run. Two routes agreeing is the standard here.
-
-Useful: `3a67`'s prologue is `enter 0x3c6, 0` and `mov di,[bp+4]` sits at `3a70`,
-so breaking at **`3a73`** gives the static link directly in `DI` - no stack walk.
-
-**Experiment 2 - watch atoms move.** Free-run and re-dump each frame. Is x
-stepped by a constant, interpolated, or recomputed from elsewhere? Static
-analysis says the fields are written whole rather than incremented, so this
-should show what actually drives them.
-
-**Experiment 3 - find the mover.** Set a write breakpoint on record 0's `+0x00`.
-Whatever traps is the code a full session of grepping failed to find. This is
-the single highest-value moment in the whole plan - **and it is gated on the
-watchpoint work in Correction 2 above.** Do that patch before this experiment,
-or fall back to step-and-diff.
-
-**Experiment 4 - settle speed (controlled).** Save state with an atom mid-arc.
-Then: load, run N frames untouched, record positions. Load again, run N frames
-holding **B**, record positions. Same start, one variable. The difference *is*
-the speed mechanism, measured rather than inferred. Repeat with a bonus atom
-on screen for the second speed.
-
-**The beaker grid is located and proven** - base `0x24314`, 30 bytes, row-major,
-6 cells per row, row 5 (bottom) at `+24`, cell 0 = empty and otherwise a ball
-type 1..19. Layout proven by tipping into two adjacent columns and seeing the
-filled cells land exactly 1 byte apart. A settled cell was caught holding **8**,
-which confirms a settled Flashium's cell really does hold 8. See
-`docs/reversing-notes.md`.
-
-The "three parallel arrays" part of this claim is **not** supported: the 30 bytes
-after the grid hold a Pascal string (`"CRFADE6.CSP"`), and the 60 before are
-merely zero. Settle a special to find out whether a companion flag array exists.
-
-Still to watch: the scoring counters, which are entirely invented in the port.
+**What is already transliterated and should not be re-derived:** the atom
+router `1000:0f80` (fixed-point, states 3/5/6/7, the two arc offset tables),
+the `DS:0x18` column table, the network topology (feed x, lane y, dest x per
+column), the ball table and type numbering, the drops model, and scoring by
+chain orientation.
 
 ### 1. The dispenser and test tube mechanic
 

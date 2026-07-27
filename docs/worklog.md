@@ -1743,3 +1743,42 @@ required, and nothing would have failed to reveal it.
 The movement code. The tube x positions appear in `3a67` only inside draw calls,
 never in a comparison, so the route is not hard-coded position tests there.
 `src/game.cpp`'s three-leg path remains an explicit placeholder.
+
+### Session 7: the pixel-diff harness
+
+Built the thing that was missing all along - a way to compare the port against
+the original that cannot be argued with.
+
+The harness captures the original's frame **together with the state that
+produced it**, puts the port into that exact state via a new `--render-state`,
+and diffs per pixel. Every earlier comparison was between two runs that merely
+looked alike, which cannot separate a rendering bug from a divergence in the
+simulation, and that ambiguity produced two wrong conclusions in a single
+session.
+
+Freezing the frame uses the game's own **Pause** key. Halting via GDB does not
+work - QMP `screendump` times out because the emulator's main loop is blocked -
+so halting and capturing are mutually exclusive. Pause freezes the game loop
+while the emulator keeps running. Verified directly: state unchanged across
+1.5 s paused, changing across 1.0 s running, screendump answered in both.
+
+Two calibrations mattered more than the harness:
+
+- the backdrop is excluded, being random and animated over with `STAR1..4`;
+- greys compare with a tolerance of 6, because DOSBox expands the 6-bit DAC
+  with `v<<2` and the port with `v*255/63`, so **every** grey lands one unit
+  apart. Without it the harness read 34% and would have started a hunt for a
+  palette bug that does not exist. With it, 4.6%.
+
+It found the test tube misplaced and a few missing vertical pieces - and then
+immediately caught a bad fix: shifting the tube by the measured 6 px made the
+diff *worse*, 4.6% to 8.5%, because the sprite has more than one wall. Reverted.
+That is the harness doing its job on its first day.
+
+Also in this session, before the harness: the network topology measured per
+column (feed x, lane y, destination x), the atom router transliterated from
+`1000:0f80`, and one full round trip - GAMEFG declared the whole network, the
+passes removed, the arcs lost their vertical walls, the change withdrawn. The
+withdrawal is recorded rather than quietly reverted, because the reasoning that
+produced it was a comparison at a crop where the deciding difference was
+invisible.
