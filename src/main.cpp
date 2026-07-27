@@ -573,11 +573,25 @@ int main(int argc, char** argv) {
         };
 
         const tubes::Falling& f = game.falling();
+        // Draw the atom, then repaint the tube piece it is inside over the top
+        // of it. Captures of the original show the ball CLIPPED by tube lines
+        // on every lane - including y=0, where no furniture pass exists - so
+        // the covering has to travel with the atom rather than come from the
+        // static passes. That matches the pair of draws in 1000:3a67 that take
+        // two sprite pointers from one struct and draw them at the same
+        // computed coordinates: back piece, ball, front piece.
+        //
+        // Which sprite the original picks per segment is not yet decoded, so
+        // the orientation is chosen from the atom's state here. That part is a
+        // reconstruction; the fact that a tube piece is redrawn over the atom
+        // is not.
         auto drawFlyingAtom = [&]() {
-            if (f.active && f.colour != tubes::kEmpty) {
-                screen.draw(atoms[f.colour], static_cast<int>(f.x),
-                            static_cast<int>(f.y));
-            }
+            if (!f.active || f.colour == tubes::kEmpty) return;
+            screen.draw(atoms[f.colour], f.x, f.y);
+            const bool horizontal = (f.state == tubes::atomstate::kGoLeft ||
+                                     f.state == tubes::atomstate::kGoRight);
+            const int piece = horizontal ? kTubeH : kTubeV;
+            if (haveFurn[piece]) screen.draw(furn[piece], f.x, f.y);
         };
 
         // An atom must be drawn immediately BEFORE its own lane's horizontal
