@@ -9,6 +9,31 @@ plan is worse than none.
 
 ---
 
+## The goal
+
+**Faithfully translate the original Turbo Pascal to C++/SDL, so the game plays
+virtually identically - but on source that is readable and extensible.**
+
+Not a game inspired by Tubes, and not a reimplementation that behaves similarly.
+The target is the same game: same rules, same speeds, same pixels, arrived at by
+reading the original's code and writing the equivalent in C++. The Pascal source
+is almost certainly lost, so this binary is the only surviving record of how
+Tubes works, and the port is meant to become the readable version of it.
+
+What "faithful" buys is a base worth extending. Once the behaviour matches, the
+code is a normal C++/SDL codebase - portable, testable, modifiable - rather than
+16-bit real-mode Pascal that only runs under emulation.
+
+Two consequences that shape every decision here:
+
+* **Rules come from the decompiled code, never from watching the game.** See
+  the prime directive in `CLAUDE.md`. Observation gives samples; the binary
+  gives the function.
+* **"Close enough" is not the bar.** The pixel-diff harness exists so that
+  "virtually identical" is a measured number rather than an impression.
+
+---
+
 ## Where this stands
 
 The split is lopsided, and the gap has **widened**: a live-debugging session
