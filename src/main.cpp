@@ -580,14 +580,30 @@ int main(int argc, char** argv) {
             }
         };
 
+        // An atom must be drawn immediately BEFORE its own lane's horizontal
+        // tube pass, so that pass paints the tube's near wall back over it and
+        // the ball reads as being inside the glass. The passes are ordered by
+        // lane, so the interleave point is a function of which lane the atom
+        // is travelling:
+        //
+        //     TUBEH y=26  lives in group 0  -> a lane-26 atom draws BEFORE it
+        //     TUBEH y=13  lives in group 1  -> a lane-13 atom draws after g0
+        //     lane 0 has no horizontal pass -> nothing can cover it
+        //
+        // That is what the original is doing with two interleave points and a
+        // subset of records at each, and it matches what is visible in play:
+        // some segments already showed the ball correctly inside, and they are
+        // exactly the ones whose tube is drawn later than the ball.
+        const int lane = f.active ? f.targetY : -1;
+        if (lane >= 26) drawFlyingAtom();
         drawFurn(0, kFurnGroup0);
-        // The original draws different atom records at each of the two
-        // interleave points, presumably split by which layer they occupy.
-        // With a single in-flight atom the first point is the faithful
-        // choice: everything from the mid layers onward paints over it.
-        drawFlyingAtom();
+        if (lane >= 13 && lane < 26) drawFlyingAtom();
         drawFurn(kFurnGroup0, kFurnGroup1);
+        if (lane >= 0 && lane < 13) drawFlyingAtom();
         drawFurn(kFurnGroup1, kFurnTotal);
+        // Once descending a play column the atom is below the lanes; the
+        // vertical pieces at y=26 are the last thing that can overlap it.
+        if (f.active && f.state == tubes::atomstate::kDescend) drawFlyingAtom();
 
         // Test tube: its shadow goes down before the tube and its contents.
         const int tubeX = kGridX + game.tubeColumn() * kPitchX;
