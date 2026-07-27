@@ -258,7 +258,8 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
                 a.state = (a.column < 4) ? atomstate::kGoRight
                                          : atomstate::kGoLeft;
             }
-            if (a.y < a.targetY + 9) {
+            a.onArc = (a.y < a.targetY + 9);
+            if (a.onArc) {
                 const int d = riseArcOffset(a.y - a.targetY);
                 a.x = a.anchorX + ((a.column < 4) ? d : -d);
             }
@@ -276,7 +277,8 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
                 a.state = atomstate::kDescend;
                 a.velocity = kDescendVel;
             }
-            if (a.x > a.anchorX - 9) {
+            a.onArc = (a.x > a.anchorX - 9);
+            if (a.onArc) {
                 a.y = a.targetY + crossArcOffset(a.anchorX - a.x);
             }
             break;
@@ -293,7 +295,8 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
                 a.state = atomstate::kDescend;
                 a.velocity = kDescendVel;
             }
-            if (a.x < a.anchorX + 9) {
+            a.onArc = (a.x < a.anchorX + 9);
+            if (a.onArc) {
                 a.y = a.targetY + crossArcOffset(a.x - a.anchorX);
             }
             break;

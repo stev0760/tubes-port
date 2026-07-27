@@ -588,6 +588,21 @@ int main(int argc, char** argv) {
         auto drawFlyingAtom = [&]() {
             if (!f.active || f.colour == tubes::kEmpty) return;
             screen.draw(atoms[f.colour], f.x, f.y);
+
+            // Repaint a tube piece over the atom ONLY where a pipe actually
+            // is. Three cases where there is none, each of which showed up as
+            // pipe painted over open space:
+            //
+            //  - rounding a bend, where the atom sits between two pieces and
+            //    the router is displacing it off the straight run;
+            //  - descending, which happens in open air below the network;
+            //  - and by extension anything below the lanes.
+            //
+            // Which piece the original uses on a bend is not decoded - the
+            // corner sprites TUBEVL/TUBEVR/TUBEHR exist and are presumably it,
+            // but guessing an orientation would put the wrong pipe on screen,
+            // so nothing is drawn there rather than something plausible.
+            if (f.onArc || f.state == tubes::atomstate::kDescend) return;
             const bool horizontal = (f.state == tubes::atomstate::kGoLeft ||
                                      f.state == tubes::atomstate::kGoRight);
             const int piece = horizontal ? kTubeH : kTubeV;
@@ -619,12 +634,16 @@ int main(int argc, char** argv) {
         // vertical pieces at y=26 are the last thing that can overlap it.
         if (f.active && f.state == tubes::atomstate::kDescend) drawFlyingAtom();
 
-        // Test tube: its shadow goes down before the tube and its contents.
+        // The test tube is glass, like the beaker, so its CONTENTS go down
+        // first and the tube is drawn over them. The port had the atoms after
+        // the tube, which stood them in front of the glass - the same
+        // inversion the beaker had, and the beaker is the proof of the rule:
+        // BEAKER.CSP is drawn last in the original and that one reads
+        // correctly in play.
         const int tubeX = kGridX + game.tubeColumn() * kPitchX;
         if (haveFurn[kTestTubeShadow]) {
             screen.draw(furn[kTestTubeShadow], tubeX - 3, kTubeY);
         }
-        if (haveTube) screen.draw(testTube, tubeX - 3, kTubeY);
 
         // Atoms stack in the tube, mouth downwards: index 0 sits at the
         // bottom and is the next one an A press tips out.
@@ -633,6 +652,8 @@ int main(int argc, char** argv) {
             const int y = kGridY - kCellH - static_cast<int>(i) * kPitchY;
             screen.draw(atoms[stack[i]], tubeX, y);
         }
+
+        if (haveTube) screen.draw(testTube, tubeX - 3, kTubeY);
 
         // Beaker shadow, then its contents, then the glass FRONT last - the
         // original draws BEAKER.CSP after the settled atoms, so the glass

@@ -70,6 +70,11 @@ struct Falling {
     int velocity = kNetworkVel;
     int accX = 0;
     int accY = 0;
+    // True while the router is applying its corner offset, i.e. the atom is
+    // rounding a bend rather than running along a straight pipe. Renderers
+    // need it: on the bend the atom is between two pieces, so painting a
+    // straight tube over it puts pipe where there is none.
+    bool onArc = false;
 };
 
 class Game {
