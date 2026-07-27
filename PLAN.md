@@ -36,43 +36,63 @@ Two consequences that shape every decision here:
 
 ## Where this stands
 
-The split is lopsided, and the gap has **widened**: a live-debugging session
-answered most of the remaining mechanics without any of it reaching the engine.
+Percentages are judgement calls, so the breakdown matters more than the number.
 
-- **Reversing: ~85%.** Every asset format decoded, the program mapped end to
-  end, music correct at the register level. Now also measured live: the
-  dispenser path with coordinates, atom speeds (4 travelling / 18 boosted and
-  falling / 6 for the tube), the 19-entry ball and fade type tables, the input
-  bit map, the scoring values, tube capacity and the drop mechanic, wave
-  definitions, and part of the save format.
-- **The engine: ~45%.** The measured *rules* have landed; the presentation has
-  not. Implemented:
-  - the original's **atom type numbering**, so a trace captured from the
-    original can be diffed against this board with no translation table;
-  - the **dispenser path** - up an outer tube at 4 px/frame, across the top at
-    y=0, down a play column at 18 px/frame, caught at the y=68 lane - replacing
-    "atoms fall straight down", which was the long-standing flagship gap;
-  - a **fixed frame step**, because every speed the original uses is a whole
-    number of pixels per frame;
-  - the **drop pool** counting down from 9/6/3, +1 per Bonus caught (which also
-    becomes Flashium), untouched by a wave clear;
-  - **tube capacity 5**, flat;
-  - **scoring by chain orientation** - 250 vertical / 500 horizontal / 1000
-    diagonal, straight from the Instructions - with chains counted as
-    `length - 2`, and the score ramping toward its award;
-  - **inert specials**: Xenon and friends settle without matching.
+### Reversing: ~85%
 
-  Still missing: **Flashium's wildcard** (see the note in `board.h` - it has a
-  genuine unknown and would silently change what the board tests assert), the
-  other specials' behaviours, the HUD, sound effects, and any wave structure.
+| Area | State |
+|---|---|
+| Every asset format | **done** - container, LZSS, `.CSP`, `.GFX`/`.PAL`, fonts, `.SFX`, `.SCR`, `.MUS` |
+| Program map, every interface stage | **done** |
+| Playfield geometry and cell-to-pixel mapping | **done**, measured |
+| Ball table and the 19 type numbers | **done**, read out of the entry program's own initialiser |
+| Fade encoding (`type + 19*frame`, one table) | **done** |
+| Beaker structure (three `array[1..5,1..6]` planes) | **done**, decompiled |
+| Atom router `1000:0f80` | **done** - states, fixed-point, both arc tables |
+| Network topology (feed / lane / destination per column) | **done**, measured |
+| Drops, scoring, tube capacity, save format, menus, waves | **done** |
+| Render order and the dirty-rect model | **done** |
 
-So the bottleneck is no longer knowledge. **The dispenser path - long recorded
-here as "the single genuine unknown left" - is solved.**
+Still unread, and most of it is inside `1000:3a67`'s 9,382 bytes:
 
-The beaker grid is now decompiled, and it is **three parallel
-`array[1..5, 1..6] of byte` planes**: cell values, an animating flag, and a
-`MARKER` overlay. A cell holds `type + 19 * fadeFrame`, not a type. The port
-still models a single plane, which is the deepest remaining gap.
+- the **match-and-clear routine** - scoring came from the Instructions, not code
+- the **specials' behaviours**: AntiMatter's blast, Convertor, Blocker, Filler,
+  Multiplier, EvilMultiplier, Crystal
+- the **wave definition** data structure - objectives and modifiers
+- **spawn/dispense** logic, and what else the difficulty routine sets
+- corner-sprite selection, descent velocity
+- `.SPR`, `.BIN`, `.ANM`
+
+### The engine: ~40%
+
+The core play loop is now largely faithful; almost everything *around* it is
+absent. That is why the number went **down** from the 45% claimed earlier -
+that figure was set before the surrounding scope was properly counted.
+
+Working, and transliterated rather than invented:
+
+- the atom router, network topology and fixed frame step
+- the tube network rendering, per-atom tube overlay, beaker and test tube
+  layering
+- atom type numbering, drops model, scoring by chain orientation with the ramp
+- Flashium's wildcard, inert specials, cascades and gravity
+- music: all ten songs, correct at the register level
+
+Absent entirely:
+
+| Missing | Size |
+|---|---|
+| HUD - Chains, score, Drops, the small ball counters | small, high visibility |
+| Sound effects | small |
+| The three-plane beaker, and therefore **any clear animation** | medium, blocks the specials |
+| Specials' behaviours | medium |
+| Wave structure: briefings, objectives, modifiers | large |
+| Menus, difficulty select, high scores, save/load | large |
+| Blackboard stats and cutscenes | medium |
+| Demo playback (`.SCR` replay through the same loop) | small, and it is the regression oracle |
+
+Pixel accuracy against the original currently reads **4.6%** of structural
+pixels differing, on a paused frame with the backdrop excluded.
 
 ---
 
