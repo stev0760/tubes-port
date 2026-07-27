@@ -3872,7 +3872,7 @@ This also retro-explains the "two descending triples `143,125,107,197,179,161`
 indexed `3,2,1,6,5,4`" that was recorded from the sprite table long before the
 routing was understood. It was the crossing, seen from the table end.
 
-## CORRECTION: the tube network IS a backdrop, and the passes restore it
+## WITHDRAWN: "the tube network IS a backdrop"
 
 Earlier notes stated flatly that "the tube network is not a backdrop - it is
 assembled from segment sprites in layered passes". That is **wrong**, and it
@@ -3907,3 +3907,26 @@ atom is the only thing that damaged the foreground.
 
 `kFurniture` in `src/main.cpp` is retained as the record of the original's
 restore order, not as the drawing path.
+
+### ...and this section is itself withdrawn
+
+Removing the passes left **the arcs without their vertical walls**, reported
+immediately from play as missing tiles and confirmed against a capture: the
+original has vertical tube walls running through the lane rows, `GAMEFG` alone
+does not, and only the passes supply them.
+
+So `GAMEFG` carries *much* of the network but not all of it, and both are
+needed - which is the position the notes held before this section was written.
+
+What went wrong is worth keeping. The "chunky, wrongly overlapped" reading that
+motivated removing the passes came from comparing a with/without pair at a crop
+and scale where the difference that mattered - the missing verticals - was not
+visible, and a difference that did not matter looked decisive. A three-way
+comparison against the original at a tight crop settled it in one image, and
+should have been the first move rather than the third.
+
+The genuine finding underneath survives: `GAMEFG` **does** encode per-line depth
+that whole-sprite draws cannot reproduce, which is why the pipes' front and back
+lines interleave correctly there. That is what the passes are drawing *over*,
+and the open question - reported from play and still unresolved - is whether
+replaying them in the transcribed order disturbs that interleaving.
