@@ -3871,3 +3871,39 @@ back, and the draw order follows.
 This also retro-explains the "two descending triples `143,125,107,197,179,161`
 indexed `3,2,1,6,5,4`" that was recorded from the sprite table long before the
 routing was understood. It was the crossing, seen from the table end.
+
+## CORRECTION: the tube network IS a backdrop, and the passes restore it
+
+Earlier notes stated flatly that "the tube network is not a backdrop - it is
+assembled from segment sprites in layered passes". That is **wrong**, and it
+was wrong in a way that produced visibly bad output.
+
+`GAMEFG.GFX` is the entire network, already composited with the correct depth:
+every pipe's near and far wall interleaved with its neighbours'. That is what
+makes the frontmost pipe's **back** line sit behind the other pipes while its
+**front** line sits in front of them - a per-line depth relationship that no
+sequence of whole-sprite draws can produce.
+
+So the furniture passes decompiled out of `1000:3a67` are **dirty-rectangle
+restoration**, not the primary drawing. The original never blits the whole
+foreground; it repaints the pieces around moving atoms, which is why those
+draws exist at all and why they are interleaved with the atom draws.
+
+The error was reasonable and still wrong: the draw list is real, the ordering is
+real, and atoms genuinely are drawn between the passes. What did not follow is
+that the passes *build* the network.
+
+**Consequence for a full-blit renderer.** Blitting `GAMEFG` already restores
+everything, so replaying the passes draws every pipe a second time in a
+flattened order and destroys the layering that `GAMEFG` encodes. The port did
+exactly this and the network came out chunky with pipes overlapping wrongly.
+Removing the passes and keeping only the per-atom overlay reproduces the
+original's look.
+
+The per-atom overlay is still required, and is the same mechanism: after drawing
+an atom, repaint the pipe over it. In the original that is part of the restore;
+in a full-blit renderer it is the only part that is still needed, because the
+atom is the only thing that damaged the foreground.
+
+`kFurniture` in `src/main.cpp` is retained as the record of the original's
+restore order, not as the drawing path.

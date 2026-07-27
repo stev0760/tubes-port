@@ -624,12 +624,23 @@ int main(int argc, char** argv) {
         // some segments already showed the ball correctly inside, and they are
         // exactly the ones whose tube is drawn later than the ball.
         const int lane = f.active ? f.targetY : -1;
-        if (lane >= 26) drawFlyingAtom();
-        drawFurn(0, kFurnGroup0);
-        if (lane >= 13 && lane < 26) drawFlyingAtom();
-        drawFurn(kFurnGroup0, kFurnGroup1);
-        if (lane >= 0 && lane < 13) drawFlyingAtom();
-        drawFurn(kFurnGroup1, kFurnTotal);
+        // GAMEFG.GFX is the WHOLE tube network, already composited with the
+        // correct depth - each pipe's near and far wall interleaved with its
+        // neighbours', which is what makes the frontmost pipe's back line sit
+        // behind the others while its front line sits in front.
+        //
+        // So the per-frame furniture passes decompiled out of 1000:3a67 are
+        // **dirty-rect restoration**, not the primary drawing: the original
+        // never blits the whole foreground, it repaints the pieces near moving
+        // atoms. This renderer blits all of GAMEFG every frame, which restores
+        // everything already, so replaying those passes drew the pipes a second
+        // time in a flattened order and destroyed GAMEFG's layering - the
+        // network came out chunky, with pipes overlapping wrongly.
+        //
+        // kFurniture is kept as the record of the original's restore order.
+        (void)lane;
+        (void)drawFurn;
+        drawFlyingAtom();
         // Once descending a play column the atom is below the lanes; the
         // vertical pieces at y=26 are the last thing that can overlap it.
         if (f.active && f.state == tubes::atomstate::kDescend) drawFlyingAtom();
