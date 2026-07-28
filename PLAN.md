@@ -56,16 +56,15 @@ Percentages are judgement calls, so the breakdown matters more than the number.
 | `.CSP` placement offsets | **done** - the `(128, -2)` base |
 | Spawn: period, type distribution, column choice | **done**, decompiled |
 | Difficulty seeds and their per-wave stepping | **done** |
-| The test tube's record and state machine | **done** |
+| The test tube's record, state machine and five slots | **done** - and it is a stack |
 | The beaker update `1000:22a6` | **done** - three planes, four matchers, fade, gravity |
 | Beaker-side specials `1000:2790` | **done** - AntiMatter, Blocker, Convertor |
+| Catch-time specials `1000:180c` | **done** - Bonus, Multiplier, EvilMultiplier, Filler |
 | Scoring and the chain bonus multiplier | **done**, from code rather than the manual |
 
 Still unread, and most of it is inside `1000:3a67`'s 9,382 bytes:
 
-- the **specials at CATCH time**: `1000:180c` in the router dispatches Bonus
-  (`07db`), Multiplier (`08d2`), EvilMultiplier (`0a27`) and Filler (`0b55`).
-  The beaker-side half is done. Also `1000:041c`, the Crystal's teleport
+- `1000:041c`, the Crystal's teleport, which `1000:0f3b` calls in wave mode 5
 - the **wave definition** data structure - objectives and modifiers. The
   machinery is now half visible: `1000:192f` checks an orientation- or
   colour-based objective, and the objective plane and the disabled-element
@@ -98,6 +97,11 @@ Working, and transliterated rather than invented:
 - the beaker-side specials: AntiMatter's 3x3 blast, the Blocker filling its
   column, the Convertor converting by type board-wide, and the four consumables
   going inert if they settle
+- **the catch-side specials**: the Bonus becoming Flashium, granting a drop and
+  paying a 1000 award that *grows by 1000 every time*; the Multiplier topping
+  the tube up to five with 1..8 rolls; the Evil Multiplier doing the same with
+  Xenon; and the Filler parking an untippable type 17 in the bottom slot
+- **the tube as a stack**, tipping the atom caught last, and refusing a 17
 - music: all ten songs, correct at the register level
 
 Absent entirely:
@@ -106,8 +110,8 @@ Absent entirely:
 |---|---|
 | HUD - Chains, score, Drops, the small ball counters | small, high visibility |
 | Sound effects | small |
-| Specials at catch time - Multiplier, EvilMultiplier, Filler, Bonus | small |
 | The tipping animation - an atom visibly leaving the tube for the beaker | small |
+| The in-tube slide - a caught atom drops to its slot at 9 px/frame | small |
 | Wave structure: briefings, objectives, modifiers | large |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |
@@ -175,12 +179,12 @@ Listed first because building on them wastes work.
    | 9 | AntiMatter - destroys the surrounding atoms |
    | 10 | Bonus - travels fast, turns into Flashium when caught, grants a bonus drop |
    | 11 | Xenon - inert, will not react with any colour |
-   | 12 | Multiplier - fills the test tube with **random** balls |
+   | 12 | Multiplier - tops the test tube up to five with `Random(8)+1`, so Flashium is in the fill (`1000:08d2`) |
    | 13 | Evil Multiplier - fills the test tube with Xenons |
    | 14 | Convertor - turns the atoms it lands on into Xenons |
    | 15 | Blocker - fills the beaker column it lands in with Xenons |
-   | 16 | Filler - permanently reduces tube capacity by one |
-   | 17 | almost certainly the immovable atom `FILLBALL` parks at the bottom of the tube - near-black, no fade family, and play reports a "sticky black one that cannot be dumped" |
+   | 16 | Filler - parks a type 17 in the tube's bottom slot and discards itself (`1000:0b55`) |
+   | 17 | `FILLBALL`, **settled**: `1000:472a` refuses to tip one, so the Filler's slot is dead for the rest of the session. No capacity variable exists |
    | 18 | the **Mischief Crystal** - starts in the beaker as contamination and **teleports** between cells; removed with **AntiMatter**, never by matching. `CRFADE` is its *teleport* animation (forward out, reverse back), which is why its static sprite is `CRFADE1` |
    | 19 | `MYSTBALL`, still unidentified |
 
@@ -233,18 +237,21 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
 
 **In priority order:**
 
-1. **The specials at catch time.** The beaker-side half is done; the other half
-   is four routines the router dispatches at `1000:180c` when the test tube
-   catches one - Bonus, Multiplier, EvilMultiplier, Filler. Small and
-   well-located.
-2. **The tipping animation and records 7..12.** Pressing A currently teleports
+1. **The tipping animation and records 7..12.** Pressing A currently teleports
    an atom into the beaker. The original moves it into one of six spare slots
    which fall and are drawn between the `MARKER` overlay and `BEAKER.CSP`. The
-   four-phase animation is at `1000:463a`.
-3. **The HUD**, now that fonts are decoded and the render order around them is
+   four-phase animation is at `1000:463a`, and the handover is already read:
+   `1000:4715` sets the record's state to 9 and its column to the tube's stop,
+   `Move`s it into the first free record of 7..12, and decrements the count.
+   The same pass wants the in-tube slide - a caught atom descends 9 px a frame
+   to its slot, and it is *that* arrival, not the catch, that fires a special.
+2. **The HUD**, now that fonts are decoded and the render order around them is
    known. It would also settle the one scoring conflict below.
-4. **Sound effects.** Every hook now exists: the matcher names the fade family
-   whose `.SFX` to play, and `Game::takeSound()` hands it to the caller.
+3. **Sound effects.** Every hook now exists: the matcher names the fade family
+   whose `.SFX` to play, and `Game::takeSound()` hands it to the caller. The
+   catch-time specials name theirs too - the Bonus plays a fixed one from the
+   frame at `-0x4a`, and the tube's arrival picks between `-0x76` and `-0x7a`
+   depending on whether the atom landed in the bottom slot.
 
 **What is already transliterated and should not be re-derived:** the atom
 router `1000:0f80` (fixed-point, states 3/5/6/7, the two arc offset tables),

@@ -190,6 +190,7 @@ public:
     // it. Nothing in `1000:9e53` writes it, so it is set further out - the
     // wave or mode setup - and the port defaults it on.
     void setSpecialsEnabled(bool on) { specialsEnabled_ = on; }
+    bool specialsEnabled() const { return specialsEnabled_; }
 
     // The first cell holding exactly `want`, in row-major order - `1000:0c82`,
     // which scans the 30-byte plane with a byte search and divides the index

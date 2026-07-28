@@ -222,17 +222,23 @@ int8_t Game::nextColour() {
     return static_cast<int8_t>(type);
 }
 
-// One frame of the beaker: `1000:22a6`, plus the score ramp that `1000:58c5`
-// drives around it. The whole thing runs every frame whether or not anything
-// is happening, which is what animates the clear and the settle.
+// One frame of the beaker: `1000:22a6`, which the frame body calls once at
+// `1000:47d0` whether or not anything is happening - that is what animates the
+// clear and the settle. The ramp's own clock is NOT here; see `stepScoreRamp`.
 void Game::updateBeaker() {
     const BoardStep s = board_.step();
 
     if (s.award > 0) {
         scorePending_ += s.award;
         rampSteps_ = kScoreRampSteps;   // 1000:1c63  MOV [rampSteps], 6
-        rampIncrement_ = 0;
         clearTimer_ = kClearFrames;     // 1000:1c70  MOV [clearTimer], 10
+        // The increment is NOT cleared here. `1000:1c63` writes the step count
+        // and the clear timer and nothing else, and the only zero into the
+        // increment is at `1000:58d2`, on the frame the ramp runs out. So an
+        // award landing mid-ramp extends the ramp at the rate already running
+        // rather than recomputing it, and the difference is paid by the
+        // remainder at the flush. The port used to zero it here, which made
+        // every second award pay out faster than the original's.
         pendingSound_ = s.soundType;
     }
     // An AntiMatter blast pays nothing but still arms the clear timer, so a
@@ -243,20 +249,13 @@ void Game::updateBeaker() {
     }
     chains_ += s.chainsVertical + s.chainsHorizontal + s.chainsDiagonal;
 
+    // 1000:2410 - one sixth of the award, paid every frame the ramp is live.
     if (rampSteps_ > 0) {
         scoreMultiplier_ += s.runs;
         if (rampIncrement_ == 0) {
             rampIncrement_ = scorePending_ * scoreMultiplier_ / rampSteps_;
         }
         score_ += rampIncrement_;
-        if (--rampSteps_ == 0) {
-            // The flush pays the division's remainder, so the total is exactly
-            // pending * multiplier however the sixths round.
-            score_ += scorePending_ * scoreMultiplier_ % kScoreRampSteps;
-            scorePending_ = 0;
-            scoreMultiplier_ = 0;
-            rampIncrement_ = 0;
-        }
     }
 
     if (clearTimer_ > 0) --clearTimer_;
@@ -272,6 +271,143 @@ void Game::updateBeaker() {
     // beaker is neither. Filling a column simply means nothing more can be
     // tipped into it - `Board::drop` already returns false and the atom stays
     // in the test tube.
+}
+
+// The ramp's clock, `1000:58c5`, which is a separate statement in the frame
+// body and sits AFTER the router at `1000:4819`:
+//
+//     Dec(rampSteps);
+//     if rampSteps = 0 then begin
+//         increment := 0;
+//         q := LongDiv(pending * multiplier, 6);      { remainder in BX:CX }
+//         score := score + remainder;
+//         pending := 0;  multiplier := 0
+//     end
+//
+// Keeping it out of `updateBeaker()` is not tidying. The beaker runs at
+// `1000:47d0`, before the router, so a Bonus caught this frame arms the ramp
+// too late for the beaker's own payment - and this decrement then spends the
+// first of the six steps anyway. With the two fused, the Bonus was paid seven
+// sixths of its award instead of six; a match, whose award is raised inside
+// the beaker, was unaffected, which is why the fusion looked right.
+void Game::stepScoreRamp() {
+    if (rampSteps_ == 0) return;
+    if (--rampSteps_ == 0) {
+        rampIncrement_ = 0;
+        // The flush pays the division's remainder, so the total is exactly
+        // pending * multiplier however the sixths round.
+        score_ += scorePending_ * scoreMultiplier_ % kScoreRampSteps;
+        scorePending_ = 0;
+        scoreMultiplier_ = 0;
+    }
+}
+
+// The other half of the specials. The beaker-side four are in `board.cpp`,
+// where `1000:2790` runs them over the settled grid; these four fire when the
+// TEST TUBE catches one, and they are dispatched out of the router by
+// `1000:180c` on the frame the caught atom finishes sliding down to its slot:
+//
+//     if rec.arrived <> 0 then begin
+//         if rec.type = 10 then Bonus(link);                { 1000:07db }
+//         if ds:[0x1d48] <> 0 then begin
+//             if rec.type = 12 then Multiplier(link);       { 1000:08d2 }
+//             if rec.type = 13 then EvilMultiplier(link);   { 1000:0a27 }
+//             if rec.type = 16 then Filler(link);           { 1000:0b55 }
+//         end
+//     end
+//
+// The Bonus sits deliberately OUTSIDE the `DS:0x1d48` gate and the other three
+// inside it - the same gate that guards the Blocker on the beaker side.
+//
+// All four work on `slot[count]`, the atom just caught, which is `tube_.back()`
+// here. The port has no in-tube slide yet, so a catch lands in its slot at
+// once and these fire on the catch frame rather than a few frames later.
+void Game::catchSpecial() {
+    if (tube_.empty()) return;
+    const int8_t type = tube_.back();
+
+    if (type == kBonus) {
+        // 1000:07f7  slot[count].type := 8. The Instructions' "turns into
+        // Flashium when caught" is the code's own doing, one byte.
+        tube_.back() = kFlashium;
+        // 1000:0803: on the way from zero the drop counter's sprite has been
+        // erased, so it is redrawn before the count goes back up. The port has
+        // no counter to redraw yet; the increment at 1000:082e is the point,
+        // and it is the only thing in the game that grows the pool.
+        ++dropsRemaining_;
+
+        // 1000:0846 onward is the score path, and it is the same six-frame
+        // ramp `updateBeaker()` runs - identical code, down to computing the
+        // increment only when it is still zero and adding it once inline.
+        bonusAward_ += kBonusAward;         // 1000:0846
+        ++scoreMultiplier_;                 // 1000:084d
+        scorePending_ += bonusAward_;       // 1000:0859
+        rampSteps_ = kScoreRampSteps;       // 1000:0866
+        clearTimer_ = kClearFrames;         // 1000:086c
+        if (rampIncrement_ == 0) {          // 1000:0872
+            rampIncrement_ = scorePending_ * scoreMultiplier_ / rampSteps_;
+        }
+        score_ += rampIncrement_;           // 1000:08c4
+    }
+
+    if (!board_.specialsEnabled()) return;
+
+    // 1000:08d2 - the Multiplier fills the tube with random ordinary balls.
+    //
+    //     slot[count].type := Random(8) + 1;
+    //     i := count;
+    //     while i < 5 do begin
+    //         Inc(i);
+    //         Move(slot[count], slot[i], 28);      { the caught record }
+    //         slot[i].type := Random(8) + 1;
+    //         slot[i].dy   := yofs[i];             { 52 39 26 13 0 }
+    //         slot[i].y    := slot[i].dy + $44
+    //     end;
+    //     count := 5
+    //
+    // Random(8) + 1 is 1..8, so Flashium is one of the eight it can roll -
+    // the same distribution the dispenser uses for an ordinary atom.
+    if (type == kMultiplier) {
+        tube_.back() = static_cast<int8_t>(random(8) + 1);
+        while (static_cast<int>(tube_.size()) < kTubeSlots) {
+            tube_.push_back(static_cast<int8_t>(random(8) + 1));
+        }
+    }
+
+    // 1000:0a27 - the Evil Multiplier is the same routine with the roll
+    // replaced by a literal 11. It writes Xenon into the caught slot and then
+    // copies that record upward, so every slot it fills is Xenon too.
+    if (type == kEvilMultiplier) {
+        tube_.back() = kXenon;
+        while (static_cast<int>(tube_.size()) < kTubeSlots) {
+            tube_.push_back(kXenon);
+        }
+    }
+
+    // 1000:0b55 - the Filler.
+    //
+    //     for i := 5 downto 2 do begin
+    //         Move(slot[i - 1], slot[i], 28);
+    //         slot[i].dy := yofs[i];  slot[i].y := slot[i].dy + $44
+    //     end;
+    //     slot[1].type := 17                       { FILLBALL }
+    //
+    // The count is NOT touched, so the shift pushes the top slot out of the
+    // stack: the Filler is at slot[count] and is exactly what gets discarded.
+    // What is left is the same number of atoms with an immovable one under
+    // them, and `1000:4715` will not tip a 17 - which is where "permanently
+    // reduces the tube's capacity by one" actually comes from. Nothing
+    // anywhere writes a capacity variable.
+    if (type == kFiller) {
+        tube_.pop_back();
+        tube_.insert(tube_.begin(), static_cast<int8_t>(kObstacle));
+    }
+
+    // Not ported: all three gated routines carry a tail guarded by
+    // `DS:0x1d4e = 4`, a wave mode, which keeps a running count of what is in
+    // the tube - the fills increment it per ball, the Filler and the router's
+    // release path decrement it, and reaching zero adds 2 to the clear timer.
+    // The port has no wave modes, so there is nothing for it to count.
 }
 
 // Dispense one atom, transliterated from `1000:4918`. The column is rolled,
@@ -362,9 +498,26 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
     // A tips the tube, dumping one atom into the beaker beneath it. Matching
     // is NOT resolved here: the beaker update runs every frame and picks the
     // new atom up on the next one, which is what lets the clear animate.
-    if ((pressed & button::kA) && !tube_.empty()) {
-        if (board_.drop(tubeColumn_, tube_.front())) {
-            tube_.erase(tube_.begin());
+    //
+    // `1000:4715`, the tipping code, reads:
+    //
+    //     if tube.count = 0 then exit;
+    //     if tube.slot[tube.count].type = 17 then exit;      { FILLBALL }
+    //     tube.slot[tube.count].state  := 9;
+    //     tube.slot[tube.count].column := tube.stop;
+    //     n := 1; while atom[n + 6].?? <> 0 do Inc(n);       { a free slot }
+    //     if n = 6 then RunError;
+    //     Move(tube.slot[tube.count], atom[n + 6], 28);
+    //     Dec(tube.count)
+    //
+    // Two things the port had wrong. It tips `slot[count]`, the atom caught
+    // LAST, so the tube is a stack and not a queue. And a type 17 in the mouth
+    // simply refuses - which is the whole of what the Filler does to you: it
+    // parks one of those in slot 1, and once everything above it is gone the
+    // slot is dead for the rest of the session.
+    if ((pressed & button::kA) && !tube_.empty() && tube_.back() != kObstacle) {
+        if (board_.drop(tubeColumn_, tube_.back())) {
+            tube_.pop_back();
         }
     }
 
@@ -391,6 +544,10 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
     }
 
     if (--spawnTimer_ <= 0) spawn();
+
+    // Last, as `1000:58c5` is - after the router, so a special caught this
+    // frame has already armed the ramp.
+    stepScoreRamp();
 }
 
 // One frame of one atom: `FUN_1000_0f80`, transliterated, plus the catch and
@@ -491,15 +648,9 @@ void Game::stepAtom(Falling& a) {
     if (a.y >= kTubeMouthY &&
         kAtomColumnX[a.column] == playColumnX(tubeColumn_) &&
         !tubeFull()) {
-        int8_t held = a.colour;
-        if (held == kBonus) {
-            // "Turns into Flashium when caught and awards you an extra drop"
-            // - the game's own Instructions. The only way the pool ever grows.
-            ++dropsRemaining_;
-            held = kFlashium;
-        }
-        tube_.push_back(held);
+        tube_.push_back(a.colour);
         a.state = atomstate::kFree;
+        catchSpecial();
         return;
     }
 

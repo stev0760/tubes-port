@@ -93,6 +93,21 @@ constexpr int kBoostVel = 0x480;
 // The test tube slides a flat 6 pixels a frame between its stops.
 constexpr int kTubeSlidePx = 6;
 
+// The tube's record carries `array[1..5] of AtomRec` inline, at `tube + 7 +
+// 28*n`, with its count in the byte at `tube + 0x21`. Slot 1 is the BOTTOM:
+// each slot's y offset within the tube is a literal in the fill routines -
+// 52, 39, 26, 13, 0 for slots 1..5, the 13 px row pitch again - and the atom's
+// absolute y is that plus the tube's own y of 0x44.
+//
+// Five is a literal in the original too. `1000:08d2` and `1000:0a27` fill
+// `while count < 5`, so a Multiplier tops the tube up to five whatever a
+// Filler has done to it - the Filler does not shrink a capacity variable, it
+// parks an immovable atom in slot 1.
+constexpr int kTubeSlots = 5;
+
+// The Bonus atom's award, `1000:0846  ADD [award], 0x3e8`.
+constexpr int kBonusAward = 1000;
+
 // The dispenser's period, in frames, from the same seeding block: 70/60/50 by
 // difficulty. It shortens by one per wave and lengthens by twelve every
 // fifteenth, so it drifts down about three per fifteen waves.
@@ -155,18 +170,22 @@ public:
     int tubeColumn() const { return tubeColumn_; }
     int tubeX() const { return tubeX_; }
 
-    // The test tube holds up to five atoms, stacked. Index 0 is the mouth -
-    // the one the next A press tips into the beaker. Five is not inferred from
-    // sprite heights any more: the game's own Detailed Instructions state "The
-    // test tube you control to collect and release atoms can hold up to 5
-    // atoms at a time", with no mention of difficulty.
+    // The test tube holds up to five atoms, stacked. Index 0 is slot 1, the
+    // BOTTOM of the tube; the LAST element is the mouth, and it is both the one
+    // a catch lands in and the one the next A press tips out. Five is not
+    // inferred from sprite heights any more: the game's own Detailed
+    // Instructions state "The test tube you control to collect and release
+    // atoms can hold up to 5 atoms at a time", with no mention of difficulty.
     const std::vector<int8_t>& tubeAtoms() const { return tube_; }
     int tubeCapacity() const { return tubeCapacity_; }
     bool tubeFull() const {
         return static_cast<int>(tube_.size()) >= tubeCapacity_;
     }
+    // The tube is a STACK, not a queue - `1000:4715` tips `slot[count]`, the
+    // last one caught, and `1000:180c` fires a special on `slot[count]` too.
+    // The port used to tip `tube_.front()`, which emptied it oldest-first.
     int8_t heldAtom() const {
-        return tube_.empty() ? static_cast<int8_t>(kEmpty) : tube_.front();
+        return tube_.empty() ? static_cast<int8_t>(kEmpty) : tube_.back();
     }
 
     // Drops are a single pool that counts DOWN, not misses counting up. It is
@@ -214,6 +233,11 @@ private:
     void spawn();
     void stepAtom(Falling& a);
     void updateBeaker();
+    // The score ramp's clock, `1000:58c5` - a separate statement in the frame
+    // body, and after the router rather than with the beaker.
+    void stepScoreRamp();
+    // The four specials that fire when the TUBE catches one - `1000:180c`.
+    void catchSpecial();
     int random(int n);
     int8_t nextColour();
     // The original moves things a whole number of pixels per frame, so the
@@ -245,6 +269,11 @@ private:
     int scoreMultiplier_ = 0;
     int rampSteps_ = 0;
     int rampIncrement_ = 0;
+    // The Bonus atom's award GROWS across the session. `1000:0846` adds 1000
+    // to a word of its own and then pays the whole word, and the only other
+    // write to it is the zero at `1000:3a8d` in the session prologue - so the
+    // first Bonus is worth 1000, the second 2000, the third 3000.
+    int bonusAward_ = 0;
     // 1000:1c70 sets this to 10 on a match; the frame loop counts it down and
     // will not declare a wave complete while it is running.
     int clearTimer_ = 0;

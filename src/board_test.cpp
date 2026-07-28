@@ -493,6 +493,125 @@ void testBonusAtomIsFastByType() {
     check(h.atom(1).y - 70 == 38, "a Bonus atom runs at 9 px a frame unprompted");
 }
 
+// --- the specials at CATCH time, 1000:180c ----------------------------
+
+// Drives one atom of `type` into the test tube and steps a single frame.
+// Column 6 descends to x=161, which is the tube's stop index 3, so parking the
+// tube there is what makes the catch fire.
+void catchOne(tubes::Game& g, int8_t type,
+              const std::vector<int8_t>& start) {
+    g.setTubeColumn(3);
+    g.setTubeAtoms(start);
+    tubes::Falling a;
+    a.state = tubes::atomstate::kDescend;
+    a.column = 6;
+    a.colour = type;
+    a.x = tubes::kAtomColumnX[6];
+    a.y = 100;                    // past the mouth at 68, short of the loss at 190
+    a.velocity = 0x100;
+    g.setAtom(6, a);
+    g.update(0, 1.0f / 18.2f);
+}
+
+void testBonusCatchPaysAndGrows() {
+    // 1000:07db. The caught atom becomes Flashium, the drop pool gains one,
+    // and the award is a word of its own that GAINS 1000 each time and is then
+    // paid whole - so the second Bonus of a session is worth 2000.
+    tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
+    catchOne(g, tubes::kBonus, {});
+    check(g.tubeAtoms() == std::vector<int8_t>{tubes::kFlashium},
+          "a caught Bonus turns into Flashium");
+    check(g.dropsRemaining() == 10, "and grants a drop - 9 seeded, 10 now");
+    // 1000 * 1 multiplier, over six steps, added once inline at 1000:08c4.
+    check(g.score() == 1000 / 6, "the first Bonus starts a 1000 ramp");
+
+    // Let that ramp run out, then catch a second.
+    for (int i = 0; i < 10; ++i) g.update(0, 1.0f / 18.2f);
+    check(g.score() == 1000, "the ramp pays exactly 1000 in the end");
+    const int before = g.score();
+    catchOne(g, tubes::kBonus, g.tubeAtoms());
+    check(g.score() - before == 2000 / 6, "the second Bonus ramps 2000");
+}
+
+void testMultiplierFillsTheTube() {
+    // 1000:08d2 tops the tube up to five with Random(8)+1 - which is 1..8, so
+    // Flashium is in the distribution.
+    tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
+    catchOne(g, tubes::kMultiplier, {tubes::kRedium});
+    const std::vector<int8_t>& t = g.tubeAtoms();
+    check(static_cast<int>(t.size()) == tubes::kTubeSlots,
+          "a Multiplier fills the tube to five");
+    check(t[0] == tubes::kRedium, "what was already in it stays put");
+    bool ordinary = true;
+    for (size_t i = 1; i < t.size(); ++i) {
+        if (t[i] < tubes::kRedium || t[i] > tubes::kFlashium) ordinary = false;
+    }
+    check(ordinary, "and everything it adds is a 1..8 roll");
+}
+
+void testEvilMultiplierFillsWithXenon() {
+    // 1000:0a27 is the same routine with the roll replaced by a literal 11,
+    // and the Move copies that record upward - so every slot is Xenon.
+    tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
+    catchOne(g, tubes::kEvilMultiplier, {tubes::kRedium, tubes::kGreenium});
+    const std::vector<int8_t>& t = g.tubeAtoms();
+    check(t == std::vector<int8_t>({tubes::kRedium, tubes::kGreenium,
+                                    tubes::kXenon, tubes::kXenon,
+                                    tubes::kXenon}),
+          "an Evil Multiplier fills the rest of the tube with Xenon");
+}
+
+void testFillerParksAnImmovableAtom() {
+    // 1000:0b55 shifts slots 5 downto 2 up by one and writes type 17 into slot
+    // 1, without touching the count. The Filler itself is at slot[count] and is
+    // what falls off the top, so the tube keeps its depth and loses a slot.
+    tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
+    catchOne(g, tubes::kFiller, {tubes::kRedium, tubes::kGreenium});
+    check(g.tubeAtoms() == std::vector<int8_t>({tubes::kObstacle,
+                                                tubes::kRedium,
+                                                tubes::kGreenium}),
+          "the Filler parks a 17 underneath and discards itself");
+
+    // 1000:472a refuses to tip a 17, which is the whole of "permanently
+    // reduces your capacity": the slot is dead for the rest of the session.
+    // A is edge-detected, so each tip needs a release in between.
+    for (int i = 0; i < 3; ++i) {
+        g.update(tubes::button::kA, 1.0f / 18.2f);
+        g.update(0, 1.0f / 18.2f);
+    }
+    check(g.tubeAtoms() == std::vector<int8_t>{tubes::kObstacle},
+          "everything above it tips out and the 17 will not");
+}
+
+void testCatchSpecialsAreGated() {
+    // `DS:0x1d48` guards the Multiplier, the Evil Multiplier and the Filler -
+    // but not the Bonus, which sits outside the test at 1000:1821.
+    tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
+    g.boardMutable().setSpecialsEnabled(false);
+    catchOne(g, tubes::kMultiplier, {});
+    check(g.tubeAtoms() == std::vector<int8_t>{tubes::kMultiplier},
+          "a gated Multiplier just sits in the tube");
+
+    tubes::Game h(6, 5, tubes::Difficulty::k101, 5);
+    h.boardMutable().setSpecialsEnabled(false);
+    catchOne(h, tubes::kBonus, {});
+    check(h.tubeAtoms() == std::vector<int8_t>{tubes::kFlashium},
+          "the Bonus is not gated");
+}
+
+void testTheTubeIsAStack() {
+    // 1000:4715 tips slot[count], the one caught last. The port used to tip
+    // slot 1 and emptied the tube oldest-first.
+    tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
+    g.setTubeColumn(3);
+    g.setTubeAtoms({tubes::kRedium, tubes::kGreenium});
+    check(g.heldAtom() == tubes::kGreenium, "the mouth is the last one caught");
+    g.update(tubes::button::kA, 1.0f / 18.2f);
+    check(g.tubeAtoms() == std::vector<int8_t>{tubes::kRedium},
+          "and that is the one an A press tips out");
+    check(g.board().typeAt(3, 4) == tubes::kGreenium, "it lands in the beaker");
+}
+
 }  // namespace
 
 int main() {
@@ -527,6 +646,12 @@ int main() {
     testConvertorConvertsByTypeBoardWide();
     testConvertorNeedsAnOrdinaryVictim();
     testSettledConsumablesGoInert();
+    testBonusCatchPaysAndGrows();
+    testMultiplierFillsTheTube();
+    testEvilMultiplierFillsWithXenon();
+    testFillerParksAnImmovableAtom();
+    testCatchSpecialsAreGated();
+    testTheTubeIsAStack();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

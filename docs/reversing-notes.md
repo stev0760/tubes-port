@@ -4492,7 +4492,153 @@ catch time. The Bonus atom is **not** gated by it. Nothing in `1000:9e53`
 writes it, so it is set further out - the wave or mode setup - and the port
 defaults it on.
 
+## The test tube's record, and the specials at catch time
+
+### The tube carries its contents inline
+
+The four catch-time routines all begin identically:
+
+    DI := link^.link^;      { 1000:9e53's frame }
+    DI := DI - $16A;        { @tube }
+
+and every access after that is off that one base, which pins the whole record
+down. `Move` calls give the slot stride and the slot's own start, and the byte
+they index by gives the count:
+
+| offset | field |
+|---|---|
+| `+0x00` | x - the drawn x, a column stop less 3 |
+| `+0x02` | y - a constant `0x44` = 68 |
+| `+0x05` | the tipping animation's phase; `1000:4701` acts at phase 4 |
+| `+0x1e` | the stop index, 1..6 |
+| `+0x21` | **count** - how many atoms are in it |
+| `+0x07 + 28n` | `slot[n]`, an ordinary 28-byte AtomRec, n = 1..5 |
+
+So `slot[n].type` is `tube + 28n + 0x12` and `slot[n].y` is `tube + 28n + 0x09`,
+which is what the disassembly reads and writes throughout.
+
+**Slot 1 is the bottom.** Each fill routine writes the slot's y offset from a
+literal per index - 52, 39, 26, 13, 0 for slots 1..5, the 13 px row pitch - and
+then `slot[n].y := offset + $44`. The router confirms the same relation from
+the other side, comparing `tube.y + rec.dy` against the record's y as the
+caught atom slides down at 9 px a frame.
+
+### The tube is a STACK
+
+`1000:4715`, inside the tipping animation, is unambiguous:
+
+    if tube.count = 0 then exit;
+    if tube.slot[tube.count].type = 17 then exit;      { FILLBALL }
+    tube.slot[tube.count].state  := 9;
+    tube.slot[tube.count].column := tube.stop;
+    n := 1; while atom[n + 6] is taken do Inc(n);
+    if n = 6 then RunError;
+    Move(tube.slot[tube.count], atom[n + 6], 28);
+    Dec(tube.count)
+
+A catch lands in `slot[count]` and a tip takes `slot[count]`, so the tube
+empties newest-first. The port had it as a queue, tipping slot 1.
+
+This is also where the atoms of records **7..12** come from - the tipped atom
+is `Move`d whole into the first free one of the six, with state 9, and falls
+from there into the beaker. `n = 6` with none free is a fatal error, so the six
+slots are exactly the six columns' worth of in-flight tipped atoms.
+
+### The four catch-time routines
+
+`1000:180c`, in the router, on the frame the caught atom reaches its slot:
+
+    if rec.arrived <> 0 then begin
+        if rec.type = 10 then Bonus;                { 1000:07db }
+        if ds:[$1D48] <> 0 then begin
+            if rec.type = 12 then Multiplier;       { 1000:08d2 }
+            if rec.type = 13 then EvilMultiplier;   { 1000:0a27 }
+            if rec.type = 16 then Filler;           { 1000:0b55 }
+        end
+    end
+
+#### Bonus - `1000:07db`
+
+    slot[count].type := 8;                          { Flashium }
+    if drops = 0 then <redraw the counter>;
+    Inc(drops);
+    PlaySound(...);
+    award := award + 1000;
+    Inc(multiplier);
+    pending := pending + award;
+    <arm the score ramp, exactly as 1000:1c63 does>
+
+Two things worth having. The extra drop is now from **code** - `DS`-frame
+`-0x17e` is the same byte `1000:5d02` tests against `0xff` for game over -
+rather than from the Instructions. And the award is a **word of its own** that
+gains 1000 each time and is then paid whole. Its only other write is the zero
+at `1000:3a8d`, in the session prologue, so the first Bonus of a session is
+worth 1000, the second 2000, the third 3000. Nothing observable said so.
+
+#### Multiplier - `1000:08d2`
+
+    slot[count].type := Random(8) + 1;
+    i := count;
+    while i < 5 do begin
+        Inc(i);
+        Move(slot[count], slot[i], 28);
+        slot[i].type := Random(8) + 1;
+        slot[i].dy := yofs[i];  slot[i].y := slot[i].dy + $44
+    end;
+    count := 5
+
+`Random(8) + 1` is 1..8, so **Flashium is in the fill distribution**. Five is a
+literal, not a capacity variable.
+
+#### Evil Multiplier - `1000:0a27`
+
+The identical routine with the roll replaced by `11`. The `Move` copies the
+caught record upward, so every slot it fills is Xenon.
+
+#### Filler - `1000:0b55`
+
+    for i := 5 downto 2 do begin
+        Move(slot[i - 1], slot[i], 28);
+        slot[i].dy := yofs[i];  slot[i].y := slot[i].dy + $44
+    end;
+    slot[1].type := 17                              { FILLBALL }
+
+The count is **not** touched. The Filler is sitting at `slot[count]`, so the
+shift pushes it off the top and discards it, and what remains is the same
+number of atoms with an immovable one underneath them. Together with the type
+17 gate in the tipping code above, that is the whole of "permanently reduces
+your tube's capacity": **nothing anywhere writes a capacity variable**, and
+type 17's identity as `FILLBALL` - previously "almost certainly" - is settled.
+
+### The ramp's clock is not part of the beaker update
+
+`1000:22a6` pays one sixth of the award (`1000:2410`); the decrement and the
+flush are a **separate statement** in `1000:3a67`'s body, at `1000:58c5`. The
+frame order is what makes that matter:
+
+    1000:47d0   call 1000:22a6      { the beaker }
+    1000:4819   call 1000:0f80      { the router - and so the specials }
+    1000:58c5   Dec(rampSteps) ...  { the clock }
+
+A Bonus arms the ramp at `1000:0866`, after the beaker has already run for the
+frame, and `1000:58c5` then spends the first of the six steps anyway - so the
+total paid is exactly `pending * multiplier`. The port had the add and the
+decrement fused into one function that runs before the router, which paid a
+Bonus **seven** sixths of its award. A match was unaffected, because its award
+is raised inside the beaker update itself, which is why the fusion looked right
+for as long as only matches paid.
+
+`1000:1c63` also does **not** clear the increment; the only zero into it is at
+`1000:58d2`, when the ramp runs out. An award landing mid-ramp therefore
+extends the ramp at the rate already running.
+
 ### Still open on the specials
 
-The four catch-time routines above, and `1000:041c`, the Crystal's teleport,
-which `1000:0f3b` calls in wave mode 5 when the blast catches a Crystal.
+`1000:041c`, the Crystal's teleport, which `1000:0f3b` calls in wave mode 5
+when the blast catches a Crystal.
+
+Also unported: all three gated routines carry a tail guarded by `DS:0x1d4e = 4`
+that keeps a running count of what is in the tube - the fills increment it per
+ball, the Filler and the router's release path decrement it, and reaching zero
+adds 2 to the clear timer. It is wave-mode machinery with nothing to hook into
+yet.

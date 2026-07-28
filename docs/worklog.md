@@ -2018,3 +2018,66 @@ but not the Bonus. Nothing in `9e53` writes it, so it comes from further out.
 
 95 checks pass, up from 64. The five pixel captures are unchanged at 0.02% to
 0.13%.
+
+## 2026-07-28 (later) - the specials at catch time, and two things the tube does
+
+The other half of the specials: `1000:180c` in the router, dispatching Bonus
+(`07db`), Multiplier (`08d2`), EvilMultiplier (`0a27`) and Filler (`0b55`) on
+the frame a caught atom finishes sliding to its slot. All four are in
+`docs/reversing-notes.md`; three things came out of them that were not the
+point of the exercise.
+
+**The test tube's record fell out first.** Every one of the four routines opens
+with `DI := link^.link^ - $16A`, and everything after is off that base, so the
+`Move` calls and the byte they index by pin the whole layout down: x, y, the
+count at `+0x21`, and `array[1..5]` of ordinary 28-byte AtomRec at `+0x07+28n`.
+Slot 1 is the bottom - each fill writes the slot's y offset from a literal,
+52/39/26/13/0, the 13 px row pitch again.
+
+**The tube is a stack, and the port had it as a queue.** `1000:4715` tips
+`slot[count]`, the atom caught *last*; a catch lands in `slot[count]` too. The
+port tipped slot 1 and emptied it oldest-first. Same site gives records 7..12
+their meaning: the tipped atom is `Move`d whole into the first free one, with
+state 9, and `n = 6` with none free is a fatal error.
+
+**The Bonus award grows.** `1000:0846` adds 1000 to a word of its own and then
+pays the *whole word*; the only other write is the zero in the session
+prologue. So the second Bonus of a session is worth 2000 and the third 3000.
+Nothing observable would have shown that - it needs two Bonus atoms in one
+session and a HUD to read, and the port does not have the HUD yet.
+
+Type 17 is settled as `FILLBALL` - previously "almost certainly". The Filler
+shifts slots 5 downto 2 up by one and writes 17 into slot 1 **without touching
+the count**, so the Filler itself is pushed off the top and discarded, and the
+tipping code simply refuses to tip a 17. That is the whole of "permanently
+reduces your tube's capacity": no capacity variable is written anywhere.
+
+### The score ramp's clock was in the wrong place
+
+Fixing the Bonus's award exposed it. `1000:22a6` pays one sixth (`1000:2410`);
+the decrement and the flush are a **separate statement** at `1000:58c5`. The
+port had them fused into one function that runs before the router - so a Bonus,
+which arms the ramp from *inside* the router, got seven sixths of its award
+instead of six. A match was unaffected, because its award is raised inside the
+beaker update itself, which is exactly why the fusion looked right: the only
+case that distinguishes them is one the engine could not produce until today.
+
+Two frame addresses settle the order, and neither is an inference:
+
+    1000:47d0   call 1000:22a6      { the beaker }
+    1000:4819   call 1000:0f80      { the router }
+    1000:58c5   Dec(rampSteps) ...  { the clock }
+
+Also: `1000:1c63` does **not** clear the increment - the only zero into it is
+at `1000:58d2`, when the ramp runs out - so an award landing mid-ramp extends
+the ramp at the rate already running rather than recomputing it. The port
+cleared it and recomputed.
+
+111 checks pass, up from 95. The eight pixel captures are unchanged at 0.02%
+to 0.22%.
+
+A note on the harness, since it cost twenty minutes. `diff_frame.py` prints a
+percentage per candidate backdrop and *then* the result line; grepping the
+first percentage out of it reported 9-12% and looked like a catastrophic
+regression. The number was real, it was just not the one that means anything.
+Read `best backdrop:`, not the first match.
