@@ -3930,3 +3930,256 @@ that whole-sprite draws cannot reproduce, which is why the pipes' front and back
 lines interleave correctly there. That is what the passes are drawing *over*,
 and the open question - reported from play and still unresolved - is whether
 replaying them in the transcribed order disturbs that interleaving.
+
+---
+
+## The frame render, read out of the disassembly rather than the decompiler
+
+The C output of `1000:3a67` cannot be trusted for structure. It is a **nested
+Pascal procedure** reached through a static link in `[BP+4]`, and Ghidra folds
+its own frame and the parent's into one set of `local_XXX` names. Two different
+bases print as the same expression, which is how a previous session concluded
+that one 28-byte array was both the atom pool and the test tube's contents.
+
+The listing has no such ambiguity, and `ghidra_scripts/DisasmRange.java` dumps
+it:
+
+    [BP - n]        1000:3a67's own frame
+    SS:[DI - n]     1000:9e53's frame, DI loaded from [BP+4]
+
+Every claim below is from the listing.
+
+### The two graphics primitives that decide how everything layers
+
+Three routines in the graphics unit, all writing to the video segment held at
+`DS:0x235e`:
+
+| routine | what it does |
+|---|---|
+| `2321:0792` | **opaque** full-screen blit - four `MOVSW.REP` of 0x1f40 words, one per Mode X plane |
+| `2321:0711` | **transparent** full-screen blit, `OR AL,AL / JZ` skipping index 0 |
+| `2321:0874` | **transparent w x h box** from the buffer whose far pointer is at `DS:0x238e` |
+| `2321:0905` | `Draw(x, y, sprite)` - the compiled-sprite call, 126 sites in `3a67` |
+| `2321:024d` | `Restore(mode, page, x, y, w, h)` - repaints the backdrop from a saved page |
+
+The session setup blits the backdrop with `0792`, blits `GAMEFG.GFX` over it
+with `0711`, and then stores **that same GAMEFG buffer pointer** at `DS:0x238e`.
+
+So `2321:0874` re-stamps *GAMEFG* over a box. Not a snapshot of the composed
+screen - GAMEFG alone. That one fact explains the whole look of the game and
+was worth more than everything else found this session.
+
+### Draw(x, y, sprite): the argument order
+
+Pascal pushes left to right, and Ghidra prints the list reversed. The listing
+settles it:
+
+    PUSH 0x22            ; x = 34
+    PUSH 0x1a            ; y = 26
+    PUSH SS:[DI+0xff70]  ; sprite segment
+    PUSH SS:[DI+0xff6e]  ; sprite offset
+    CALLF 2321:0905
+
+### .CSP sprites carry a placement offset, and it is NOT decorative
+
+A `.CSP` is compiled code storing pixels at signed displacements from a base
+pointer, so each sprite records where its pixels begin relative to that base.
+Over all 108 sprites in `TUBES.RES` the minimum is `originX = 128`,
+`originY = -2`, and 84 sit exactly there. **That is the shared base**, and the
+excess is real placement data:
+
+| sprite | offset | |
+|---|---|---|
+| `TESTUBES` | +6, +1 | the test tube's shadow |
+| `TUBEVS` | +11, 0 | 1 px wide |
+| `TUBEVLS` | +11, 0 | |
+| `TUBEVRS` | +10, 0 | |
+| `TUBEHS` | 0, +8 | 1 px tall |
+| `GFADE1..6` | +0,+3 +0,+6 +2,+6 +4,+6 +7,+5 +7,+5 | |
+
+The fade families are the proof it is not an artefact of the decoder's modulo
+arithmetic: a contracting animation has to walk its origin inward to stay
+centred, and `GFADE1..6` does exactly that. No other reading produces a
+monotone walk.
+
+The port had this documented as "useful provenance but meaningless as a
+placement offset" and dropped it. Restoring it is worth 6 to 11 pixels on the
+test tube's shadow and on all three thin vertical pieces - which is what the
+plan had been calling "the missing vertical pieces in the arcs".
+
+### The atom array is `array[1..12]`, indexed BY COLUMN, in 3a67's own frame
+
+Base `[BP-0x1c6]`, stride 28, so record *i* is at `[BP - 0x1c6 + i*0x1c]`.
+
+    +0x00 x          +0x02 y        +0x04 anchor x   +0x06 target y
+    +0x08 state      +0x09 velocity +0x0b type       +0x0c column
+    +0x10 / +0x12    the fixed-point accumulators
+    +0x14 / +0x16    saved x, one per video page
+    +0x18 / +0x1a    saved y, one per video page
+
+Records **1..6 are the six atoms travelling the network, one per column**, and
+records **7..12 are the atoms tipped out of the test tube**, falling into the
+beaker. The split is not inferred - the spawn scans 1..6 and the tip scans
+7..12, and the two are drawn in different places in the frame.
+
+The spawn, at `1000:4918`, is decisive about the indexing:
+
+    PUSH 0x6 / CALLF Random / INC AX      ; col := Random(6) + 1
+    IMUL DI,AX,0x1c
+    CMP byte ptr [BP+DI+0xfe42],0x0       ; atom[col].state = 0 ?
+
+`[BP-0x1be + col*0x1c]` is record `col`'s `+0x08`. **The array index IS the
+column.**
+
+### The six draw slots, and why they pair off 1/6, 2/5, 3/4
+
+The frame interleaves the atoms with the furniture at six hard-coded sites,
+each bound to one slot:
+
+    atom 1, atom 6      pass 1  (16 draws)
+    atom 2, atom 5      pass 2  (16 draws)
+    atom 3, atom 4      pass 3  ( 8 draws)
+
+That is the network's mirror symmetry. Columns 1 and 6 are fed by the
+outermost tubes at x = 10 and 294, which take the lowest lane and cross
+furthest, so they are the deepest layer; 2/5 and 3/4 nest inside them.
+
+Each site is the same three steps:
+
+    Stamp(GAMEFG, savedX, savedY, 16, 13)     ; erase the old box
+    if state > 2 then
+        Draw(x, y, ball[type])                 ; or MYSTBALL if hidden
+        Stamp(GAMEFG, x, y, 16, 13)            ; clip to the pipe
+
+`state > 2` is the draw test at all six sites and at the 7..12 loop.
+
+**The second stamp is what makes an atom look like it is inside glass**, and it
+is selective in a way no guessed overlay reproduces. GAMEFG is solid along the
+long horizontal runs between the arcs, so an atom crossing lane 13 near x=217
+is clipped by them; GAMEFG is *transparent* inside the feed tubes, so the same
+atom rising at x=246 is not clipped by the horizontals at all - the walls there
+come from the furniture sprites, drawn before the atom. Both behaviours were
+measured against the original and both are reproduced.
+
+### The full per-frame draw order
+
+    restore backdrop over each moving object's saved box
+    atom 1, atom 6
+    furniture pass 1                (16 draws)
+    atom 2, atom 5
+    furniture pass 2                (16 draws)
+    atom 3, atom 4
+    furniture pass 3                ( 8 draws)
+    test tube, sprite[4], if phase = 1        at (tube.x, tube.y)
+    the atoms held in the tube, records 1..count of the TUBE's own array
+    the HUD
+    test tube, sprite[phase]                  at (tube.x, tube.y)
+    BEAKERS.CSP                               at (186, 135)
+    the beaker grid, 5 rows x 6 columns
+    MARKER.CSP over flagged cells             if DS:0x1d4e = 6
+    atoms 7..12, the ones falling into the beaker
+    BEAKER.CSP                                at (103, 134)
+
+The test tube is drawn **twice**, from two entries of a four-entry sprite table
+at `tube + 2 + phase*4`, with its contents between them - so the atoms it holds
+sit between two layers of glass.
+
+### The test tube's record and its state machine
+
+Base `parent - 0x16a`; its contents array is a field of it at `parent - 0x163`,
+which is why the two are seven bytes apart.
+
+    +0x00 x     +0x02 y (0x44 = 68)     +0x04 state     +0x05 tip phase
+    +0x06 .. +0x15   four sprite pointers, indexed by phase 1..4
+    +0x1e stop index 1..6    +0x1f target x
+    +0x21 how many atoms it holds
+
+The whole input block sits inside `if state = 0`, so a direction is accepted
+only when parked:
+
+    if (btn and 4) and (index > 1) then  state := 1; Dec(index); target := stop[index]
+    if (btn and 8) and (index < 6) then  state := 2; Inc(index); target := stop[index]
+    case state of
+      1: x := x - 6;  if x <= target then begin x := target; state := 0 end
+      2: x := x + 6;  if x >= target then begin x := target; state := 0 end
+      3: the four-phase tipping animation
+
+### The four geometry tables, read out of DGROUP
+
+At `2785:0000`, four consecutive six-word tables, all indexed by column 1..6:
+
+    DS:0x00  feed x     10  34  58 246 270 294
+    DS:0x0c  lane y     26  13   0   0  13  26
+    DS:0x18  column x  143 125 107 197 179 161
+    DS:0x24  tube x    104 122 140 158 176 194
+
+Column 1's feed x was carried as "inferred from the mirror symmetry" because no
+atom used that column while sampling. It is measured now, and it was right.
+
+### Difficulty seeds three numbers, not one
+
+`1000:a483`, on `DS:0x1d4f`:
+
+| Tubes | drops `0x1d51` | velocity `0x1d54` | spawn period `0x1d56` |
+|---|---|---|---|
+| 101 | 9 | 0x100 = 2 px/frame | 70 frames |
+| 201 | 6 | 0x180 = 3 px/frame | 60 frames |
+| 301 | 3 | 0x200 = 4 px/frame | 50 frames |
+
+Per wave the period drops by one; every fifteenth wave the velocity gains
+`0x20` and the period gains twelve. Every twentieth, four more counters step.
+
+This retires `kSpawnIntervalFrames`, which was an outright invention, and
+corrects the atom velocity - the 512 a live record once read was a late wave on
+the easiest setting, not the base value.
+
+### Velocity has exactly three writers
+
+Searched over the whole procedure, so this is a closed list:
+
+* the spawn, `= the difficulty's value`;
+* the Down/B boost, `= 0x480` (nine pixels a frame);
+* the tipping animation, `= 0x52` for the atoms in the tube.
+
+**There is no assignment when an atom starts descending.** An atom comes down at
+exactly the speed it crossed the top at. The port's "descending sets 18
+px/frame" was inferred and is withdrawn.
+
+The boost dispatches on the tube's stop index through a chain of comparisons -
+1 to slot 3, 3 to slot 1, 4 to slot 6, 6 to slot 4, everything else to the
+same-numbered slot. That permutation is just "the slot whose destination x is
+where the tube is", and it confirms the Instructions' "atoms directly above the
+test tube". Nothing resets the field, so the boost lasts the rest of that
+atom's flight.
+
+### The dispensed type: one roll picks a class, three classes re-roll
+
+From `1000:49fd`:
+
+    type := Random(11) + 1
+    if type = 10 then   { Bonus }
+        if Random(100)+1 < DS:0x1d4a then 10 else Random(8)+1
+    if type =  9 then   { AntiMatter }
+        if Random(100)+1 < DS:0x1d49 then  9 else Random(8)+1
+    if type = 11 then   { the specials share one eleventh between them }
+        case Random(100)+1 of
+             0..29: 11 Xenon        30..59: 12 Multiplier
+            60..74: 16 Filler       75..89: 14 Convertor
+            90..94: 13 EvilMult     95..100: 15 Blocker
+
+`DS:0x1d49` and `DS:0x1d4a` are written to 50 and 25 by the session setup.
+
+Two things here were invisible to observation. Slot 11 is not "Xenon" - it is
+the whole special family sharing one eleventh of the roll. And the failed-roll
+fallback is `Random(8)+1`, which **includes 8**: Flashium is dispensed as an
+ordinary member of the pool and has no rate of its own.
+
+### The rig's atom array base was one record late
+
+`capture_frame.py` read the array at `0x241A4`. The emitted index then ran
+exactly two behind each record's own column field, on every sample - and the
+spawn indexes the array by the column, so the two have to agree. The first
+element is at **`0x24188`**; `0x241A4` is `array[2]`.
+
+Caught by the port keying its draw slot off the emitted index. Nothing in the
+old harness could have noticed, because it never compared the two.

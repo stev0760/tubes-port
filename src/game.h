@@ -1,11 +1,12 @@
 // Game state: the dispenser, the player's test tube, and the beaker.
 //
-// Atoms spawn at the bottom right and trace up and over the tube arc, which
-// gives the player a preview of the colours coming, then fall out of the tube
-// into the play area. The test tube slides on a rail and holds several atoms
-// stacked; A tips one into the beaker, B speeds an atom along.
+// Atoms enter at the foot of one of six feed tubes, rise, cross the top along
+// that tube's lane and come back down a play column - tracing the artwork
+// rather than falling straight. The test tube slides on a rail and holds
+// atoms stacked; A tips one into the beaker, B speeds an atom along.
 //
-// The arc is not implemented - atoms currently just fall. See PLAN.md.
+// Six atoms are in flight at once, one per column, because the original's
+// array is indexed by the column. See `Falling` and PLAN.md.
 
 #pragma once
 
@@ -37,45 +38,98 @@ enum class Difficulty {
 // game loop calls once per atom per frame. These are the original's own state
 // numbers, kept so a live record can be compared against this struct directly.
 namespace atomstate {
+constexpr uint8_t kFree = 0;      // slot unused; the spawn looks for this
 constexpr uint8_t kRise = 3;      // up a feed tube, y decreasing
 constexpr uint8_t kGoLeft = 5;    // across the top, x decreasing
 constexpr uint8_t kGoRight = 6;   // across the top, x increasing
 constexpr uint8_t kDescend = 7;   // down a play column, y increasing
 }  // namespace atomstate
 
-// Destination x by column, read from the table at DS:0x18. Two descending
-// triples - the geometry lives in DATA, which is why no tube x value appears
-// in any comparison in the game loop.
+// The playfield geometry lives in four consecutive six-word tables in DGROUP,
+// which is why no tube x value ever appears in a comparison in the game loop.
+// Read out of the image at DGROUP:0x00 rather than inferred:
+//
+//     DS:0x00  feed x    10  34  58 246 270 294   the tube an atom enters at
+//     DS:0x0c  lane y    26  13   0   0  13  26   the height it crosses at
+//     DS:0x18  column x 143 125 107 197 179 161   where it comes back down
+//     DS:0x24  tube x   104 122 140 158 176 194   the test tube's six stops
+//
+// All four are indexed by the column, 1..6. Column 1's feed x was carried as
+// "inferred from the mirror symmetry" for a session because no atom happened
+// to use that column while sampling; it is measured now.
+constexpr int kFeedX[7] = {0, 10, 34, 58, 246, 270, 294};
+constexpr int kLaneY[7] = {0, 26, 13, 0, 0, 13, 26};
 constexpr int kAtomColumnX[7] = {0, 143, 125, 107, 197, 179, 161};
+constexpr int kTubeStopX[7] = {0, 104, 122, 140, 158, 176, 194};
 
-// Velocity is stored in 1/128 pixel per frame. A live record reads 512, and
-// 512/128 = 4, which is the "4 px/frame" that sampling measured - the observed
-// speed was only ever the integer part of a fixed-point step.
+// Velocity is stored in 1/128 pixel per frame, in the record at +0x09. The
+// spawn copies it from a per-session variable that `1000:9e53` seeds from the
+// difficulty, so it is not one constant:
+//
+//     Tubes 101  0x100 = 256 = 2 px/frame
+//     Tubes 201  0x180 = 384 = 3 px/frame
+//     Tubes 301  0x200 = 512 = 4 px/frame
+//
+// and every fifteenth wave adds 0x20 - a quarter of a pixel a frame. The 512
+// a live record once read was a late wave on an easy setting, not the base.
 constexpr int kSubPixel = 128;
-constexpr int kNetworkVel = 4 * kSubPixel;
-constexpr int kDescendVel = 18 * kSubPixel;
 
+// Down or B sets the velocity of ONE atom - the one heading for the column the
+// test tube is parked under - to 0x480, nine pixels a frame. The field has
+// exactly three writers in the whole procedure: the spawn, this, and the
+// tipping animation, so nothing resets it. The boost is sticky for the rest of
+// that atom's flight, which is what makes it a control rather than a nudge.
+//
+// This replaces an inferred "descending sets velocity to 18 px/frame". No such
+// assignment exists: an atom comes down at whatever speed it crossed at.
+constexpr int kBoostVel = 0x480;
+
+// The test tube slides a flat 6 pixels a frame between its stops.
+constexpr int kTubeSlidePx = 6;
+
+// The dispenser's period, in frames, from the same seeding block: 70/60/50 by
+// difficulty. It shortens by one per wave and lengthens by twelve every
+// fifteenth, so it drifts down about three per fifteen waves.
+constexpr int kSpawnIntervalFrames[3] = {70, 60, 50};
+
+// One entry of the original's `array[1..12] of AtomRec` - 28 bytes, living in
+// `1000:3a67`'s own frame at [BP-0x1c6]. Every field offset below is read off
+// the spawn at `1000:49af`, which writes the record whole:
+//
+//     +0x00 x        +0x02 y        +0x04 anchor x   +0x06 target y
+//     +0x08 state    +0x09 velocity +0x0b type       +0x0c column
+//     +0x10/+0x12 the fixed-point accumulators
+//     +0x14/+0x16 saved x, +0x18/+0x1a saved y - one pair per video page
+//
+// `state == 0` means the slot is free; the renderer draws a record only when
+// `state > 2`, which is the same test the original makes at every draw site.
 struct Falling {
-    bool active = false;
     int8_t colour = kEmpty;
-    // Field names follow the original's record so the two can be diffed:
-    // +0x00 x, +0x02 y, +0x04 anchorX, +0x06 targetY, +0x08 state,
-    // +0x09 velocity, +0x0c column, +0x10/+0x12 the accumulators.
     int x = 0;
     int y = 0;
     int anchorX = 0;      // column base the arc offsets are measured from
     int targetY = 0;
-    uint8_t state = atomstate::kRise;
+    uint8_t state = atomstate::kFree;
     int column = 1;       // destination column, 1..6
-    int velocity = kNetworkVel;
+    int velocity = 0;
     int accX = 0;
     int accY = 0;
     // True while the router is applying its corner offset, i.e. the atom is
-    // rounding a bend rather than running along a straight pipe. Renderers
-    // need it: on the bend the atom is between two pieces, so painting a
-    // straight tube over it puts pipe where there is none.
+    // rounding a bend rather than running along a straight pipe. Kept because
+    // the arc offsets are what the router computes, not because anything is
+    // painted over the atom - the original paints nothing over it.
     bool onArc = false;
+
+    bool active() const { return state != atomstate::kFree; }
+    bool drawn() const { return state > 2; }
 };
+
+// The network holds six atoms at once, one per column, and the slot index IS
+// the column. That is not an implementation choice: the spawn at `1000:4967`
+// indexes the array by the column it rolled, and every one of the six draw
+// sites in the frame is hard-coded to one slot. See `kAtomSlots` uses in
+// main.cpp for why the rendering depends on it.
+constexpr int kAtomSlots = 6;
 
 class Game {
 public:
@@ -86,9 +140,14 @@ public:
     void update(uint8_t buttons, float dt);
 
     const Board& board() const { return board_; }
-    const Falling& falling() const { return falling_; }
 
+    // The atom travelling column `col`, 1..6. Always valid; check `active()`.
+    const Falling& atom(int col) const { return atoms_[col]; }
+
+    // The tube's stop, 0..5, and its actual x - which is between two stops
+    // while it is sliding. Renderers want the x; the board wants the stop.
     int tubeColumn() const { return tubeColumn_; }
+    int tubeX() const { return tubeX_; }
 
     // The test tube holds up to five atoms, stacked. Index 0 is the mouth -
     // the one the next A press tips into the beaker. Five is not inferred from
@@ -129,13 +188,17 @@ public:
     // something similar. Comparing two runs that merely look alike cannot
     // tell a rendering bug from a divergence in the simulation.
     Board& boardMutable() { return board_; }
-    void setTubeColumn(int c) { tubeColumn_ = c; }
-    void setFalling(const Falling& f) { falling_ = f; }
+    void setTubeColumn(int c) { tubeColumn_ = c; tubeX_ = kTubeStopX[c + 1]; }
+    // Pin the tube mid-slide, which is where a paused capture often finds it.
+    void setTubeX(int x) { tubeX_ = x; }
+    void setAtom(int col, const Falling& f) { atoms_[col] = f; }
     void setTubeAtoms(const std::vector<int8_t>& v) { tube_ = v; }
 
 private:
     void spawn();
+    void stepAtom(Falling& a);
     void resolveMatches();
+    int random(int n);
     int8_t nextColour();
     void award(int points);
     void advanceScore();
@@ -145,9 +208,16 @@ private:
     void stepFrame(uint8_t buttons, uint8_t pressed);
 
     Board board_;
-    Falling falling_;
+    // Index 1..6 by column; [0] is never used, matching the Pascal array.
+    Falling atoms_[kAtomSlots + 1];
 
-    int tubeColumn_ = 0;
+    // The test tube's own record: x at +0x00, state at +0x04, stop index at
+    // +0x1e, target x at +0x1f. State 0 is parked and is the ONLY state that
+    // accepts input; 1 and 2 are sliding left and right.
+    int tubeColumn_ = 0;          // the original's +0x1e, less one
+    int tubeX_ = kTubeStopX[1];
+    int tubeTargetX_ = kTubeStopX[1];
+    uint8_t tubeState_ = 0;
     std::vector<int8_t> tube_;
     int tubeCapacity_ = 5;
 
@@ -160,7 +230,11 @@ private:
     bool gameOver_ = false;
 
     float fallHeight_ = 130.0f;   // retained for callers; unused by the path
-    int spawnTimer_ = 0;          // frames since the last dispense
+    // Counts DOWN to the next dispense and is reloaded from the interval, the
+    // way `1000:490a` does it, rather than counting up to a threshold.
+    int spawnTimer_ = 1;
+    int spawnInterval_ = kSpawnIntervalFrames[0];
+    int networkVel_ = 2 * kSubPixel;
     float frameAccum_ = 0.0f;     // real time carried between frames
 
     // The tube slides at 6 px/frame over an 18 px column pitch, so a column

@@ -53,14 +53,20 @@ Percentages are judgement calls, so the breakdown matters more than the number.
 | Drops, scoring, tube capacity, save format, menus, waves | **done** |
 | Render order and the dirty-rect model | **done** |
 
+| The frame render, end to end | **done** - draw order, the six atom slots, the GAMEFG stamp |
+| `.CSP` placement offsets | **done** - the `(128, -2)` base |
+| Spawn: period, type distribution, column choice | **done**, decompiled |
+| Difficulty seeds and their per-wave stepping | **done** |
+| The test tube's record and state machine | **done** |
+
 Still unread, and most of it is inside `1000:3a67`'s 9,382 bytes:
 
 - the **match-and-clear routine** - scoring came from the Instructions, not code
 - the **specials' behaviours**: AntiMatter's blast, Convertor, Blocker, Filler,
   Multiplier, EvilMultiplier, Crystal
 - the **wave definition** data structure - objectives and modifiers
-- **spawn/dispense** logic, and what else the difficulty routine sets
-- corner-sprite selection, descent velocity
+- the **tipping animation**, and with it records 7..12 - the atoms that travel
+  from the test tube into the beaker
 - `.SPR`, `.BIN`, `.ANM`
 
 ### The engine: ~40%
@@ -72,8 +78,11 @@ that figure was set before the surrounding scope was properly counted.
 Working, and transliterated rather than invented:
 
 - the atom router, network topology and fixed frame step
-- the tube network rendering, per-atom tube overlay, beaker and test tube
-  layering
+- **the whole frame render**: the six per-column atom slots interleaved with
+  the three furniture passes, the GAMEFG stamp that clips an atom to the pipe
+  it is inside, `.CSP` placement offsets, and the beaker and test tube layering
+- the spawn: period, column choice with retries, and the full type distribution
+- the test tube's 6 px/frame slide and the Down/B speed boost
 - atom type numbering, drops model, scoring by chain orientation with the ramp
 - Flashium's wildcard, inert specials, cascades and gravity
 - music: all ten songs, correct at the register level
@@ -86,13 +95,16 @@ Absent entirely:
 | Sound effects | small |
 | The three-plane beaker, and therefore **any clear animation** | medium, blocks the specials |
 | Specials' behaviours | medium |
+| The tipping animation - an atom visibly leaving the tube for the beaker | small |
 | Wave structure: briefings, objectives, modifiers | large |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |
 | Demo playback (`.SCR` replay through the same loop) | small, and it is the regression oracle |
 
-Pixel accuracy against the original currently reads **4.6%** of structural
-pixels differing, on a paused frame with the backdrop excluded.
+Pixel accuracy against the original reads **0.02% to 0.22%** of structural
+pixels differing, over eight paused captures with the backdrop excluded - down
+from 4.42%. The floor is three pixels at (59, 10..12), where the original
+leaves a GAMEFG pixel erased for a reason not yet found.
 
 ---
 
@@ -131,10 +143,10 @@ Listed first because building on them wastes work.
    which feed tube serves which column along which lane - is in `game.cpp`.
 2. ~~**The test tube holds one atom.**~~ **DONE.** Capacity is a flat 5, stated
    by the in-game Instructions. The 5/3/2-by-difficulty guess is retired.
-3. ~~**Scoring and pacing.**~~ **MOSTLY DONE.** Scoring is by chain
-   orientation, 250/500/1000, from the Instructions, and the score ramps.
-   `kSpawnIntervalFrames` is **still an invented placeholder** and is the one
-   item here that remains genuinely wrong.
+3. ~~**Scoring and pacing.**~~ **DONE.** Scoring is by chain orientation,
+   250/500/1000, from the Instructions, and the score ramps.
+   `kSpawnIntervalFrames` is no longer invented: the difficulty block seeds it
+   at 70/60/50 frames, and it steps per wave.
 4. **Atom colour count and the special balls - now measured.** The engine's 8
    flat colours are wrong. There are **19 ball types**, read out of the live
    sprite tables at `DS:0x1da6` (balls) and `DS:0x1df6` (fades), 19 entries
@@ -195,29 +207,37 @@ because DOSBox expands the DAC with `v<<2` and the port with `v*255/63`.
 Without the tolerance the harness reports 34% and sends you hunting a palette
 bug that does not exist.
 
+**Items 1 to 5 of the old list are done**, and four of the five were not what
+they looked like. The test tube needed no sweep and the arcs were not missing
+pieces: both were the `.CSP` placement offset, which `screen.h` had documented
+as "meaningless as a placement offset" and dropped. The corner sprites needed
+no selection rule, because nothing is painted over an atom - `2321:0874`
+re-stamps GAMEFG. Descent velocity has no assignment at all. Only the spawn
+interval was what it claimed to be. See `docs/reversing-notes.md`.
+
 **In priority order:**
 
-1. **Sweep the test tube x offset** against the harness. Our wall sits at
-   x=166 where the original's is at 172, but shifting by that 6 px made the
-   diff *worse* (4.6% -> 8.5%) because the sprite has more than one wall.
-   Sweep, take the minimum; do not deduce from one edge.
-2. **The missing vertical pieces in the arcs** - a handful of red columns in
-   the diff image.
-3. **The corner sprites.** `game.cpp` draws no tube over an atom rounding a
-   bend, because which of `TUBEVL`/`TUBEVR`/`TUBEHR` the original picks per
-   corner is not decoded. A round ball on the bend is the current placeholder.
-4. **Descent velocity.** State 7's speed is inferred, not found in code.
-5. **Spawn interval** - `kSpawnIntervalFrames` is an outright placeholder.
-6. **The beaker representation.** A cell holds `type + 19*fadeFrame` with a
+1. **The beaker representation.** A cell holds `type + 19*fadeFrame` with a
    parallel animating plane and a third overlay plane (`MARKER`). The port
    models a single plane of types, so it cannot show a clear animation at all.
-   This is the deepest remaining gap and it invalidates nothing above it.
+   This is now the deepest remaining gap.
+2. **The tipping animation and records 7..12.** Pressing A currently teleports
+   an atom into the beaker. The original moves it into one of six spare slots
+   which fall and are drawn between the `MARKER` overlay and `BEAKER.CSP`. The
+   four-phase animation is at `1000:463a`.
+3. **The match-and-clear routine** - still the largest unread block, and
+   scoring is the one major rule that came from the Instructions rather than
+   from code.
+4. **The HUD**, now that fonts are decoded and the render order around them is
+   known.
 
 **What is already transliterated and should not be re-derived:** the atom
 router `1000:0f80` (fixed-point, states 3/5/6/7, the two arc offset tables),
-the `DS:0x18` column table, the network topology (feed x, lane y, dest x per
-column), the ball table and type numbering, the drops model, and scoring by
-chain orientation.
+the four DGROUP geometry tables, the network topology, the ball table and type
+numbering, the drops model, scoring by chain orientation, the whole per-frame
+draw order with its six atom slots and the GAMEFG stamp, `.CSP` placement
+offsets, the spawn (period, column, type distribution), the difficulty seeds,
+and the test tube's slide and speed boost.
 
 ### 1. The dispenser and test tube mechanic
 
@@ -365,7 +385,15 @@ This follows directly, and **corrects an earlier inference**. The sprites are
 capacities for three difficulties. The capacity 5/3/2 currently in
 `src/game.cpp` is therefore unfounded and should be treated as a placeholder.
 
-### Atom speed: still not found, and static analysis is hitting its limit
+### Atom speed - SOLVED, and none of the reasoning below was right
+
+The velocity field is `+0x09` of the atom record and has exactly three writers
+in the whole procedure: the spawn (the difficulty's 2/3/4 px/frame), the Down/B
+boost (`0x480`, nine px/frame, applied to one atom and never reset), and the
+tipping animation. It is a per-record field after all, written whole at spawn -
+which is why the "the x/y are never incremented, so speed must be a divisor on
+a shared counter" reasoning below went nowhere. Kept as a record of the wrong
+turn; skip to `docs/reversing-notes.md` for the answer.
 
 Ruled out so far:
 

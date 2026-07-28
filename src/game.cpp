@@ -1,18 +1,22 @@
 #include "game.h"
 
-// WARNING ON PROVENANCE. The rules in this file are **behavioural
-// reconstructions**, not ported code. They were arrived at by watching the
-// original run and writing C++ that reproduces what was seen, which is exactly
-// the "just rewrite it" approach CLAUDE.md rejects, and it is lossy in a way
-// that is easy to miss: observation gives samples, the binary gives the
-// function. This session alone produced a scoring rule fitted to two data
-// points that was simply wrong, and a wildcard rule that was wrong until a
-// player said so.
+// PROVENANCE. Most of this file is now transliterated from `1000:3a67` and
+// `1000:9e53` and says so at each site: the atom router and its arc tables,
+// the spawn (period, column choice, type distribution), the difficulty seeds,
+// the test tube's slide, and the Down/B speed boost.
 //
-// Treat every constant and rule here as a placeholder to be REPLACED by the
-// decompiled logic from 1000:3a67, not as a finished result. The measured
-// traces are still worth keeping - they become the oracle the decompiled
-// version has to reproduce.
+// What is NOT from code, and is marked where it appears:
+//
+//   * scoring, which comes from the game's own Detailed Instructions - good
+//     corroboration, but the match-and-clear routine is still unread;
+//   * the chain bonus multiplier, deliberately unimplemented;
+//   * kOriginalFps, assumed to be the PC timer's 18.2 Hz;
+//   * the beaker as a single plane of types, which the original is not.
+//
+// The order of authority is in CLAUDE.md: decompiled code settles a rule, the
+// game's text corroborates, measurement locates and validates but never
+// derives. This file has already carried a scoring rule fitted to two observed
+// awards that was simply wrong, and a spawn interval that was pure invention.
 
 #include <algorithm>
 
@@ -60,8 +64,6 @@ int chainsForRun(const Run& r) {
 // +166 then +834 for 1000, +41 then +209 for 250 - about a sixth per step.
 constexpr int kScoreRampSteps = 6;
 
-constexpr int kTubeSlideFrames = 3;      // 18 px pitch at the tube's 6 px/frame
-
 // The lanes an atom travels between. y = 187 is where atoms enter at the
 // bottom of a feed tube and y = 68 is the top lane where the test tube can
 // catch; both measured.
@@ -69,9 +71,8 @@ constexpr int kEntryY = 187;
 constexpr int kTubeMouthY = 68;
 constexpr int kLostY = 190;
 
-// The network topology: each column is fed by ONE tube, along ONE lane. Read
-// off live records by pairing the x an atom rises at with the targetY and
-// column it turns with - the fields the router itself uses.
+// The network topology - which feed tube serves which column along which lane
+// - is the pair of DGROUP tables in game.h, indexed by the column:
 //
 //   column   feed x   lane y   dest x
 //      1        10       26      143
@@ -84,12 +85,8 @@ constexpr int kLostY = 190;
 // It is mirror-symmetric about x = 152: 34+270, 58+246, 10+294, 125+179,
 // 107+197 and 143+161 all equal 304. The outermost tube takes the LOWEST lane
 // and travels furthest, landing on an inner column, so the arcs nest by
-// crossing over one another - which is exactly how the furniture is drawn.
-//
-// Five of the six were measured. **Column 1's feed x = 10 is inferred from the
-// symmetry**, because no atom used that column during sampling.
-const int kFeedX[7] = {0, 10, 34, 58, 246, 270, 294};
-const int kLaneY[7] = {0, 26, 13, 0, 0, 13, 26};
+// crossing over one another - which is exactly how the furniture is drawn,
+// and it is why the six draw slots pair the columns off 1/6, 2/5, 3/4.
 
 // The corner is rounded by displacing the OTHER axis while within 9 px of the
 // turn. Transliterated rather than approximated, because the two tables are
@@ -111,11 +108,6 @@ int crossArcOffset(int distanceToCorner) {
     return 1;
 }
 
-// How often an atom is dispensed. NOT measured - the demo trace could not
-// resolve it, and the number below is only a playable placeholder. Flagged in
-// PLAN.md rather than quietly left to look like a finding.
-constexpr int kSpawnIntervalFrames = 29;
-
 // The original's frame rate. ASSUMED, not measured: attract mode produced
 // ~17 state changes a second, and the PC timer's 18.2 Hz is the obvious
 // candidate, but nothing here proves the game loop is tied to it.
@@ -129,19 +121,27 @@ constexpr int kTubeCapacity = 5;
 
 // A new game seeds the drop pool from the difficulty. Confirmed by playing all
 // three settings, and consistent with the 9/6/3 triple measured in the binary.
-int dropsFor(Difficulty d) {
+// The difficulty block at `1000:a483` writes three numbers per setting, and
+// this is all three. Tubes 101 / 201 / 301 differ in the drop allowance, the
+// atom's speed through the network, and how often one is dispensed.
+int difficultyIndex(Difficulty d) {
     switch (d) {
-        case Difficulty::k101: return 9;
-        case Difficulty::k201: return 6;
-        case Difficulty::k301: return 3;
+        case Difficulty::k101: return 0;
+        case Difficulty::k201: return 1;
+        case Difficulty::k301: return 2;
     }
-    return 9;
+    return 0;
 }
 
-// Difficulty also sets atom speed - the binary's difficulty routine does more
-// than pick the drop allowance - but the per-difficulty values have NOT been
-// measured. The px/frame constants above were all taken at one setting, so no
-// multiplier is applied rather than inventing three numbers. See PLAN.md.
+int dropsFor(Difficulty d) {
+    static const int kDrops[3] = {9, 6, 3};
+    return kDrops[difficultyIndex(d)];
+}
+
+int velocityFor(Difficulty d) {
+    static const int kVel[3] = {0x100, 0x180, 0x200};   // 1/128 px per frame
+    return kVel[difficultyIndex(d)];
+}
 
 }  // namespace
 
@@ -150,22 +150,69 @@ Game::Game(int cols, int rows, Difficulty diff, uint32_t seed)
       tubeCapacity_(kTubeCapacity),
       dropsRemaining_(dropsFor(diff)),
       startingDrops_(dropsFor(diff)),
+      spawnInterval_(kSpawnIntervalFrames[difficultyIndex(diff)]),
+      networkVel_(velocityFor(diff)),
       rng_(seed ? seed : 1) {
     tubeColumn_ = cols / 2;
+    spawnTimer_ = spawnInterval_;
     tube_.reserve(static_cast<size_t>(tubeCapacity_));
 }
 
-int8_t Game::nextColour() {
-    // xorshift32 - deterministic, so a fixed seed replays identically.
-    //
-    // Only the seven ordinary colours are dispensed. The specials (Flashium,
-    // AntiMatter, Bonus, ...) plainly do appear in the original, but at rates
-    // that have not been measured, and inventing a rate would put a made-up
-    // number where a measured one belongs. See PLAN.md.
+// xorshift32 - deterministic, so a fixed seed replays identically. The
+// original calls a library `Random(n)`; only the distribution below is
+// transliterated, not the generator.
+int Game::random(int n) {
     rng_ ^= rng_ << 13;
     rng_ ^= rng_ >> 17;
     rng_ ^= rng_ << 5;
-    return static_cast<int8_t>(kFirstColour + rng_ % kColourCount);
+    return static_cast<int>(rng_ % static_cast<uint32_t>(n));
+}
+
+// The dispensed type, transliterated from `1000:49fd`. One roll of 1..11
+// picks a *class*, then three of those classes take a second roll:
+//
+//     type := Random(11) + 1
+//     if type = 10 then                              { Bonus }
+//         if Random(100)+1 < DS:0x1d4a then 10 else Random(8)+1
+//     if type =  9 then                              { AntiMatter }
+//         if Random(100)+1 < DS:0x1d49 then  9 else Random(8)+1
+//     if type = 11 then                              { the specials }
+//         case Random(100)+1 of
+//              0..29: 11 Xenon      30..59: 12 Multiplier
+//             60..74: 16 Filler     75..89: 14 Convertor
+//             90..94: 13 EvilMult   95..100: 15 Blocker
+//
+// Three things fall out that no amount of watching would have given up:
+//
+//  * slot 11 is not "Xenon", it is the whole special family sharing one
+//    eleventh of the roll, split 30/30/15/15/5/6 between six of them;
+//  * the failed-roll fallback is Random(8)+1, which INCLUDES 8 - so Flashium
+//    is dispensed as an ordinary member of the pool with no rate of its own;
+//  * the 25 and 50 are DS:0x1d4a and DS:0x1d49, written by the session setup
+//    to 0x19 and 0x32, so they are per-session knobs rather than literals.
+//
+// This replaces a "seven colours only" placeholder that PLAN.md carried as
+// unmeasured. The specials were always visible in play; what was missing was
+// any measured rate to give them.
+constexpr int kBonusChance = 25;        // DS:0x1d4a
+constexpr int kAntiMatterChance = 50;   // DS:0x1d49
+
+int8_t Game::nextColour() {
+    int type = random(11) + 1;
+    if (type == kBonus) {
+        if (random(100) + 1 >= kBonusChance) type = random(8) + 1;
+    } else if (type == kAntiMatter) {
+        if (random(100) + 1 >= kAntiMatterChance) type = random(8) + 1;
+    } else if (type == kXenon) {
+        const int r = random(100) + 1;
+        if (r <= 29)      type = kXenon;
+        else if (r <= 59) type = kMultiplier;
+        else if (r <= 74) type = kFiller;
+        else if (r <= 89) type = kConvertor;
+        else if (r <= 94) type = kEvilMultiplier;
+        else              type = kBlocker;
+    }
+    return static_cast<int8_t>(type);
 }
 
 void Game::award(int points) {
@@ -188,21 +235,44 @@ void Game::advanceScore() {
     if (scorePending_ == 0) scoreStep_ = 0;
 }
 
+// Dispense one atom, transliterated from `1000:4918`. The column is rolled,
+// not assigned round-robin, and it is re-rolled up to ten times to find a free
+// slot - so the network naturally thins out when it is busy:
+//
+//     tries := 0;
+//     repeat  col := Random(6) + 1;  Inc(tries)
+//     until (atom[col].state = 0) or (tries = 10);
+//     if tries = 10 then col := 1;
+//     interval := spawnInterval;                 { reloaded either way }
+//     if atom[col].state <> 0 then exit;         { give up this period }
+//
+// The retry giving up on column 1 and then finding column 1 busy is how the
+// original skips a beat under load. Note the timer is reloaded before the
+// bail-out, so a skipped dispense costs a full period rather than retrying
+// next frame.
 void Game::spawn() {
-    falling_ = Falling{};
-    falling_.active = true;
-    falling_.colour = nextColour();
-    // Columns are 1..6 in the original's own numbering, matching the DS:0x18
-    // table. A left-hand column is fed from a left-hand tube so the atom
-    // turns right, and vice versa - that pairing is what `column < 4` in the
-    // router encodes. WHICH tube feeds which column is not yet recovered.
-    falling_.column = 1 + static_cast<int>(rng_ % 6);
-    falling_.x = kFeedX[falling_.column];
-    falling_.anchorX = falling_.x;
-    falling_.y = kEntryY;
-    falling_.targetY = kLaneY[falling_.column];
-    falling_.state = atomstate::kRise;
-    falling_.velocity = kNetworkVel;
+    int col = 1;
+    int tries = 0;
+    do {
+        col = random(kAtomSlots) + 1;
+        ++tries;
+        if (atoms_[col].state == atomstate::kFree) break;
+    } while (tries != 10);
+    if (tries == 10) col = 1;
+
+    spawnTimer_ = spawnInterval_;
+    if (atoms_[col].state != atomstate::kFree) return;
+
+    Falling& a = atoms_[col];
+    a = Falling{};
+    a.column = col;
+    a.x = kFeedX[col];
+    a.anchorX = kFeedX[col];      // record +0x04, written from the same table
+    a.y = kEntryY;
+    a.targetY = kLaneY[col];
+    a.state = atomstate::kRise;
+    a.velocity = networkVel_;
+    a.colour = nextColour();
 }
 
 // One frame of the dispenser path. Speeds are the measured px/frame values,
@@ -210,20 +280,44 @@ void Game::spawn() {
 void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
     advanceScore();
 
-    // Move the test tube. A press moves immediately; holding repeats, so the
-    // tube slides instead of stopping after one column.
-    const int dir = (buttons & button::kLeft)    ? -1
-                    : (buttons & button::kRight) ? 1
-                                                 : 0;
-    if (dir == 0) {
-        moveTimer_ = 0;
-    } else {
-        const bool fresh = (pressed & (button::kLeft | button::kRight)) != 0;
-        if (fresh) moveTimer_ = 0;
-        if (fresh || --moveTimer_ <= 0) {
-            tubeColumn_ = std::clamp(tubeColumn_ + dir, 0, board_.cols() - 1);
-            moveTimer_ = kTubeSlideFrames;
+    // --- the test tube, transliterated from 1000:4528 ------------------
+    //
+    // The whole input block sits inside `if state = 0`, so a direction is
+    // only accepted when the tube is parked. That is why holding Left slides
+    // one column at a time rather than accelerating: the next press is
+    // ignored until the slide finishes.
+    //
+    //     if (btn and 4) and (index > 1) then           { Left }
+    //         state := 1;  Dec(index);  target := stop[index]
+    //     if (btn and 8) and (index < 6) then           { Right }
+    //         state := 2;  Inc(index);  target := stop[index]
+    //     case state of
+    //       1: begin x := x - 6; if x <= target then begin x := target;
+    //                                                     state := 0 end end
+    //       2: begin x := x + 6; if x >= target then begin x := target;
+    //                                                     state := 0 end end
+    //
+    // The port used to step a whole column every three frames instead, which
+    // put the tube on a stop on every frame - so a capture that caught the
+    // original mid-slide could never be matched.
+    if (tubeState_ == 0) {
+        if ((buttons & button::kLeft) && tubeColumn_ > 0) {
+            tubeState_ = 1;
+            --tubeColumn_;
+            tubeTargetX_ = kTubeStopX[tubeColumn_ + 1];
         }
+        if ((buttons & button::kRight) && tubeColumn_ < kAtomSlots - 1) {
+            tubeState_ = 2;
+            ++tubeColumn_;
+            tubeTargetX_ = kTubeStopX[tubeColumn_ + 1];
+        }
+    }
+    if (tubeState_ == 1) {
+        tubeX_ -= kTubeSlidePx;
+        if (tubeX_ <= tubeTargetX_) { tubeX_ = tubeTargetX_; tubeState_ = 0; }
+    } else if (tubeState_ == 2) {
+        tubeX_ += kTubeSlidePx;
+        if (tubeX_ >= tubeTargetX_) { tubeX_ = tubeTargetX_; tubeState_ = 0; }
     }
 
     // A tips the tube, dumping one atom into the beaker beneath it.
@@ -235,16 +329,34 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
         }
     }
 
-    if (!falling_.active) {
-        if (++spawnTimer_ >= kSpawnIntervalFrames) {
-            spawnTimer_ = 0;
-            spawn();
+    // Down or B speeds the atom heading for the column the tube is under.
+    // The original dispatches on the tube's stop index through a chain of
+    // comparisons - 1 to slot 3, 3 to slot 1, 4 to slot 6, 6 to slot 4, and
+    // the rest to the same-numbered slot - which is just "the slot whose
+    // destination x is where the tube is". Comparing the x values reproduces
+    // it without hard-coding the permutation.
+    if (buttons & (button::kDown | button::kB)) {
+        for (int c = 1; c <= kAtomSlots; ++c) {
+            if (atoms_[c].active() &&
+                kAtomColumnX[atoms_[c].column] == playColumnX(tubeColumn_)) {
+                atoms_[c].velocity = kBoostVel;
+            }
         }
-        return;
     }
 
-    // --- FUN_1000_0f80, transliterated -----------------------------------
-    Falling& a = falling_;
+    // The router runs over every slot, then the dispenser ticks. Both are
+    // unconditional in the original - it does not wait for the network to
+    // empty, which is why six atoms can be in flight at once.
+    for (int c = 1; c <= kAtomSlots; ++c) {
+        if (atoms_[c].active()) stepAtom(atoms_[c]);
+    }
+
+    if (--spawnTimer_ <= 0) spawn();
+}
+
+// One frame of one atom: `FUN_1000_0f80`, transliterated, plus the catch and
+// miss tests that follow it in the caller.
+void Game::stepAtom(Falling& a) {
     switch (a.state) {
         case atomstate::kRise: {
             a.accY += a.velocity;
@@ -275,7 +387,6 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
                 a.x = a.anchorX;
                 a.accX = 0;
                 a.state = atomstate::kDescend;
-                a.velocity = kDescendVel;
             }
             a.onArc = (a.x > a.anchorX - 9);
             if (a.onArc) {
@@ -293,7 +404,6 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
                 a.x = a.anchorX;
                 a.accX = 0;
                 a.state = atomstate::kDescend;
-                a.velocity = kDescendVel;
             }
             a.onArc = (a.x < a.anchorX + 9);
             if (a.onArc) {
@@ -303,14 +413,10 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
         }
 
         case atomstate::kDescend:
-            // Down and B speed an atom along - confirmed from the input bit
-            // map, where the demo holds Down for long stretches. The boosted
-            // and unboosted descent rates are measured (18 and 4 px/frame);
-            // the code that sets the velocity field has not been located, so
-            // this assignment is inferred, unlike the states above.
-            a.velocity = (buttons & (button::kDown | button::kB))
-                             ? kDescendVel
-                             : kNetworkVel;
+            // No velocity assignment here. The field's only writers are the
+            // spawn and the Down/B boost in the caller, so an atom comes down
+            // at exactly the speed it crossed the top at - or at 9 px/frame
+            // for the rest of its flight if the player boosted it.
             a.accY += a.velocity;
             a.y += a.accY / kSubPixel;
             a.accY &= kSubPixel - 1;
@@ -324,10 +430,10 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
     // 0..5, and they are not in the same order - kAtomColumnX runs
     // 143,125,107,197,179,161. Compare the x positions rather than the
     // indices, which sidesteps the mapping entirely.
-    if (falling_.y >= kTubeMouthY &&
-        kAtomColumnX[falling_.column] == playColumnX(tubeColumn_) &&
+    if (a.y >= kTubeMouthY &&
+        kAtomColumnX[a.column] == playColumnX(tubeColumn_) &&
         !tubeFull()) {
-        int8_t held = falling_.colour;
+        int8_t held = a.colour;
         if (held == kBonus) {
             // "Turns into Flashium when caught and awards you an extra drop"
             // - the game's own Instructions. The only way the pool ever grows.
@@ -335,14 +441,14 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
             held = kFlashium;
         }
         tube_.push_back(held);
-        falling_.active = false;
+        a.state = atomstate::kFree;
         return;
     }
 
     // Otherwise it falls past and is lost. A missed atom does NOT land in the
     // beaker - the beaker fills only from the tube, via Button A.
-    if (falling_.y >= kLostY) {
-        falling_.active = false;
+    if (a.y >= kLostY) {
+        a.state = atomstate::kFree;
         if (dropsRemaining_ > 0) {
             --dropsRemaining_;
         } else {

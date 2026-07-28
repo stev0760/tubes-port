@@ -34,11 +34,20 @@ struct Image {
 struct Sprite {
     int width = 0;
     int height = 0;
+    // Where this sprite's pixels start, relative to the .CSP base pointer.
+    // Compare against kSpriteBaseX/Y below to get the placement offset.
     int originX = 0;
     int originY = 0;
     std::vector<uint8_t> pixels;    // width * height
     std::vector<uint8_t> mask;      // 1 where a pixel was written
 };
+
+// The base every .CSP displacement is measured from. Not chosen: it is the
+// minimum over all 108 sprites in TUBES.RES, and 84 of them sit exactly on
+// it. See Screen::draw for why the excess is placement data rather than an
+// artefact of the decoder's modulo arithmetic.
+constexpr int kSpriteBaseX = 128;
+constexpr int kSpriteBaseY = -2;
 
 bool loadPalette(const Bytes& data, Palette& out, std::string& error);
 

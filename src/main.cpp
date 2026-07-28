@@ -36,11 +36,12 @@ constexpr int kRows = 5;
 // Row y is computed inline as `row * 13 + 121` for row = 1..5.
 constexpr int kGridX = 107;
 constexpr int kGridY = 121 + kPitchY;
-// TESTUBE1 is 65 tall and its mouth meets the top of the beaker, so it hangs
-// from y = 134 - 65 = 69. Matches the original; the previous value sat 10px
-// low and left the tube overlapping the beaker.
+// The test tube hangs at y = 68 - the literal `0x44` the session setup writes
+// into its record at `1000:4409`, and the same 68 the dirty-rect restore uses
+// with its 22 x 65 extent. The previous 69 came from 134 - 65, reasoning back
+// from the beaker's top; it was one pixel out.
 constexpr int kTestTubeH = 65;
-constexpr int kTubeY = kGridY - kTestTubeH;
+constexpr int kTubeY = 68;
 constexpr float kFallHeight = static_cast<float>(kTubeY - 16);
 
 // The ball table, transliterated from the original's own initialiser. The game
@@ -155,9 +156,16 @@ struct Options {
 // obvious:
 //
 //     tubecol <0..5>
+//     tubex <pixels>          optional; the tube's exact x, mid-slide
 //     grid <30 type values, row-major from the top>
 //     tube <types held in the test tube, mouth first>
-//     atom <x> <y> <state> <column> <type>
+//     atom <x> <y> <state> <column> <type> [<slot>]
+//
+// The optional slot is the atom's index in the original's array. It matters
+// because that index IS the column for the six network atoms, and the index
+// alone decides how deep in the tube artwork the atom is drawn. Captures
+// written before that was known omit it, and those are read as slot = column,
+// which is right for exactly the atoms they contain.
 //
 bool loadState(const std::string& path, tubes::Game& game) {
     std::FILE* fh = std::fopen(path.c_str(), "r");
@@ -172,6 +180,12 @@ bool loadState(const std::string& path, tubes::Game& game) {
         const char* rest = line + std::strlen(key);
         if (!std::strcmp(key, "tubecol")) {
             game.setTubeColumn(std::atoi(rest));
+        } else if (!std::strcmp(key, "tubex")) {
+            // Overrides the stop, and must therefore come after `tubecol`.
+            // A paused capture regularly catches the tube between two stops,
+            // and pinning it to the nearer one put a whole tube's worth of
+            // false difference into the diff.
+            game.setTubeX(std::atoi(rest));
         } else if (!std::strcmp(key, "grid")) {
             tubes::Board& b = game.boardMutable();
             b.clear();
@@ -196,16 +210,23 @@ bool loadState(const std::string& path, tubes::Game& game) {
             game.setTubeAtoms(v);
         } else if (!std::strcmp(key, "atom")) {
             tubes::Falling f;
-            int x=0, y=0, st=0, col=1, ty=0;
-            if (std::sscanf(rest, "%d %d %d %d %d", &x, &y, &st, &col, &ty) == 5) {
-                f.active = true;
+            int x=0, y=0, st=0, col=1, ty=0, slot=0;
+            const int n = std::sscanf(rest, "%d %d %d %d %d %d",
+                                      &x, &y, &st, &col, &ty, &slot);
+            if (n >= 5) {
+                if (n < 6) slot = col;
+                // Slots 7..12 are the atoms tipped out of the test tube and
+                // falling into the beaker, which this engine does not model
+                // yet - it settles them instantly. Skip rather than draw them
+                // in a network column they are not in.
+                if (slot < 1 || slot > tubes::kAtomSlots) continue;
                 f.x = x; f.y = y;
                 f.state = static_cast<uint8_t>(st);
                 f.column = col;
                 f.colour = static_cast<int8_t>(ty);
                 f.anchorX = x;
                 f.targetY = y;
-                game.setFalling(f);
+                game.setAtom(slot, f);
             }
         }
     }
@@ -347,11 +368,25 @@ uint8_t scriptedInput(const tubes::Game& game) {
         return b | tubes::button::kA;
     }
 
-    // Nothing held: line up under the falling atom to catch it.
+    // Nothing held: line up under an atom to catch it. Six can be in flight,
+    // so go for the one furthest along - the lowest y among those already
+    // coming down a play column, falling back to whatever is in the network.
     // The atom carries the original's 1..6 column numbering, whose x order is
     // 143,125,107,197,179,161 - not the board's 0..5. Steer by comparing x.
-    if (game.falling().active) {
-        const int atomX = tubes::kAtomColumnX[game.falling().column];
+    int bestCol = 0;
+    int bestRank = -1;
+    for (int c = 1; c <= tubes::kAtomSlots; ++c) {
+        const tubes::Falling& a = game.atom(c);
+        if (!a.active()) continue;
+        const int rank =
+            (a.state == tubes::atomstate::kDescend ? 1000 : 0) + a.y;
+        if (rank > bestRank) {
+            bestRank = rank;
+            bestCol = c;
+        }
+    }
+    if (bestCol) {
+        const int atomX = tubes::kAtomColumnX[game.atom(bestCol).column];
         const int tubeX = tubes::playColumnX(game.tubeColumn());
         if (atomX != tubeX) {
             return b | (atomX > tubeX ? tubes::button::kRight
@@ -572,22 +607,24 @@ int main(int argc, char** argv) {
         game.update(scriptedInput(game), 1.0f / 60.0f);
     }
     if (opt.autoFrames) {
-        const tubes::Falling& fa = game.falling();
-        const char* stateName =
-            !fa.active                              ? "none"
-            : fa.state == tubes::atomstate::kRise    ? "rise"
-            : fa.state == tubes::atomstate::kGoLeft  ? "go-left"
-            : fa.state == tubes::atomstate::kGoRight ? "go-right"
-            : fa.state == tubes::atomstate::kDescend ? "descend"
-                                                     : "?";
         std::printf(
-            "simulated %d frames: %d atoms, score %d, chains %d, drops %d/%d%s\n"
-            "  dispenser: %s at (%d,%d) -> column %d (x=%d)\n",
+            "simulated %d frames: %d atoms, score %d, chains %d, drops %d/%d%s\n",
             opt.autoFrames, game.board().count(), game.score(), game.chains(),
             game.dropsRemaining(), game.startingDrops(),
-            game.gameOver() ? ", GAME OVER" : "",
-            stateName, fa.x, fa.y, fa.column,
-            tubes::kAtomColumnX[fa.column]);
+            game.gameOver() ? ", GAME OVER" : "");
+        for (int c = 1; c <= tubes::kAtomSlots; ++c) {
+            const tubes::Falling& fa = game.atom(c);
+            if (!fa.active()) continue;
+            const char* stateName =
+                fa.state == tubes::atomstate::kRise      ? "rise"
+                : fa.state == tubes::atomstate::kGoLeft  ? "go-left"
+                : fa.state == tubes::atomstate::kGoRight ? "go-right"
+                : fa.state == tubes::atomstate::kDescend ? "descend"
+                                                         : "?";
+            std::printf("  column %d: %-8s type %2d at (%3d,%3d) -> x=%d\n",
+                        c, stateName, fa.colour, fa.x, fa.y,
+                        tubes::kAtomColumnX[fa.column]);
+        }
     }
 
     // Music is best-effort: a missing DRIVERS.RES or a busy audio device
@@ -609,6 +646,30 @@ int main(int argc, char** argv) {
 
     tubes::Screen screen;
     std::vector<uint8_t> rgba;
+
+    // GAMEFG on its own, kept as a buffer to stamp back over moving sprites.
+    //
+    // This is the game's own arrangement, from three routines in the graphics
+    // unit that all write to the video segment:
+    //
+    //     2321:0792  opaque full-screen blit   <- the backdrop, GAMEBG
+    //     2321:0711  transparent full-screen   <- GAMEFG, over it
+    //     2321:0874  transparent w x h box from the buffer at DS:0x238e
+    //
+    // and one line of session setup: after blitting GAMEFG with 0711, it
+    // stores *that same buffer pointer* at DS:0x238e. So the stamp source is
+    // GAMEFG itself - not a snapshot of the composed screen.
+    //
+    // The distinction is the whole behaviour. An atom crossing lane 13 near
+    // x=217 is clipped by the tube walls, because GAMEFG is solid there; the
+    // same atom rising at x=246 is NOT, because GAMEFG is transparent inside
+    // the feed tubes and the walls there come from the furniture sprites,
+    // which are drawn before the atom. Composing furniture into the stamp
+    // buffer clipped the second case as well and was measurably worse.
+    tubes::Screen scene;
+    scene.clear(0);
+    if (haveFg) scene.blit(foreground);
+
     bool running = true;
     Uint32 last = SDL_GetTicks();
 
@@ -644,93 +705,84 @@ int main(int argc, char** argv) {
             }
         };
 
-        const tubes::Falling& f = game.falling();
-        // Draw the atom, then repaint the tube piece it is inside over the top
-        // of it. Captures of the original show the ball CLIPPED by tube lines
-        // on every lane - including y=0, where no furniture pass exists - so
-        // the covering has to travel with the atom rather than come from the
-        // static passes. That matches the pair of draws in 1000:3a67 that take
-        // two sprite pointers from one struct and draw them at the same
-        // computed coordinates: back piece, ball, front piece.
+        // Each of the six atom draw sites in 1000:3a67 is the same three
+        // steps, and the port makes all three:
         //
-        // Which sprite the original picks per segment is not yet decoded, so
-        // the orientation is chosen from the atom's state here. That part is a
-        // reconstruction; the fact that a tube piece is redrawn over the atom
-        // is not.
-        auto drawFlyingAtom = [&]() {
-            if (!f.active || f.colour == tubes::kEmpty) return;
-            screen.draw(atoms[f.colour], f.x, f.y);
-
-            // Repaint a tube piece over the atom ONLY where a pipe actually
-            // is. Three cases where there is none, each of which showed up as
-            // pipe painted over open space:
-            //
-            //  - rounding a bend, where the atom sits between two pieces and
-            //    the router is displacing it off the straight run;
-            //  - descending, which happens in open air below the network;
-            //  - and by extension anything below the lanes.
-            //
-            // Which piece the original uses on a bend is not decoded - the
-            // corner sprites TUBEVL/TUBEVR/TUBEHR exist and are presumably it,
-            // but guessing an orientation would put the wrong pipe on screen,
-            // so nothing is drawn there rather than something plausible.
-            if (f.onArc || f.state == tubes::atomstate::kDescend) return;
-            const bool horizontal = (f.state == tubes::atomstate::kGoLeft ||
-                                     f.state == tubes::atomstate::kGoRight);
-            const int piece = horizontal ? kTubeH : kTubeV;
-            if (haveFurn[piece]) screen.draw(furn[piece], f.x, f.y);
+        //     Stamp(scene, savedX, savedY, 16, 13)     ; erase the old box
+        //     if state > 2 then
+        //         Draw(x, y, ball[type])
+        //         Stamp(scene, x, y, 16, 13)           ; clip to the tube
+        //
+        // The erase is redundant here because this renderer repaints the whole
+        // screen rather than tracking dirty rectangles, but the second stamp
+        // is not, and it is what a previous version was reaching for when it
+        // painted a guessed TUBEH or TUBEV over each atom. The guess put pipe
+        // where there was none and had to special-case bends and descents; the
+        // snapshot needs no cases, because it IS the artwork.
+        //
+        // Note what this implies about the interleaving: with the scene
+        // stamped back over every atom, an atom is clipped by all of the
+        // network whatever pass it was drawn between. The interleave still
+        // orders the atoms among themselves, and it is what the original does,
+        // so it stays - but it is not what makes a ball look like it is inside
+        // a pipe. That was the previous session's working theory and it was
+        // only half right.
+        auto drawAtom = [&](int col) {
+            const tubes::Falling& a = game.atom(col);
+            // `state > 2` is the original's own test, made at every one of the
+            // six draw sites. States 0..2 are a free or parked slot.
+            if (!a.drawn() || a.colour == tubes::kEmpty) return;
+            screen.draw(atoms[a.colour], a.x, a.y);
+            screen.stamp(scene, a.x, a.y, kCellW, kCellH);
         };
 
-        // An atom must be drawn immediately BEFORE its own lane's horizontal
-        // tube pass, so that pass paints the tube's near wall back over it and
-        // the ball reads as being inside the glass. The passes are ordered by
-        // lane, so the interleave point is a function of which lane the atom
-        // is travelling:
+        // The six interleave points are hard-coded in 1000:3a67, each bound to
+        // one slot of the atom array - and the slot index IS the column. So an
+        // atom's draw depth is fixed by its column for its whole flight, not
+        // by where it happens to be:
         //
-        //     TUBEH y=26  lives in group 0  -> a lane-26 atom draws BEFORE it
-        //     TUBEH y=13  lives in group 1  -> a lane-13 atom draws after g0
-        //     lane 0 has no horizontal pass -> nothing can cover it
+        //     column 1, column 6   |  pass 1  (16 draws)
+        //     column 2, column 5   |  pass 2  (16 draws)
+        //     column 3, column 4   |  pass 3  ( 8 draws)
         //
-        // That is what the original is doing with two interleave points and a
-        // subset of records at each, and it matches what is visible in play:
-        // some segments already showed the ball correctly inside, and they are
-        // exactly the ones whose tube is drawn later than the ball.
-        const int lane = f.active ? f.targetY : -1;
+        // The pairing is the network's mirror symmetry: columns 1 and 6 are
+        // fed by the outermost tubes at x = 10 and 294, which take the lowest
+        // lane and cross furthest, so they are the deepest layer. 2/5 and 3/4
+        // nest inside them in turn.
+        //
         // GAMEFG.GFX carries much of the network, but NOT all of it: the
         // vertical pieces through the lane rows are missing from it and come
-        // from these passes. Rendering without them leaves the arcs without
-        // their vertical walls, which is visible immediately against a capture
-        // of the original.
-        //
-        // A previous version of this file removed the passes on the theory
-        // that GAMEFG was the complete network and the passes were only
-        // dirty-rect restoration. The arcs came out missing their verticals.
-        // Both are needed.
-        if (lane >= 26) drawFlyingAtom();
+        // from these passes. A previous version removed the passes on the
+        // theory that GAMEFG was the complete network; the arcs came out
+        // without their verticals. Both are needed.
+        drawAtom(1); drawAtom(6);
         drawFurn(0, kFurnGroup0);
-        if (lane >= 13 && lane < 26) drawFlyingAtom();
+        drawAtom(2); drawAtom(5);
         drawFurn(kFurnGroup0, kFurnGroup1);
-        if (lane >= 0 && lane < 13) drawFlyingAtom();
+        drawAtom(3); drawAtom(4);
         drawFurn(kFurnGroup1, kFurnTotal);
-        if (f.state == tubes::atomstate::kDescend) drawFlyingAtom();
-        // Once descending a play column the atom is below the lanes; the
-        // vertical pieces at y=26 are the last thing that can overlap it.
-        if (f.active && f.state == tubes::atomstate::kDescend) drawFlyingAtom();
 
-        // The test tube is glass, like the beaker, so its CONTENTS go down
-        // first and the tube is drawn over them. The port had the atoms after
-        // the tube, which stood them in front of the glass - the same
-        // inversion the beaker had, and the beaker is the proof of the rule:
-        // BEAKER.CSP is drawn last in the original and that one reads
-        // correctly in play.
-        const int tubeX = kGridX + game.tubeColumn() * kPitchX;
-        // The pixel diff puts our tube wall at x=166 against the original's
-        // 172 over the tube's full height, but simply shifting by 6 made the
-        // diff WORSE (4.6% -> 8.5%): the sprite has more than one wall and
-        // moving it misaligns the rest. The offset needs sweeping against the
-        // harness rather than deducing from one edge.
+        // The test tube is drawn TWICE per frame from two sprite pointers held
+        // in its own record, at one position, with its contents in between:
+        //
+        //     Draw(tube.x, tube.y, tube.sprite[4])   if tube.phase = 1
+        //     ... the atoms it is holding ...
+        //     ... the HUD ...
+        //     Draw(tube.x, tube.y, tube.sprite[phase])
+        //
+        // so the contents sit between the two layers of glass. The port had
+        // this arrangement already; what is new is that it is now read off the
+        // draw sequence rather than reasoned from "the beaker works this way".
+        //
+        // `tube.x` comes straight from the six-stop table at DGROUP:0x24 -
+        // 104, 122, 140, 158, 176, 194, exactly the column x minus 3 - and
+        // `tube.y` is the literal 0x44 the setup writes. The pixel diff's
+        // apparent 6 px offset was the capture catching the tube mid-slide, at
+        // a different stop from the one the state file named; there was never
+        // an offset to sweep for.
+        const int tubeX = game.tubeX();
         if (haveFurn[kTestTubeShadow]) {
-            screen.draw(furn[kTestTubeShadow], tubeX - 3, kTubeY);
+            screen.draw(furn[kTestTubeShadow], tubeX, kTubeY);
         }
 
         // Atoms stack in the tube, mouth downwards: index 0 sits at the
@@ -738,10 +790,10 @@ int main(int argc, char** argv) {
         const std::vector<int8_t>& stack = game.tubeAtoms();
         for (size_t i = 0; i < stack.size(); ++i) {
             const int y = kGridY - kCellH - static_cast<int>(i) * kPitchY;
-            screen.draw(atoms[stack[i]], tubeX, y);
+            screen.draw(atoms[stack[i]], tubeX + 3, y);
         }
 
-        if (haveTube) screen.draw(testTube, tubeX - 3, kTubeY);
+        if (haveTube) screen.draw(testTube, tubeX, kTubeY);
 
         // Beaker shadow, then its contents, then the glass FRONT last - the
         // original draws BEAKER.CSP after the settled atoms, so the glass

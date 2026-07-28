@@ -30,6 +30,11 @@ void Screen::blit(const Image& img, int x, int y) {
 }
 
 void Screen::draw(const Sprite& spr, int x, int y) {
+    // The .CSP base: see the note in screen.h. Displacements are relative to
+    // it, so a sprite whose pixels start further in is placed further in.
+    x += spr.originX - kSpriteBaseX;
+    y += spr.originY - kSpriteBaseY;
+
     for (int row = 0; row < spr.height; ++row) {
         int dy = y + row;
         if (dy < 0 || dy >= kScreenHeight) continue;
@@ -42,6 +47,25 @@ void Screen::draw(const Sprite& spr, int x, int y) {
             int dx = x + col;
             if (dx < 0 || dx >= kScreenWidth) continue;
             dst[dx] = spr.pixels[base + col];
+        }
+    }
+}
+
+void Screen::stamp(const Screen& src, int x, int y, int w, int h) {
+    for (int row = 0; row < h; ++row) {
+        const int dy = y + row;
+        if (dy < 0 || dy >= kScreenHeight) continue;
+
+        const size_t line = static_cast<size_t>(dy) * kScreenWidth;
+        const uint8_t* s = src.pixels_.data() + line;
+        uint8_t* d = pixels_.data() + line;
+
+        for (int col = 0; col < w; ++col) {
+            const int dx = x + col;
+            if (dx < 0 || dx >= kScreenWidth) continue;
+            const uint8_t v = s[dx];
+            if (v == 0) continue;      // OR AL,AL / JZ - index 0 is transparent
+            d[dx] = v;
         }
     }
 }

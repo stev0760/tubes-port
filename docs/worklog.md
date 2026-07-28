@@ -1782,3 +1782,100 @@ passes removed, the arcs lost their vertical walls, the change withdrawn. The
 withdrawal is recorded rather than quietly reverted, because the reasoning that
 produced it was a comparison at a crop where the deciding difference was
 invisible.
+
+## 2026-07-27 — Session 8: the layering, settled by disassembly
+
+The question was how tubes, atoms, the test tube and the beaker layer in the
+frame loop. It turned out to rest on two graphics primitives and one sprite
+field, none of which was in evidence, and answering it took the pixel diff from
+**4.42% to 0.02%** on a clean capture.
+
+### Method: stop reading the decompiler for structure
+
+`1000:3a67` is a nested Pascal procedure sharing `1000:9e53`'s frame through a
+static link, and Ghidra folds both frames into one set of `local_XXX` names, so
+two different bases print as the same expression. That is what produced the
+earlier reading of one 28-byte array as both the atom pool and the tube's
+contents. Added `ghidra_scripts/DisasmRange.java`; the listing distinguishes
+`[BP-n]` from `SS:[DI-n]` and every structural claim this session came from it.
+
+Also added `ghidra_scripts/DumpBytes.java`, which read the four geometry tables
+straight out of DGROUP and confirmed column 1's feed x - carried as "inferred
+from the symmetry" for two sessions because no atom used that column while
+sampling.
+
+### What the layering actually is
+
+* **Six atoms, one per column**, not one. The array index *is* the column: the
+  spawn indexes by the column it rolled. Records 7..12 are a separate pool for
+  atoms falling out of the tube into the beaker.
+* The six draw sites interleave with the furniture as **1/6, then 2/5, then
+  3/4** - the network's mirror symmetry, outermost tubes deepest.
+* `2321:0874` re-stamps a 16x13 box of **GAMEFG** over each atom after drawing
+  it. Not a snapshot of the composed screen: the session setup blits GAMEFG
+  with `2321:0711` and registers *that buffer* at `DS:0x238e`.
+
+The last point is the whole look of the game. GAMEFG is solid along the long
+horizontal runs between the arcs and transparent inside the feed tubes, so an
+atom crossing lane 13 near x=217 is clipped by the tube walls while the same
+atom rising at x=246 is not - there the walls come from furniture sprites drawn
+before it. Both were measured against the original and both now reproduce.
+
+A previous session had painted a guessed `TUBEH` or `TUBEV` over each atom,
+with special cases for bends and descents. That was reaching for this, and it
+is withdrawn: the real thing needs no cases, because it *is* the artwork.
+
+### The single biggest fix was a sprite field we had dismissed
+
+`.CSP` sprites carry a placement offset. Over all 108 sprites the minimum is
+`(128, -2)` and 84 sit exactly there - that is the shared base, and the excess
+is real. `screen.h` had it documented as "useful provenance but meaningless as
+a placement offset" and dropped it.
+
+It is worth 6 to 11 pixels on `TESTUBES`, `TUBEVS`, `TUBEVLS` and `TUBEVRS`,
+which is precisely what `PLAN.md` had been calling "the missing vertical pieces
+in the arcs" and "sweep the test tube x offset". Neither needed sweeping.
+
+The proof it is not a decoder artefact is `GFADE1..6`, whose origin walks
+`+0,+3` `+0,+6` `+2,+6` `+4,+6` `+7,+5` `+7,+5` as the sprite shrinks. A
+contracting animation must move its origin inward to stay centred; nothing else
+produces a monotone walk.
+
+### Placeholders retired on the way past
+
+Reading the spawn and the difficulty block closed several items that `PLAN.md`
+listed as invented or unmeasured:
+
+* **spawn period** 70/60/50 frames by difficulty, was `29`, an outright guess;
+* **network velocity** 2/3/4 px/frame by difficulty, both stepping every
+  fifteenth wave;
+* **the type distribution**, including that slot 11 is the whole special family
+  sharing one eleventh of the roll, and that Flashium is in the ordinary pool;
+* **the test tube's slide**, a flat 6 px/frame with input accepted only when
+  parked - the port stepped a whole column every three frames, so it was never
+  between stops and a capture that caught the original mid-slide could not be
+  matched;
+* **the Down/B boost**, `0x480` = 9 px/frame, applied to one atom and never
+  reset. The velocity field has exactly three writers and **none of them fires
+  when an atom starts descending**, so the port's inferred 18 px/frame descent
+  is withdrawn.
+
+### The harness had an off-by-one record
+
+`capture_frame.py` read the atom array at `0x241A4`, which is `array[2]`. The
+tell was that the emitted index ran exactly two behind each record's own column
+field on every sample, and the spawn requires the two to agree. Base is
+`0x24188`. Nothing in the old harness could have caught this, because it never
+compared the two - it only started mattering once the port keyed a draw slot
+off the index.
+
+`capture_frame.py` now also records the tube's exact x. It slides 6 px a frame
+and a paused capture regularly catches it between stops; rounding to the
+nearest stop was costing ~3% of the diff and had been mistaken for a sprite
+offset that needed sweeping.
+
+### Where it stands
+
+Eight captures, all fresh or re-diffed: **0.02% to 0.22%** of structural pixels.
+The floor is three pixels at (59, 10..12), where the original leaves a GAMEFG
+pixel erased and we do not know why. Recorded rather than explained.
