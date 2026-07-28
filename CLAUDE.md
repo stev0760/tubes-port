@@ -73,6 +73,28 @@ about `*.RES`, `*.EXE`, `assets-extracted/`, and rendered output.
 already caught one near-miss (`__pycache__`). Never `git add -A` and trust it
 blindly.
 
+## Commit discipline: small, atomic, and as you go
+
+There is **no remote**. This history is the only copy, so a working tree that
+has drifted from the last commit is unbacked work, and a session that ends
+without committing loses its reasoning even if the code survives.
+
+- **Commit each landing, not each session.** One finding, one fix, or one
+  transliterated routine is a commit. If a change needs "and also" to describe
+  it, it is probably two commits - the catch-time specials and the score-ramp
+  clock they exposed were separable and should have been split.
+- **Commit before starting the next thing**, not after. Picking up new work on
+  a dirty tree is how a bisectable history stops being bisectable.
+- **The message carries the derivation.** State the address the rule came out
+  of, what the code actually says, and what the port had wrong - the commit log
+  is the second copy of `docs/reversing-notes.md` and has been read as one.
+- **Leave the tree clean.** Untracked scratch is not free: it hides the one
+  file that should have been added. Either commit it or add it to
+  `.gitignore`; do not let it accumulate.
+- Tests and the pixel diff run **before** the commit, and the numbers go in the
+  message. "111 checks, 0.02% to 0.22%" is how a later session knows whether
+  its own regression was already there.
+
 ## Layout
 
 | Path | Contents |

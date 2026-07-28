@@ -22,9 +22,14 @@ assets-extracted/
 
 # Build output
 build/
+build-*/
 *.o
 *.a
 compile_commands.json
+
+# Session transcripts the assistant harness drops in the working directory.
+# They are working notes, not the record - docs/worklog.md is the record.
+20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.txt
 
 # Python
 __pycache__/
