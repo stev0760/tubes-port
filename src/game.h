@@ -268,6 +268,12 @@ public:
     int scoreTarget() const {
         return score_ + scorePending_ * scoreMultiplier_;
     }
+    // The award in flight and the number of runs it will be multiplied by.
+    // The HUD shows both, as "+<pending>" and "x<multiplier>", while the ramp
+    // is running - `1000:582a` and `1000:5872`.
+    int scorePending() const { return scorePending_; }
+    int scoreMultiplier() const { return scoreMultiplier_; }
+
     // Non-zero while a clear animation is running.
     int clearTimer() const { return clearTimer_; }
     // The fade family whose sound to play, consumed by the caller.
@@ -297,6 +303,15 @@ public:
     // position - which is what a captured state describes and what a test
     // wants. A slot mid-slide has to be built by hand.
     void setTubeAtoms(const std::vector<int8_t>& v);
+    // The HUD is part of the frame now, so a captured state has to be able to
+    // describe it or a mid-game capture can never be matched.
+    void setScore(int v) { score_ = v; }
+    void setChains(int v) { chains_ = v; }
+    void setDropsRemaining(int v) { dropsRemaining_ = v; }
+    void setScorePending(int pending, int multiplier) {
+        scorePending_ = pending;
+        scoreMultiplier_ = multiplier;
+    }
 
 private:
     void spawn();

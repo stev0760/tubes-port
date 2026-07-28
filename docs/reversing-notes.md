@@ -4773,6 +4773,118 @@ States **1 and 2** are a two-frame teardown - `1000:18ec` steps 1 to 2 and 2 to
 0 - and `drawn()` is `state > 2`, so neither renders. They exist so a slot is
 not reallocated on the frame it was released.
 
+## The HUD, and how text is drawn
+
+### The text renderer, `2000:35ec` and `2000:36ab`
+
+`OutText(x, y, colour, mode, s)` - `2000:36ab`, `RETF 0xc` - draws each
+character with `2000:35ec` and steps x by the advance. Two things in it are
+the whole look of the game's text.
+
+**The colour walks down the cell.** `2000:35ec` keeps the index in `BH` and
+adjusts it after every scanline, so a glyph is a vertical gradient off ONE
+palette index rather than a flat colour:
+
+    src := font + char * cellH;
+    for row := cellH downto 1 do begin
+        bits := src^;  Inc(src);
+        if bits <> 0 then <plot the set bits in BH>;
+        case mode of
+          1: Dec(BH);
+          2: Inc(BH);
+          3: if row > peakRow then Dec(BH, 2) else Inc(BH, 2);
+        end
+    end
+
+The loop counter runs DOWN, so mode 3's turning point is measured from the
+bottom of the cell. Only set bits are written - a glyph is transparent and
+never lays down a background.
+
+**Bit 7 of the mode is a shadow.** With it set, `2000:36ab` draws the glyph a
+second time first, at `(x + 1, y + 1)`, flat, in `DS:0x239c`. Every call in the
+game session sets it. A space is skipped entirely rather than drawn, so it
+lays down no shadow either.
+
+`OutTextCentred(x0, x1, y, colour, mode, s)` - `2000:37ea` - measures the
+string with `2000:3774` and starts it at `(x0 + x1 - width) div 2`.
+
+### `SetFont`, `2000:3fab`
+
+    DS:0x2392 := fontPtr;      DS:0x2396 := cellW;
+    DS:0x2397 := cellH;        { also the per-character stride }
+    DS:0x2398 := advance;      DS:0x2399 := peak + 1;
+
+The game selects two fonts and swaps between them mid-frame:
+
+| call site | args | font |
+|---|---|---|
+| `1000:42ae` | `(8, 8, 6, 4)` | `TINY6X8.88` |
+| `1000:42e8` | `(8, 16, 8, 7)` | `FUTURE.816` |
+
+The small one has to be `TINY6X8.88` - it is the only 8 x 8 font in the
+archive. `FUTURE.816` was identified by pulling the digit `0` out of a captured
+HUD frame and comparing it against all four `.816` fonts: it matches byte for
+byte and the other three are not close.
+
+### The HUD itself
+
+Labels once at session setup, `1000:42ae`; numbers every frame, `1000:5707`.
+
+    SetFont(small);
+    OutText(  1, 1, 127, $81, 'Chains');
+    OutText(288, 1, 127, $81, 'Drops');
+    SetFont(big);
+    OutTextCentred(0, 319, 0, 127, $81, Str(score));
+    OutText(32, 0, 127, $81, Str(chains:3));
+    if (drops > 0) and (drops < 255) then
+        OutText(265, 0, 127, $81, Str(drops))
+    else begin
+        SetFont(small);  OutText(270, 1, 127, $81, 'No');  SetFont(big)
+    end
+
+`$81` is the shadow bit plus mode 1. **There is no second colour constant
+anywhere** - the labels and the numbers are both index 127, and they look
+different only because the ramp runs over eight scanlines in one font and
+sixteen in the other. The palette holds a cyan ramp at 112..127 with 127 its
+darkest end, so every glyph brightens toward its own bottom.
+
+Confirmed against a captured frame: the pixels of `Chains` read 127, 126, 125,
+124, 123, 122, 121 down its eight rows, exactly one per scanline, with index 0
+one down and one right of every stem. `DS:0x239c`, the shadow index, is
+therefore **0**.
+
+The width-3 field on `chains` is why its digit sits at x = 48 and not 32 - the
+two leading spaces advance without drawing.
+
+The 255 arm is the drop counter having wrapped past zero, which is the
+game-over condition, so `No` is on screen for the frame that ends the session
+as well as the last one before it.
+
+### The score pop-ups
+
+`1000:582a`, while the ramp is running, in the small font at colour **168**
+with mode **3** - a peak rather than a ramp, brightening to the middle of the
+cell and dimming again:
+
+    if pending > 0 then
+        OutTextCentred(0, 319, 13, 168, $83, '+' + Str(pending));
+    if multiplier > 1 then
+        OutTextCentred(0, 319, 21, 168, $83, 'x' + Str(multiplier));
+
+### Two pixels the port draws and the original does not
+
+The port reproduces the HUD band exactly - every ink and shadow pixel of
+`Chains`, `Drops`, the score and the counters - **except two**: the shadow at
+`(36, 4)` and `(36, 7)`, both cast by the `s` of `Chains`. Every shadow pixel
+at x <= 35 is present in both; x = 36 is present only in the port.
+
+The cause is not established. It is not a per-character effect - `Drops` also
+ends in `s` and matches completely - and the dirty-rect restore over the chains
+value starts at x = 37, one column short of explaining it. Most likely an edge
+case in the original's Mode X nibble writer, which is the one part of that
+routine that is about the hardware rather than the game. Recorded rather than
+chased, like the three-pixel GAMEFG floor.
+
 ### Still open on the specials
 
 `1000:041c`, the Crystal's teleport, which `1000:0f3b` calls in wave mode 5

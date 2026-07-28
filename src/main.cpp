@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "font.h"
 #include "game.h"
 #include "gfx.h"
 #include "mus.h"
@@ -194,7 +195,8 @@ struct Options {
 //     tubecol <0..5>
 //     tubex <pixels>          optional; the tube's exact x, mid-slide
 //     grid <30 type values, row-major from the top>
-//     tube <types held in the test tube, mouth first>
+//     tube <types held in the test tube, bottom slot first>
+//     score <n>   chains <n>   drops <n>   pending <award> <multiplier>
 //     atom <x> <y> <state> <column> <type> [<slot>]
 //
 // The optional slot is the atom's index in the original's array. It matters
@@ -232,6 +234,17 @@ bool loadState(const std::string& path, tubes::Game& game) {
                 b.set(i % 6, i / 6, static_cast<int8_t>(v));
                 while (*p2 == ' ') ++p2;
                 while (*p2 && *p2 != ' ') ++p2;
+            }
+        } else if (!std::strcmp(key, "score")) {
+            game.setScore(std::atoi(rest));
+        } else if (!std::strcmp(key, "chains")) {
+            game.setChains(std::atoi(rest));
+        } else if (!std::strcmp(key, "drops")) {
+            game.setDropsRemaining(std::atoi(rest));
+        } else if (!std::strcmp(key, "pending")) {
+            int p = 0, m = 0;
+            if (std::sscanf(rest, "%d %d", &p, &m) >= 1) {
+                game.setScorePending(p, m);
             }
         } else if (!std::strcmp(key, "tube")) {
             std::vector<int8_t> v;
@@ -348,6 +361,90 @@ bool loadSprite(const tubes::Archive& res, const std::string& name,
     tubes::Bytes raw;
     std::string err;
     if (!res.read(name, raw, err) || !tubes::decodeCsp(raw, out, err)) {
+        std::fprintf(stderr, "  %s: %s\n", name.c_str(), err.c_str());
+        return false;
+    }
+    return true;
+}
+
+// The HUD, transliterated from `1000:42ae` (the labels, drawn once at session
+// setup) and `1000:5707` (the numbers, redrawn every frame).
+//
+//     SetFont(small);                                    { 8 x 8, advance 6 }
+//     OutText(  1, 1, 127, $81, 'Chains');
+//     OutText(288, 1, 127, $81, 'Drops');
+//     SetFont(big);                                     { 8 x 16, advance 8 }
+//     ...
+//     OutTextCentred(0, 319, 0, 127, $81, Str(score));
+//     OutText(32, 0, 127, $81, Str(chains:3));
+//     if (drops > 0) and (drops < 255) then
+//         OutText(265, 0, 127, $81, Str(drops))
+//     else begin
+//         SetFont(small);  OutText(270, 1, 127, $81, 'No');  SetFont(big)
+//     end
+//
+// `$81` is the shadow bit plus mode 1, so every glyph is drawn twice: once
+// flat in index 0 at (x+1, y+1), then again walking DOWN the palette one index
+// per scanline from 127. The palette holds a cyan ramp at 112..127, which is
+// where the HUD's colour comes from - there is no second colour constant
+// anywhere. Confirmed against a captured frame: the pixels of "Chains" read
+// 127, 126, 125 ... down its eight rows, exactly one per scanline.
+//
+// The width-3 field on `chains` is the reason its digit sits at x = 48 rather
+// than 32 - the two leading spaces advance without drawing.
+void drawHud(tubes::Screen& screen, const tubes::Game& game,
+             const tubes::Font& big, const tubes::Font& small, bool haveBig,
+             bool haveSmall) {
+    constexpr uint8_t kHudColour = 127;
+    constexpr uint8_t kHudMode = tubes::textmode::kShadow |
+                                 tubes::textmode::kFadeDown;
+
+    if (haveSmall) {
+        tubes::drawText(screen, small, 1, 1, kHudColour, kHudMode, "Chains");
+        tubes::drawText(screen, small, 288, 1, kHudColour, kHudMode, "Drops");
+    }
+    if (!haveBig) return;
+
+    tubes::drawTextCentred(screen, big, 0, 319, 0, kHudColour, kHudMode,
+                           std::to_string(game.score()));
+
+    std::string chains = std::to_string(game.chains());
+    while (chains.size() < 3) chains.insert(chains.begin(), ' ');
+    tubes::drawText(screen, big, 32, 0, kHudColour, kHudMode, chains);
+
+    // 1000:576f. The 255 arm is the drop counter having wrapped past zero,
+    // which is the game-over condition - so "No" is on screen for the frame
+    // that ends the session as well as for the last one before it.
+    const int drops = game.dropsRemaining();
+    if (drops > 0 && drops < 255) {
+        tubes::drawText(screen, big, 265, 0, kHudColour, kHudMode,
+                        std::to_string(drops));
+    } else if (haveSmall) {
+        tubes::drawText(screen, small, 270, 1, kHudColour, kHudMode, "No");
+    }
+
+    // The award in flight, centred under the score - `1000:582a`. Colour 168
+    // with mode 3, which brightens to the middle of the cell and dims again
+    // rather than ramping one way.
+    if (!haveSmall || game.scorePending() <= 0) return;
+    constexpr uint8_t kPopColour = 168;
+    constexpr uint8_t kPopMode = tubes::textmode::kShadow |
+                                 tubes::textmode::kPeak;
+    tubes::drawTextCentred(screen, small, 0, 319, 13, kPopColour, kPopMode,
+                           "+" + std::to_string(game.scorePending()));
+    // 1000:586a - the multiplier only appears when it is worth more than one.
+    if (game.scoreMultiplier() > 1) {
+        tubes::drawTextCentred(screen, small, 0, 319, 21, kPopColour, kPopMode,
+                               "x" + std::to_string(game.scoreMultiplier()));
+    }
+}
+
+bool loadFont(const tubes::Archive& res, const std::string& name, int advance,
+              int peak, tubes::Font& out) {
+    tubes::Bytes raw;
+    std::string err;
+    if (!res.read(name, raw, err) ||
+        !tubes::decodeFont(raw, advance, peak, out, err)) {
         std::fprintf(stderr, "  %s: %s\n", name.c_str(), err.c_str());
         return false;
     }
@@ -633,6 +730,20 @@ int main(int argc, char** argv) {
     // it sits 4px left of column 1 and level with row 1.
     tubes::Sprite beaker;
     const bool haveBeaker = loadSprite(res, "BEAKER.CSP", beaker);
+
+    // The two fonts the game session swaps between, with the numbers
+    // `1000:42ae` and `1000:42e8` pass to `2000:3fab`: the small one for the
+    // labels and the pop-ups, the large one for every number.
+    //
+    // Which resources they are is settled, not guessed. The small one has to
+    // be `TINY6X8.88` because it is the only 8 x 8 font in the archive and the
+    // setup selects a cell height of 8. The large one was identified by
+    // pulling the digit `0` out of a captured HUD and comparing it against all
+    // four `.816` fonts: `FUTURE.816` matches byte for byte and the other
+    // three do not come close.
+    tubes::Font bigFont, smallFont;
+    const bool haveBig = loadFont(res, "FUTURE.816", 8, 7, bigFont);
+    const bool haveSmall = loadFont(res, "TINY6X8.88", 6, 4, smallFont);
     const int tubeFrames = static_cast<int>(haveTube[1]) +
                            static_cast<int>(haveTube[2]) +
                            static_cast<int>(haveTube[3]);
@@ -927,6 +1038,8 @@ int main(int argc, char** argv) {
         }
 
         if (haveBeaker) screen.draw(beaker, kGridX - 4, kGridY);
+
+        drawHud(screen, game, bigFont, smallFont, haveBig, haveSmall);
 
         screen.toRgba(pal, rgba);
         SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kScreenWidth * 4);

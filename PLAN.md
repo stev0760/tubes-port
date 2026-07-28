@@ -59,6 +59,7 @@ Percentages are judgement calls, so the breakdown matters more than the number.
 | The test tube's record, state machine and five slots | **done** - and it is a stack |
 | The beaker update `1000:22a6` | **done** - three planes, four matchers, fade, gravity |
 | The tipping animation `1000:463a`, and records 7..12 | **done** - four phases, state 8 and state 9 |
+| Text rendering and the HUD | **done** - the colour walk, the shadow, both fonts |
 | Beaker-side specials `1000:2790` | **done** - AntiMatter, Blocker, Convertor |
 | Catch-time specials `1000:180c` | **done** - Bonus, Multiplier, EvilMultiplier, Filler |
 | Scoring and the chain bonus multiplier | **done**, from code rather than the manual |
@@ -106,13 +107,16 @@ Working, and transliterated rather than invented:
 - **the in-tube slide** and **records 7..12**, so a tipped atom visibly leaves
   the tube, falls 9 px a frame and lands on the first free row - or is lost,
   at the cost of a drop, if its column is full
+- **the HUD**: Chains, the centred score and Drops, with the score pop-ups -
+  and under it a transliterated text renderer, so a glyph is a vertical colour
+  walk off one palette index with a shadow, exactly as `2000:35ec` draws it
 - music: all ten songs, correct at the register level
 
 Absent entirely:
 
 | Missing | Size |
 |---|---|
-| HUD - Chains, score, Drops, the small ball counters | small, high visibility |
+| The wave-mode HUD ball counters at `DS:0x200a` | small, and wave-mode only |
 | Sound effects | small |
 | Wave structure: briefings, objectives, modifiers | large |
 | Menus, difficulty select, high scores, save/load | large |
@@ -239,13 +243,20 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
 
 **In priority order:**
 
-1. **IN PROGRESS: the HUD**, now that fonts are decoded and the render order
-   around them is known. It would also settle the one scoring conflict below.
-2. **Sound effects.** Every hook now exists: the matcher names the fade family
+1. **Sound effects.** Every hook now exists: the matcher names the fade family
    whose `.SFX` to play, and `Game::takeSound()` hands it to the caller. The
    catch-time specials name theirs too - the Bonus plays a fixed one from the
    frame at `-0x4a`, and the tube's arrival picks between `-0x76` and `-0x7a`
    depending on whether the atom landed in the bottom slot.
+2. **Demo playback.** `.SCR` is decoded and `Game::update` already takes the
+   same button bits it records, so replaying one through the live loop is
+   mostly plumbing - and it is the regression oracle the prime directive asks
+   for. Every rule landed since the beaker has been checked by unit test and
+   by eye; none has been checked against the original's own play.
+3. **Wave structure**, the largest remaining piece and the gate on several
+   things already half-implemented: the objective plane, the disabled-element
+   modifier, the wave-mode HUD counters, `DS:0x1d4e`'s modes 4, 5 and 6, and
+   the tails inside the catch-time specials that only run in mode 4.
 
 **What is already transliterated and should not be re-derived:** the atom
 router `1000:0f80` (fixed-point, states 3/5/6/7, the two arc offset tables),
@@ -253,7 +264,9 @@ the four DGROUP geometry tables, the network topology, the ball table and type
 numbering, the drops model, scoring by chain orientation, the whole per-frame
 draw order with its six atom slots and the GAMEFG stamp, `.CSP` placement
 offsets, the spawn (period, column, type distribution), the difficulty seeds,
-and the test tube's slide and speed boost.
+the test tube's slide and speed boost, the tipping animation and its three
+sprites, records 7..12 and the fall into the beaker, and the text renderer
+with the HUD it draws.
 
 ### 1. The dispenser and test tube mechanic
 

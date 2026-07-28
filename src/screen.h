@@ -62,6 +62,8 @@ public:
     void stamp(const Screen& src, int x, int y, int w, int h);
 
     const uint8_t* pixels() const { return pixels_.data(); }
+    // For the text renderer, which plots single pixels rather than blitting.
+    uint8_t* pixelsMutable() { return pixels_.data(); }
 
     // Expands to RGBA8888 for upload as a texture.
     void toRgba(const Palette& pal, std::vector<uint8_t>& out) const;

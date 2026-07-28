@@ -14,7 +14,9 @@
 #include <vector>
 
 #include "board.h"
+#include "font.h"
 #include "game.h"
+#include "screen.h"
 
 namespace {
 
@@ -713,6 +715,88 @@ void testTippedAtomFallsIntoAFullColumnAndIsLost() {
     check(!g.atom(7).active(), "the record is released either way");
 }
 
+// --- text, 2000:35ec and 2000:36ab -------------------------------------
+
+// A 4-row font with one glyph: 'A' is a solid 8-pixel bar on every row, and
+// ' ' is blank. Enough to see the colour walk and the shadow.
+tubes::Font barFont() {
+    tubes::Font f;
+    f.glyphs.assign(256 * 4, 0);
+    for (int r = 0; r < 4; ++r) f.glyphs['A' * 4 + r] = 0xff;
+    f.cellH = 4;
+    f.advance = 8;
+    f.peakRow = 3;
+    return f;
+}
+
+uint8_t pixelAt(const tubes::Screen& s, int x, int y) {
+    return s.pixels()[static_cast<size_t>(y) * tubes::kScreenWidth + x];
+}
+
+void testTextColourWalksDownTheCell() {
+    // `2000:35ec` adjusts the colour after every scanline, so a glyph is a
+    // vertical gradient off one index. Mode 1 counts DOWN, which is what the
+    // HUD uses - the palette holds a cyan ramp at 112..127 and 127 is its
+    // darkest end, so the digits brighten toward the bottom.
+    tubes::Screen s;
+    const tubes::Font f = barFont();
+    tubes::drawText(s, f, 10, 5, 127, tubes::textmode::kFadeDown, "A");
+    check(pixelAt(s, 10, 5) == 127 && pixelAt(s, 10, 6) == 126 &&
+          pixelAt(s, 10, 7) == 125 && pixelAt(s, 10, 8) == 124,
+          "mode 1 steps the colour down one index a scanline");
+
+    tubes::Screen up;
+    tubes::drawText(up, f, 10, 5, 100, tubes::textmode::kFadeUp, "A");
+    check(pixelAt(up, 10, 5) == 100 && pixelAt(up, 10, 8) == 103,
+          "mode 2 steps it up");
+
+    tubes::Screen flat;
+    tubes::drawText(flat, f, 10, 5, 60, tubes::textmode::kFlat, "A");
+    check(pixelAt(flat, 10, 5) == 60 && pixelAt(flat, 10, 8) == 60,
+          "mode 0 does not move at all");
+}
+
+void testTextPeakMode() {
+    // Mode 3 compares the DOWN-counting row index against the turning point,
+    // so the peak is measured from the bottom of the cell. With cellH 4 and a
+    // turning point of 3, rows 4 counts as above it and 3, 2, 1 below.
+    tubes::Screen s;
+    const tubes::Font f = barFont();
+    tubes::drawText(s, f, 10, 5, 100, tubes::textmode::kPeak, "A");
+    check(pixelAt(s, 10, 5) == 100 && pixelAt(s, 10, 6) == 98 &&
+          pixelAt(s, 10, 7) == 100 && pixelAt(s, 10, 8) == 102,
+          "mode 3 dips then climbs, two indices at a time");
+}
+
+void testTextShadowAndSpaces() {
+    tubes::Screen s;
+    const tubes::Font f = barFont();
+    tubes::drawText(s, f, 10, 5, 127,
+                    tubes::textmode::kShadow | tubes::textmode::kFlat, "A");
+    check(pixelAt(s, 18, 9) == tubes::kShadowColour + 0 &&
+          pixelAt(s, 18, 9) == 0, "the shadow lands one down and one right");
+    check(pixelAt(s, 10, 5) == 127, "and the glyph is drawn over it");
+
+    // 2000:36e8 skips a space entirely, so a padded number lays down no
+    // shadow in its blank columns.
+    tubes::Screen sp;
+    tubes::drawText(sp, f, 10, 5, 127,
+                    tubes::textmode::kShadow | tubes::textmode::kFlat, "  A");
+    check(pixelAt(sp, 10, 5) == 0 && pixelAt(sp, 11, 6) == 0,
+          "a space draws nothing, not even a shadow");
+    check(pixelAt(sp, 26, 5) == 127, "and still advances the cursor");
+}
+
+void testTextCentring() {
+    // 2321:05e8 adds the two bounds and halves, so (0, 319) centres on 159.
+    tubes::Screen s;
+    const tubes::Font f = barFont();
+    check(tubes::textWidth(f, "AAA") == 24, "width is one advance a character");
+    tubes::drawTextCentred(s, f, 0, 319, 0, 127, tubes::textmode::kFlat, "AAA");
+    check(pixelAt(s, (319 - 24) / 2, 0) == 127,
+          "a centred string starts at (x0 + x1 - width) / 2");
+}
+
 }  // namespace
 
 int main() {
@@ -757,6 +841,10 @@ int main() {
     testTipMovesTheContents();
     testCaughtAtomSlidesToItsSlot();
     testTippedAtomFallsIntoAFullColumnAndIsLost();
+    testTextColourWalksDownTheCell();
+    testTextPeakMode();
+    testTextShadowAndSpaces();
+    testTextCentring();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

@@ -2138,3 +2138,48 @@ is now in `docs/debug-rig.md`'s terms in the worklog twice - read
 124 checks pass, up from 112. The eight pixel captures are unchanged at 0.02%
 to 0.22%; none of them catches a tip in progress, so the animation's own
 pixels are verified by transliteration and by eye, not by the harness.
+
+## 2026-07-28 (last) - the HUD, and a text renderer under it
+
+Chains, the centred score, Drops and the two score pop-ups. The interesting
+part is underneath: `2000:35ec` does not draw text in a colour, it draws text
+in a colour *walk*. The index sits in `BH` and is adjusted after every
+scanline, so a glyph is a vertical gradient off one palette entry. The HUD's
+cyan is index 127 plus mode 1, reading down the ramp the palette holds at
+112..127; the pop-ups are index 168 plus mode 3, which brightens to the middle
+of the cell and dims again.
+
+There is no second colour constant anywhere in the HUD. The labels and the
+numbers are both 127 and look different only because the ramp runs over eight
+scanlines in one font and sixteen in the other. I would not have guessed that
+from a screenshot - and did not: I read `Chains` as green off a scaled crop,
+and the pixels say 127, 126, 125 ... straight down the cyan ramp. Sampling the
+capture rather than looking at it is what settled it.
+
+### Identifying the font by its glyph
+
+The big font had four candidates. Rather than eyeball them, I pulled the digit
+`0` out of the captured HUD as eight bytes and compared it against `'0'` in all
+four `.816` files. `FUTURE.816` matches byte for byte; the other three are not
+close. That is the cheapest possible oracle and it took one script.
+
+### The HUD is invisible to the pixel-diff harness
+
+`diff_frame.py` compares only structural - grey - pixels, because the backdrop
+is random and animated. The HUD is cyan, so the harness reads exactly the same
+0.02% to 0.22% with the HUD drawn as without it. It cannot regress there and
+it cannot confirm it either.
+
+So the HUD was checked by a separate direct comparison of the y 0..25 band in
+palette indices, original against port. **Two** differing pixels out of the
+whole band, both the shadow of the `s` in `Chains` at x = 36. Not a
+per-character effect - `Drops` also ends in `s` and matches completely - and
+the dirty-rect restore over the chains value starts at x = 37, one column short
+of explaining it. Recorded and left, like the three-pixel GAMEFG floor.
+
+The state file now carries `score`, `chains`, `drops` and `pending`, so a
+future capture taken mid-game can be matched. The existing eight are all from
+the opening frames, where the HUD reads 0 / 0 / 9 - which is exactly what the
+port shows by default, and is why the comparison above was possible at all.
+
+134 checks pass, up from 124.
