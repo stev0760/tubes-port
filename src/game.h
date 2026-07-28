@@ -74,14 +74,20 @@ constexpr int kTubeStopX[7] = {0, 104, 122, 140, 158, 176, 194};
 // a live record once read was a late wave on an easy setting, not the base.
 constexpr int kSubPixel = 128;
 
-// Down or B sets the velocity of ONE atom - the one heading for the column the
-// test tube is parked under - to 0x480, nine pixels a frame. The field has
-// exactly three writers in the whole procedure: the spawn, this, and the
-// tipping animation, so nothing resets it. The boost is sticky for the rest of
-// that atom's flight, which is what makes it a control rather than a nudge.
+// Nine pixels a frame. Two things use it, and both are per-frame rather than
+// sticky, because `1000:1906` - the last thing the router does to every atom -
+// reloads the velocity from the session's base value every single frame:
 //
-// This replaces an inferred "descending sets velocity to 18 px/frame". No such
-// assignment exists: an atom comes down at whatever speed it crossed at.
+//   * Down or B sets it on ONE atom, the one heading for the column the test
+//     tube is parked under. The boost therefore lasts exactly one frame and
+//     the player has to HOLD the button.
+//   * the Bonus atom, type 10, gets it unconditionally in that same reload -
+//     which is why GOLDBALL travels the tube visibly faster than anything
+//     else.
+//
+// An earlier version made the boost permanent, on the grounds that the field
+// had "exactly three writers" and none of them reset it. The search covered
+// `1000:3a67` and the fourth writer is in `1000:0f80`.
 constexpr int kBoostVel = 0x480;
 
 // The test tube slides a flat 6 pixels a frame between its stops.

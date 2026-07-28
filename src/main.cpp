@@ -175,6 +175,7 @@ struct Options {
     int scale = 0;              // 0 = pick the largest that fits
     std::string screenshot;     // render one frame here and exit
     int autoFrames = 0;         // simulate N scripted frames first
+    bool demo = false;          // let the scripted player drive the real loop
     std::string music = "TUBES.MUS";   // song to play; empty disables audio
     std::string renderMus;      // render a song to WAV and exit
     std::string dumpRegs;       // print the OPL register stream and exit
@@ -281,6 +282,8 @@ Options parseArgs(int argc, char** argv) {
             o.screenshot = argv[++i];
         } else if (a == "--auto" && i + 1 < argc) {
             o.autoFrames = std::atoi(argv[++i]);
+        } else if (a == "--demo") {
+            o.demo = true;
         } else if (a == "--music" && i + 1 < argc) {
             o.music = argv[++i];
         } else if (a == "--no-music") {
@@ -314,6 +317,7 @@ void usage() {
         "  --scale N         integer scale factor (default: fit the display)\n"
         "  --screenshot FILE render one frame to a BMP and exit\n"
         "  --auto N          simulate N scripted frames first (for testing)\n"
+        "  --demo            let the scripted player drive the live loop\n"
         "  --music NAME      song to play (default: TUBES.MUS)\n"
         "  --no-music        start silent\n"
         "  --render-mus NAME OUT.wav   render a song to WAV and exit\n"
@@ -748,7 +752,14 @@ int main(int argc, char** argv) {
         last = now;
         if (dt > 0.1f) dt = 0.1f;    // a stall must not teleport atoms
 
-        if (opt.screenshot.empty()) game.update(readKeyboard(), dt);
+        // --demo drives the REAL loop with the scripted player, so the render
+        // path gets exercised on every frame of a whole session rather than
+        // only on the one frame --auto screenshots. That distinction matters:
+        // a crash that needs both a full beaker and a live render is invisible
+        // to --auto, which simulates first and draws once at the end.
+        if (opt.screenshot.empty()) {
+            game.update(opt.demo ? scriptedInput(game) : readKeyboard(), dt);
+        }
 
         screen.clear(0);
         if (haveBg) screen.blit(background);

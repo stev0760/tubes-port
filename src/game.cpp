@@ -254,7 +254,18 @@ void Game::updateBeaker() {
     }
 
     if (clearTimer_ > 0) --clearTimer_;
-    if (board_.overflowing()) gameOver_ = true;
+
+    // NO overflow loss. The port used to end the game the moment a column
+    // reached the top, which froze it solid with no message - `update()`
+    // returns immediately once gameOver_ is set, so the window stayed up and
+    // nothing ever moved again. It reads as a crash and was reported as one.
+    //
+    // It was also invented. `1000:3a67` sets its game-over flag in exactly two
+    // places: `1000:5d0a`, when the drop counter wraps past zero to 0xff, and
+    // `1000:47f8`, when the wave's objective pattern is satisfied. A full
+    // beaker is neither. Filling a column simply means nothing more can be
+    // tipped into it - `Board::drop` already returns false and the atom stays
+    // in the test tube.
 }
 
 // Dispense one atom, transliterated from `1000:4918`. The column is rolled,
@@ -435,15 +446,34 @@ void Game::stepAtom(Falling& a) {
         }
 
         case atomstate::kDescend:
-            // No velocity assignment here. The field's only writers are the
-            // spawn and the Down/B boost in the caller, so an atom comes down
-            // at exactly the speed it crossed the top at - or at 9 px/frame
-            // for the rest of its flight if the player boosted it.
             a.accY += a.velocity;
             a.y += a.accY / kSubPixel;
             a.accY &= kSubPixel - 1;
             break;
     }
+
+    // The LAST thing the router does to every atom, every frame, at
+    // `1000:1906`:
+    //
+    //     if record.type = 10 then record.velocity := 0x480
+    //                        else record.velocity := session.baseVelocity
+    //
+    // so the velocity is reloaded on every single frame. The Down/B boost that
+    // the caller writes just before this loop therefore lasts exactly one
+    // frame: the player has to HOLD the button, which is what the game
+    // actually does and what the previous version got wrong.
+    //
+    // That mistake is worth naming. The velocity field was declared to have
+    // "exactly three writers" after searching `1000:3a67` - but the field is
+    // also written here, in `1000:0f80`, which had never been disassembled.
+    // The search was sound and the conclusion was still false, because the
+    // search covered one function and the answer was in another. A closed list
+    // is only closed over what you looked at.
+    //
+    // It also settles a lead that had been sitting in PLAN.md from play:
+    // GOLDBALL travels the tube very fast. It is type 10, and its velocity is
+    // forced to 0x480 - nine pixels a frame - by type, every frame.
+    a.velocity = (a.colour == kBonus) ? kBoostVel : networkVel_;
 
     if (a.state != atomstate::kDescend) return;
 

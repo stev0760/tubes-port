@@ -422,12 +422,11 @@ That last point is the useful one: whatever drives atom position is computed,
 not accumulated, so there may be no "speed field" in the record at all - the
 speed could be a divisor applied to a shared frame counter.
 
-**A lead from play: `GOLDBALL` travels the tube *very fast*.** So speed is not a
-single global - it varies by ball type. Since the record's only type-ish field is
-the colour/sprite index at `+0x0b`, the thing to look for is a **speed selected
-by ball type** (a small lookup, or a branch on the type) rather than a per-record
-speed variable. That also gives Experiment 4 a much better second condition than
-holding **B**: compare a gold ball against an ordinary one, same save state.
+**A lead from play: `GOLDBALL` travels the tube *very fast*.** **SOLVED.** The
+last thing `1000:0f80` does to every atom, every frame, is reload its velocity:
+`if type = 10 then 0x480 else sessionBase`. So the Bonus atom is fast by type,
+and the Down/B boost written before the router lasts exactly one frame - the
+player has to hold it.
 
 **Recommended change of technique.** Reading one 9382-byte Pascal procedure
 with nested frames has produced five self-corrections in a single session, and

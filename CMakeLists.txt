@@ -30,7 +30,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(tubes-port PRIVATE -Wall -Wextra)
 endif()
 
-add_executable(tubes-tests src/board_test.cpp src/board.cpp)
+add_executable(tubes-tests src/board_test.cpp src/board.cpp src/game.cpp)
 target_include_directories(tubes-tests PRIVATE src)
 enable_testing()
 add_test(NAME board COMMAND tubes-tests)

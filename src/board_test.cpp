@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "board.h"
+#include "game.h"
 
 namespace {
 
@@ -311,6 +312,68 @@ void testCascade() {
     check(b.count() == 0, "cascade clears the board");
 }
 
+// --- regressions, both reported from play -----------------------------
+
+void testFullBeakerDoesNotEndTheGame() {
+    // The port used to end the game the instant a column reached the top,
+    // which froze it solid with no message - update() returns immediately once
+    // gameOver_ is set. It reads as a crash, and it was invented: `1000:3a67`
+    // sets its game-over flag only when the drop counter wraps past zero or
+    // the wave objective is met.
+    tubes::Game g(6, 5, tubes::Difficulty::k101, 99);
+    for (int r = 0; r < 5; ++r) {
+        for (int c = 0; c < 6; ++c) g.boardMutable().set(c, r, tubes::kXenon);
+    }
+    for (int i = 0; i < 600; ++i) g.update(0, 1.0f / 60.0f);
+    check(g.board().overflowing(), "the beaker really is full");
+    check(!g.gameOver(), "a full beaker does not end the game");
+}
+
+void testSpeedBoostNeedsHolding() {
+    // `1000:1906` reloads every atom's velocity from the session base on every
+    // frame, so the Down/B boost lasts exactly one frame and has to be held.
+    // Column 6 lands at x=161, which is the tube's stop index 3; filling the
+    // tube stops the atom being caught so it just descends.
+    auto descend = [](uint8_t btn, int frames) {
+        tubes::Game h(6, 5, tubes::Difficulty::k101, 5);
+        h.setTubeColumn(3);
+        h.setTubeAtoms(std::vector<int8_t>(5, tubes::kRedium));
+        tubes::Falling a;
+        a.state = tubes::atomstate::kDescend;
+        a.column = 6;
+        a.colour = tubes::kRedium;
+        a.x = tubes::kAtomColumnX[6];
+        a.y = 70;
+        a.velocity = 0x100;
+        h.setAtom(6, a);
+        for (int f = 0; f < frames; ++f) h.update(btn, 1.0f / 18.2f);
+        return h.atom(6).y - 70;
+    };
+    check(descend(0, 5) == 10, "released: 2 px a frame, the Tubes 101 base");
+    check(descend(tubes::button::kDown, 5) == 45, "Down held: 9 px a frame");
+    check(descend(tubes::button::kB, 5) == 45, "B does the same as Down");
+}
+
+void testBonusAtomIsFastByType() {
+    // The same reload gives type 10 the fast velocity unconditionally, which
+    // is why GOLDBALL visibly outruns everything else.
+    tubes::Game h(6, 5, tubes::Difficulty::k101, 5);
+    h.setTubeAtoms(std::vector<int8_t>(5, tubes::kRedium));
+    tubes::Falling a;
+    a.state = tubes::atomstate::kDescend;
+    a.column = 1;
+    a.colour = tubes::kBonus;
+    a.x = tubes::kAtomColumnX[1];
+    a.y = 70;
+    a.velocity = 0x100;
+    h.setAtom(1, a);
+    for (int f = 0; f < 5; ++f) h.update(0, 1.0f / 18.2f);
+    // 2 + 9*4: the reload happens at the END of the router, so the first frame
+    // still runs at whatever the record held and every frame after is fast.
+    // The same one-frame lag is in the original and is not worth hiding.
+    check(h.atom(1).y - 70 == 38, "a Bonus atom runs at 9 px a frame unprompted");
+}
+
 }  // namespace
 
 int main() {
@@ -335,6 +398,9 @@ int main() {
     testDistinctRunsAreTheMultiplier();
     testCascade();
     testDropAndOverflow();
+    testFullBeakerDoesNotEndTheGame();
+    testSpeedBoostNeedsHolding();
+    testBonusAtomIsFastByType();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

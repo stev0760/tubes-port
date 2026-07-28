@@ -4357,3 +4357,42 @@ on a wave mode that Endurance never enters.
 `1000:2790` onward post-processes settled specials through a scan helper at
 `1000:0c82` - "find a cell of type N" - converting types in place. That is the
 specials' behaviour and it is the next block worth taking.
+
+### The router reloads velocity every frame - and that is the whole speed model
+
+The last thing `1000:0f80` does to every atom, at `1000:1906`:
+
+    if record.type = 10 then record.velocity := 0x480
+                       else record.velocity := session.baseVelocity
+
+Two consequences, both reported from play before they were found in code:
+
+* **The Down/B boost has to be held.** `1000:3a67` writes `0x480` into one
+  atom's velocity in the tube-input block, which runs *before* the router loop.
+  The router then reloads it at the end of the same frame, so the boost is
+  worth exactly one frame of movement.
+* **`GOLDBALL` is fast by type**, unconditionally, which is why the Bonus atom
+  visibly outruns everything else. There is a one-frame lag: a newly spawned
+  Bonus runs its first frame at the base speed because the reload happens at
+  the end of the router.
+
+**This overturned a claim made one session earlier**, that the velocity field
+had "exactly three writers" and nothing reset it, so the boost was permanent.
+The search behind that was over `1000:3a67` only; the fourth writer is here, in
+a function that had never been disassembled. The search was sound and the
+conclusion was still false, because a list is only closed over what was
+searched. `CLAUDE.md` already warns "when a search comes back empty, suspect
+the search" - this is the same failure with a search that came back *full*.
+
+### There is no beaker-overflow loss
+
+`1000:3a67` sets its game-over flag in exactly two places:
+
+    1000:5d0a   the drop counter wraps past zero to 0xff
+    1000:47f8   the wave's objective pattern is satisfied and the clear timer
+                has run out
+
+A full beaker is neither. Filling a column simply means nothing more can be
+tipped into it. The port used to end the game the moment a column reached the
+top, which froze it with no message - `update()` returns immediately once the
+flag is set - and was reported as a crash.
