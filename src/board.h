@@ -1,9 +1,18 @@
-// The beaker: a grid of atoms, with match detection and settling.
+// The beaker: THREE parallel 30-byte planes, exactly as `1000:3a67` holds it.
 //
-// The grid is 6 x 5, measured off the loop bounds in 1000:3a67, and the
-// cell-to-pixel mapping is measured too - see docs/reversing-notes.md.
-// Scoring is only partly recovered; awardForRun() in game.cpp says exactly
-// which part is measured and which is fitted.
+// Transliterated from `1000:22a6` (the per-frame beaker update) and the four
+// matchers it calls - `1000:1aae`, `1c9f`, `1e90` and `209b`. The previous
+// version of this file was a behavioural reconstruction and said so; it is
+// replaced rather than extended.
+//
+// The three planes live in 3a67's own frame, contiguous, 30 bytes apart:
+//
+//     [BP-0x25] + row*6 + col    cells      `type + 19 * fadeFrame`
+//     [BP-0x43] + row*6 + col    marked     1 while the cell is clearing
+//     [BP-0x61] + row*6 + col    objective  1 = a wave target, drawn MARKER
+//
+// with `row` 1..5 and `col` 1..6 - Turbo Pascal's `array[1..5, 1..6] of byte`,
+// whose +7 bias on the base is the fingerprint that first identified it.
 
 #pragma once
 
@@ -14,14 +23,9 @@ namespace tubes {
 
 // Atom types, numbered exactly as the original numbers them. This is not an
 // arbitrary internal encoding: a settled beaker cell holds the atom record's
-// type byte (+0x0b) directly, confirmed at 96.2% over 79 settle events, so
-// these values are what the original's own grid contains. Keeping them
-// identical means a trace captured from the original can be compared against
-// this engine's board without a translation table.
-//
-// Note the ordering is NOT the sprite-file order that an earlier version of
-// this enum used (Red, Blue, Green, Yellow, Purple, Cyan, Pink): green and
-// blue are transposed, as are yellow and cyan/purple.
+// type byte (+0x0b) directly, so these values are what the original's own grid
+// contains. Keeping them identical means a trace captured from the original
+// can be compared against this engine's board without a translation table.
 enum Atom : int8_t {
     kEmpty = 0,
     kRedium = 1,
@@ -50,38 +54,55 @@ enum Atom : int8_t {
     kTypeCount = 20,        // 0..19 inclusive
 };
 
-// Types 1..7 are the ordinary colours: the ones that spawn freely and match
-// each other. Everything from 8 up is a special.
+// A cell does not hold a type - it holds `type + 19 * fadeFrame`, so ONE table
+// lookup draws a settled atom and a fading one alike and the drawing code
+// never branches. The original's own sprite table is indexed by exactly this
+// value: `ball[cell]` at `DS:0x1da6 + 4 * cell`.
+//
+// `1000:2729` extracts the type with `cell mod 19` when it needs one, which is
+// where the stride is confirmed rather than inferred.
+constexpr int kFadeStride = 19;
+
+// A cell is a Pascal `byte`, and it must be unsigned here too: the composite
+// reaches 152 at the end of a fade, which overflows a signed char. Storing it
+// in int8_t compiled and passed every match test, and only the fade-frame
+// assertion caught it - a reminder that "it builds and the game looks right"
+// is not a type check.
+using Cell = uint8_t;
+
+// Fade sprites exist for frames 1..6 - the loop in `1000:9e53` that loads them
+// ends on `CMP byte ptr [BP-0x2], 0x6`. Frames past that have null table
+// entries and draw nothing, which is not a bug: see kCellClearAbove.
+constexpr int kFadeFrames = 6;
+
+// A marked cell gains 19 a frame and is emptied once it passes 152 - `ADD
+// [BP-3], 0x13` then `CMP [BP-3], 0x98` in `1000:255a`. 152 is 8 * 19, so a
+// cell runs through eight fade steps: six with sprites, then two invisible
+// ones before the cell empties and gravity takes the column.
+constexpr int kCellClearAbove = 152;
+
+inline int8_t cellType(Cell raw) {
+    return static_cast<int8_t>(raw % kFadeStride);
+}
+inline int cellFadeFrame(Cell raw) { return raw / kFadeStride; }
+
+// Types 1..7 are the ordinary colours. Everything from 8 up is a special.
 constexpr int8_t kFirstColour = kRedium;
 constexpr int8_t kLastColour = kPinkium;
 constexpr int kColourCount = 7;
 
-// Only the ordinary colours and Flashium take part in matching. Xenon is inert
-// - it settles in the beaker and simply sits there - and the remaining
-// specials either never settle as themselves (Bonus becomes Flashium when
-// caught) or have behaviours of their own.
-inline bool isMatchable(int8_t v) {
-    return v >= kRedium && v <= kFlashium;
+// What can SEED a run, straight from `1000:1ae1`: `if (cell < 1) or (cell > 8)
+// then exit`. Note this is applied to the raw cell, so a cell already fading
+// has a value above 19 and cannot start or join a run - the encoding does that
+// work on its own, with no separate "is clearing" test anywhere in the matcher.
+inline bool canSeedRun(Cell raw) {
+    return raw >= kRedium && raw <= kFlashium;
 }
 
-// Flashium is a wildcard: the Instructions say chains form "of the same
-// element **or in combination with Flashium atoms**", so a run may mix one real
-// colour with Flashium.
-//
-// Three Flashium with no element of their own DO match. That was briefly
-// recorded here as an open question; it is not one. Reported from play: a
-// three-Flashium match has its own clear animation, a multicoloured
-// checkerboard, and its own sound. The checkerboard is used by any Flashium
-// that fades, but the sound plays only for a three-Flashium match - which is
-// itself the game distinguishing that case, and would make no sense if the
-// case could not arise.
-inline bool isWildcard(int8_t v) {
-    return v == kFlashium;
-}
+inline bool isWildcard(int8_t v) { return v == kFlashium; }
 
 // The measured cell-to-pixel mapping. The column pitch is 18, not the 16 the
-// sprite width would suggest, and the x values are a six-entry table rather
-// than an arithmetic run in the original - they happen to be evenly spaced.
+// sprite width would suggest.
 constexpr int kColumnX[] = {107, 125, 143, 161, 179, 197};
 constexpr int kRowY0 = 121;
 constexpr int kRowPitchY = 13;
@@ -92,13 +113,28 @@ inline int playColumnX(int col) {
     return kColumnX[col];
 }
 
-// How a run of matching atoms is oriented. The original scores these
-// differently - see awardForRun().
+// The orientation code the matchers pass to the wave-objective checker at
+// `1000:192f`, and the award each one adds. Both are literals in the four
+// matchers, so this table is transcribed, not derived.
+//
+//     1000:1aae  vertical     code 2   250    counter A
+//     1000:1c9f  horizontal   code 1   500    counter B
+//     1000:1e90  diagonal ->  code 0  1000    counter C
+//     1000:209b  diagonal <-  code 0  1000    counter C
+//
+// Both diagonals share a counter, which is what the Instructions mean by
+// "Diagonal (either direction)".
 enum class RunKind : uint8_t { kHorizontal, kVertical, kDiagonal };
 
-struct Run {
-    RunKind kind = RunKind::kHorizontal;
-    int length = 0;
+// What one frame of the beaker update did, for the caller to score and sound.
+struct BoardStep {
+    int award = 0;          // sum of the per-seed awards this frame
+    int runs = 0;           // distinct runs; the original's chain multiplier
+    int chainsVertical = 0;
+    int chainsHorizontal = 0;
+    int chainsDiagonal = 0;
+    int8_t soundType = kEmpty;   // the family whose sound to play, 0 for none
+    bool settled = false;        // an atom moved down; the original plays a sound
 };
 
 class Board {
@@ -108,9 +144,18 @@ public:
     int cols() const { return cols_; }
     int rows() const { return rows_; }
 
-    int8_t at(int c, int r) const;
-    void set(int c, int r, int8_t v);
     bool inBounds(int c, int r) const;
+
+    // The raw composite, which is what the renderer wants - it indexes the
+    // sprite table directly.
+    Cell at(int c, int r) const;
+    // The type alone, 0 when empty.
+    int8_t typeAt(int c, int r) const;
+    bool isMarked(int c, int r) const;
+    bool isObjective(int c, int r) const;
+
+    void set(int c, int r, Cell raw);
+    void setObjective(int c, int r, bool on);
 
     void clear();
 
@@ -118,28 +163,46 @@ public:
     int dropRow(int c) const;
 
     // Places an atom at the bottom of a column. Returns false if full.
-    bool drop(int c, int8_t colour);
+    bool drop(int c, int8_t type);
 
-    // Marks every atom belonging to a run of 3 or more - horizontal,
-    // vertical, or either diagonal. Returns how many cells were marked.
-    // When `runs` is given it also reports each run's orientation and length,
-    // which scoring needs; the original pays a diagonal differently from a
-    // line.
-    int findMatches(std::vector<uint8_t>& marked,
-                    std::vector<Run>* runs = nullptr) const;
-
-    // Removes marked cells and lets the atoms above settle downward.
-    void removeMarked(const std::vector<uint8_t>& marked);
+    // One frame of `1000:22a6`: match, advance the fades, then settle. This is
+    // the whole beaker update and it runs every frame, not only when something
+    // changes - which is what makes clearing and falling animate at all.
+    BoardStep step();
 
     // True when any column has reached the top.
     bool overflowing() const;
 
+    // Settled atoms only; a cell mid-fade still counts until it empties.
     int count() const;
 
+    // A wave modifier: an element that still spawns but cannot be cleared.
+    // `1000:1afe` compares every candidate type against it and bails out.
+    void setDisabledType(int8_t t) { disabledType_ = t; }
+
+    // Wave mode 6 gates the objective plane; outside it the plane is inert.
+    void setObjectiveMode(bool on) { objectiveMode_ = on; }
+    int objectivesCleared() const { return objectivesCleared_; }
+
 private:
+    size_t idx(int c, int r) const {
+        return static_cast<size_t>(r) * cols_ + c;
+    }
+    // One seed position of one matcher. `dc`/`dr` step along the run.
+    bool matchAt(int c, int r, int dc, int dr, RunKind kind, BoardStep& out);
+    void matchPass(BoardStep& out);
+    void fadePass();
+    void gravityPass(BoardStep& out);
+
     int cols_;
     int rows_;
-    std::vector<int8_t> cells_;   // row 0 is the top
+    std::vector<Cell> cells_;         // plane A: type + 19 * fadeFrame
+    std::vector<uint8_t> marked_;     // plane B
+    std::vector<uint8_t> objective_;  // plane C
+
+    int8_t disabledType_ = kEmpty;
+    bool objectiveMode_ = false;
+    int objectivesCleared_ = 0;
 };
 
 }  // namespace tubes

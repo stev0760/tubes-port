@@ -80,6 +80,41 @@ const char* kAtomSprites[tubes::kTypeCount] = {
     "MYSTBALL.CSP",     // 19 the "?" concealment sprite, not a ball
 };
 
+// The fade families, one per type, in the order `1000:9e53` loads them. The
+// loader's inner sequence is types 1..10 then 18, and the eleven name strings
+// sit consecutively at 1000:9d07:
+//
+//     RFADE GFADE BFADE CFADE PFADE YFADE PNKFADE FFADE AFADE GLDFADE CRFADE
+//
+// followed immediately by the same eleven with `.SFX` - one sound per family,
+// which is why the clear sound follows the colour the stack matched AS rather
+// than each ball's own type.
+//
+// Types 11..17 and 19 have null entries: they are never cleared by matching,
+// so they have no fade of their own. A fade family is an EFFECT, not a
+// "can be cleared" marker - AFADE is AntiMatter's blast applied to everything
+// caught in it, and CRFADE is the Crystal's teleport, forward then reverse.
+const char* kFadeFamilies[tubes::kTypeCount] = {
+    nullptr,      // 0  empty
+    "RFADE",      // 1  Redium
+    "GFADE",      // 2  Greenium
+    "BFADE",      // 3  Bluium
+    "CFADE",      // 4  Cyanium
+    "PFADE",      // 5  Purplium
+    "YFADE",      // 6  Yellowium
+    "PNKFADE",    // 7  Pinkium
+    "FFADE",      // 8  Flashium
+    "AFADE",      // 9  AntiMatter
+    "GLDFADE",    // 10 Bonus
+    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,   // 11..17
+    "CRFADE",     // 18 Crystal
+    nullptr,      // 19 MYSTBALL is a rendering state, not a ball
+};
+
+// How many distinct values a beaker cell can take: `type + 19 * fadeFrame`
+// runs to 152 before the cell empties, so the sprite table needs 153 slots.
+constexpr int kCellStates = tubes::kCellClearAbove + 1;
+
 // The tube network furniture, decompiled out of 1000:3a67. It is NOT a
 // backdrop: the network is built from individual segment sprites in layered
 // passes, and the atoms are drawn *between* those passes so the solid pieces
@@ -534,14 +569,38 @@ int main(int argc, char** argv) {
     bool haveBg = loadImage(res, opt.gameBg, background, -1);
     bool haveFg = loadImage(res, "GAMEFG.GFX", foreground, 0);
 
-    tubes::Sprite atoms[tubes::kTypeCount];
+    // ONE table, indexed by a beaker cell's raw value. The original's is at
+    // DS:0x1da6 and is indexed by `type + 19 * fadeFrame`, so the same lookup
+    // serves a settled atom and a fading one and the drawing code never
+    // branches on whether a cell is clearing. Frames past 6 are null and draw
+    // nothing, which is exactly what the original does with them.
+    tubes::Sprite atoms[kCellStates];
+    bool haveAtom[kCellStates] = {};
     int loaded = 0;
     int drawable = 0;
     for (int i = 0; i < tubes::kTypeCount; ++i) {
         if (!kAtomSprites[i]) continue;
         ++drawable;
-        if (loadSprite(res, kAtomSprites[i], atoms[i])) ++loaded;
+        if (loadSprite(res, kAtomSprites[i], atoms[i])) {
+            haveAtom[i] = true;
+            ++loaded;
+        }
     }
+    int fadesLoaded = 0;
+    for (int frame = 1; frame <= tubes::kFadeFrames; ++frame) {
+        for (int type = 0; type < tubes::kTypeCount; ++type) {
+            if (!kFadeFamilies[type]) continue;
+            const int slot = type + tubes::kFadeStride * frame;
+            if (slot >= kCellStates) continue;
+            const std::string name =
+                std::string(kFadeFamilies[type]) + std::to_string(frame) + ".CSP";
+            if (loadSprite(res, name, atoms[slot])) {
+                haveAtom[slot] = true;
+                ++fadesLoaded;
+            }
+        }
+    }
+    std::printf("loaded %d/66 fade sprites\n", fadesLoaded);
     tubes::Sprite testTube;
     bool haveTube = loadSprite(res, "TESTUBE1.CSP", testTube);
 
@@ -800,12 +859,29 @@ int main(int argc, char** argv) {
         // overlaps the balls. The port used to draw it first.
         if (haveFurn[kBeakerShadow]) screen.draw(furn[kBeakerShadow], 186, 135);
 
+        // The beaker grid, then the MARKER overlay, in `1000:598b`'s order.
+        // The cell is used as the sprite index directly - that is the whole
+        // point of the `type + 19 * fadeFrame` encoding, and it is why a
+        // clearing atom animates with no branch anywhere in the draw.
         const tubes::Board& b = game.board();
         for (int r = 0; r < b.rows(); ++r) {
+            const int y = kGridY + r * kPitchY;
             for (int c = 0; c < b.cols(); ++c) {
-                int8_t v = b.at(c, r);
-                if (v == tubes::kEmpty) continue;
-                screen.draw(atoms[v], kGridX + c * kPitchX, kGridY + r * kPitchY);
+                const tubes::Cell v = b.at(c, r);
+                if (v == 0 || !haveAtom[v]) continue;
+                screen.draw(atoms[v], kGridX + c * kPitchX, y);
+            }
+        }
+        // Plane C, drawn over a flagged cell at (x + 2, y + 1). Gated on the
+        // wave mode in the original; the port has no waves yet, so the plane
+        // is carried and drawn but nothing sets it.
+        if (haveFurn[kMarker]) {
+            for (int r = 0; r < b.rows(); ++r) {
+                for (int c = 0; c < b.cols(); ++c) {
+                    if (!b.isObjective(c, r)) continue;
+                    screen.draw(furn[kMarker], kGridX + c * kPitchX + 2,
+                                kGridY + r * kPitchY + 1);
+                }
             }
         }
 

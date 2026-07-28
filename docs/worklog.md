@@ -1879,3 +1879,85 @@ offset that needed sweeping.
 Eight captures, all fresh or re-diffed: **0.02% to 0.22%** of structural pixels.
 The floor is three pixels at (59, 10..12), where the original leaves a GAMEFG
 pixel erased and we do not know why. Recorded rather than explained.
+
+## 2026-07-27 — Session 9: the three-plane beaker
+
+The beaker looked right and was structurally wrong. `1000:22a6` - the per-frame
+beaker update, called unconditionally from the frame loop - turned out to be
+the largest unread block in the game, and taking it settled the match rules,
+the fade, gravity, scoring and the chain bonus in one pass.
+
+### What the three planes are for
+
+Cells hold `type + 19 * fadeFrame`, not a type. A second plane marks a cell as
+clearing, a third carries wave objectives. The payoff is that ONE sprite-table
+lookup draws a settled atom and a fading one alike, so the drawing code never
+branches - and a fading cell, holding a value above 8, is automatically
+excluded from matching by tests that were already there for other reasons.
+There is no "is clearing" flag anywhere in the matcher because the encoding
+makes one unnecessary.
+
+The port had a single plane of types, so it could not show a clear at all: a
+match removed the atoms on the frame it happened.
+
+### The four matchers
+
+Four nested procedures over four ranges, and the ranges alone identify them -
+they are exactly the seed positions where a run of three fits. Awards are
+literals: 250 vertical, 500 horizontal, 1000 either diagonal. **That confirms
+the Detailed Instructions from code**, the first source better than the manual
+that rule has had.
+
+Four things came out of the matcher body that were previously guessed:
+
+* the wildcard ADOPTS - a Flashium seed becomes the next non-empty cell's
+  colour, which is why one Flashium serves two runs at once;
+* the award is per SEED, so a run of four pays twice and a five pays three
+  times - "4 atom molecules count as 2 chains" is a literal description of the
+  scan, not a separate counter;
+* `disabledElement` is a real per-wave variable the matcher checks, which is
+  the "element that spawns but cannot be cleared" modifier;
+* the chain bonus multiplier is the number of DISTINCT runs formed at once, and
+  the total paid is `pending * multiplier` over six ramp frames. It had been
+  left unimplemented for want of a number.
+
+One conflict is recorded rather than resolved: an earlier live measurement had
+a diagonal four paying 1000 where this model pays 2000. That measurement is
+from the black-box session whose conclusions have already been overturned
+twice, so the code wins, but it deserves a check once the HUD can show a score.
+
+### Gravity is one row per frame
+
+The destination cursor and the source row walk down together, so an atom falls
+at most one row per frame and a column shifts by one per pass. The port
+compacted fully in one step, which no amount of looking at a static screenshot
+would have contradicted.
+
+### Verified against the running game
+
+`exp17_fade_encoding.py` injects three Redium into the original's cells plane
+and samples it: **1, 39, 77, 96, 134, 0** - every value exactly `1 + 19k`,
+ending at 134 before the cell empties. Eight fade steps, six of which have
+sprites; frames 7 and 8 are null entries and draw nothing, so the atom is
+invisible for two frames before the column falls.
+
+The marked plane read 0 alongside `cells = 134`. That is a torn read - the two
+planes come from separate GDB requests while the game runs - and is written up
+as such rather than as a finding.
+
+### A type bug the tests caught and nothing else would have
+
+Cells were stored in `int8_t`. The composite reaches 152, which overflows a
+signed char. It compiled, the game looked correct, and every match test passed;
+only the assertion on the fade frame's numeric value failed. Cells are a Pascal
+`byte` and are `uint8_t` here now.
+
+### Where it stands
+
+58 checks pass. The five pixel-diff captures are unchanged at 0.02% to 0.13%,
+and the clear now animates - three Redium shrink through the RFADE family over
+eight frames and the column settles behind them.
+
+Still unread in the beaker update: `1000:2790` onward, which post-processes
+settled specials through a "find a cell of type N" helper. That is the
+specials' behaviour and it is the next block worth taking.

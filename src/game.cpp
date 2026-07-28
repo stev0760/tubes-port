@@ -5,13 +5,15 @@
 // the spawn (period, column choice, type distribution), the difficulty seeds,
 // the test tube's slide, and the Down/B speed boost.
 //
+// Scoring and the beaker came over too - `1000:22a6` and its four matchers -
+// so the awards, the chain bonus multiplier and the fade are code now, not
+// readings of the Instructions.
+//
 // What is NOT from code, and is marked where it appears:
 //
-//   * scoring, which comes from the game's own Detailed Instructions - good
-//     corroboration, but the match-and-clear routine is still unread;
-//   * the chain bonus multiplier, deliberately unimplemented;
 //   * kOriginalFps, assumed to be the PC timer's 18.2 Hz;
-//   * the beaker as a single plane of types, which the original is not.
+//   * the specials' behaviours, which the beaker update post-processes at
+//     `1000:2790` through a scan helper that is not decoded yet.
 //
 // The order of authority is in CLAUDE.md: decompiled code settles a rule, the
 // game's text corroborates, measurement locates and validates but never
@@ -23,46 +25,51 @@
 namespace tubes {
 namespace {
 
-// Scoring, stated outright by the game's own Detailed Instructions:
+// Scoring, and now from CODE rather than from the Instructions. Each matcher
+// adds its own literal to the pending total:
 //
-//     Vertical                     250
-//     Horizontal                   500
-//     Diagonal (either direction) 1000
+//     1000:1c56  vertical     ADD [pending], 0xfa    = 250
+//     1000:1e47  horizontal   ADD [pending], 0x1f4   = 500
+//     1000:2052  diagonal     ADD [pending], 0x3e8   = 1000   (both directions)
 //
-// The award depends on ORIENTATION ONLY - there is no length scaling - and
-// that reproduces both live measurements exactly: a vertical run of 3 paid 250
-// (seen twice), and a diagonal run of 4 paid 1000, not some multiple of it.
+// which confirms what the Detailed Instructions said. What the Instructions
+// did NOT say, and what no amount of watching gave up, is that the award is
+// added ONCE PER SEED POSITION - so a run of four pays twice and a run of five
+// three times. "4 atom molecules count as 2 chains" turns out to be a literal
+// description of the scan, not a separate chain counter.
 //
-// An earlier version of this file fitted a curve, 250*(len-2)^2, through those
-// same two points. It matched them only by coincidence, and it was unnecessary:
-// the answer was already written down in the Instructions. Worth remembering
-// before fitting anything again.
-int awardForRun(const Run& r) {
-    switch (r.kind) {
-        case RunKind::kVertical:   return 250;
-        case RunKind::kHorizontal: return 500;
-        case RunKind::kDiagonal:   return 1000;
-    }
-    return 250;
-}
+// Board::step() sums those awards; the multiplier and the ramp are below.
 
-// Length drives the CHAIN COUNT instead, which is what the HUD's "Chains"
-// figure shows: "3 atom molecules count as 1 chain. 4 atom molecules count as
-// 2 chains. 5 atom molecules count as 3 chains."
-int chainsForRun(const Run& r) {
-    return r.length - 2;
-}
-
-// The Instructions also say "forming multiple chains all at once will create a
-// chain bonus point multiplier", but never say how large. It is deliberately
-// NOT implemented: a 5-cell clear was observed paying exactly 1250, which is
-// 250 + 1000 - two simultaneous chains summed with no multiplier at all. Until
-// something distinguishes the two, plain summation is what the evidence shows.
-
-// The score ramps toward its target instead of snapping. Measured on the
-// original's own score variable, not a display layer: awards arrive as
-// +166 then +834 for 1000, +41 then +209 for 250 - about a sixth per step.
+// The score ramps in, and the ramp is where the chain bonus multiplier lives.
+// From `1000:2410` and the flush at `1000:58c5`:
+//
+//     if rampSteps > 0 then begin
+//         multiplier := multiplier + runsThisFrame;
+//         if increment = 0 then
+//             increment := (pending * multiplier) div rampSteps;
+//         total := total + increment;
+//     end
+//     ... and once rampSteps counts down to zero, the remainder is flushed
+//         and pending and multiplier are cleared.
+//
+// So the money is `pending * multiplier`, paid over six frames, and the
+// multiplier is the number of DISTINCT runs formed at the same time. One
+// three-run pays 250 x 1; two simultaneous runs pay (250 + 250) x 2. That is
+// exactly the "chain bonus point multiplier" the Instructions mention without
+// quantifying, and it was previously left unimplemented for want of a number.
+//
+// Note this contradicts one earlier live measurement, which recorded a
+// diagonal run of four paying 1000 where this pays 2000. The measurement came
+// from the black-box session whose conclusions have already been overturned
+// twice; the code is the authority. Flagged in PLAN.md rather than silently
+// resolved.
 constexpr int kScoreRampSteps = 6;
+
+// `1000:1c70` sets a countdown to 10 on every match, and `1000:5d43` steps it
+// down once a frame. While it runs, the frame loop refuses to declare the wave
+// complete - so it is the guard that lets a cascade finish before the board is
+// judged empty.
+constexpr int kClearFrames = 10;
 
 // The lanes an atom travels between. y = 187 is where atoms enter at the
 // bottom of a feed tube and y = 68 is the top lane where the test tube can
@@ -215,24 +222,39 @@ int8_t Game::nextColour() {
     return static_cast<int8_t>(type);
 }
 
-void Game::award(int points) {
-    if (points <= 0) return;
-    scorePending_ += points;
-    // A larger award ramps in larger steps, so everything lands in about the
-    // same number of frames rather than a big chain trickling in.
-    const int step = (points + kScoreRampSteps - 1) / kScoreRampSteps;
-    scoreStep_ = std::max(scoreStep_, step);
-}
+// One frame of the beaker: `1000:22a6`, plus the score ramp that `1000:58c5`
+// drives around it. The whole thing runs every frame whether or not anything
+// is happening, which is what animates the clear and the settle.
+void Game::updateBeaker() {
+    const BoardStep s = board_.step();
 
-void Game::advanceScore() {
-    if (scorePending_ <= 0) {
-        scoreStep_ = 0;
-        return;
+    if (s.award > 0) {
+        scorePending_ += s.award;
+        rampSteps_ = kScoreRampSteps;   // 1000:1c63  MOV [rampSteps], 6
+        rampIncrement_ = 0;
+        clearTimer_ = kClearFrames;     // 1000:1c70  MOV [clearTimer], 10
+        pendingSound_ = s.soundType;
     }
-    const int step = std::min(scorePending_, std::max(1, scoreStep_));
-    score_ += step;
-    scorePending_ -= step;
-    if (scorePending_ == 0) scoreStep_ = 0;
+    chains_ += s.chainsVertical + s.chainsHorizontal + s.chainsDiagonal;
+
+    if (rampSteps_ > 0) {
+        scoreMultiplier_ += s.runs;
+        if (rampIncrement_ == 0) {
+            rampIncrement_ = scorePending_ * scoreMultiplier_ / rampSteps_;
+        }
+        score_ += rampIncrement_;
+        if (--rampSteps_ == 0) {
+            // The flush pays the division's remainder, so the total is exactly
+            // pending * multiplier however the sixths round.
+            score_ += scorePending_ * scoreMultiplier_ % kScoreRampSteps;
+            scorePending_ = 0;
+            scoreMultiplier_ = 0;
+            rampIncrement_ = 0;
+        }
+    }
+
+    if (clearTimer_ > 0) --clearTimer_;
+    if (board_.overflowing()) gameOver_ = true;
 }
 
 // Dispense one atom, transliterated from `1000:4918`. The column is rolled,
@@ -278,7 +300,7 @@ void Game::spawn() {
 // One frame of the dispenser path. Speeds are the measured px/frame values,
 // and each leg ends when it reaches its target rather than after a duration.
 void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
-    advanceScore();
+    updateBeaker();
 
     // --- the test tube, transliterated from 1000:4528 ------------------
     //
@@ -320,12 +342,12 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
         if (tubeX_ >= tubeTargetX_) { tubeX_ = tubeTargetX_; tubeState_ = 0; }
     }
 
-    // A tips the tube, dumping one atom into the beaker beneath it.
+    // A tips the tube, dumping one atom into the beaker beneath it. Matching
+    // is NOT resolved here: the beaker update runs every frame and picks the
+    // new atom up on the next one, which is what lets the clear animate.
     if ((pressed & button::kA) && !tube_.empty()) {
         if (board_.drop(tubeColumn_, tube_.front())) {
             tube_.erase(tube_.begin());
-            resolveMatches();
-            if (board_.overflowing()) gameOver_ = true;
         }
     }
 
@@ -456,22 +478,6 @@ void Game::stepAtom(Falling& a) {
             // allowance is spent first and the next miss ends it.
             gameOver_ = true;
         }
-    }
-}
-
-void Game::resolveMatches() {
-    std::vector<uint8_t> marked;
-    std::vector<Run> runs;
-
-    // Clearing can drop atoms into new matches, so keep resolving.
-    while (true) {
-        int n = board_.findMatches(marked, &runs);
-        if (n == 0) break;
-        for (const Run& r : runs) {
-            award(awardForRun(r));
-            chains_ += chainsForRun(r);
-        }
-        board_.removeMarked(marked);
     }
 }
 

@@ -50,21 +50,26 @@ Percentages are judgement calls, so the breakdown matters more than the number.
 | Beaker structure (three `array[1..5,1..6]` planes) | **done**, decompiled |
 | Atom router `1000:0f80` | **done** - states, fixed-point, both arc tables |
 | Network topology (feed / lane / destination per column) | **done**, measured |
-| Drops, scoring, tube capacity, save format, menus, waves | **done** |
+| Drops, tube capacity, save format, menus | **done** |
 | Render order and the dirty-rect model | **done** |
-
 | The frame render, end to end | **done** - draw order, the six atom slots, the GAMEFG stamp |
 | `.CSP` placement offsets | **done** - the `(128, -2)` base |
 | Spawn: period, type distribution, column choice | **done**, decompiled |
 | Difficulty seeds and their per-wave stepping | **done** |
 | The test tube's record and state machine | **done** |
+| The beaker update `1000:22a6` | **done** - three planes, four matchers, fade, gravity |
+| Scoring and the chain bonus multiplier | **done**, from code rather than the manual |
 
 Still unread, and most of it is inside `1000:3a67`'s 9,382 bytes:
 
-- the **match-and-clear routine** - scoring came from the Instructions, not code
 - the **specials' behaviours**: AntiMatter's blast, Convertor, Blocker, Filler,
-  Multiplier, EvilMultiplier, Crystal
-- the **wave definition** data structure - objectives and modifiers
+  Multiplier, EvilMultiplier, Crystal. `1000:2790` post-processes settled
+  specials through a "find a cell of type N" helper at `1000:0c82` - that is
+  where they live and it is the next block worth taking
+- the **wave definition** data structure - objectives and modifiers. The
+  machinery is now half visible: `1000:192f` checks an orientation- or
+  colour-based objective, and the objective plane and the disabled-element
+  modifier are both implemented
 - the **tipping animation**, and with it records 7..12 - the atoms that travel
   from the test tube into the beaker
 - `.SPR`, `.BIN`, `.ANM`
@@ -83,8 +88,13 @@ Working, and transliterated rather than invented:
   it is inside, `.CSP` placement offsets, and the beaker and test tube layering
 - the spawn: period, column choice with retries, and the full type distribution
 - the test tube's 6 px/frame slide and the Down/B speed boost
-- atom type numbering, drops model, scoring by chain orientation with the ramp
-- Flashium's wildcard, inert specials, cascades and gravity
+- **the beaker as the original's three planes**: cells holding
+  `type + 19*fadeFrame`, the marked plane that drives the clear animation, and
+  the objective plane with its `MARKER` overlay
+- the four match scans with their real bounds, the per-seed awards, the chain
+  bonus multiplier and the six-frame score ramp
+- Flashium's wildcard - including that it ADOPTS the colour it completes
+- gravity at one row per frame, which is what makes the beaker settle
 - music: all ten songs, correct at the register level
 
 Absent entirely:
@@ -93,7 +103,6 @@ Absent entirely:
 |---|---|
 | HUD - Chains, score, Drops, the small ball counters | small, high visibility |
 | Sound effects | small |
-| The three-plane beaker, and therefore **any clear animation** | medium, blocks the specials |
 | Specials' behaviours | medium |
 | The tipping animation - an atom visibly leaving the tube for the beaker | small |
 | Wave structure: briefings, objectives, modifiers | large |
@@ -143,10 +152,14 @@ Listed first because building on them wastes work.
    which feed tube serves which column along which lane - is in `game.cpp`.
 2. ~~**The test tube holds one atom.**~~ **DONE.** Capacity is a flat 5, stated
    by the in-game Instructions. The 5/3/2-by-difficulty guess is retired.
-3. ~~**Scoring and pacing.**~~ **DONE.** Scoring is by chain orientation,
-   250/500/1000, from the Instructions, and the score ramps.
-   `kSpawnIntervalFrames` is no longer invented: the difficulty block seeds it
-   at 70/60/50 frames, and it steps per wave.
+3. ~~**Scoring and pacing.**~~ **DONE.** Scoring is now from code, not the
+   Instructions: 250/500/1000 by orientation, added once per SEED position so a
+   run of four pays twice, multiplied by the number of distinct runs formed at
+   once, and ramped over six frames. `kSpawnIntervalFrames` is no longer
+   invented either - the difficulty block seeds it at 70/60/50 frames.
+   One conflict is open: an earlier live measurement had a diagonal four paying
+   1000 where this pays 2000. The measurement is from the black-box session and
+   the code is the authority, but it deserves a check once the HUD exists.
 4. **Atom colour count and the special balls - now measured.** The engine's 8
    flat colours are wrong. There are **19 ball types**, read out of the live
    sprite tables at `DS:0x1da6` (balls) and `DS:0x1df6` (fades), 19 entries
@@ -217,19 +230,18 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
 
 **In priority order:**
 
-1. **The beaker representation.** A cell holds `type + 19*fadeFrame` with a
-   parallel animating plane and a third overlay plane (`MARKER`). The port
-   models a single plane of types, so it cannot show a clear animation at all.
-   This is now the deepest remaining gap.
+1. **The specials' behaviours.** `1000:2790` onward, in the beaker update,
+   post-processing settled specials through a scan helper at `1000:0c82`. This
+   is now the largest unread block and it is where AntiMatter's blast,
+   Convertor, Blocker, Filler and the Multipliers live.
 2. **The tipping animation and records 7..12.** Pressing A currently teleports
    an atom into the beaker. The original moves it into one of six spare slots
    which fall and are drawn between the `MARKER` overlay and `BEAKER.CSP`. The
    four-phase animation is at `1000:463a`.
-3. **The match-and-clear routine** - still the largest unread block, and
-   scoring is the one major rule that came from the Instructions rather than
-   from code.
-4. **The HUD**, now that fonts are decoded and the render order around them is
-   known.
+3. **The HUD**, now that fonts are decoded and the render order around them is
+   known. It would also settle the one scoring conflict below.
+4. **Sound effects.** Every hook now exists: the matcher names the fade family
+   whose `.SFX` to play, and `Game::takeSound()` hands it to the caller.
 
 **What is already transliterated and should not be re-derived:** the atom
 router `1000:0f80` (fixed-point, states 3/5/6/7, the two arc offset tables),

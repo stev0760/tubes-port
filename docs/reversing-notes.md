@@ -4183,3 +4183,177 @@ element is at **`0x24188`**; `0x241A4` is `array[2]`.
 
 Caught by the port keying its draw slot off the emitted index. Nothing in the
 old harness could have noticed, because it never compared the two.
+
+---
+
+## The beaker: three planes, four matchers, and the fade - all from code
+
+`1000:22a6` is the per-frame beaker update, called unconditionally from the
+frame loop at `1000:47d0`. It is four match scans, then the fade, then gravity.
+Everything below is from the listing, and the encoding was then checked against
+the running game (see the end of this section).
+
+### The three planes
+
+Contiguous 30-byte arrays in `1000:3a67`'s frame, `array[1..5, 1..6] of byte`:
+
+| base | live address | plane |
+|---|---|---|
+| `[BP-0x25]` | `0x24314` | **cells** - `type + 19 * fadeFrame` |
+| `[BP-0x43]` | `0x242f6` | **marked** - 1 while the cell is clearing |
+| `[BP-0x61]` | `0x242d8` | **objective** - 1 = a wave target, drawn `MARKER` |
+
+Indexed `base + row*6 + col`, row 1..5 and col 1..6.
+
+These addresses cross-check last session's correction to the atom array base.
+`cells[1,1]` at `0x24314` puts 3a67's `BP` at `0x24332`, and atom record 1 is
+`BP - 0x1aa` = **`0x24188`** - the corrected base, not the `0x241a4` that was
+carried for two sessions. Two independent routes to the same number.
+
+### The four matchers
+
+`22a6` calls four nested procedures over four different ranges, and the ranges
+alone identify them: they are exactly the seed positions where a run of three
+fits, so no matcher ever tests an out-of-range cell.
+
+| routine | rows | cols | direction | award | orientation code |
+|---|---|---|---|---|---|
+| `1000:1e90` | 1..3 | 1..4 | diagonal down-right | 1000 | 0 |
+| `1000:209b` | 1..3 | 3..6 | diagonal down-left | 1000 | 0 |
+| `1000:1c9f` | 1..5 | 1..4 | horizontal | 500 | 1 |
+| `1000:1aae` | 1..3 | 1..6 | vertical | 250 | 2 |
+
+The awards are `ADD [pending], 0xfa / 0x1f4 / 0x3e8` - which **confirms the
+Detailed Instructions from code**, the first time that rule has had a source
+better than the manual.
+
+The body, from `1000:1aae`, with the other three differing only in `(dc, dr)`:
+
+    matchType := cells[r, c]
+    if (matchType < 1) or (matchType > 8) then exit
+    if matchType = disabledElement then exit
+    for i := 1 to 2 do
+        other := cells[r + i*dr, c + i*dc]
+        if other > 8 then exit
+        if (matchType = 8) and (other <> 0) then matchType := other
+        if matchType = disabledElement then exit
+        if (matchType <> other) and (other <> 8) then exit
+    for i := 0 to 2 do marked[r + i*dr, c + i*dc] := 1
+
+Four things fall out of this that were previously guessed or wrong:
+
+* **The wildcard ADOPTS.** A Flashium seed becomes whatever the next non-empty
+  cell is, and the run is that colour from then on. That is why one Flashium
+  can complete runs of two different colours in two different directions, which
+  the port had reconstructed correctly but for the wrong reason.
+* **A fading cell cannot re-match, and nothing tests for it.** A cell mid-fade
+  holds `type + 19*frame`, which is above 8, so both the seed test and the
+  `other > 8` bail-out exclude it automatically. The encoding does the work.
+* **`disabledElement`** is `9e53`'s `[BP-0x18a]`, compared against every
+  candidate type - the wave modifier "an element that still spawns but cannot
+  be cleared", found rather than inferred.
+* **The award is per SEED, not per run.** A run of four has two seed positions
+  and pays twice; a run of five pays three times. "4 atom molecules count as 2
+  chains" in the Instructions is a literal description of the scan.
+
+Each matcher also increments one of three chain counters, but only when the
+cell one step *back* does not continue the run - so a run of four counts as one
+distinct run however many seeds it has. Both diagonals share a counter.
+
+### The chain bonus multiplier, and the ramp
+
+`1000:2410`, plus the flush at `1000:58c5`:
+
+    if rampSteps > 0 then begin
+        multiplier := multiplier + (chainsDiag + chainsHoriz + chainsVert);
+        if increment = 0 then
+            increment := (pending * multiplier) div rampSteps;
+        total := total + increment;
+    end
+
+`rampSteps` is set to 6 by any matcher, and `1000:58c5` counts it down one a
+frame; when it hits zero the remainder is flushed and `pending` and
+`multiplier` are cleared. So the money is **`pending * multiplier`**, paid over
+six frames, and the multiplier is the number of distinct runs formed at once.
+
+That is the "chain bonus point multiplier" the Instructions mention without
+quantifying, and it had been left unimplemented for want of a number.
+
+**One conflict, recorded rather than resolved.** An earlier live measurement had
+a diagonal run of four paying 1000; this model pays 2000 (two seeds x 1000,
+multiplier 1). That measurement came from the black-box session whose
+conclusions have already been overturned twice, and the code is the authority -
+but it is worth a targeted check when the HUD exists to read the score off.
+
+### The fade
+
+`1000:2538`, for every marked cell:
+
+    cell := cell + 19
+    if cell > 152 then begin cell := 0; marked := 0 end
+
+152 is 8 * 19, so a cell runs **eight** fade steps. Sprites exist for six - the
+loader loop in `1000:9e53` ends on `CMP [BP-0x2], 0x6` - so frames 7 and 8 have
+null table entries and draw nothing. That is not a bug: the cell is invisible
+for two frames before it empties and the column falls.
+
+The gravity pass moves **all three planes together**, so a cell that is
+mid-fade keeps fading as it falls, and an objective marker travels with its
+atom.
+
+### Gravity is one row per frame
+
+`1000:25b3` walks a destination cursor from row 5 and a source row from 4, both
+decrementing every iteration, so the destination is always the row below the
+source. Scanning bottom-up lets a whole column shift down by one in a single
+pass - and only by one. That is why the beaker visibly settles rather than
+snapping, and the port's previous full compaction could not have shown it.
+
+### The fade families, and the sound
+
+`1000:9e53` builds the sprite table at runtime, indexing it
+`(frame*19 + type)*4 + 0x1da6` for types 1..10 and 18, frames 1..6. The eleven
+name strings sit consecutively at `1000:9d07`:
+
+    RFADE GFADE BFADE CFADE PFADE YFADE PNKFADE FFADE AFADE GLDFADE CRFADE
+
+mapping to types 1..10 and 18 in order, and are followed immediately by the
+same eleven with `.SFX` - one sound per family. The matcher plays
+`sound[matchType]`, where `matchType` is what the run resolved to after any
+wildcard adoption, which is exactly the reported behaviour: a mixed chain shows
+mixed fade animations under a single sound.
+
+### The objective plane
+
+Only live when `DS:0x1d4e = 6`. `1000:24db`: a marked cell that also carries an
+objective marker clears the marker and decrements a wave counter at
+`9e53`'s `[BP-0x1f4]`. `MARKER.CSP` is drawn over flagged cells at
+`(x + 2, y + 1)`.
+
+`1000:192f`, called by every matcher with its orientation code, is the rest of
+that system: in mode 2 it decrements the wave counter when the orientation
+matches the wave's required one, and in mode 3 when the matched colour matches
+the wave's required colour. So wave objectives are "make N vertical chains",
+"make N chains of Greenium", and so on.
+
+### Checked against the running game
+
+`exp17_fade_encoding.py` writes three Redium into the bottom row of the
+original's cells plane and samples it. Observed: **1, 39, 77, 96, 134, 0** -
+every value exactly `1 + 19k`, and the run ends at 134 (`134 + 19 = 153 > 152`)
+before emptying. Eight steps, as the code says.
+
+The sampling is coarser than the game frame, so intermediate values were
+skipped; and the marked plane read 0 alongside `cells = 134`, which is a torn
+read rather than a finding - the two planes are fetched in separate GDB
+requests while the game runs. The stride, the step count and the terminal
+clear are what this confirms.
+
+The objective plane read all zeros throughout, consistent with its being gated
+on a wave mode that Endurance never enters.
+
+### Still unread in the beaker update
+
+`1000:2790` onward post-processes settled specials through a scan helper at
+`1000:0c82` - "find a cell of type N" - converting types in place. That is the
+specials' behaviour and it is the next block worth taking.

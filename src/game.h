@@ -172,9 +172,19 @@ public:
     int startingDrops() const { return startingDrops_; }
 
     // The displayed score ramps toward the awarded total rather than jumping;
-    // the original's own score variable does this, in roughly sixths.
+    // the original's own score variable does this, in sixths.
     int score() const { return score_; }
-    int scoreTarget() const { return score_ + scorePending_; }
+    int scoreTarget() const {
+        return score_ + scorePending_ * scoreMultiplier_;
+    }
+    // Non-zero while a clear animation is running.
+    int clearTimer() const { return clearTimer_; }
+    // The fade family whose sound to play, consumed by the caller.
+    int8_t takeSound() {
+        const int8_t s = pendingSound_;
+        pendingSound_ = kEmpty;
+        return s;
+    }
 
     int chains() const { return chains_; }
     bool gameOver() const { return gameOver_; }
@@ -197,11 +207,9 @@ public:
 private:
     void spawn();
     void stepAtom(Falling& a);
-    void resolveMatches();
+    void updateBeaker();
     int random(int n);
     int8_t nextColour();
-    void award(int points);
-    void advanceScore();
     // The original moves things a whole number of pixels per frame, so the
     // simulation steps in frames and `update()` only converts real time into
     // them.
@@ -224,8 +232,17 @@ private:
     int dropsRemaining_ = 9;
     int startingDrops_ = 9;
     int score_ = 0;
-    int scorePending_ = 0;    // awarded but not yet ramped in
-    int scoreStep_ = 0;
+    // The score ramp, from 1000:2410 and the flush at 1000:58c5. `pending` is
+    // this clear's award, `multiplier` the number of distinct runs, and the
+    // total paid is their product, spread over six frames.
+    int scorePending_ = 0;
+    int scoreMultiplier_ = 0;
+    int rampSteps_ = 0;
+    int rampIncrement_ = 0;
+    // 1000:1c70 sets this to 10 on a match; the frame loop counts it down and
+    // will not declare a wave complete while it is running.
+    int clearTimer_ = 0;
+    int8_t pendingSound_ = kEmpty;
     int chains_ = 0;
     bool gameOver_ = false;
 
