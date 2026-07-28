@@ -312,6 +312,125 @@ void testCascade() {
     check(b.count() == 0, "cascade clears the board");
 }
 
+// --- the specials, from 1000:2790 -------------------------------------
+
+void testAntiMatterBlastsThreeByThree() {
+    tubes::Board b(6, 5);
+    for (int r = 0; r < 5; ++r) {
+        for (int c = 0; c < 6; ++c) b.set(c, r, tubes::kXenon);
+    }
+    b.set(2, 2, tubes::kAntiMatter);
+    tubes::BoardStep s = b.step();
+    check(s.blast, "the blast is reported");
+    check(s.soundType == tubes::kAntiMatter, "and plays AFADE");
+
+    // Every cell of the 3x3 centred on (2,2) is rewritten to AntiMatter's own
+    // type and marked, which is what makes the blast animation need no case.
+    int hit = 0;
+    for (int r = 0; r < 5; ++r) {
+        for (int c = 0; c < 6; ++c) {
+            if (b.isMarked(c, r)) {
+                ++hit;
+                check(b.typeAt(c, r) == tubes::kAntiMatter,
+                      "a caught cell became AntiMatter");
+            }
+        }
+    }
+    check(hit == 9, "a centred blast catches nine cells");
+    check(!b.isMarked(5, 2), "and nothing outside the block");
+}
+
+void testAntiMatterClipsAtTheEdges() {
+    // The original narrows the span rather than clamping both ends, so a
+    // corner blast is 2x2, not 3x3 shifted inward.
+    tubes::Board b(6, 5);
+    for (int r = 0; r < 5; ++r) {
+        for (int c = 0; c < 6; ++c) b.set(c, r, tubes::kXenon);
+    }
+    b.set(0, 0, tubes::kAntiMatter);
+    b.step();
+    int hit = 0;
+    for (int r = 0; r < 5; ++r) {
+        for (int c = 0; c < 6; ++c) if (b.isMarked(c, r)) ++hit;
+    }
+    check(hit == 4, "a corner blast catches four cells");
+
+    tubes::Board e(6, 5);
+    for (int r = 0; r < 5; ++r) {
+        for (int c = 0; c < 6; ++c) e.set(c, r, tubes::kXenon);
+    }
+    e.set(5, 4, tubes::kAntiMatter);      // the opposite corner
+    e.step();
+    hit = 0;
+    for (int r = 0; r < 5; ++r) {
+        for (int c = 0; c < 6; ++c) if (e.isMarked(c, r)) ++hit;
+    }
+    check(hit == 4, "the far corner too");
+}
+
+void testBlockerFillsItsColumnAbove() {
+    tubes::Board b(6, 5);
+    for (int c = 0; c < 6; ++c) b.set(c, 4, tubes::kRedium);
+    b.set(2, 2, tubes::kRedium);
+    b.set(2, 3, tubes::kGreenium);
+    b.set(2, 4, tubes::kBlocker);
+    b.step();
+    check(b.typeAt(2, 4) == tubes::kXenon, "the Blocker itself became Xenon");
+    check(b.typeAt(2, 3) == tubes::kXenon, "the cell above did too");
+    check(b.typeAt(2, 2) == tubes::kXenon, "and the one above that");
+    check(b.typeAt(1, 4) == tubes::kRedium, "neighbouring columns untouched");
+}
+
+void testBlockerIsGated() {
+    tubes::Board b(6, 5);
+    b.set(2, 4, tubes::kBlocker);
+    b.set(2, 3, tubes::kRedium);
+    b.setSpecialsEnabled(false);
+    b.step();
+    check(b.typeAt(2, 3) == tubes::kRedium, "DS:0x1d48 off leaves the column alone");
+}
+
+void testConvertorConvertsByTypeBoardWide() {
+    // Stronger than the published description: it takes the type of the ONE
+    // cell below it and converts every atom of that type anywhere.
+    tubes::Board b(6, 5);
+    b.set(0, 4, tubes::kGreenium);
+    b.set(0, 3, tubes::kConvertor);
+    b.set(3, 4, tubes::kGreenium);      // far away, same colour
+    b.set(4, 4, tubes::kRedium);        // different colour
+    b.step();
+    check(b.typeAt(0, 3) == tubes::kXenon, "the Convertor became Xenon");
+    check(b.typeAt(0, 4) == tubes::kXenon, "the cell it landed on converted");
+    check(b.typeAt(3, 4) == tubes::kXenon, "and every other Greenium, board-wide");
+    check(b.typeAt(4, 4) == tubes::kRedium, "other colours untouched");
+}
+
+void testConvertorNeedsAnOrdinaryVictim() {
+    tubes::Board b(6, 5);
+    b.set(0, 4, tubes::kXenon);
+    b.set(0, 3, tubes::kConvertor);
+    b.set(3, 4, tubes::kXenon);
+    b.step();
+    check(b.typeAt(0, 3) == tubes::kXenon, "it still becomes Xenon itself");
+    check(b.typeAt(3, 4) == tubes::kXenon, "but does not chain off a Xenon");
+}
+
+void testSettledConsumablesGoInert() {
+    // Bonus, Multiplier, EvilMultiplier and Filler do their work when the tube
+    // CATCHES them. Any that reach the glass are leftovers and turn to Xenon.
+    tubes::Board b(6, 5);
+    b.set(0, 4, tubes::kBonus);
+    b.set(1, 4, tubes::kMultiplier);
+    b.set(2, 4, tubes::kEvilMultiplier);
+    b.set(3, 4, tubes::kFiller);
+    b.set(4, 4, tubes::kCrystal);
+    b.step();
+    for (int c = 0; c < 4; ++c) {
+        check(b.typeAt(c, 4) == tubes::kXenon, "a settled consumable went inert");
+    }
+    check(b.typeAt(4, 4) == tubes::kCrystal, "the Crystal is left alone");
+}
+
 // --- regressions, both reported from play -----------------------------
 
 void testFullBeakerDoesNotEndTheGame() {
@@ -401,6 +520,13 @@ int main() {
     testFullBeakerDoesNotEndTheGame();
     testSpeedBoostNeedsHolding();
     testBonusAtomIsFastByType();
+    testAntiMatterBlastsThreeByThree();
+    testAntiMatterClipsAtTheEdges();
+    testBlockerFillsItsColumnAbove();
+    testBlockerIsGated();
+    testConvertorConvertsByTypeBoardWide();
+    testConvertorNeedsAnOrdinaryVictim();
+    testSettledConsumablesGoInert();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

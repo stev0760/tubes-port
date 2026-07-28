@@ -58,14 +58,14 @@ Percentages are judgement calls, so the breakdown matters more than the number.
 | Difficulty seeds and their per-wave stepping | **done** |
 | The test tube's record and state machine | **done** |
 | The beaker update `1000:22a6` | **done** - three planes, four matchers, fade, gravity |
+| Beaker-side specials `1000:2790` | **done** - AntiMatter, Blocker, Convertor |
 | Scoring and the chain bonus multiplier | **done**, from code rather than the manual |
 
 Still unread, and most of it is inside `1000:3a67`'s 9,382 bytes:
 
-- the **specials' behaviours**: AntiMatter's blast, Convertor, Blocker, Filler,
-  Multiplier, EvilMultiplier, Crystal. `1000:2790` post-processes settled
-  specials through a "find a cell of type N" helper at `1000:0c82` - that is
-  where they live and it is the next block worth taking
+- the **specials at CATCH time**: `1000:180c` in the router dispatches Bonus
+  (`07db`), Multiplier (`08d2`), EvilMultiplier (`0a27`) and Filler (`0b55`).
+  The beaker-side half is done. Also `1000:041c`, the Crystal's teleport
 - the **wave definition** data structure - objectives and modifiers. The
   machinery is now half visible: `1000:192f` checks an orientation- or
   colour-based objective, and the objective plane and the disabled-element
@@ -95,6 +95,9 @@ Working, and transliterated rather than invented:
   bonus multiplier and the six-frame score ramp
 - Flashium's wildcard - including that it ADOPTS the colour it completes
 - gravity at one row per frame, which is what makes the beaker settle
+- the beaker-side specials: AntiMatter's 3x3 blast, the Blocker filling its
+  column, the Convertor converting by type board-wide, and the four consumables
+  going inert if they settle
 - music: all ten songs, correct at the register level
 
 Absent entirely:
@@ -103,7 +106,7 @@ Absent entirely:
 |---|---|
 | HUD - Chains, score, Drops, the small ball counters | small, high visibility |
 | Sound effects | small |
-| Specials' behaviours | medium |
+| Specials at catch time - Multiplier, EvilMultiplier, Filler, Bonus | small |
 | The tipping animation - an atom visibly leaving the tube for the beaker | small |
 | Wave structure: briefings, objectives, modifiers | large |
 | Menus, difficulty select, high scores, save/load | large |
@@ -230,10 +233,10 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
 
 **In priority order:**
 
-1. **The specials' behaviours.** `1000:2790` onward, in the beaker update,
-   post-processing settled specials through a scan helper at `1000:0c82`. This
-   is now the largest unread block and it is where AntiMatter's blast,
-   Convertor, Blocker, Filler and the Multipliers live.
+1. **The specials at catch time.** The beaker-side half is done; the other half
+   is four routines the router dispatches at `1000:180c` when the test tube
+   catches one - Bonus, Multiplier, EvilMultiplier, Filler. Small and
+   well-located.
 2. **The tipping animation and records 7..12.** Pressing A currently teleports
    an atom into the beaker. The original moves it into one of six spare slots
    which fall and are drawn between the `MARKER` overlay and `BEAKER.CSP`. The

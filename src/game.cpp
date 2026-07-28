@@ -235,6 +235,12 @@ void Game::updateBeaker() {
         clearTimer_ = kClearFrames;     // 1000:1c70  MOV [clearTimer], 10
         pendingSound_ = s.soundType;
     }
+    // An AntiMatter blast pays nothing but still arms the clear timer, so a
+    // cascade behind it is not judged complete early - `1000:0f76`.
+    if (s.blast) {
+        clearTimer_ = kClearFrames;
+        pendingSound_ = s.soundType;
+    }
     chains_ += s.chainsVertical + s.chainsHorizontal + s.chainsDiagonal;
 
     if (rampSteps_ > 0) {

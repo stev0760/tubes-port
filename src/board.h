@@ -135,6 +135,7 @@ struct BoardStep {
     int chainsDiagonal = 0;
     int8_t soundType = kEmpty;   // the family whose sound to play, 0 for none
     bool settled = false;        // an atom moved down; the original plays a sound
+    bool blast = false;          // AntiMatter went off; it also arms the clear timer
 };
 
 class Board {
@@ -184,6 +185,17 @@ public:
     void setObjectiveMode(bool on) { objectiveMode_ = on; }
     int objectivesCleared() const { return objectivesCleared_; }
 
+    // `DS:0x1d48` gates the Blocker here and the Multiplier, EvilMultiplier
+    // and Filler at catch time in `1000:0f80`. The Bonus atom is NOT gated by
+    // it. Nothing in `1000:9e53` writes it, so it is set further out - the
+    // wave or mode setup - and the port defaults it on.
+    void setSpecialsEnabled(bool on) { specialsEnabled_ = on; }
+
+    // The first cell holding exactly `want`, in row-major order - `1000:0c82`,
+    // which scans the 30-byte plane with a byte search and divides the index
+    // by 6. Matching is on the RAW cell, so a fading atom is never found.
+    bool findCell(int8_t want, int& c, int& r) const;
+
 private:
     size_t idx(int c, int r) const {
         return static_cast<size_t>(r) * cols_ + c;
@@ -193,6 +205,12 @@ private:
     void matchPass(BoardStep& out);
     void fadePass();
     void gravityPass(BoardStep& out);
+    // `1000:2790`: the specials, applied to atoms that have SETTLED in the
+    // beaker. Each one scans for its type and acts on the first it finds.
+    void specialsPass(BoardStep& out);
+    void applyAntiMatter(BoardStep& out);
+    void applyBlocker();
+    void applyConvertor();
 
     int cols_;
     int rows_;
@@ -202,6 +220,7 @@ private:
 
     int8_t disabledType_ = kEmpty;
     bool objectiveMode_ = false;
+    bool specialsEnabled_ = true;
     int objectivesCleared_ = 0;
 };
 

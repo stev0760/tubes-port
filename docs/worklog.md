@@ -1961,3 +1961,60 @@ eight frames and the column settles behind them.
 Still unread in the beaker update: `1000:2790` onward, which post-processes
 settled specials through a "find a cell of type N" helper. That is the
 specials' behaviour and it is the next block worth taking.
+
+## 2026-07-27 — Session 10: two reported bugs, then the specials
+
+### The bugs, and what they were really about
+
+**"The game crashes when the beaker fills to the top."** It froze: the port
+ended the game the instant a column reached the top, and `update()` returns
+immediately once that flag is set, so the window stayed up and nothing moved.
+The rule was invented. `1000:3a67` sets game over in exactly two places - the
+drop counter wrapping past zero, and the wave objective being met. A full
+beaker is neither; it just means nothing more can be tipped into that column.
+
+**"The speed-up button shouldn't need holding."** It does need holding, and now
+does. The last thing `1000:0f80` does to every atom every frame is reload its
+velocity: `if type = 10 then 0x480 else sessionBase`. The boost is written
+before the router runs, so it is worth one frame.
+
+That second one overturned a claim made **one commit earlier** - that the
+velocity field had "exactly three writers" and nothing reset it. The search
+behind it covered `1000:3a67`; the fourth writer is in `1000:0f80`, which had
+never been disassembled. The search was sound and the conclusion was still
+false, because a list is only closed over what was searched. `CLAUDE.md` warns
+"when a search comes back empty, suspect the search" - this is the same failure
+with a search that came back *full*, and it is worth adding to that list.
+
+The same line also settled a lead that had sat in PLAN.md since a play session:
+GOLDBALL travels the tube very fast. It is type 10, and it is fast by type.
+
+Added `--demo`, which lets the scripted player drive the LIVE loop instead of
+simulating first and drawing once. Hunting the first bug needed a render path
+exercised across a whole session, which `--auto` cannot give.
+
+### The specials
+
+`1000:2790` - the tail of the beaker update, running every frame after gravity.
+Everything there acts on atoms that have settled, so the trigger is just "a
+cell of this type exists", and each routine handles one per frame.
+
+* **AntiMatter** destroys the 3x3 block centred on itself, narrowing the span
+  at the edges rather than shifting the block inward, so a corner blast is 2x2.
+  Every caught cell is **rewritten to type 9** and marked - which means the
+  single `ball[cell]` lookup draws AFADE over all of them and the blast needs
+  no case anywhere in the renderer. The notes had guessed that AFADE was "the
+  blast applied to everything caught in it"; this is the code doing it.
+* **Blocker** turns itself and every cell above it in its column to Xenon.
+* **Convertor** takes the type of the ONE cell below it and converts every atom
+  of that type **board-wide**. That is stronger than the published description,
+  which reads as a local effect.
+* **Bonus, Multiplier, EvilMultiplier and Filler** go inert if they settle -
+  their real effects fire when the tube catches them, dispatched at
+  `1000:180c`, which is the half still to do.
+
+`DS:0x1d48` gates the Blocker here and three of the four catch-time routines,
+but not the Bonus. Nothing in `9e53` writes it, so it comes from further out.
+
+95 checks pass, up from 64. The five pixel captures are unchanged at 0.02% to
+0.13%.

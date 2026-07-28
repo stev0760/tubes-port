@@ -225,11 +225,116 @@ void Board::gravityPass(BoardStep& out) {
     }
 }
 
+// `1000:0c82`. The original scans the 30-byte plane for a byte equal to `want`
+// and turns the index back into (row, col) by dividing by 6, so this finds the
+// FIRST such cell in row-major order and only ever handles one per frame.
+bool Board::findCell(int8_t want, int& c, int& r) const {
+    for (int rr = 0; rr < rows_; ++rr) {
+        for (int cc = 0; cc < cols_; ++cc) {
+            if (cells_[idx(cc, rr)] == static_cast<Cell>(want)) {
+                c = cc;
+                r = rr;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// `1000:0e08`. AntiMatter destroys the 3x3 block centred on itself, clipped at
+// the edges - the original narrows the span rather than clamping both ends:
+//
+//     Dec(col); Dec(row);
+//     colSpan := 3;  rowSpan := 3;
+//     if (col < 1) or (col >= 5) then Dec(colSpan);
+//     if (row < 1) or (row >= 4) then Dec(rowSpan);
+//     if col < 1 then col := 1;   if row < 1 then row := 1;
+//
+// Every non-empty cell in the block is REWRITTEN to type 9 and marked. That is
+// the whole trick: because the cell becomes AntiMatter's own type, the single
+// sprite-table lookup draws `AFADE` over all of them, so the blast animation
+// needs no special case anywhere in the renderer. It is also why `AFADE` is a
+// fade family without being a "can be cleared" marker - the notes had guessed
+// that; this is the code doing it.
+//
+// The AntiMatter cell is the centre of its own block, so it destroys itself.
+void Board::applyAntiMatter(BoardStep& out) {
+    int c = 0, r = 0;
+    if (!findCell(kAntiMatter, c, r)) return;
+
+    int left = c - 1, top = r - 1;
+    int colSpan = 3, rowSpan = 3;
+    if (left < 0 || left >= cols_ - 2) --colSpan;
+    if (top < 0 || top >= rows_ - 2) --rowSpan;
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+
+    for (int rr = top; rr < top + rowSpan && rr < rows_; ++rr) {
+        for (int cc = left; cc < left + colSpan && cc < cols_; ++cc) {
+            if (cells_[idx(cc, rr)] == 0) continue;
+            cells_[idx(cc, rr)] = kAntiMatter;
+            marked_[idx(cc, rr)] = 1;
+        }
+    }
+    out.soundType = kAntiMatter;
+    out.blast = true;
+}
+
+// `1000:0ce7`. The Blocker turns itself and every cell ABOVE it in its column
+// into Xenon - "fills the beaker column it lands in with Xenons", now from
+// code rather than from a published description.
+void Board::applyBlocker() {
+    int c = 0, r = 0;
+    if (!findCell(kBlocker, c, r)) return;
+    for (int rr = r; rr >= 0; --rr) cells_[idx(c, rr)] = kXenon;
+}
+
+// `1000:0d56`. The Convertor becomes Xenon, then looks at the ONE cell
+// directly below it and turns every atom of that type anywhere on the board
+// into Xenon.
+//
+// Note that is stronger than the published description, which says it "turns
+// the atoms it lands on into Xenons". The code converts board-wide, by type.
+// The victim must be an ordinary type - `> 0` and `< 11` - so it will not
+// chain off a Xenon or another special.
+void Board::applyConvertor() {
+    int c = 0, r = 0;
+    if (!findCell(kConvertor, c, r)) return;
+    cells_[idx(c, r)] = kXenon;
+    if (r + 1 >= rows_) return;
+
+    const Cell victim = cells_[idx(c, r + 1)];
+    if (victim == 0 || victim >= kXenon) return;
+    int vc = 0, vr = 0;
+    while (findCell(static_cast<int8_t>(victim), vc, vr)) {
+        cells_[idx(vc, vr)] = kXenon;
+    }
+}
+
+// `1000:2790`, the tail of the beaker update. Everything here acts on atoms
+// that have SETTLED, so the trigger is simply "a cell of this type exists".
+void Board::specialsPass(BoardStep& out) {
+    applyAntiMatter(out);
+
+    // Types that have no business sitting in the beaker become inert. Their
+    // real effects happen when the test tube CATCHES them - the router
+    // dispatches Bonus, Multiplier, EvilMultiplier and Filler at `1000:180c` -
+    // so anything of these types that reaches the glass is a leftover.
+    for (int8_t t : {kBonus, kMultiplier, kEvilMultiplier, kFiller}) {
+        int c = 0, r = 0;
+        while (findCell(t, c, r)) cells_[idx(c, r)] = kXenon;
+    }
+
+    if (specialsEnabled_) applyBlocker();
+    applyConvertor();
+}
+
 BoardStep Board::step() {
     BoardStep out;
     matchPass(out);
     fadePass();
     gravityPass(out);
+    specialsPass(out);
     return out;
 }
 

@@ -4396,3 +4396,103 @@ A full beaker is neither. Filling a column simply means nothing more can be
 tipped into it. The port used to end the game the moment a column reached the
 top, which froze it with no message - `update()` returns immediately once the
 flag is set - and was reported as a crash.
+
+---
+
+## The specials, from `1000:2790`
+
+The tail of the beaker update, running every frame after gravity. Everything
+here acts on atoms that have **settled**, so the trigger is simply "a cell of
+this type exists". Each routine handles at most one per frame.
+
+    1000:0e08   AntiMatter (9)
+    the four scan-and-convert loops: 10, 12, 13, 16  ->  11 Xenon
+    1000:0ce7   Blocker (15)          gated on DS:0x1d48
+    1000:0d56   Convertor (14)
+
+### `1000:0c82` - find a cell of type N
+
+Scans the 30-byte cells plane for a byte equal to `want` and turns the index
+back into (row, col) by dividing by 6. Row-major, first match only, and the
+comparison is on the **raw** cell - so a fading atom is never found.
+
+### AntiMatter destroys a 3x3 block, and rewrites it to its own type
+
+    Dec(col); Dec(row);
+    colSpan := 3;  rowSpan := 3;
+    if (col < 1) or (col >= 5) then Dec(colSpan);
+    if (row < 1) or (row >= 4) then Dec(rowSpan);
+    if col < 1 then col := 1;   if row < 1 then row := 1;
+    for each cell in the block do
+        if cell <> 0 then begin
+            cells[row, col]  := 9;      { AntiMatter's OWN type }
+            marked[row, col] := 1;
+        end
+    PlaySound(AFADE);  clearTimer := 10
+
+Note it narrows the span rather than clamping both ends, so a corner blast is
+2x2 rather than a 3x3 shifted inward. The AntiMatter is the centre of its own
+block and therefore destroys itself.
+
+**The rewrite to type 9 is the whole trick.** Because every caught cell becomes
+AntiMatter's own type, the single `ball[cell]` lookup draws `AFADE` over all of
+them and the blast animation needs no special case anywhere in the renderer.
+That is also why `AFADE` is a fade family without being a "can be cleared"
+marker - the notes had guessed exactly this; here is the code doing it.
+
+The cells cannot re-trigger the blast on the next frame because the fade pass
+runs first and moves them from 9 to 28.
+
+### Blocker fills its column, upward
+
+    if FindCell(row, col, 15) then begin
+        cells[row, col] := 11;
+        while row > 1 do begin Dec(row); cells[row, col] := 11 end
+    end
+
+"Fills the beaker column it lands in with Xenons", now from code rather than
+from a published description. Only the cells at and *above* it.
+
+### Convertor converts by TYPE, board-wide
+
+    if FindCell(row, col, 14) then begin
+        cells[row, col] := 11;
+        if row = 5 then exit;
+        victim := cells[row + 1, col];          { the ONE cell below }
+        if (victim <= 0) or (victim >= 11) then exit;
+        while FindCell(r2, c2, victim) do cells[r2, c2] := 11;
+    end
+
+**This is stronger than the published description.** "Turns the atoms it lands
+on into Xenons" suggests a local effect; the code takes the type of the single
+cell directly below and converts *every* atom of that type anywhere on the
+board. The victim must be an ordinary type (1..10), so it will not chain off a
+Xenon or another special.
+
+### Bonus, Multiplier, EvilMultiplier and Filler go inert if they settle
+
+Four identical loops convert types 10, 12, 13 and 16 to Xenon wherever they
+appear. Their real effects happen when the test tube **catches** them - the
+router dispatches at `1000:180c`:
+
+| type | routine | gated on `DS:0x1d48` |
+|---|---|---|
+| 10 Bonus | `1000:07db` | no |
+| 12 Multiplier | `1000:08d2` | yes |
+| 13 EvilMultiplier | `1000:0a27` | yes |
+| 16 Filler | `1000:0b55` | yes |
+
+so anything of these types that reaches the glass is a leftover. The Crystal
+(18) is deliberately not in the list - it lives in the beaker.
+
+### `DS:0x1d48` gates the specials' effects
+
+It gates the Blocker here and the Multiplier, EvilMultiplier and Filler at
+catch time. The Bonus atom is **not** gated by it. Nothing in `1000:9e53`
+writes it, so it is set further out - the wave or mode setup - and the port
+defaults it on.
+
+### Still open on the specials
+
+The four catch-time routines above, and `1000:041c`, the Crystal's teleport,
+which `1000:0f3b` calls in wave mode 5 when the blast catches a Crystal.
