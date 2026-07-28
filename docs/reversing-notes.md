@@ -4632,6 +4632,147 @@ for as long as only matches paid.
 `1000:58d2`, when the ramp runs out. An award landing mid-ramp therefore
 extends the ramp at the rate already running.
 
+## The tipping animation, `1000:463a`
+
+`tube.state = 3` runs it, and A sets that state - `1000:4511`, with **no edge
+detection anywhere**. The only gate is the input block sitting inside
+`if tube.state = 0`, so holding A tips once every six frames, which is exactly
+how long the animation takes to hand the state back.
+
+    Inc(tube.divider);                        { +0x16 }
+    if tube.divider <> 2 then exit;
+    tube.divider := 0;
+    Inc(tube.phase);                          { +0x05 }
+    case tube.phase of
+      2: begin for i := 1 to 5 do Dec(slot[i].x);
+               slot[1].y := 99;  slot[2].y := 93;  slot[3].y := 87;
+               slot[4].y := 81;  slot[5].y := 73 end;
+      3: for i := 1 to 5 do slot[i].y := 82;
+      4: for i := 1 to 5 do Inc(slot[i].x);
+    end;
+    if tube.phase = 4 then begin
+        tube.state := 0;  tube.phase := 1;  <release>
+    end
+
+Every position is a literal per slot, not computed from an angle. Phase 2 is
+the tube tilting and the contents bunching toward the middle; phase 3 is it
+pouring, with all five stacked on the same pixel.
+
+### The tube sprite is indexed by the phase
+
+`1000:5922` draws it from a four-entry table of far pointers at `tube + 4*phase
++ 2`:
+
+    Draw(tube.x, tube.y, tube.sprite[tube.phase])
+
+and only three sprites exist - `TESTUBE1/2/3`, heights **65 / 42 / 27**. There
+is no fourth because **phase 4 never survives to a draw**: the same body that
+reaches it resets the phase to 1 before the frame is rendered. So the rendered
+sequence over a tip is 1, 2, 2, 3, 3, 1.
+
+**This retires the difficulty-capacity reading of those heights.** They were
+taken for several sessions as the tube holding 5/3/2 by difficulty; the flat
+capacity of 5 in the Instructions contradicted that without explaining it.
+They are a tube going over.
+
+### The slot loop is skipped while tipping
+
+`1000:4823`, immediately after the twelve-record router loop:
+
+    if tube.state <> 3 then
+        for i := 1 to tube.count do Router(@tube.slot[i], BP);
+
+That gate is what lets the animation own the slots' positions. Without it the
+router's state 8 would put every slot back at `tube.x + 3` and slide its y
+toward the resting offset on the very frame the animation moved it.
+
+## Router state 8 - in the tube
+
+    rec.x := tube.x + 3;
+    if rec.type = 17 then begin rec.y := tube.y + rec.dy; rec.arrived := 1 end;
+    <the catch-time specials dispatch here, if rec.arrived>
+    if (tube.y + rec.dy = rec.y) and rec.arrived then exit;
+    rec.y := rec.y + 9;
+    if tube.y + rec.dy < rec.y then begin
+        rec.y := tube.y + rec.dy;
+        PlaySound(if rec.dy = 52 then <floor> else <stack>);
+        rec.arrived := 1
+    end
+
+A catch lands at the **mouth** and slides down to its slot at a flat 9 px a
+frame. The FILLBALL is the only type that arrives instantly, which makes sense:
+the Filler inserts it *under* everything, where a slide would travel upward.
+
+`rec.arrived` is never cleared while the atom is in the tube, so `1000:180c`
+re-enters the specials dispatch every single frame. Each of the four rewrites
+the type of the slot it acts on, and **that** is the only thing stopping them
+firing repeatedly - the same trick as AntiMatter rewriting its cells to 9.
+
+One consequence, left in because it is the original's: the routines act on
+`slot[count]`, not on the record that just arrived. An atom caught while an
+earlier one is still sliding arrives second, and the special then converts
+whatever is at the mouth.
+
+## Router state 9 - falling into the beaker
+
+    rec.y := rec.y + 9;
+    if      grid[5, rec.col] = 0 then rec.dest := 186
+    else if grid[4, rec.col] = 0 then rec.dest := 173
+    else if grid[3, rec.col] = 0 then rec.dest := 160
+    else if grid[2, rec.col] = 0 then rec.dest := 147
+    else if grid[1, rec.col] = 0 then rec.dest := 131
+    else                              rec.dest := 187;        { column FULL }
+    if rec.y < rec.dest then exit;
+    rec.dest := <the row that dest meant>;                    { 1000:167c }
+    rec.state := 1;
+    if <the column was full> then begin
+        if rec.type <> 10 then Dec(drops);                    { the atom is LOST }
+        PlaySound(...)
+    end else
+        grid[rec.dest, rec.col] := rec.type;
+
+The target is recomputed **every frame**, so an atom already on its way down
+lands correctly if the column settles under it. Row 1's 131 is three pixels
+above where the cell actually draws (134); every other row is exact, and no
+reason for it has turned up.
+
+`rec.dest` is the same `+0x0d` field the tube used for the slot offset, and
+`1000:167c` rewrites it in place from a y to the row number that y meant. The
+reuse is the original's.
+
+A **full column destroys the atom and costs a drop** - it does not sit on top
+and it does not bounce. A Bonus is exempt.
+
+### The grid array is left to right; the network's columns are not
+
+Worth stating because it was nearly read the other way. `1000:1761` writes
+`grid[r, c]` at `BP - 0x25 + 6r + c`, and the draw loop at `1000:599b` pairs
+grid column 1 with `DS:0x1e`. Dumping DGROUP settles it:
+
+    DS:0x1a..0x24 = 143 125 107 197 179 161
+
+so `DS:0x1e` is **107**, and the grid's columns run 107, 125, 143, 161, 179,
+197 - left to right. The *network's* column index reads the same table in a
+different order, which is why the port compares x values rather than indices.
+The tube's stop index is left to right too, so `rec.col := tube.stop` at
+`1000:475b` hands the fall a grid column directly.
+
+## Records 7..12
+
+`1000:47fe` runs the router over `atom[1..12]` in one loop; nothing
+distinguishes the two halves except the states their records are in. The
+tipping code allocates from 7..12 by the first record whose state is 0, and
+**halts the game** if none is free. Six slots against six columns and a fall of
+at most nine frames, so it cannot happen.
+
+`1000:5c1f` draws them after the grid and the `MARKER` overlay and before
+`BEAKER.CSP`, so a falling atom passes in front of the settled ones and behind
+the glass.
+
+States **1 and 2** are a two-frame teardown - `1000:18ec` steps 1 to 2 and 2 to
+0 - and `drawn()` is `state > 2`, so neither renders. They exist so a slot is
+not reallocated on the frame it was released.
+
 ### Still open on the specials
 
 `1000:041c`, the Crystal's teleport, which `1000:0f3b` calls in wave mode 5

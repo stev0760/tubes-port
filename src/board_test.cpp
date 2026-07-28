@@ -495,9 +495,15 @@ void testBonusAtomIsFastByType() {
 
 // --- the specials at CATCH time, 1000:180c ----------------------------
 
-// Drives one atom of `type` into the test tube and steps a single frame.
-// Column 6 descends to x=161, which is the tube's stop index 3, so parking the
-// tube there is what makes the catch fire.
+// Drives one atom of `type` into the test tube and runs it far enough to reach
+// its slot. Column 6 descends to x=161, which is the tube's stop index 3, so
+// parking the tube there is what makes the catch fire.
+//
+// The frames matter now. A catch puts the atom at the MOUTH and it slides down
+// at 9 px a frame; the special does not fire until it arrives, and the arrival
+// flag is read on the frame after it is set. Ten frames covers the longest
+// slide (mouth to slot 1) twice over. Nothing spawns in that window - the
+// Tubes 101 period is 70 frames and the timer starts full.
 void catchOne(tubes::Game& g, int8_t type,
               const std::vector<int8_t>& start) {
     g.setTubeColumn(3);
@@ -510,7 +516,13 @@ void catchOne(tubes::Game& g, int8_t type,
     a.y = 100;                    // past the mouth at 68, short of the loss at 190
     a.velocity = 0x100;
     g.setAtom(6, a);
-    g.update(0, 1.0f / 18.2f);
+    for (int i = 0; i < 10; ++i) g.update(0, 1.0f / 18.2f);
+}
+
+// Holds A long enough for one whole tipping animation - six frames, two per
+// phase. A is level-triggered, so holding it just tips again.
+void tipOnce(tubes::Game& g) {
+    for (int i = 0; i < 6; ++i) g.update(tubes::button::kA, 1.0f / 18.2f);
 }
 
 void testBonusCatchPaysAndGrows() {
@@ -519,18 +531,23 @@ void testBonusCatchPaysAndGrows() {
     // paid whole - so the second Bonus of a session is worth 2000.
     tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
     catchOne(g, tubes::kBonus, {});
-    check(g.tubeAtoms() == std::vector<int8_t>{tubes::kFlashium},
+    check(g.tubeTypes() == std::vector<int8_t>{tubes::kFlashium},
           "a caught Bonus turns into Flashium");
     check(g.dropsRemaining() == 10, "and grants a drop - 9 seeded, 10 now");
-    // 1000 * 1 multiplier, over six steps, added once inline at 1000:08c4.
-    check(g.score() == 1000 / 6, "the first Bonus starts a 1000 ramp");
 
-    // Let that ramp run out, then catch a second.
+    // The award ramps in over six frames; catchOne already ran ten, so it is
+    // paid. One drop and one award, not one per frame the atom sat there -
+    // the special re-enters every frame and the type rewrite is what stops it.
     for (int i = 0; i < 10; ++i) g.update(0, 1.0f / 18.2f);
-    check(g.score() == 1000, "the ramp pays exactly 1000 in the end");
+    check(g.score() == 1000, "the first Bonus pays exactly 1000");
+    check(g.dropsRemaining() == 10, "and exactly one drop, not one a frame");
+
+    // 1000:0846 adds 1000 to a word of its own and pays the whole word, so the
+    // second Bonus of a session is worth 2000.
     const int before = g.score();
-    catchOne(g, tubes::kBonus, g.tubeAtoms());
-    check(g.score() - before == 2000 / 6, "the second Bonus ramps 2000");
+    catchOne(g, tubes::kBonus, g.tubeTypes());
+    for (int i = 0; i < 10; ++i) g.update(0, 1.0f / 18.2f);
+    check(g.score() - before == 2000, "the second Bonus pays 2000");
 }
 
 void testMultiplierFillsTheTube() {
@@ -538,7 +555,7 @@ void testMultiplierFillsTheTube() {
     // Flashium is in the distribution.
     tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
     catchOne(g, tubes::kMultiplier, {tubes::kRedium});
-    const std::vector<int8_t>& t = g.tubeAtoms();
+    const std::vector<int8_t> t = g.tubeTypes();
     check(static_cast<int>(t.size()) == tubes::kTubeSlots,
           "a Multiplier fills the tube to five");
     check(t[0] == tubes::kRedium, "what was already in it stays put");
@@ -554,7 +571,7 @@ void testEvilMultiplierFillsWithXenon() {
     // and the Move copies that record upward - so every slot is Xenon.
     tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
     catchOne(g, tubes::kEvilMultiplier, {tubes::kRedium, tubes::kGreenium});
-    const std::vector<int8_t>& t = g.tubeAtoms();
+    const std::vector<int8_t> t = g.tubeTypes();
     check(t == std::vector<int8_t>({tubes::kRedium, tubes::kGreenium,
                                     tubes::kXenon, tubes::kXenon,
                                     tubes::kXenon}),
@@ -567,19 +584,17 @@ void testFillerParksAnImmovableAtom() {
     // what falls off the top, so the tube keeps its depth and loses a slot.
     tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
     catchOne(g, tubes::kFiller, {tubes::kRedium, tubes::kGreenium});
-    check(g.tubeAtoms() == std::vector<int8_t>({tubes::kObstacle,
+    check(g.tubeTypes() == std::vector<int8_t>({tubes::kObstacle,
                                                 tubes::kRedium,
                                                 tubes::kGreenium}),
           "the Filler parks a 17 underneath and discards itself");
 
     // 1000:472a refuses to tip a 17, which is the whole of "permanently
     // reduces your capacity": the slot is dead for the rest of the session.
-    // A is edge-detected, so each tip needs a release in between.
-    for (int i = 0; i < 3; ++i) {
-        g.update(tubes::button::kA, 1.0f / 18.2f);
-        g.update(0, 1.0f / 18.2f);
-    }
-    check(g.tubeAtoms() == std::vector<int8_t>{tubes::kObstacle},
+    // A is NOT edge-detected - `1000:4511` only gates it on the tube being
+    // idle - so holding it tips once every six frames.
+    for (int i = 0; i < 3; ++i) tipOnce(g);
+    check(g.tubeTypes() == std::vector<int8_t>{tubes::kObstacle},
           "everything above it tips out and the 17 will not");
 }
 
@@ -589,13 +604,13 @@ void testCatchSpecialsAreGated() {
     tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
     g.boardMutable().setSpecialsEnabled(false);
     catchOne(g, tubes::kMultiplier, {});
-    check(g.tubeAtoms() == std::vector<int8_t>{tubes::kMultiplier},
+    check(g.tubeTypes() == std::vector<int8_t>{tubes::kMultiplier},
           "a gated Multiplier just sits in the tube");
 
     tubes::Game h(6, 5, tubes::Difficulty::k101, 5);
     h.boardMutable().setSpecialsEnabled(false);
     catchOne(h, tubes::kBonus, {});
-    check(h.tubeAtoms() == std::vector<int8_t>{tubes::kFlashium},
+    check(h.tubeTypes() == std::vector<int8_t>{tubes::kFlashium},
           "the Bonus is not gated");
 }
 
@@ -606,10 +621,96 @@ void testTheTubeIsAStack() {
     g.setTubeColumn(3);
     g.setTubeAtoms({tubes::kRedium, tubes::kGreenium});
     check(g.heldAtom() == tubes::kGreenium, "the mouth is the last one caught");
-    g.update(tubes::button::kA, 1.0f / 18.2f);
-    check(g.tubeAtoms() == std::vector<int8_t>{tubes::kRedium},
+    tipOnce(g);
+    check(g.tubeTypes() == std::vector<int8_t>{tubes::kRedium},
           "and that is the one an A press tips out");
+    // It is now a record 7..12 falling into the beaker rather than a cell
+    // written on the spot - 9 px a frame from the tube down to row 5 at y=186.
+    check(g.atom(7).state == tubes::atomstate::kTipped,
+          "the tipped atom is in the spare-record pool");
+    for (int i = 0; i < 20; ++i) g.update(0, 1.0f / 18.2f);
     check(g.board().typeAt(3, 4) == tubes::kGreenium, "it lands in the beaker");
+}
+
+// --- the tipping animation, 1000:463a ---------------------------------
+
+void testTipRunsFourPhasesOverSixFrames() {
+    // A 2-frame divider drives the phases, so the whole tip is six frames and
+    // phase 4 never survives to a draw - it resets to 1 in the same body that
+    // releases the atom, which is why three sprites cover four phases.
+    tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
+    g.setTubeColumn(3);
+    g.setTubeAtoms({tubes::kRedium, tubes::kGreenium});
+
+    // Sampled AFTER each step, which is where the original's draw sits - the
+    // animation runs in the input section and the frame is drawn below it.
+    const uint8_t want[6] = {1, 2, 2, 3, 3, 1};
+    bool phasesOk = true;
+    for (int f = 0; f < 6; ++f) {
+        g.update(tubes::button::kA, 1.0f / 18.2f);
+        if (g.tubePhase() != want[f]) phasesOk = false;
+    }
+    check(phasesOk, "the tip renders phases 1,2,2,3,3 and never 4");
+    check(g.tubeTypes() == std::vector<int8_t>{tubes::kRedium},
+          "and the mouth has left the tube by the sixth frame");
+}
+
+void testTipMovesTheContents() {
+    // Phase 2 bunches them to 99/93/87/81/73 and steps every slot one pixel
+    // left; phase 3 lines them all up at 82. Both are per-slot literals.
+    tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
+    g.setTubeColumn(3);
+    g.setTubeAtoms({tubes::kRedium, tubes::kGreenium, tubes::kBluium});
+    const int restX = g.tubeAtoms()[0].x;
+    check(g.tubeAtoms()[0].y == 120 && g.tubeAtoms()[2].y == 94,
+          "at rest the slots sit at the tube's y plus 52, 39, 26");
+
+    for (int f = 0; f < 3; ++f) g.update(tubes::button::kA, 1.0f / 18.2f);
+    check(g.tubeAtoms()[0].y == 99 && g.tubeAtoms()[1].y == 93 &&
+          g.tubeAtoms()[2].y == 87, "phase 2 bunches them toward the middle");
+    check(g.tubeAtoms()[0].x == restX - 1, "and steps every slot 1 px left");
+
+    for (int f = 0; f < 2; ++f) g.update(tubes::button::kA, 1.0f / 18.2f);
+    check(g.tubeAtoms()[0].y == 82 && g.tubeAtoms()[2].y == 82,
+          "phase 3 lines all five up as the tube pours");
+}
+
+void testCaughtAtomSlidesToItsSlot() {
+    // A catch lands at the MOUTH and descends 9 px a frame; the special does
+    // not fire until it arrives. The port used to teleport it into place.
+    tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
+    g.setTubeColumn(3);
+    tubes::Falling a;
+    a.state = tubes::atomstate::kDescend;
+    a.column = 6;
+    a.colour = tubes::kRedium;
+    a.x = tubes::kAtomColumnX[6];
+    a.y = 90;
+    a.velocity = 0x100;
+    g.setAtom(6, a);
+
+    g.update(0, 1.0f / 18.2f);
+    check(g.tubeAtoms().size() == 1, "the atom is caught");
+    // Caught at y=92 (two more px of descent), then one slide step to 101.
+    check(g.tubeAtoms()[0].y == 101 && !g.tubeAtoms()[0].arrived,
+          "and starts sliding rather than appearing in its slot");
+    for (int f = 0; f < 4; ++f) g.update(0, 1.0f / 18.2f);
+    check(g.tubeAtoms()[0].y == 120 && g.tubeAtoms()[0].arrived,
+          "it settles on slot 1 at the tube's y plus 52");
+}
+
+void testTippedAtomFallsIntoAFullColumnAndIsLost() {
+    // 1000:16d3: a column with no free row destroys the atom and spends a
+    // drop. It does not sit on top and it does not bounce.
+    tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
+    g.setTubeColumn(3);
+    for (int r = 0; r < 5; ++r) g.boardMutable().set(3, r, tubes::kXenon);
+    g.setTubeAtoms({tubes::kRedium});
+    tipOnce(g);
+    for (int f = 0; f < 30; ++f) g.update(0, 1.0f / 18.2f);
+    check(g.board().typeAt(3, 0) == tubes::kXenon, "the column is untouched");
+    check(g.dropsRemaining() == 8, "and the tip cost a drop");
+    check(!g.atom(7).active(), "the record is released either way");
 }
 
 }  // namespace
@@ -652,6 +753,10 @@ int main() {
     testFillerParksAnImmovableAtom();
     testCatchSpecialsAreGated();
     testTheTubeIsAStack();
+    testTipRunsFourPhasesOverSixFrames();
+    testTipMovesTheContents();
+    testCaughtAtomSlidesToItsSlot();
+    testTippedAtomFallsIntoAFullColumnAndIsLost();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

@@ -252,10 +252,10 @@ bool loadState(const std::string& path, tubes::Game& game) {
             if (n >= 5) {
                 if (n < 6) slot = col;
                 // Slots 7..12 are the atoms tipped out of the test tube and
-                // falling into the beaker, which this engine does not model
-                // yet - it settles them instantly. Skip rather than draw them
-                // in a network column they are not in.
-                if (slot < 1 || slot > tubes::kAtomSlots) continue;
+                // falling into the beaker. They used to be skipped, because the
+                // engine settled a tip instantly and had nowhere to put one;
+                // now they are records like any other and load straight in.
+                if (slot < 1 || slot > tubes::kAtomRecords) continue;
                 f.x = x; f.y = y;
                 f.state = static_cast<uint8_t>(st);
                 f.column = col;
@@ -605,8 +605,20 @@ int main(int argc, char** argv) {
         }
     }
     std::printf("loaded %d/66 fade sprites\n", fadesLoaded);
-    tubes::Sprite testTube;
-    bool haveTube = loadSprite(res, "TESTUBE1.CSP", testTube);
+    // TESTUBE1/2/3 are the tipping animation's three frames, indexed by the
+    // tube's phase - upright, tilted, pouring. Their heights of 65/42/27 are
+    // a tube going over, which is what they were for all along; the port read
+    // them as three difficulty capacities for several sessions, a guess the
+    // flat capacity of five already contradicted without explaining.
+    tubes::Sprite testTube[tubes::tubephase::kRelease + 1];
+    bool haveTube[tubes::tubephase::kRelease + 1] = {false, false, false, false,
+                                                     false};
+    haveTube[tubes::tubephase::kUpright] =
+        loadSprite(res, "TESTUBE1.CSP", testTube[tubes::tubephase::kUpright]);
+    haveTube[tubes::tubephase::kTilted] =
+        loadSprite(res, "TESTUBE2.CSP", testTube[tubes::tubephase::kTilted]);
+    haveTube[tubes::tubephase::kPoured] =
+        loadSprite(res, "TESTUBE3.CSP", testTube[tubes::tubephase::kPoured]);
 
     tubes::Sprite furn[kFurnCount];
     bool haveFurn[kFurnCount] = {};
@@ -621,8 +633,11 @@ int main(int argc, char** argv) {
     // it sits 4px left of column 1 and level with row 1.
     tubes::Sprite beaker;
     const bool haveBeaker = loadSprite(res, "BEAKER.CSP", beaker);
-    std::printf("loaded %d/%d atoms, test tube %s\n", loaded, drawable,
-                haveTube ? "ok" : "missing");
+    const int tubeFrames = static_cast<int>(haveTube[1]) +
+                           static_cast<int>(haveTube[2]) +
+                           static_cast<int>(haveTube[3]);
+    std::printf("loaded %d/%d atoms, %d/3 test tube frames\n", loaded, drawable,
+                tubeFrames);
 
     tubes::Game game(kCols, kRows, tubes::Difficulty::k101, 0x9E3779B9u);
     game.setFallHeight(kFallHeight);
@@ -855,15 +870,20 @@ int main(int argc, char** argv) {
             screen.draw(furn[kTestTubeShadow], tubeX, kTubeY);
         }
 
-        // Atoms stack in the tube, mouth downwards: index 0 sits at the
-        // bottom and is the next one an A press tips out.
-        const std::vector<int8_t>& stack = game.tubeAtoms();
-        for (size_t i = 0; i < stack.size(); ++i) {
-            const int y = kGridY - kCellH - static_cast<int>(i) * kPitchY;
-            screen.draw(atoms[stack[i]], tubeX + 3, y);
+        // The tube's contents carry their OWN positions now. They used to be
+        // computed from the index, which was right at rest and impossible
+        // during the tip - the animation moves the slots, and a caught atom
+        // slides down to its own before that.
+        for (const tubes::Falling& s : game.tubeAtoms()) {
+            if (!haveAtom[s.colour]) continue;
+            screen.draw(atoms[s.colour], s.x, s.y);
         }
 
-        if (haveTube) screen.draw(testTube, tubeX, kTubeY);
+        // `1000:5922` draws the tube from a four-entry sprite table indexed by
+        // the animation phase. Only three sprites exist because phase 4 resets
+        // to 1 before the frame is drawn, so it can never be the one selected.
+        const int phase = game.tubePhase();
+        if (haveTube[phase]) screen.draw(testTube[phase], tubeX, kTubeY);
 
         // Beaker shadow, then its contents, then the glass FRONT last - the
         // original draws BEAKER.CSP after the settled atoms, so the glass
@@ -894,6 +914,16 @@ int main(int argc, char** argv) {
                                 kGridY + r * kPitchY + 1);
                 }
             }
+        }
+
+        // Records 7..12 - the atoms tipped out of the tube and falling into
+        // the beaker. `1000:5c1f` runs them AFTER the grid and the MARKER
+        // overlay and BEFORE `BEAKER.CSP`, so a falling atom passes in front of
+        // the settled ones and behind the glass.
+        for (int n = tubes::kAtomSlots + 1; n <= tubes::kAtomRecords; ++n) {
+            const tubes::Falling& f = game.atom(n);
+            if (!f.drawn() || !haveAtom[f.colour]) continue;
+            screen.draw(atoms[f.colour], f.x, f.y);
         }
 
         if (haveBeaker) screen.draw(beaker, kGridX - 4, kGridY);

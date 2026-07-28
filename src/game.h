@@ -39,11 +39,27 @@ enum class Difficulty {
 // numbers, kept so a live record can be compared against this struct directly.
 namespace atomstate {
 constexpr uint8_t kFree = 0;      // slot unused; the spawn looks for this
+// States 1 and 2 are a two-frame teardown after a record lands - `1000:18ec`
+// steps 1 to 2 and 2 to 0, and `drawn()` is `state > 2`, so neither renders.
+// They exist so a slot is not reallocated on the frame it was released.
+constexpr uint8_t kLanded = 1;
+constexpr uint8_t kLanded2 = 2;
 constexpr uint8_t kRise = 3;      // up a feed tube, y decreasing
 constexpr uint8_t kGoLeft = 5;    // across the top, x decreasing
 constexpr uint8_t kGoRight = 6;   // across the top, x increasing
 constexpr uint8_t kDescend = 7;   // down a play column, y increasing
+constexpr uint8_t kInTube = 8;    // caught, sliding down to its slot
+constexpr uint8_t kTipped = 9;    // released, falling into the beaker
 }  // namespace atomstate
+
+// The test tube's tipping animation, `1000:463a`. `tube.state = 3` runs it and
+// `tube.phase` (+0x05) selects both the body and the sprite.
+namespace tubephase {
+constexpr uint8_t kUpright = 1;
+constexpr uint8_t kTilted = 2;
+constexpr uint8_t kPoured = 3;
+constexpr uint8_t kRelease = 4;   // never rendered; see kTipFrames below
+}  // namespace tubephase
 
 // The playfield geometry lives in four consecutive six-word tables in DGROUP,
 // which is why no tube x value ever appears in a comparison in the game loop.
@@ -105,8 +121,33 @@ constexpr int kTubeSlidePx = 6;
 // parks an immovable atom in slot 1.
 constexpr int kTubeSlots = 5;
 
+// The tube's own y, the literal `0x44` the session setup writes, and the five
+// slot offsets the fill routines write as literals. Index 0 is unused so the
+// table can be read with the original's 1..5.
+constexpr int kTubeY = 68;
+constexpr int kSlotDy[kTubeSlots + 1] = {0, 52, 39, 26, 13, 0};
+
+// A caught atom drops to its slot, and a tipped one falls into the beaker, at
+// the same flat 9 px a frame - `1000:187e` and `1000:15c0`.
+constexpr int kTubeDropPx = 9;
+
+// The tipping animation, `1000:463a`. A divider at tube+0x16 counts to 2, so
+// each phase lasts two frames and the whole tip is six.
+constexpr int kTipDivider = 2;
+
+// Phase 2 bunches the contents up as the tube tilts, phase 3 lines them all up
+// as it pours. Both are written as literals per slot, not computed.
+constexpr int kTiltY[kTubeSlots + 1] = {0, 99, 93, 87, 81, 73};
+constexpr int kPourY = 82;
+
 // The Bonus atom's award, `1000:0846  ADD [award], 0x3e8`.
 constexpr int kBonusAward = 1000;
+
+// The beaker's five rows, as the y a falling record must reach to land in
+// them - `1000:15da` onward, indexed by the Pascal row 1..5. Row 1's 131 is
+// three pixels above where the cell actually draws (134); every other row is
+// exact. Transliterated as found.
+constexpr int kLandY[kTubeSlots + 1] = {0, 131, 147, 160, 173, 186};
 
 // The dispenser's period, in frames, from the same seeding block: 70/60/50 by
 // difficulty. It shortens by one per wave and lengthens by twelve every
@@ -135,6 +176,15 @@ struct Falling {
     int velocity = 0;
     int accX = 0;
     int accY = 0;
+    // Record +0x0d. The router overloads it: in the tube (state 8) it is the
+    // slot's y offset, 52 down to 0; falling into the beaker (state 9) it is
+    // first the target y and then, on arrival, the row 1..5 that y meant. That
+    // reuse is the original's, not a simplification - `1000:167c` rewrites the
+    // field in place from one meaning to the other.
+    int slotDy = 0;
+    // Record +0x0f. Set when a caught atom reaches its slot; it is what gates
+    // the catch-time specials at `1000:180c`, not the catch itself.
+    bool arrived = false;
     // True while the router is applying its corner offset, i.e. the atom is
     // rounding a bend rather than running along a straight pipe. Kept because
     // the arc offsets are what the router computes, not because anything is
@@ -152,6 +202,13 @@ struct Falling {
 // main.cpp for why the rendering depends on it.
 constexpr int kAtomSlots = 6;
 
+// The array is `array[1..12]`, though. Records 7..12 are the atoms tipped out
+// of the test tube and falling into the beaker - a pool of six, allocated by
+// the first free one at `1000:4764`, which halts the game if none is. The
+// router runs over all twelve in one loop at `1000:47fe`; the two halves are
+// distinguished only by the state a record is in.
+constexpr int kAtomRecords = 12;
+
 class Game {
 public:
     Game(int cols, int rows, Difficulty diff, uint32_t seed);
@@ -162,13 +219,17 @@ public:
 
     const Board& board() const { return board_; }
 
-    // The atom travelling column `col`, 1..6. Always valid; check `active()`.
+    // A record, 1..12. Slots 1..6 are the network, one per column; 7..12 are
+    // the atoms tipped out of the tube. Always valid; check `active()`.
     const Falling& atom(int col) const { return atoms_[col]; }
 
     // The tube's stop, 0..5, and its actual x - which is between two stops
     // while it is sliding. Renderers want the x; the board wants the stop.
     int tubeColumn() const { return tubeColumn_; }
     int tubeX() const { return tubeX_; }
+    // The tipping animation's phase, 1..3 as far as any renderer sees - it
+    // selects TESTUBE1/2/3. Phase 4 exists but never survives to a draw.
+    uint8_t tubePhase() const { return tubePhase_; }
 
     // The test tube holds up to five atoms, stacked. Index 0 is slot 1, the
     // BOTTOM of the tube; the LAST element is the mouth, and it is both the one
@@ -176,7 +237,12 @@ public:
     // inferred from sprite heights any more: the game's own Detailed
     // Instructions state "The test tube you control to collect and release
     // atoms can hold up to 5 atoms at a time", with no mention of difficulty.
-    const std::vector<int8_t>& tubeAtoms() const { return tube_; }
+    //
+    // These are full records, not bare types, because the tipping animation
+    // moves them: the original holds `array[1..5] of AtomRec` inline in the
+    // tube and the animation writes their x and y directly.
+    const std::vector<Falling>& tubeAtoms() const { return tube_; }
+    std::vector<int8_t> tubeTypes() const;
     int tubeCapacity() const { return tubeCapacity_; }
     bool tubeFull() const {
         return static_cast<int>(tube_.size()) >= tubeCapacity_;
@@ -185,7 +251,7 @@ public:
     // last one caught, and `1000:180c` fires a special on `slot[count]` too.
     // The port used to tip `tube_.front()`, which emptied it oldest-first.
     int8_t heldAtom() const {
-        return tube_.empty() ? static_cast<int8_t>(kEmpty) : tube_.back();
+        return tube_.empty() ? static_cast<int8_t>(kEmpty) : tube_.back().colour;
     }
 
     // Drops are a single pool that counts DOWN, not misses counting up. It is
@@ -227,12 +293,22 @@ public:
     // Pin the tube mid-slide, which is where a paused capture often finds it.
     void setTubeX(int x) { tubeX_ = x; }
     void setAtom(int col, const Falling& f) { atoms_[col] = f; }
-    void setTubeAtoms(const std::vector<int8_t>& v) { tube_ = v; }
+    // Seeds the tube from bare types, putting every slot at rest in its own
+    // position - which is what a captured state describes and what a test
+    // wants. A slot mid-slide has to be built by hand.
+    void setTubeAtoms(const std::vector<int8_t>& v);
 
 private:
     void spawn();
     void stepAtom(Falling& a);
     void updateBeaker();
+    // The test tube's own state machine, `1000:45e7` - the slide between stops
+    // and the tipping animation.
+    void stepTube(uint8_t buttons);
+    // Phase 4: hand the mouth's record to a free record of 7..12 - `1000:4715`.
+    void releaseTippedAtom();
+    // Append a slot the way the Multiplier fills do - `1000:092d`.
+    void pushTubeSlot(int8_t colour);
     // The score ramp's clock, `1000:58c5` - a separate statement in the frame
     // body, and after the router rather than with the beaker.
     void stepScoreRamp();
@@ -246,17 +322,21 @@ private:
     void stepFrame(uint8_t buttons, uint8_t pressed);
 
     Board board_;
-    // Index 1..6 by column; [0] is never used, matching the Pascal array.
-    Falling atoms_[kAtomSlots + 1];
+    // Index 1..12; [0] is never used, matching the Pascal array. 1..6 are the
+    // network by column, 7..12 the tipped-atom pool.
+    Falling atoms_[kAtomRecords + 1];
 
-    // The test tube's own record: x at +0x00, state at +0x04, stop index at
-    // +0x1e, target x at +0x1f. State 0 is parked and is the ONLY state that
-    // accepts input; 1 and 2 are sliding left and right.
+    // The test tube's own record: x at +0x00, state at +0x04, phase at +0x05,
+    // the tip divider at +0x16, stop index at +0x1e, target x at +0x1f. State 0
+    // is parked and is the ONLY state that accepts input; 1 and 2 are sliding
+    // left and right, and 3 is tipping.
     int tubeColumn_ = 0;          // the original's +0x1e, less one
     int tubeX_ = kTubeStopX[1];
     int tubeTargetX_ = kTubeStopX[1];
+    uint8_t tubePhase_ = tubephase::kUpright;
+    int tipDivider_ = 0;
     uint8_t tubeState_ = 0;
-    std::vector<int8_t> tube_;
+    std::vector<Falling> tube_;
     int tubeCapacity_ = 5;
 
     int dropsRemaining_ = 9;

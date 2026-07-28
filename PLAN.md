@@ -58,6 +58,7 @@ Percentages are judgement calls, so the breakdown matters more than the number.
 | Difficulty seeds and their per-wave stepping | **done** |
 | The test tube's record, state machine and five slots | **done** - and it is a stack |
 | The beaker update `1000:22a6` | **done** - three planes, four matchers, fade, gravity |
+| The tipping animation `1000:463a`, and records 7..12 | **done** - four phases, state 8 and state 9 |
 | Beaker-side specials `1000:2790` | **done** - AntiMatter, Blocker, Convertor |
 | Catch-time specials `1000:180c` | **done** - Bonus, Multiplier, EvilMultiplier, Filler |
 | Scoring and the chain bonus multiplier | **done**, from code rather than the manual |
@@ -69,8 +70,6 @@ Still unread, and most of it is inside `1000:3a67`'s 9,382 bytes:
   machinery is now half visible: `1000:192f` checks an orientation- or
   colour-based objective, and the objective plane and the disabled-element
   modifier are both implemented
-- the **tipping animation**, and with it records 7..12 - the atoms that travel
-  from the test tube into the beaker
 - `.SPR`, `.BIN`, `.ANM`
 
 ### The engine: ~40%
@@ -102,6 +101,11 @@ Working, and transliterated rather than invented:
   the tube up to five with 1..8 rolls; the Evil Multiplier doing the same with
   Xenon; and the Filler parking an untippable type 17 in the bottom slot
 - **the tube as a stack**, tipping the atom caught last, and refusing a 17
+- **the tipping animation**: four phases on a 2-frame divider, `TESTUBE1/2/3`
+  chosen by the phase, the contents bunching and pouring on per-slot literals
+- **the in-tube slide** and **records 7..12**, so a tipped atom visibly leaves
+  the tube, falls 9 px a frame and lands on the first free row - or is lost,
+  at the cost of a drop, if its column is full
 - music: all ten songs, correct at the register level
 
 Absent entirely:
@@ -110,8 +114,6 @@ Absent entirely:
 |---|---|
 | HUD - Chains, score, Drops, the small ball counters | small, high visibility |
 | Sound effects | small |
-| The tipping animation - an atom visibly leaving the tube for the beaker | small |
-| The in-tube slide - a caught atom drops to its slot at 9 px/frame | small |
 | Wave structure: briefings, objectives, modifiers | large |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |
@@ -237,37 +239,9 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
 
 **In priority order:**
 
-1. **IN PROGRESS: the tipping animation, the in-tube slide, and records 7..12.**
-   Pressing A currently teleports an atom into the beaker. Everything needed is
-   now decompiled; see `docs/reversing-notes.md`. Five pieces, in this order:
-
-   * **The tube's slots become real records.** `tube_` is a vector of *types*
-     today, and the animation moves the slots' x and y, so it has to carry
-     positions. The original stores them inline in the tube at `tube + 7 + 28n`
-     as ordinary 28-byte AtomRecs.
-   * **The in-tube slide**, the router's state 8. A caught atom is placed at the
-     mouth and descends **9 px a frame** to `tube.y + slot.dy`. It is that
-     arrival, not the catch, that sets `+0x0f` and fires a special.
-   * **The animation itself**, `1000:463a`, on `tube.state = 3`. A 2-frame
-     divider drives four phases; phase 2 bunches the contents to y =
-     99/93/87/81/73 and steps every slot 1 px left, phase 3 lines them all up
-     at y = 82, phase 4 steps them back and releases. Six frames total. **The
-     tube sprite is `TESTUBE1/2/3` indexed by the phase** - which retires the
-     old "the 65/42/27 sprite heights are the difficulty capacities" guess for
-     good. Phase 4 never renders, because the release resets the phase to 1
-     before the frame's draw.
-   * **Records 7..12 and router state 9.** The tipped atom is `Move`d whole into
-     the first free record of 7..12 with state 9, and falls 9 px a frame to the
-     first free row of its column - y targets 186/173/160/147/**131**, that last
-     one three pixels early for no reason yet found. On arrival it writes
-     `grid[row, col]` and goes to state 1, which is a two-frame teardown to 0.
-     If the column is **full** the atom is destroyed and costs a drop.
-   * **Rendering**: the six records draw between the `MARKER` overlay and
-     `BEAKER.CSP` at `1000:5c1f`, and the tube's contents with the tube.
-
-2. **The HUD**, now that fonts are decoded and the render order around them is
-   known. It would also settle the one scoring conflict below.
-3. **Sound effects.** Every hook now exists: the matcher names the fade family
+1. **IN PROGRESS: the HUD**, now that fonts are decoded and the render order
+   around them is known. It would also settle the one scoring conflict below.
+2. **Sound effects.** Every hook now exists: the matcher names the fade family
    whose `.SFX` to play, and `Game::takeSound()` hands it to the caller. The
    catch-time specials name theirs too - the Bonus plays a fixed one from the
    frame at `-0x4a`, and the tube's arrival picks between `-0x76` and `-0x7a`

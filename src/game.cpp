@@ -165,6 +165,42 @@ Game::Game(int cols, int rows, Difficulty diff, uint32_t seed)
     tube_.reserve(static_cast<size_t>(tubeCapacity_));
 }
 
+// The fill routines `Move` the mouth's whole record into the new slot and then
+// rewrite its type and its y from the per-index literal - `1000:092d`. So a
+// filled slot inherits the mouth's x and its arrived flag, and only the type
+// and the vertical position are its own.
+void Game::pushTubeSlot(int8_t colour) {
+    Falling s = tube_.empty() ? Falling{} : tube_.back();
+    s.colour = colour;
+    s.state = atomstate::kInTube;
+    s.slotDy = kSlotDy[tube_.size() + 1];
+    s.y = kTubeY + s.slotDy;
+    tube_.push_back(s);
+}
+
+std::vector<int8_t> Game::tubeTypes() const {
+    std::vector<int8_t> out;
+    out.reserve(tube_.size());
+    for (const Falling& s : tube_) out.push_back(s.colour);
+    return out;
+}
+
+// A slot at rest sits at the tube's x plus 3 - the same +3 the router writes
+// every frame at `1000:17d8` - and at the tube's y plus its own offset.
+void Game::setTubeAtoms(const std::vector<int8_t>& v) {
+    tube_.clear();
+    for (size_t i = 0; i < v.size() && i < static_cast<size_t>(kTubeSlots); ++i) {
+        Falling s;
+        s.colour = v[i];
+        s.state = atomstate::kInTube;
+        s.slotDy = kSlotDy[i + 1];
+        s.x = tubeX_ + 3;
+        s.y = kTubeY + s.slotDy;
+        s.arrived = true;
+        tube_.push_back(s);
+    }
+}
+
 // xorshift32 - deterministic, so a fixed seed replays identically. The
 // original calls a library `Random(n)`; only the distribution below is
 // transliterated, not the generator.
@@ -319,17 +355,23 @@ void Game::stepScoreRamp() {
 // The Bonus sits deliberately OUTSIDE the `DS:0x1d48` gate and the other three
 // inside it - the same gate that guards the Blocker on the beaker side.
 //
-// All four work on `slot[count]`, the atom just caught, which is `tube_.back()`
-// here. The port has no in-tube slide yet, so a catch lands in its slot at
-// once and these fire on the catch frame rather than a few frames later.
+// All four work on `slot[count]`, the mouth of the tube - which is normally the
+// atom that just arrived, but need not be: an atom caught while an earlier one
+// is still sliding arrives second, and the routine still acts on the top slot.
+// That is the original's own behaviour and is left in.
+//
+// Each of the four rewrites the type of the slot it touches, which is what
+// stops them firing again on the next frame - `arrived` stays set for as long
+// as the atom is in the tube, so the dispatch is re-entered every frame and the
+// type is the only guard. Same trick as AntiMatter rewriting its cells to 9.
 void Game::catchSpecial() {
     if (tube_.empty()) return;
-    const int8_t type = tube_.back();
+    const int8_t type = tube_.back().colour;
 
     if (type == kBonus) {
         // 1000:07f7  slot[count].type := 8. The Instructions' "turns into
         // Flashium when caught" is the code's own doing, one byte.
-        tube_.back() = kFlashium;
+        tube_.back().colour = kFlashium;
         // 1000:0803: on the way from zero the drop counter's sprite has been
         // erased, so it is redrawn before the count goes back up. The port has
         // no counter to redraw yet; the increment at 1000:082e is the point,
@@ -368,9 +410,9 @@ void Game::catchSpecial() {
     // Random(8) + 1 is 1..8, so Flashium is one of the eight it can roll -
     // the same distribution the dispenser uses for an ordinary atom.
     if (type == kMultiplier) {
-        tube_.back() = static_cast<int8_t>(random(8) + 1);
+        tube_.back().colour = static_cast<int8_t>(random(8) + 1);
         while (static_cast<int>(tube_.size()) < kTubeSlots) {
-            tube_.push_back(static_cast<int8_t>(random(8) + 1));
+            pushTubeSlot(static_cast<int8_t>(random(8) + 1));
         }
     }
 
@@ -378,9 +420,9 @@ void Game::catchSpecial() {
     // replaced by a literal 11. It writes Xenon into the caught slot and then
     // copies that record upward, so every slot it fills is Xenon too.
     if (type == kEvilMultiplier) {
-        tube_.back() = kXenon;
+        tube_.back().colour = kXenon;
         while (static_cast<int>(tube_.size()) < kTubeSlots) {
-            tube_.push_back(kXenon);
+            pushTubeSlot(kXenon);
         }
     }
 
@@ -400,7 +442,17 @@ void Game::catchSpecial() {
     // anywhere writes a capacity variable.
     if (type == kFiller) {
         tube_.pop_back();
-        tube_.insert(tube_.begin(), static_cast<int8_t>(kObstacle));
+        Falling fill;
+        fill.colour = kObstacle;
+        fill.state = atomstate::kInTube;
+        fill.arrived = true;
+        tube_.insert(tube_.begin(), fill);
+        // The shift moves every slot up one, and each one's y offset is
+        // rewritten from the literal for its NEW index - 1000:0b96 onward.
+        for (size_t i = 0; i < tube_.size(); ++i) {
+            tube_[i].slotDy = kSlotDy[i + 1];
+            tube_[i].y = kTubeY + tube_[i].slotDy;
+        }
     }
 
     // Not ported: all three gated routines carry a tail guarded by
@@ -450,32 +502,29 @@ void Game::spawn() {
     a.colour = nextColour();
 }
 
-// One frame of the dispenser path. Speeds are the measured px/frame values,
-// and each leg ends when it reaches its target rather than after a duration.
-void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
-    updateBeaker();
-
-    // --- the test tube, transliterated from 1000:4528 ------------------
-    //
-    // The whole input block sits inside `if state = 0`, so a direction is
-    // only accepted when the tube is parked. That is why holding Left slides
-    // one column at a time rather than accelerating: the next press is
-    // ignored until the slide finishes.
-    //
-    //     if (btn and 4) and (index > 1) then           { Left }
-    //         state := 1;  Dec(index);  target := stop[index]
-    //     if (btn and 8) and (index < 6) then           { Right }
-    //         state := 2;  Inc(index);  target := stop[index]
-    //     case state of
-    //       1: begin x := x - 6; if x <= target then begin x := target;
-    //                                                     state := 0 end end
-    //       2: begin x := x + 6; if x >= target then begin x := target;
-    //                                                     state := 0 end end
-    //
-    // The port used to step a whole column every three frames instead, which
-    // put the tube on a stop on every frame - so a capture that caught the
-    // original mid-slide could never be matched.
+// The test tube: one input read and one step of its state machine, from
+// `1000:44f0` through `1000:47c4`.
+//
+//     if tube.state <> 0 then goto RunStateMachine;      { 1000:44f0 }
+//     btn := ReadButtons;
+//     if btn and $10 <> 0 then tube.state := 3;          { A - tip }
+//     if (btn and 4) and (tube.stop > 1) then            { Left }
+//         tube.state := 1;  Dec(tube.stop);  tube.target := stopX[tube.stop]
+//     if (btn and 8) and (tube.stop < 6) then            { Right }
+//         tube.state := 2;  Inc(tube.stop);  tube.target := stopX[tube.stop]
+//
+// The whole input block sits inside `if state = 0`, so nothing is accepted
+// while the tube is busy. That is why holding Left slides one column at a time
+// rather than accelerating, and it is also the ONLY thing gating A: the press
+// is not edge-detected anywhere. Holding A tips repeatedly, one atom every six
+// frames, because six frames is exactly how long the animation takes to hand
+// the state back. The port used to edge-detect A, which made holding it do
+// nothing at all.
+void Game::stepTube(uint8_t buttons) {
     if (tubeState_ == 0) {
+        if (buttons & button::kA) {
+            tubeState_ = 3;
+        }
         if ((buttons & button::kLeft) && tubeColumn_ > 0) {
             tubeState_ = 1;
             --tubeColumn_;
@@ -487,39 +536,118 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
             tubeTargetX_ = kTubeStopX[tubeColumn_ + 1];
         }
     }
+
+    // 1000:45e7. The port used to step a whole column every three frames
+    // instead, which put the tube on a stop on every frame - so a capture that
+    // caught the original mid-slide could never be matched.
     if (tubeState_ == 1) {
         tubeX_ -= kTubeSlidePx;
         if (tubeX_ <= tubeTargetX_) { tubeX_ = tubeTargetX_; tubeState_ = 0; }
-    } else if (tubeState_ == 2) {
+        return;
+    }
+    if (tubeState_ == 2) {
         tubeX_ += kTubeSlidePx;
         if (tubeX_ >= tubeTargetX_) { tubeX_ = tubeTargetX_; tubeState_ = 0; }
+        return;
+    }
+    if (tubeState_ != 3) return;
+
+    // --- the tipping animation, 1000:463a ------------------------------
+    //
+    //     Inc(divider);
+    //     if divider <> 2 then exit;              { a phase lasts two frames }
+    //     divider := 0;
+    //     Inc(phase);
+    //     case phase of
+    //       2: begin for i := 1 to 5 do Dec(slot[i].x);
+    //                slot[1].y := 99;  slot[2].y := 93;  slot[3].y := 87;
+    //                slot[4].y := 81;  slot[5].y := 73 end;
+    //       3: for i := 1 to 5 do slot[i].y := 82;
+    //       4: for i := 1 to 5 do Inc(slot[i].x);
+    //     end;
+    //     if phase = 4 then begin
+    //         tube.state := 0;  phase := 1;  <release>
+    //     end
+    //
+    // Six frames end to end. Phase 2 is the tube tilting - the contents bunch
+    // toward the middle - and phase 3 is it pouring, with all five in a line.
+    // Both sets of positions are written as literals per slot, not computed
+    // from an angle, so they are transliterated as a table.
+    //
+    // The loops run over all five slots whatever the count, which only matters
+    // because it moves slots that hold nothing. The port keeps `tube_` sized to
+    // the count, so it moves what exists; the surplus is invisible either way.
+    if (++tipDivider_ != kTipDivider) return;
+    tipDivider_ = 0;
+    ++tubePhase_;
+
+    if (tubePhase_ == tubephase::kTilted) {
+        for (size_t i = 0; i < tube_.size(); ++i) {
+            --tube_[i].x;
+            tube_[i].y = kTiltY[i + 1];
+        }
+    } else if (tubePhase_ == tubephase::kPoured) {
+        for (Falling& s : tube_) s.y = kPourY;
+    } else if (tubePhase_ == tubephase::kRelease) {
+        for (Falling& s : tube_) ++s.x;
     }
 
-    // A tips the tube, dumping one atom into the beaker beneath it. Matching
-    // is NOT resolved here: the beaker update runs every frame and picks the
-    // new atom up on the next one, which is what lets the clear animate.
-    //
-    // `1000:4715`, the tipping code, reads:
-    //
-    //     if tube.count = 0 then exit;
-    //     if tube.slot[tube.count].type = 17 then exit;      { FILLBALL }
-    //     tube.slot[tube.count].state  := 9;
-    //     tube.slot[tube.count].column := tube.stop;
-    //     n := 1; while atom[n + 6].?? <> 0 do Inc(n);       { a free slot }
-    //     if n = 6 then RunError;
-    //     Move(tube.slot[tube.count], atom[n + 6], 28);
-    //     Dec(tube.count)
-    //
-    // Two things the port had wrong. It tips `slot[count]`, the atom caught
-    // LAST, so the tube is a stack and not a queue. And a type 17 in the mouth
-    // simply refuses - which is the whole of what the Filler does to you: it
-    // parks one of those in slot 1, and once everything above it is gone the
-    // slot is dead for the rest of the session.
-    if ((pressed & button::kA) && !tube_.empty() && tube_.back() != kObstacle) {
-        if (board_.drop(tubeColumn_, tube_.back())) {
-            tube_.pop_back();
-        }
+    if (tubePhase_ == tubephase::kRelease) {
+        tubeState_ = 0;
+        // Back to 1 BEFORE the frame's draw, which is why nothing ever renders
+        // phase 4 and why three tube sprites cover four phases.
+        tubePhase_ = tubephase::kUpright;
+        releaseTippedAtom();
     }
+}
+
+// `1000:4715`. The mouth's record is handed to the first free record of 7..12
+// and starts falling; the tube just loses a slot.
+//
+//     if tube.count = 0 then exit;
+//     if tube.slot[tube.count].type = 17 then exit;      { FILLBALL }
+//     tube.slot[tube.count].state  := 9;
+//     tube.slot[tube.count].column := tube.stop;
+//     n := 1; while atom[n + 6].state <> 0 do Inc(n);
+//     if n = 6 then RunError;                            { halts the game }
+//     Move(tube.slot[tube.count], atom[n + 6], 28);
+//     Dec(tube.count)
+//
+// Two things the port had wrong before this. It tipped `slot[1]`, so the tube
+// emptied oldest-first; and a type 17 in the mouth simply refuses, which is the
+// whole of what the Filler does to you.
+//
+// The record is MOVED, so the falling atom keeps the position it had in the
+// tube - it appears exactly where the mouth was, not at the beaker.
+void Game::releaseTippedAtom() {
+    if (tube_.empty()) return;
+    if (tube_.back().colour == kObstacle) return;
+
+    Falling tipped = tube_.back();
+    tipped.state = atomstate::kTipped;
+    // The board's columns are left to right and so are the tube's stops, so
+    // the stop index IS the column. The network's own 1..6 numbering is a
+    // different order and is not involved here.
+    tipped.column = tubeColumn_ + 1;
+    tipped.arrived = false;
+
+    for (int n = kAtomSlots + 1; n <= kAtomRecords; ++n) {
+        if (atoms_[n].state != atomstate::kFree) continue;
+        atoms_[n] = tipped;
+        tube_.pop_back();
+        return;
+    }
+    // The original halts here. Six slots against six columns and a fall of at
+    // most nine frames, so it cannot happen; if it somehow does, dropping the
+    // tip is better than dropping the game.
+}
+
+// One frame of the dispenser path. Speeds are the measured px/frame values,
+// and each leg ends when it reaches its target rather than after a duration.
+void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
+    updateBeaker();
+
+    stepTube(buttons);
 
     // Down or B speeds the atom heading for the column the tube is under.
     // The original dispatches on the tube's stop index through a chain of
@@ -536,11 +664,29 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
         }
     }
 
-    // The router runs over every slot, then the dispenser ticks. Both are
-    // unconditional in the original - it does not wait for the network to
-    // empty, which is why six atoms can be in flight at once.
-    for (int c = 1; c <= kAtomSlots; ++c) {
+    // The router runs over all TWELVE records, then the dispenser ticks. Both
+    // are unconditional in the original - it does not wait for the network to
+    // empty, which is why six atoms can be in flight at once. `1000:47fe`:
+    //
+    //     for i := 1 to 12 do Router(@atom[i], BP);
+    //
+    // and 7..12 are the tipped atoms, in the same loop as the network. Nothing
+    // distinguishes the two halves except which states their records are in.
+    for (int c = 1; c <= kAtomRecords; ++c) {
         if (atoms_[c].active()) stepAtom(atoms_[c]);
+    }
+
+    // The tube's own contents are routed too, but by a SECOND loop at
+    // `1000:4849` - and that one is skipped entirely while the tube is tipping:
+    //
+    //     if tube.state <> 3 then
+    //         for i := 1 to tube.count do Router(@tube.slot[i], BP);
+    //
+    // That gate is what lets the animation own the slots' positions. Without
+    // it the router would put every slot back at `tube.x + 3` and slide its y
+    // toward the resting offset on the very frame the animation moved it.
+    if (tubeState_ != 3) {
+        for (Falling& s : tube_) stepAtom(s);
     }
 
     if (--spawnTimer_ <= 0) spawn();
@@ -613,6 +759,82 @@ void Game::stepAtom(Falling& a) {
             a.y += a.accY / kSubPixel;
             a.accY &= kSubPixel - 1;
             break;
+
+        // In the tube, `1000:17d1`. The atom tracks the tube sideways and
+        // drops to its slot at a flat 9 px a frame - no fixed point, no
+        // velocity, just an integer step and a clamp:
+        //
+        //     rec.x := tube.x + 3;
+        //     if rec.type = 17 then begin              { FILLBALL snaps }
+        //         rec.y := tube.y + rec.dy;  rec.arrived := 1 end;
+        //     <the specials dispatch, if rec.arrived>
+        //     if (tube.y + rec.dy = rec.y) and rec.arrived then exit;
+        //     rec.y := rec.y + 9;
+        //     if tube.y + rec.dy < rec.y then begin
+        //         rec.y := tube.y + rec.dy;
+        //         PlaySound(if rec.dy = 52 then <floor> else <stack>);
+        //         rec.arrived := 1
+        //     end
+        //
+        // The FILLBALL is the only type that arrives instantly, which makes
+        // sense: the Filler inserts it under everything, where a slide would
+        // have to travel upward.
+        case atomstate::kInTube: {
+            a.x = tubeX_ + 3;
+            const int rest = kTubeY + a.slotDy;
+            if (a.colour == kObstacle) {
+                a.y = rest;
+                a.arrived = true;
+            }
+            if (a.arrived) catchSpecial();
+            if (a.arrived && a.y == rest) break;
+            a.y += kTubeDropPx;
+            if (a.y > rest) {
+                a.y = rest;
+                a.arrived = true;
+            }
+            break;
+        }
+
+        // Falling out of the tube into the beaker, `1000:15bd`. The target is
+        // recomputed EVERY frame from the first free row of the column, so an
+        // atom already on its way down lands correctly if the column settles
+        // under it. The field it is kept in is the same `+0x0d` the tube used
+        // for the slot offset, and on arrival it is rewritten in place from a
+        // y to the row number that y meant - `1000:167c`.
+        case atomstate::kTipped: {
+            a.y += kTubeDropPx;
+            const int col = a.column - 1;
+            int row = 0;                       // Pascal 1..5, 0 for "full"
+            for (int r = board_.rows(); r >= 1; --r) {
+                if (board_.at(col, r - 1) == kEmpty) { row = r; break; }
+            }
+            // 1000:1666 - a full column gets 0xbb, a target no atom reaches by
+            // falling short of it, so the branch below always fires.
+            a.slotDy = row ? kLandY[row] : 0xbb;
+            if (a.y < a.slotDy) break;
+
+            a.state = atomstate::kLanded;
+            if (row == 0) {
+                // 1000:16d3. The column is full: the atom is destroyed and it
+                // costs a drop. It does NOT sit on top or bounce.
+                if (a.colour != kBonus && dropsRemaining_ > 0) --dropsRemaining_;
+                pendingSound_ = a.colour;
+                break;
+            }
+            board_.set(col, row - 1, a.colour);
+            pendingSound_ = a.colour;
+            break;
+        }
+
+        // 1000:18ec. A landed record spends two more frames going 1 -> 2 -> 0
+        // before its slot can be reallocated. Neither state draws.
+        case atomstate::kLanded:
+            a.state = atomstate::kLanded2;
+            break;
+        case atomstate::kLanded2:
+            a.state = atomstate::kFree;
+            break;
     }
 
     // The LAST thing the router does to every atom, every frame, at
@@ -648,9 +870,15 @@ void Game::stepAtom(Falling& a) {
     if (a.y >= kTubeMouthY &&
         kAtomColumnX[a.column] == playColumnX(tubeColumn_) &&
         !tubeFull()) {
-        tube_.push_back(a.colour);
+        // Into the mouth, not into the stack: the atom becomes slot[count] and
+        // then SLIDES down to its resting offset over the next few frames. The
+        // port used to teleport it into place and fire its special at once.
+        Falling s = a;
+        s.state = atomstate::kInTube;
+        s.slotDy = kSlotDy[tube_.size() + 1];
+        s.arrived = false;
+        tube_.push_back(s);
         a.state = atomstate::kFree;
-        catchSpecial();
         return;
     }
 

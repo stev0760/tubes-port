@@ -2081,3 +2081,60 @@ percentage per candidate backdrop and *then* the result line; grepping the
 first percentage out of it reported 9-12% and looked like a catastrophic
 regression. The number was real, it was just not the one that means anything.
 Read `best backdrop:`, not the first match.
+
+## 2026-07-28 (later still) - the tipping animation
+
+Pressing A used to teleport an atom into the beaker. It now tips the tube over
+and the atom falls. Five pieces, all in `docs/reversing-notes.md`:
+
+* **The tube's slots are real records now.** `tube_` was a vector of types; the
+  original holds `array[1..5] of AtomRec` inline at `tube + 7 + 28n`, and the
+  animation writes their x and y directly, so it had to carry positions.
+* **The in-tube slide**, router state 8. A catch lands at the *mouth* and
+  descends 9 px a frame to its slot. That arrival, not the catch, is what fires
+  a catch-time special.
+* **The animation**, `1000:463a`. A 2-frame divider, four phases, six frames.
+* **Records 7..12 and state 9.** The tipped record is `Move`d whole into the
+  first free one and falls to the first free row of its column.
+* **Rendering**: contents at their own positions, the six records between the
+  `MARKER` overlay and `BEAKER.CSP`.
+
+### TESTUBE1/2/3 are the animation, not three capacities
+
+`1000:5922` draws the tube from a table indexed by the phase. The heights
+65/42/27 are a tube going over. They were read as the tube holding 5/3/2 by
+difficulty for several sessions - a guess the flat capacity of 5 in the
+Instructions had already contradicted without explaining, which is exactly the
+shape of thing that sits unresolved until the code turns up.
+
+There is no fourth sprite because phase 4 never survives to a draw: the body
+that reaches it resets the phase to 1 before the frame renders. The rendered
+sequence over one tip is 1, 2, 2, 3, 3, 1.
+
+### A is not edge-detected
+
+`1000:4511` sets the tipping state whenever the button bit is set. The only
+gate is the input block sitting inside `if tube.state = 0`, so holding A tips
+once every six frames - which is exactly how long the animation takes to hand
+the state back. The port edge-detected it, so holding A did nothing.
+
+### Two near-misses worth recording
+
+**The grid's column order.** The draw loop pairs grid column 1 with `DS:0x1e`,
+and the network's column table is 143/125/107/197/179/161 - so it looked for a
+while as though the beaker array ran in the network's order, which would put
+non-adjacent screen columns next to each other in the matcher. Dumping DGROUP
+settled it: `DS:0x1e` is **107**, not 143, and the grid runs left to right. The
+two orders are the same six words read from different offsets. Reading the
+table rather than reasoning from the draw order is what caught it.
+
+**The pixel diff, again.** A sweep across all four capture directories reported
+9-12%, which looked like the refactor had broken rendering. It had not: I was
+grepping the first percentage out of `diff_frame.py`, which prints one per
+candidate backdrop before the result line. Same mistake as this morning, so it
+is now in `docs/debug-rig.md`'s terms in the worklog twice - read
+`best backdrop:`.
+
+124 checks pass, up from 112. The eight pixel captures are unchanged at 0.02%
+to 0.22%; none of them catches a tip in progress, so the animation's own
+pixels are verified by transliteration and by eye, not by the harness.
