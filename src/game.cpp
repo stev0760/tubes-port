@@ -75,8 +75,31 @@ constexpr int kClearFrames = 10;
 // bottom of a feed tube and y = 68 is the top lane where the test tube can
 // catch; both measured.
 constexpr int kEntryY = 187;
-constexpr int kTubeMouthY = 68;
-constexpr int kLostY = 190;
+
+// The descent ACCELERATES. `1000:13ed`, the first thing state 7 does:
+//
+//     if rec.y >= 50 then rec.acc := rec.acc + $480
+//                    else rec.acc := rec.acc + rec.velocity;
+//
+// so the difficulty's 2/3/4 px a frame only applies to the top fifty pixels of
+// a play column, and below that every atom falls at a flat nine - the same
+// 0x480 the Down/B boost and the Bonus atom use. A missed ball therefore drops
+// away much faster than it travelled the network, which is what it looks like
+// and what the port did not do: it fell the whole way at the difficulty speed.
+//
+// It also means the Down/B boost cannot affect the last stretch of a descent.
+// The boost writes `rec.velocity`, and below y = 50 the velocity is not read.
+constexpr int kAccelY = 50;
+
+// The catch is a WINDOW, not "past the mouth" - `1000:1423` and `1000:142d`
+// bracket it at 60..70. Eleven pixels against a nine-pixel step, so an atom
+// lands inside it on one frame and is past it on the next.
+constexpr int kCatchTop = 60;
+constexpr int kCatchBottom = 70;
+
+// `1000:1516`. Past this the atom is lost; the original pins its y here as
+// well, before handing the record to the two-frame teardown.
+constexpr int kLostY = 187;
 
 // The network topology - which feed tube serves which column along which lane
 // - is the pair of DGROUP tables in game.h, indexed by the column:
@@ -689,6 +712,12 @@ void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
         for (Falling& s : tube_) stepAtom(s);
     }
 
+    // 1000:486b, between the router and the dispenser tick.
+    if (++flashTick_ == kFlashPeriod) {
+        flashTick_ = 1;
+        if (++flashColour_ == kFlashium) flashColour_ = kRedium;
+    }
+
     if (--spawnTimer_ <= 0) spawn();
 
     // Last, as `1000:58c5` is - after the router, so a special caught this
@@ -755,7 +784,9 @@ void Game::stepAtom(Falling& a) {
         }
 
         case atomstate::kDescend:
-            a.accY += a.velocity;
+            // See kAccelY: the difficulty speed only holds for the first fifty
+            // pixels, and everything below that falls at a flat nine.
+            a.accY += (a.y >= kAccelY) ? kBoostVel : a.velocity;
             a.y += a.accY / kSubPixel;
             a.accY &= kSubPixel - 1;
             break;
@@ -862,14 +893,28 @@ void Game::stepAtom(Falling& a) {
 
     if (a.state != atomstate::kDescend) return;
 
-    // The test tube catches an atom at the top lane, in its own column.
+    // The catch, `1000:1423`:
+    //
+    //     if (rec.y >= 60) and (rec.y <= 70) and (rec.x = tube.x + 3)
+    //        and (tube.count <> 5) and (tube.state <> 3) then begin
+    //         rec.acc := 0;  rec.state := 8;
+    //         Inc(tube.count);  rec.dy := yofs[tube.count];
+    //         Move(rec, tube.slot[tube.count], 28);
+    //         rec.state := 1
+    //     end
+    //
+    // Three things the port had wrong. It is a WINDOW at 60..70, not "past the
+    // mouth"; the tube will not catch while it is tipping; and the network
+    // record goes to state 1 rather than straight to free, so its slot cannot
+    // be reused for two more frames.
+    //
     // The atom's column is the original's 1..6 numbering and the board's is
     // 0..5, and they are not in the same order - kAtomColumnX runs
     // 143,125,107,197,179,161. Compare the x positions rather than the
     // indices, which sidesteps the mapping entirely.
-    if (a.y >= kTubeMouthY &&
+    if (a.y >= kCatchTop && a.y <= kCatchBottom &&
         kAtomColumnX[a.column] == playColumnX(tubeColumn_) &&
-        !tubeFull()) {
+        !tubeFull() && tubeState_ != 3) {
         // Into the mouth, not into the stack: the atom becomes slot[count] and
         // then SLIDES down to its resting offset over the next few frames. The
         // port used to teleport it into place and fire its special at once.
@@ -877,15 +922,21 @@ void Game::stepAtom(Falling& a) {
         s.state = atomstate::kInTube;
         s.slotDy = kSlotDy[tube_.size() + 1];
         s.arrived = false;
+        s.accY = 0;
         tube_.push_back(s);
-        a.state = atomstate::kFree;
+        a.state = atomstate::kLanded;
         return;
     }
 
-    // Otherwise it falls past and is lost. A missed atom does NOT land in the
-    // beaker - the beaker fills only from the tube, via Button A.
-    if (a.y >= kLostY) {
-        a.state = atomstate::kFree;
+    // Otherwise it falls past and is lost - `1000:1516`. A missed atom does NOT
+    // land in the beaker; the beaker fills only from the tube, via Button A.
+    if (a.y > kLostY) {
+        a.y = kLostY;
+        a.state = atomstate::kLanded;
+        // 1000:153e. A missed BONUS costs nothing. It is the same exemption the
+        // full-column loss in state 9 makes, and the port had it in one place
+        // and not the other.
+        if (a.colour == kBonus) return;
         if (dropsRemaining_ > 0) {
             --dropsRemaining_;
         } else {

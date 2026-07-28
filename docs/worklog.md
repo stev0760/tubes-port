@@ -2183,3 +2183,61 @@ the opening frames, where the HUD reads 0 / 0 / 9 - which is exactly what the
 port shows by default, and is why the comparison above was possible at all.
 
 134 checks pass, up from 124.
+
+## 2026-07-28 - three reported issues, and a rule the descent was missing
+
+All three came from playing the build, and one of them turned up a rule that
+had never been read.
+
+### "A missed ball should fall faster than it travels the tubes"
+
+Correct, and `1000:13ed` is the first thing router state 7 does:
+
+    if rec.y >= 50 then rec.acc := rec.acc + $480
+                   else rec.acc := rec.acc + rec.velocity
+
+The difficulty's 2 / 3 / 4 px a frame applies only to the **top fifty pixels**
+of a play column. Below that every atom falls at a flat nine - the same 0x480
+the Down/B boost and the Bonus use. The port fell the whole way at the
+difficulty speed.
+
+Reading that region settled three more things in the same twenty lines:
+
+* **The catch is a window, 60..70**, not "at or past the mouth at 68". The port
+  would scoop up an atom most of the way to the floor.
+* **The tube will not catch while it is tipping** - `tube.state = 3`
+  disqualifies it outright.
+* **A missed Bonus costs no drop.** The port already had that exemption for a
+  tipped atom finding its column full, and not for a miss.
+
+It also invalidates a test. `testSpeedBoostNeedsHolding` measured the boost at
+y = 70, which is *below* the acceleration threshold, where the velocity field
+is not read at all - so the "boosted 9 px a frame" it checked for is what an
+unboosted atom does there anyway. It passed by coincidence. Both descent tests
+now run above y = 50, where the velocity is actually consulted.
+
+### The invisible ball in the test tube
+
+Type 8, Flashium, has **no sprite**, and the port skipped anything whose sprite
+slot was null - so a Flashium was invisible everywhere, in the tube, the
+network and the beaker. It showed up in the tube first because a Multiplier
+fills with `Random(8) + 1` and 8 is in that range.
+
+The original does not special-case it in the renderer either. It **rewrites the
+ball table**: `1000:486b` sets `ball[8] := ball[flash]` every fourth frame,
+cycling 1..7. That is the cycle a play session measured at "~4x/sec"; at 18.2 Hz
+four frames is 4.55 Hz. Now from code.
+
+The port substitutes the same colour at each of the four draw sites, which is
+the same picture and leaves the cell value 8 - which is what makes a Flashium
+always clear with FFADE however it is drawn.
+
+### Tipping onto a full column
+
+Already fixed, by the tipping animation. Verified rather than assumed: the tube
+empties, the atom falls, it is destroyed on arrival and it costs a drop. The
+behaviour reported was the old `Board::drop` returning false with the ball
+staying in the tube, which went away when the tip started going through records
+7..12.
+
+144 checks pass, up from 134. The eight pixel captures are unchanged.

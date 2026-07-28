@@ -140,6 +140,21 @@ constexpr int kTipDivider = 2;
 constexpr int kTiltY[kTubeSlots + 1] = {0, 99, 93, 87, 81, 73};
 constexpr int kPourY = 82;
 
+// Flashium, type 8, has NO SPRITE OF ITS OWN. `1000:486b` rewrites its slot in
+// the ball table from one of the seven ordinary colours instead:
+//
+//     Inc(subTick);
+//     if subTick = 5 then begin
+//         subTick := 1;
+//         Inc(flash);  if flash = 8 then flash := 1;
+//         ball[8] := ball[flash]
+//     end
+//
+// so it advances every FOUR frames - the counter starts at 1 and fires when it
+// reaches 5 - which at 18.2 Hz is the 4-ish per second a play session measured.
+// The cycle was known from watching; this is the code doing it.
+constexpr int kFlashPeriod = 5;
+
 // The Bonus atom's award, `1000:0846  ADD [award], 0x3e8`.
 constexpr int kBonusAward = 1000;
 
@@ -230,6 +245,11 @@ public:
     // The tipping animation's phase, 1..3 as far as any renderer sees - it
     // selects TESTUBE1/2/3. Phase 4 exists but never survives to a draw.
     uint8_t tubePhase() const { return tubePhase_; }
+
+    // The colour Flashium is wearing this frame, 1..7. A renderer must draw
+    // type 8 with THIS type's sprite; there is no sprite for 8 itself, and one
+    // drawn as-is is invisible. See kFlashPeriod.
+    int8_t flashColour() const { return flashColour_; }
 
     // The test tube holds up to five atoms, stacked. Index 0 is slot 1, the
     // BOTTOM of the tube; the LAST element is the mouth, and it is both the one
@@ -350,6 +370,9 @@ private:
     int tubeTargetX_ = kTubeStopX[1];
     uint8_t tubePhase_ = tubephase::kUpright;
     int tipDivider_ = 0;
+    // Both start at 1, from the session prologue at `1000:3ab3`.
+    int flashTick_ = 1;
+    int8_t flashColour_ = kRedium;
     uint8_t tubeState_ = 0;
     std::vector<Falling> tube_;
     int tubeCapacity_ = 5;

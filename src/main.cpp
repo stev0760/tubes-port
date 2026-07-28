@@ -923,12 +923,27 @@ int main(int argc, char** argv) {
         // so it stays - but it is not what makes a ball look like it is inside
         // a pipe. That was the previous session's working theory and it was
         // only half right.
+        // Type 8 has no sprite. `1000:48a1` rewrites its slot in the ball
+        // table with one of the seven ordinary colours every fourth frame;
+        // substituting the same colour at the draw is the same picture, and it
+        // keeps the cell value 8 - which is what makes a Flashium always clear
+        // with FFADE however it is drawn.
+        //
+        // Without this a Flashium is INVISIBLE: `kAtomSprites[8]` is null, so
+        // every draw site skipped it. It showed up as a phantom ball in the
+        // test tube, because a Multiplier fills with `Random(8) + 1` and 8 is
+        // in that range.
+        auto ball = [&](int8_t cell) -> int8_t {
+            return cell == tubes::kFlashium ? game.flashColour() : cell;
+        };
+
         auto drawAtom = [&](int col) {
             const tubes::Falling& a = game.atom(col);
             // `state > 2` is the original's own test, made at every one of the
             // six draw sites. States 0..2 are a free or parked slot.
             if (!a.drawn() || a.colour == tubes::kEmpty) return;
-            screen.draw(atoms[a.colour], a.x, a.y);
+            if (!haveAtom[ball(a.colour)]) return;
+            screen.draw(atoms[ball(a.colour)], a.x, a.y);
             screen.stamp(scene, a.x, a.y, kCellW, kCellH);
         };
 
@@ -986,8 +1001,8 @@ int main(int argc, char** argv) {
         // during the tip - the animation moves the slots, and a caught atom
         // slides down to its own before that.
         for (const tubes::Falling& s : game.tubeAtoms()) {
-            if (!haveAtom[s.colour]) continue;
-            screen.draw(atoms[s.colour], s.x, s.y);
+            if (!haveAtom[ball(s.colour)]) continue;
+            screen.draw(atoms[ball(s.colour)], s.x, s.y);
         }
 
         // `1000:5922` draws the tube from a four-entry sprite table indexed by
@@ -1009,7 +1024,10 @@ int main(int argc, char** argv) {
         for (int r = 0; r < b.rows(); ++r) {
             const int y = kGridY + r * kPitchY;
             for (int c = 0; c < b.cols(); ++c) {
-                const tubes::Cell v = b.at(c, r);
+                // Only the BARE type 8 is substituted. A fading Flashium
+                // holds `8 + 19 * frame`, whose table slot is FFADE and is
+                // never rewritten.
+                const tubes::Cell v = ball(b.at(c, r));
                 if (v == 0 || !haveAtom[v]) continue;
                 screen.draw(atoms[v], kGridX + c * kPitchX, y);
             }
@@ -1033,8 +1051,8 @@ int main(int argc, char** argv) {
         // the settled ones and behind the glass.
         for (int n = tubes::kAtomSlots + 1; n <= tubes::kAtomRecords; ++n) {
             const tubes::Falling& f = game.atom(n);
-            if (!f.drawn() || !haveAtom[f.colour]) continue;
-            screen.draw(atoms[f.colour], f.x, f.y);
+            if (!f.drawn() || !haveAtom[ball(f.colour)]) continue;
+            screen.draw(atoms[ball(f.colour)], f.x, f.y);
         }
 
         if (haveBeaker) screen.draw(beaker, kGridX - 4, kGridY);

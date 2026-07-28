@@ -4686,6 +4686,78 @@ That gate is what lets the animation own the slots' positions. Without it the
 router's state 8 would put every slot back at `tube.x + 3` and slide its y
 toward the resting offset on the very frame the animation moved it.
 
+## Router state 7 - the descent, the catch and the miss
+
+### The descent accelerates below y = 50
+
+`1000:13ed`, the first thing state 7 does:
+
+    if rec.y >= 50 then rec.acc := rec.acc + $480
+                   else rec.acc := rec.acc + rec.velocity;
+    rec.y := rec.y + rec.acc div 128;  rec.acc := rec.acc and $7F
+
+So the difficulty's 2 / 3 / 4 px a frame applies only to the **top fifty
+pixels** of a play column, and below that every atom falls at a flat **nine** -
+the same `0x480` the Down/B boost and the Bonus atom use. A missed ball drops
+away much faster than it travelled the network.
+
+Two consequences worth stating. **The Down/B boost cannot affect the last
+stretch of a descent**: it writes `rec.velocity`, and below y = 50 the velocity
+is not read at all. And a boost test conducted below y = 50 measures nothing -
+the port had one at y = 70 that passed by coincidence, because the nine pixels
+a frame it was checking for is what an unboosted atom does there anyway.
+
+### The catch is a window, 60..70
+
+    if (rec.y >= 60) and (rec.y <= 70) and (rec.x = tube.x + 3)
+       and (tube.count <> 5) and (tube.state <> 3) then begin
+        rec.acc := 0;  rec.state := 8;
+        Inc(tube.count);  rec.dy := yofs[tube.count];
+        Move(rec, tube.slot[tube.count], 28);
+        rec.state := 1
+    end
+
+Eleven pixels against a nine-pixel step, so an atom lands inside the window on
+one frame and is past it the next. **The tube will not catch while it is
+tipping** - `tube.state = 3` disqualifies it outright.
+
+The caught record is **copied** into the slot and the network record drops to
+state 1, the two-frame teardown, rather than straight to free.
+
+### The miss, and the Bonus exemption
+
+    if rec.y > 187 then begin
+        rec.y := 187;  rec.state := 1;
+        if rec.type <> 10 then begin
+            Dec(drops);
+            if drops = 0 then <redraw the counter>
+        end;
+        PlaySound(...)
+    end
+
+A missed **Bonus costs no drop**. That is the same exemption state 9 makes when
+a tipped atom finds its column full.
+
+## Flashium's colour cycle, `1000:486b`
+
+Type 8 has no sprite of its own, and the game does not special-case it in the
+renderer - it **rewrites the ball table**:
+
+    Inc(subTick);
+    if subTick = 5 then begin
+        subTick := 1;
+        Inc(flash);  if flash = 8 then flash := 1;
+        ball[8] := ball[flash]                 { DS:0x1dc6 := DS:0x1da6 + 4*flash }
+    end
+
+Both counters start at 1 in the session prologue, so it advances every **four**
+frames - about 4.5 times a second at 18.2 Hz, which is the "~4x/sec" a play
+session measured. The cycle was known from watching; this is the code doing it.
+
+Only the bare slot 8 is rewritten. A fading Flashium cell holds `8 + 19*frame`,
+whose table slot is `FFADE` and is left alone - which is why a Flashium always
+clears with `FFADE` however it happens to be drawn at the time.
+
 ## Router state 8 - in the tube
 
     rec.x := tube.x + 3;

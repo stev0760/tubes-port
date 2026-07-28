@@ -81,7 +81,12 @@ that figure was set before the surrounding scope was properly counted.
 
 Working, and transliterated rather than invented:
 
-- the atom router, network topology and fixed frame step
+- the atom router, network topology and fixed frame step - including that the
+  descent **accelerates below y = 50** to a flat 9 px a frame, so the
+  difficulty speed only governs the top of a play column
+- the catch as a **window** at y 60..70, refused while the tube is tipping
+- **Flashium's colour cycle**: type 8 has no sprite, and the original rewrites
+  its ball-table slot every fourth frame from the seven ordinary colours
 - **the whole frame render**: the six per-column atom slots interleaved with
   the three furniture passes, the GAMEFG stamp that clips an atom to the pipe
   it is inside, `.CSP` placement offsets, and the beaker and test tube layering
