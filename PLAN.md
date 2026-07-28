@@ -237,14 +237,34 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
 
 **In priority order:**
 
-1. **The tipping animation and records 7..12.** Pressing A currently teleports
-   an atom into the beaker. The original moves it into one of six spare slots
-   which fall and are drawn between the `MARKER` overlay and `BEAKER.CSP`. The
-   four-phase animation is at `1000:463a`, and the handover is already read:
-   `1000:4715` sets the record's state to 9 and its column to the tube's stop,
-   `Move`s it into the first free record of 7..12, and decrements the count.
-   The same pass wants the in-tube slide - a caught atom descends 9 px a frame
-   to its slot, and it is *that* arrival, not the catch, that fires a special.
+1. **IN PROGRESS: the tipping animation, the in-tube slide, and records 7..12.**
+   Pressing A currently teleports an atom into the beaker. Everything needed is
+   now decompiled; see `docs/reversing-notes.md`. Five pieces, in this order:
+
+   * **The tube's slots become real records.** `tube_` is a vector of *types*
+     today, and the animation moves the slots' x and y, so it has to carry
+     positions. The original stores them inline in the tube at `tube + 7 + 28n`
+     as ordinary 28-byte AtomRecs.
+   * **The in-tube slide**, the router's state 8. A caught atom is placed at the
+     mouth and descends **9 px a frame** to `tube.y + slot.dy`. It is that
+     arrival, not the catch, that sets `+0x0f` and fires a special.
+   * **The animation itself**, `1000:463a`, on `tube.state = 3`. A 2-frame
+     divider drives four phases; phase 2 bunches the contents to y =
+     99/93/87/81/73 and steps every slot 1 px left, phase 3 lines them all up
+     at y = 82, phase 4 steps them back and releases. Six frames total. **The
+     tube sprite is `TESTUBE1/2/3` indexed by the phase** - which retires the
+     old "the 65/42/27 sprite heights are the difficulty capacities" guess for
+     good. Phase 4 never renders, because the release resets the phase to 1
+     before the frame's draw.
+   * **Records 7..12 and router state 9.** The tipped atom is `Move`d whole into
+     the first free record of 7..12 with state 9, and falls 9 px a frame to the
+     first free row of its column - y targets 186/173/160/147/**131**, that last
+     one three pixels early for no reason yet found. On arrival it writes
+     `grid[row, col]` and goes to state 1, which is a two-frame teardown to 0.
+     If the column is **full** the atom is destroyed and costs a drop.
+   * **Rendering**: the six records draw between the `MARKER` overlay and
+     `BEAKER.CSP` at `1000:5c1f`, and the tube's contents with the tube.
+
 2. **The HUD**, now that fonts are decoded and the render order around them is
    known. It would also settle the one scoring conflict below.
 3. **Sound effects.** Every hook now exists: the matcher names the fade family
