@@ -263,13 +263,40 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
    in the middle, throwing every later roll off by one call. Something else
    remains.
 
-   The next step is the **other half of the oracle**: capture the original's
-   own spawn sequence on the rig - `demo_trace.py` already reads the atom array
-   and the grid out of a running attract mode - and diff it against
-   `--demo-trace`. Guessing at the remaining difference from this side has
-   already reached its limit. The likely candidates are a `Random` call in the
-   session prologue the port does not make, and the difficulty the demo was
-   recorded at, which the port assumes is Tubes 101.
+   The next step is the **other half of the oracle**, on the rig. Guessing from
+   this side has reached its limit. Do it in this order - the first check is
+   much sharper than diffing spawn lists, because it pins the divergence to an
+   exact call rather than to a symptom.
+
+   **1. Count the `Random` calls.** The generator's step is `2000:75bb`, which
+   is runtime linear **`0x1F7FB`** in `tubes.conf` (Ghidra `2685:0d6b`, and
+   `L = 0x0824`). The GDB stub has no watchpoints but execution breakpoints are
+   all this needs: break there, run attract mode, and count hits per frame. The
+   port makes a known number of calls per frame - one per spawn attempt plus
+   the type roll - so any difference is the answer directly.
+
+   **2. Read `RandSeed` itself.** It is `DGROUP:0xd24`, runtime linear
+   **`0x207B4`**, 4 bytes little-endian. Read it right after the demo starts:
+   it should equal `0x322d385e`, the seed in `DEMO.SCR`. Then read it again
+   after N frames and compare against the port's after the same N. Where they
+   part is where the extra or missing call is.
+
+   **3. Only then diff the spawn sequences**, `--demo-trace` against a capture.
+
+   Two live hypotheses, in order of suspicion:
+
+   * a `Random` call in the session prologue the port does not make. `1000:43d6`
+     was one such and is now fixed; there may be more between there and the
+     first `1000:4918` dispense.
+   * the difficulty the recording was made at. The port assumes Tubes 101, and
+     the difficulty sets the spawn interval (70/60/50) and every velocity, so
+     the wrong one changes the timing of everything even with a correct
+     generator. Check what attract mode passes to `1000:9e53`.
+
+   **FIX `demo_trace.py` BEFORE USING IT.** Its `ARRAY` constant is `0x241A4`,
+   which is `array[2]` - the off-by-one-record base this project already chased
+   for two sessions. It should be **`0x24188`**. The tell, per the rig skill, is
+   an emitted index disagreeing with the record's own `+0x0c` column field.
 2. **Wave structure**, the largest remaining piece and the gate on several
    things already half-implemented: the objective plane, the disabled-element
    modifier, the wave-mode HUD counters, `DS:0x1d4e`'s modes 4, 5 and 6, and

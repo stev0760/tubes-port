@@ -2342,3 +2342,24 @@ eyeballing, and the first thing this one did was find a bug none of them could
 see.
 
 161 checks pass, up from 154. The pixel captures are unchanged.
+
+### Handoff for the rig session
+
+Two addresses worked out now so the next session does not re-derive them, both
+in `tubes.conf` where `L = 0x0824`:
+
+| what | Ghidra | runtime linear |
+|---|---|---|
+| the `Random` LCG step | `2000:75bb` = `2685:0d6b` | **`0x1F7FB`** |
+| `RandSeed` | `DGROUP:0xd24` | **`0x207B4`** |
+
+A breakpoint on the first counts every call the original makes; the second can
+be read directly and compared against the port's generator state after the same
+number of frames. That pins the divergence to a call rather than to a symptom,
+which is a much sharper instrument than diffing two spawn lists.
+
+And a trap: **`demo_trace.py` has `ARRAY = 0x241A4`**, which is `array[2]`.
+That is the same off-by-one-record base this project already chased for two
+sessions and which the rig skill warns about. It should be `0x24188`. Fix it
+before capturing anything, or the trace will be one record out and the next
+session will go hunting a phantom.
