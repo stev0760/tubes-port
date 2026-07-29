@@ -796,7 +796,7 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr, "cannot write %s\n", opt.demoCsv.c_str());
                 return 1;
             }
-            std::fprintf(csv, "frame,idx,btn,tubex,tubestop,tubebusy,rolls,drops,score,tubecount,atoms,grid\n");
+            std::fprintf(csv, "frame,idx,btn,tubex,tubestop,tubebusy,rolls,drops,score,tubecount,ramp,interval,vel,runs,atoms,grid\n");
         }
         // Always collected: the per-spawn roll count below is the comparison
         // that matters, and it is cheap. `--random-trace N` only controls how
@@ -819,6 +819,9 @@ int main(int argc, char** argv) {
                              btn, g.tubeX(), g.tubeColumn() + 1, wasBusy,
                              rolls.size(), g.dropsRemaining(), g.score(),
                              static_cast<int>(g.tubeAtoms().size()));
+                std::fprintf(csv, "%d,%d,%d,%d,", g.rampCounterForTest(),
+                             g.spawnIntervalForTest(), g.networkVelForTest(),
+                             g.runsThisFrameForTest());
                 // The six network records: state and y, which is what a catch
                 // turns on.
                 for (int c = 1; c <= tubes::kAtomSlots; ++c) {
@@ -856,8 +859,13 @@ int main(int argc, char** argv) {
                     born[c] = static_cast<int>(f);
                 }
                 if (g.dropsRemaining() != drops) {
+                    // A Bonus caught gives one BACK - `1000:180c` - so this is
+                    // not always a loss, and calling every change a miss made
+                    // the trace read as three misses where one was a gain.
+                    const bool gained = g.dropsRemaining() > drops;
                     drops = g.dropsRemaining();
-                    std::printf("MISS        frame %5zu  drops now %d\n", f, drops);
+                    std::printf("%-5s       frame %5zu  drops now %d\n",
+                                gained ? "BONUS" : "MISS", f, drops);
                 }
                 if (!now && wasActive[c]) {
                     // The record going free is half the spawn rule: the column

@@ -129,7 +129,7 @@ Absent entirely:
 | Wave structure: briefings, objectives, modifiers | large |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |
-| Demo playback (`.SCR` replay through the same loop) | **built**; 44/44 spawns exact in column, type and frame |
+| Demo playback (`.SCR` replay through the same loop) | **DONE** - matches end to end, terminates on the original's own last byte |
 
 Pixel accuracy against the original reads **0.02% to 0.22%** of structural
 pixels differing, over eight paused captures with the backdrop excluded - down
@@ -251,92 +251,59 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
 
 **In priority order:**
 
-1. **IN PROGRESS: make the demo replay match.** The oracle now runs 24 spawns
-   deep. `--demo-trace` replays `DEMO.SCR` headless and prints, per spawn, the
-   column, the type and the **cumulative `Random` call count**; `--play-demo`
-   runs the same thing through the live loop.
+1. **DONE: the demo replay matches, end to end.** `--demo-trace` replays
+   `DEMO.SCR` headless; `--demo-csv FILE` writes the per-frame state the rig
+   diffs against; `--play-demo` runs it through the live loop.
 
-   **All 35 spawns the port produces match the original exactly** - column,
-   type and cumulative roll count. Since the spawn re-rolls its column up to ten
-   times looking for a free record, that means the network occupancy matched at
-   every spawn too. The dispenser is exact. (An earlier note here claimed a
-   divergence at spawn 25; that was an artifact of counting `Random`-call
-   plateaus, which include Multiplier fills. Retracted.)
+   The port now reproduces the original's whole attract-mode session and stops on
+   **the same byte the original does**:
 
-   Four causes were found and fixed - all in `docs/reversing-notes.md`, all from
-   code:
+   | event | original | port |
+   |---|---|---|
+   | a miss, score 1,000 | byte 693 | byte 693 |
+   | a Bonus caught, +1 drop | byte 2,188 | byte 2,184 |
+   | a miss | byte 2,276 | byte 2,274 |
+   | a miss | byte 2,320 | byte 2,319 |
+   | a miss, drops now 0 | byte 2,352 | byte 2,353 |
+   | the drops byte underflows: game over | byte 2,367 | **byte 2,367** |
 
-   * the demo runs at **Tubes 301**, not 101 (`1000:a483` switches on
-     `DS:0x1d4f`, and View Demo sets it to 2 at `1000:b272`);
+   Final score 13,000 on both sides, 71 spawns, agreement on which frame each
+   byte is consumed at with a median difference of -0.2 frames over 752 byte
+   counts, and every spawn within 4.7 frames.
+
+   Six rules came out of it, all from decompiled code, all in
+   `docs/reversing-notes.md`:
+
+   * the demo runs at **Tubes 301** (`1000:a483` on `DS:0x1d4f`, set to 2 at
+     `1000:b272`);
    * the first dispense is on **frame zero** - `1000:3be0` seeds the countdown
-     with 1, not with the interval;
-   * the Down/B boost is **inside** `if tube.state = 0` and **before** the
-     Left/Right handler moves the stop (`1000:4534`);
-   * a `.SCR` is **one byte per IDLE frame**, because `1000:44f0` skips the
-     input read entirely while the tube is sliding or tipping, and in demo
-     playback that read is what advances the recording.
+     with 1;
+   * the Down/B boost is **inside** the tube's `state = 0` guard and **before**
+     the Left/Right handler moves the stop (`1000:4534`);
+   * a `.SCR` is **one byte per IDLE frame**, because `1000:44f0` skips the input
+     read while the tube is busy and the demo reader is that read;
+   * the catch tests the tube's **actual x** (`rec.x = tube.x + 3`), not its stop;
+   * the **endurance ramp** `1000:235c` - five frames off the dispense interval
+     per ten runs, with the velocity climbing 0x20 - and it is a **loop, once per
+     RUN**, `1000:240a`/`240d`.
 
-   **The last cause is found and fixed: the ENDURANCE RAMP, `1000:235c`.** The
-   dispense interval drops five frames every ten MATCHES (and the network
-   velocity climbs 0x20 with it), driven by the matchers' run count - not by
-   time, not by atoms dispensed. The original's spawns sit on 50-frame centres
-   for 29 atoms and then switch to 45; the port dispensed at 50 forever, so its
-   atoms arrived progressively late against a tube that was correct throughout.
-   That is the "green ball dropped" the build showed. See
-   `docs/reversing-notes.md`.
+   **Watch for "once per event".** Two rules here count once per SEED rather than
+   per event - the score award and the ramp - and assuming otherwise has now been
+   wrong twice. When a count drives something, check whether the original wraps
+   it in a loop.
 
-   **All 44 spawns the capture covers now agree in column, type and frame** to
-   ±1.3 frames, which is the measurement's own noise.
+   **The oracle is now a regression test worth running.** Any change to the
+   rules should leave `--demo-trace` ending on byte 2,367 with score 13,000. If
+   it does not, the change is wrong or a new rule has been found.
 
-   **Verified over the whole run.** The port and the original agree on which
-   frame every byte of the recording is consumed at - 1,184 common byte counts,
-   residuals -0.7 to +1.6 frames - across frames 0 to 2,963, which is the
-   port's entire life. Every spawn in that range matches in column, type and
-   frame.
+   Rig instruments, all built: `exp23_demo_index.py` (the demo reader's own
+   stream index at **`0x24c2e`**, plus atoms, tube, beaker, drops and score),
+   `exp19_seed_count.py` (`RandSeed` through the LCG orbit for an exact `Random`
+   call count), `exp21_tube_track.py`, `exp22_input_vectors.py`. Anchor every run
+   on `1000:6008` (linear `0xE248`) and set breakpoints only while HALTED.
+   **Fit slope AND intercept** when turning the guest's wall clock into frames -
+   fitting through the origin manufactures a phantom drift.
 
-   **What is left: ONE ATOM.** The port's first miss is the original's, byte
-   for byte. What it never gets is the Bonus at byte 2,188 that hands the
-   original a drop back, because record 4 - dispensed at the same byte in both -
-   reaches the catch window at byte 2,125 instead of 2,122, and in those three
-   frames the tube leaves stop 6.
-
-   The port's copy is already behind during its **rise**: at byte 2,092 the
-   original is at y = 119 and the port at y = 162. Start there. The beaker rules
-   everything else out - 649 of 663 comparable samples identical, with all 14
-   exceptions downstream of this atom.
-
-   `tubes-port --demo-csv` emits per-frame `state:y` for all six network records
-   beside the stream index, which is exactly what the rig capture holds for the
-   original, so the two trajectories diff directly.
-
-   **Compare like with like.** The CSV briefly wrote `typeAt()` (fade stripped)
-   against the original's raw cells, and the diff then reported - convincingly -
-   a matcher bug that did not exist. Both sides must be raw `type + 19*fade`.
-
-   **Attract mode does not play the whole recording, and nothing is after it.**
-   Real input runs to about byte 3,950 of 11,970; the rest is slack, with six
-   stray `0x05` bytes and then nothing. The session itself ends earlier still,
-   at byte ~2,395, when the drops underflow - see `docs/reversing-notes.md`.
-   Since a `.SCR` carries no difficulty and View Demo hardcodes Tubes 301, the
-   recording was probably made at an easier setting than it is replayed at.
-
-   **The instruments, all built and all cheap to re-run:**
-
-   * `exp23_demo_index.py` - reads the demo reader's own stream index at
-     **`0x24c2e`** alongside the atom array and the tube, which is the sharpest
-     alignment key there is: it needs no notion of time.
-   * `tubes-port --demo-csv FILE` - the same fields per frame from the port.
-   * `exp19_seed_count.py` - `RandSeed` mapped back through the LCG orbit for an
-     exact `Random` call count.
-   * Anchor every run on `1000:6008` (linear `0xE248`), the demo's seed write.
-     Set breakpoints only while HALTED; the stub does not arm one on a running
-     target.
-   * **Fit slope AND intercept** when converting the guest's wall clock into
-     frames. Fitting through the origin manufactures a smooth phantom drift -
-     it cost most of a session.
-
-   `demo_trace.py`'s `ARRAY` constant is now **`0x24188`** (it was `0x241A4`,
-   which is `array[2]`).
 2. **Wave structure**, the largest remaining piece and the gate on several
    things already half-implemented: the objective plane, the disabled-element
    modifier, the wave-mode HUD counters, `DS:0x1d4e`'s modes 4, 5 and 6, and

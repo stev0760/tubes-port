@@ -1115,6 +1115,38 @@ void testEnduranceRampStepsOnMatches() {
     check(g.spawnIntervalForTest() == 40, "the fifteenth takes it to 40");
 }
 
+void testEnduranceRampCountsPerRunNotPerFrame() {
+    // The ramp body is a LOOP over the run count: `1000:240a` decrements it and
+    // `1000:240d` jumps back to the `runs >= 1` test, falling through to the
+    // score multiplier only at zero. So a frame that forms five runs steps the
+    // counter five times, not once.
+    //
+    // That is easy to get wrong - the first transliteration hung the body off
+    // `if runs >= 1` - and the cost is invisible for thousands of frames. Runs
+    // are counted once per SEED, so a line of four pays twice and simultaneous
+    // runs in different orientations each count, which means one good clear can
+    // walk the counter through a crossing on its own.
+    tubes::Game one(6, 5, tubes::Difficulty::k301, 0x322d385eu);
+    one.stepRampForTest(5);
+    check(one.spawnIntervalForTest() == 45,
+          "five runs in ONE frame cross the mod-5 boundary");
+
+    tubes::Game five(6, 5, tubes::Difficulty::k301, 0x322d385eu);
+    for (int i = 0; i < 5; ++i) five.stepRampForTest(1);
+    check(five.spawnIntervalForTest() == one.spawnIntervalForTest(),
+          "and land where five single-run frames do");
+
+    // Ten runs at once must hit BOTH arms, cancelling on the interval and
+    // leaving the velocity raised - a counter that only advanced once would
+    // reach neither.
+    tubes::Game ten(6, 5, tubes::Difficulty::k301, 0x322d385eu);
+    const int vel0 = ten.networkVelForTest();
+    ten.stepRampForTest(10);
+    check(ten.spawnIntervalForTest() == 45, "ten at once cancel back to 45");
+    check(ten.networkVelForTest() == vel0 + 0x20,
+          "and still raise the velocity once");
+}
+
 void testTipSkipsFiveFramesOfInput() {
     // How long the tube is busy is how many bytes of a recording get skipped,
     // so the tip's length is load-bearing for the replay and not just for the
@@ -1200,6 +1232,7 @@ int main() {
     testInputIsReadOnlyWhileTheTubeIsIdle();
     testTipSkipsFiveFramesOfInput();
     testEnduranceRampStepsOnMatches();
+    testEnduranceRampCountsPerRunNotPerFrame();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

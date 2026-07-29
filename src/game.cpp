@@ -335,12 +335,17 @@ int8_t Game::nextColour() {
 // `1000:47d0` whether or not anything is happening - that is what animates the
 // clear and the settle. The ramp's own clock is NOT here; see `stepScoreRamp`.
 // THE ENDURANCE RAMP, `1000:235c`. The game speeds up as you clear, and it is
-// driven by MATCHES - not by atoms dispensed, and not by time:
+// driven by MATCHES - not by atoms dispensed, and not by time.
 //
-//     if runsThisFrame >= 1 then                        { 1000:2342 }
+// The whole thing is a LOOP OVER THE RUNS. `1000:240a` decrements the run count
+// and `1000:240d` jumps back to the `runs >= 1` test at `1000:2342`, so the body
+// executes once per run formed this frame and falls through to the score
+// multiplier at `1000:2410` only once the count reaches zero:
+//
+//     while runs >= 1 do begin                          { 1000:2342 }
 //       if (waveMode = 1) or (waveMode = 0) then begin
 //         Inc(counter);                                 { [fe84], a BYTE }
-//         if counter = 0 then exit;                     { wrap guard, 1000:2368 }
+//         if counter = 0 then break;                    { wrap guard, 1000:2368 }
 //         if counter mod 5 = 0 then begin
 //             if not latch5 then begin
 //                 spawnInterval := spawnInterval - 5;
@@ -352,28 +357,32 @@ int8_t Game::nextColour() {
 //                 spawnInterval := spawnInterval + 5;
 //                 latch10 := true end
 //         end else latch10 := false
-//       end
+//       end else Inc(counter);                          { 1000:23fe, other modes }
+//       Dec(runs)                                       { 1000:240a }
+//     end
 //
-// The two latches make each crossing fire once. Every tenth match the two
-// adjustments cancel, so the net shape is: the interval drops five frames per
-// ten matches while the velocity climbs 0x20 with it.
+// PER RUN is the whole point and it was missed the first time round, with the
+// body hung off `if runs >= 1` instead. Runs are counted once per SEED, so a
+// line of four pays twice and a line of five three times, and simultaneous runs
+// in different orientations each count - which means one good clear can walk the
+// counter through several crossings at once. Measured against the original: with
+// the body run once per frame the counter reached 14 by frame 2,792, where the
+// original was past 25.
 //
-// THIS IS WHY THE DEMO REPLAY FELL APART, and it stayed hidden for a long time
-// because nothing about it is visible early. The original's spawns land on
-// exact 50-frame centres for 29 atoms and then switch to 45, on the frame its
-// fifth match landed. The port dispensed at 50 forever, so from there its atoms
-// arrived later and later against a test tube that was in the right place the
-// whole time - and the first thing anyone notices is a green ball dropping.
-// Measured off the running original: spawn 29 at frame 1400.1 and spawn 30 at
-// 1445.3, where the port had 1400 and 1450.
+// The two latches make each crossing fire once, and every tenth run the two
+// adjustments cancel, so the net shape is five frames off the dispense interval
+// per ten runs with the velocity climbing 0x20 alongside. The original's demo
+// steps 50 -> 45 -> 40 -> 35 over its first three thousand frames.
 //
-// `1000:23fe` increments the same counter on the path for the other wave modes,
-// which the port has no equivalent for.
+// THIS IS WHY THE DEMO REPLAY FELL APART, and nothing about it is visible early:
+// the original's spawns land on exact 50-frame centres for 29 atoms and then
+// start stepping down, and the first thing anyone notices is a green ball
+// dropping several hundred frames later.
 void Game::stepEnduranceRamp(int runs) {
-    if (runs < 1) return;
-
-    rampCounter_ = static_cast<uint8_t>(rampCounter_ + 1);
-    if (rampCounter_ != 0) {
+    runsThisFrame_ = runs;
+    for (int i = 0; i < runs; ++i) {
+        rampCounter_ = static_cast<uint8_t>(rampCounter_ + 1);
+        if (rampCounter_ == 0) break;          // 1000:2368, the byte wrapping
         if (rampCounter_ % 5 == 0) {
             if (!rampLatch5_) {
                 // A byte and a word in the original, so they wrap there too.

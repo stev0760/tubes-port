@@ -4919,10 +4919,10 @@ positive result is only as good as the thing it counted.
 least one run this frame (`[BP-8] >= 1`, the same count the score multiplier
 uses):
 
-    if runsThisFrame >= 1 then
+    while runs >= 1 do begin                          { 1000:2342 }
       if (waveMode = 1) or (waveMode = 0) then begin
-        Inc(counter);                            { [fe84], a BYTE }
-        if counter = 0 then exit;                { wrap guard }
+        Inc(counter);                                 { [fe84], a BYTE }
+        if counter = 0 then break;                    { wrap guard, 1000:2368 }
         if counter mod 5 = 0 then begin
             if not latch5 then begin
                 spawnInterval := spawnInterval - 5;  latch5 := true end
@@ -4932,16 +4932,36 @@ uses):
                 velocity      := velocity + $20;
                 spawnInterval := spawnInterval + 5;  latch10 := true end
         end else latch10 := false
-      end
+      end else Inc(counter);                          { 1000:23fe, other modes }
+      Dec(runs)                                       { 1000:240a }
+    end
+                                                      { 1000:240d JMP 2342 }
 
 The counter is `[BP+0xfe84]`, seeded to 0 at `1000:a4e4`; the two latches are
-`[fe46]` and `[fe47]` and exist so a crossing fires once. Every tenth match the
+`[fe46]` and `[fe47]` and exist so a crossing fires once. Every tenth run the
 two adjustments cancel, so the net shape is **five frames off the dispense
-interval per ten matches**, with the network velocity climbing 0x20 alongside.
+interval per ten runs**, with the network velocity climbing 0x20 alongside. The
+demo steps 50 -> 45 -> 40 over its first three thousand frames.
 
 **It is driven by matches, not by time and not by atoms dispensed.** That is the
 part no amount of watching would have given up, and it is why it stayed hidden:
 for the first 29 atoms of the demo nothing about it is visible at all.
+
+**And it is a LOOP, once per RUN.** `1000:240a` decrements the run count and
+`1000:240d` jumps back to the `runs >= 1` test, so the body executes once for
+every run formed this frame and falls through to the score multiplier at
+`1000:2410` only when the count reaches zero. Runs are counted once per SEED, so
+a line of four pays twice and a line of five three times, and simultaneous runs
+in different orientations each count - which means one good clear can walk the
+counter through a crossing by itself.
+
+That distinction is worth a full paragraph because the first transliteration
+missed it, hanging the body off `if runs >= 1` instead, and the cost is invisible
+for thousands of frames: the counter reached 14 by frame 2,792 where the original
+was past 25, so the interval never made its second step and every atom after that
+ran progressively late. It is the same shape of error as the score award, which
+is also **per seed** rather than per run - this binary counts seeds in more than
+one place, and assuming "once per event" has now been wrong twice.
 
 ### How the demo replay was finally closed
 
@@ -5039,27 +5059,31 @@ does.
 It also explains why the reader's `avail` bounds check is never what stops
 playback - the game is over long before the index reaches the limit.
 
-The port ends at frame 2,963 with 2,196 bytes consumed. Its first miss is the
-original's, byte for byte - both lose a drop at byte 693 with the score at
-1,000. What it does not get is the **Bonus at byte 2,188** that hands the
-original a drop back, because by then one atom has gone past it.
+**The replay is now exact end to end.** With the ramp counting per run, the port
+runs the whole session and stops on the same byte the original does:
 
-**The beaker confirms everything else is right.** Comparing the original's
-`array[1..5,1..6]` cell plane against the port's, raw `type + 19*fade` on both
-sides, 649 of 663 comparable samples are identical and all 14 exceptions follow
-the one late atom.
+| event | original | port |
+|---|---|---|
+| a miss, score 1,000 | byte 693 | byte 693 |
+| **a Bonus caught, +1 drop** | byte 2,188 | byte 2,184 |
+| a miss | byte 2,276 | byte 2,274 |
+| a miss | byte 2,320 | byte 2,319 |
+| a miss, drops now 0 | byte 2,352 | byte 2,353 |
+| the drops byte underflows: game over | byte 2,367 | byte 2,367 |
 
-**The remaining divergence is a single atom.** Record 4, dispensed around byte
-2,087 in both, reaches the catch window at byte 2,125 in the port and 2,122 in
-the original - and in those three frames the tube has left stop 6, so the
-original catches it at y = 63 and the port watches it fall. Trace back and the
-port's copy is already behind during its RISE: at byte 2,092 the original's is
-at y = 119 and the port's at y = 162.
+Final score 13,000 on both sides. Over 752 common byte counts the two agree on
+which frame each byte is consumed at with a median difference of -0.2 frames, and
+all 71 spawns land within 4.7 frames - which is the measurement's noise, not the
+port's.
 
-That is where the next session should start, and the instruments are all in
-place: `tubes-port --demo-csv` emits per-frame `state:y` for all six network
-records next to the stream index, which is exactly what the rig capture holds
-for the original.
+**How the last atom was found.** The tell was one atom, record 4, dispensed at
+the same byte in both but reaching the catch window at byte 2,125 in the port
+against 2,122 in the original - three frames in which the tube leaves stop 6. It
+was tempting to call that a slow rise, and the first look did: the port's copy is
+at y = 162 when the original's is at y = 119. Measuring the rate settled it -
+4.25 px/frame in the port against 4.33 in the original, the same velocity within
+the timing error. The atom was not slow, it was **dispensed later**, and that led
+to the interval, and the interval led to the ramp counter.
 
 **A measurement bug worth recording**, because it produced a confident wrong
 answer for half an hour. The port's CSV first wrote `Board::typeAt()`, which

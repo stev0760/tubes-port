@@ -390,6 +390,8 @@ public:
     int rollForTest(int n) { return random(n); }
     // The two values the endurance ramp moves, so a test can watch it step.
     int spawnIntervalForTest() const { return spawnInterval_; }
+    int rampCounterForTest() const { return rampCounter_; }
+    int runsThisFrameForTest() const { return runsThisFrame_; }
     int networkVelForTest() const { return networkVel_; }
     void stepRampForTest(int runs) { stepEnduranceRamp(runs); }
     void setScore(int v) { score_ = v; }
@@ -484,6 +486,7 @@ private:
     // is a byte in the original and is allowed to wrap; the two latches are
     // `[fe46]` and `[fe47]`, and they exist so a crossing fires once.
     uint8_t rampCounter_ = 0;
+    int runsThisFrame_ = 0;   // what the ramp saw, for the rig diff
     bool rampLatch5_ = false;
     bool rampLatch10_ = false;
     float frameAccum_ = 0.0f;     // real time carried between frames

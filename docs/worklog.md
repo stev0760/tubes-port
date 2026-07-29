@@ -2730,3 +2730,69 @@ contents count and per-frame `state:y` for all six network records, which is
 exactly the set the rig capture holds for the original.
 
 181 checks pass. The eight pixel captures are unchanged at 0.02% to 0.22%.
+
+## 2026-07-29 - the ramp counts per RUN, and the replay closes
+
+The atom's rise was not slow. Measuring it settled that in one step: 4.25
+px/frame in the port against 4.33 in the original, the same velocity within the
+timing error. It was **dispensed later** - which led to the interval, and the
+interval led back to the ramp.
+
+### The ramp body is a loop
+
+`1000:240a` decrements the run count and `1000:240d` jumps back to the
+`runs >= 1` test at `1000:2342`, falling through to the score multiplier at
+`1000:2410` only once the count reaches zero:
+
+    while runs >= 1 do begin
+      if (waveMode = 1) or (waveMode = 0) then begin
+        Inc(counter);  ...mod 5... ...mod 10...
+      end else Inc(counter);
+      Dec(runs)
+    end
+
+So the counter advances **once per run**, not once per frame with runs. Runs are
+counted once per SEED, so a line of four pays twice and simultaneous runs in
+different orientations each count - one good clear can walk the counter through
+a crossing by itself.
+
+Yesterday's transliteration hung the body off `if runs >= 1`, and the cost was
+invisible for thousands of frames: the counter reached 14 by frame 2,792 where
+the original was past 25, so the interval never made its second step and every
+atom after that ran progressively late.
+
+That is the same shape of error as the scoring award, which is also **per seed**
+rather than per event. This binary counts seeds in more than one place, and
+"once per event" has now been the wrong assumption twice.
+
+### The replay now matches end to end
+
+| event | original | port |
+|---|---|---|
+| a miss, score 1,000 | byte 693 | byte 693 |
+| **a Bonus caught, +1 drop** | byte 2,188 | byte 2,184 |
+| a miss | byte 2,276 | byte 2,274 |
+| a miss | byte 2,320 | byte 2,319 |
+| a miss, drops now 0 | byte 2,352 | byte 2,353 |
+| the drops byte underflows: game over | byte 2,367 | **byte 2,367** |
+
+Final score 13,000 on both sides, 71 spawns, and the session ends on the same
+byte. Over 752 common byte counts the two agree on which frame each byte is
+consumed at with a median difference of -0.2 frames; all 71 spawns land within
+4.7, which is the measurement's noise rather than the port's.
+
+Progress across the four sessions this took:
+
+| | first divergence | reached |
+|---|---|---|
+| four sessions ago | spawn 4 of 15 | frame 1,049, score 0 |
+| then | none in 35 spawns | frame 1,700, score 4,000 |
+| then | none in 44 | frame 2,963, score 11,500 |
+| now | none | the original's own last byte, score 13,000 |
+
+`--demo-csv` also stopped calling a Bonus a miss: `1000:180c` gives a drop BACK,
+and labelling every change to the counter a loss made the trace read as three
+misses where one was a gain.
+
+185 checks pass, up from 181, including one that fails on the per-frame reading.
+The eight pixel captures are unchanged at 0.02% to 0.22%.
