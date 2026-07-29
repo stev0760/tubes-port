@@ -4226,8 +4226,22 @@ The boost dispatches on the tube's stop index through a chain of comparisons -
 1 to slot 3, 3 to slot 1, 4 to slot 6, 6 to slot 4, everything else to the
 same-numbered slot. That permutation is just "the slot whose destination x is
 where the tube is", and it confirms the Instructions' "atoms directly above the
-test tube". Nothing resets the field, so the boost lasts the rest of that
-atom's flight.
+test tube".
+
+**Where the write sits matters, and the port had both halves wrong.** At
+`1000:4534` it is:
+
+* **inside** `if tube.state = 0`, so a tube that is sliding or tipping grants no
+  boost at all - the port ran it unconditionally, every frame;
+* **before** the Left/Right handler at `1000:4583` updates `tube.stop`, so on
+  the frame a direction is pressed the boost still goes to the slot the tube is
+  *leaving* - the port moved the tube first and boosted after.
+
+The velocity field is reloaded by the router at the end of every frame, so the
+boost lasts exactly one frame and has to be held. The recorded demo holds Down
+for 150 of its first 250 inputs, which is what turns a 4 px/frame traverse into
+a 9 px/frame one - and it is why the original frees an atom's record inside a
+single 50-frame dispense period where the port was taking 95 frames.
 
 ### The dispensed type: one roll picks a class, three classes re-roll
 
@@ -4797,6 +4811,121 @@ recording however correct the rules were.
 dispensed. The port used to park the tube in the middle, which was wrong twice
 over: the tube in the wrong place, and every later roll off by one call, so the
 whole spawn sequence differed. Replaying `DEMO.SCR` is what exposed it.
+
+### The demo runs at TUBES 301, and `DS:0x1d4f` is the difficulty index
+
+`1000:a483` is the only writer of the three constants a session runs on, and it
+switches on `DS:0x1d4f`:
+
+    case DS:0x1d4f of
+      0: drops := 9; velocity := $100; spawnInterval := $46   { 70 }   Tubes 101
+      1: drops := 6; velocity := $180; spawnInterval := $3c   { 60 }   Tubes 201
+      2: drops := 3; velocity := $200; spawnInterval := $32   { 50 }   Tubes 301
+    end
+
+and the menu's **View Demo** arm sets `[0x1d4f] := 2` at `1000:b272` before
+calling `1000:9e53`. **The recording was made at Tubes 301.**
+
+The port assumed 101, and the mistake was easy to make in a specific way worth
+recording: `1000:b1ee` presets the whole difficulty block to the *101* values
+once, before the menu loop, and the View Demo arm sets two neighbouring flags
+(`[0x1d4e] := 0`, `[0x1d4c] := 1`) as well - so `[0x1d4f]` read as one more mode
+flag, and the preset made 101 look like what the demo inherits. It is not:
+`a483` rewrites the block on entry to every session.
+
+**Confirmed live, twice over.** The running demo reads 3 at the drops counter
+(`0x245bc`) before the session has made its first `Random` call, and the HUD on
+a screenshot of the same moment says `3 Drops`. The difficulty block itself
+reads `[0x1d51] = 3`, `[0x1d54] = 0x200`, `[0x1d56] = 0x32` twelve seconds in,
+against `9 / 0x100 / 0x46` at the menu one keypress earlier.
+
+This is not a cosmetic difference. The interval sets how often an atom is
+dispensed and the velocity how fast it travels, so a replay at 101 was running a
+70-frame dispense beat against a recording made on a 50-frame one.
+
+### The first dispense is on frame ZERO
+
+`1000:3be0`, the last thing the session setup does - immediately after the loop
+that parks all twelve records at (303, 186):
+
+    spawnTimer := 1
+
+and the tick at `1000:490a` is `Dec(spawnTimer); if spawnTimer = 0 then
+dispense`. A seed of **1** therefore fires on the very first frame, and only
+then reloads the full period from `1000:4953`.
+
+The port seeded the timer with the interval, which delayed the first atom by one
+whole period and slid the entire recorded input stream out of step with the game
+state for the rest of the session.
+
+### A `.SCR` holds one byte per IDLE frame, not one per frame
+
+The single most load-bearing thing about the replay, and it is a consequence of
+where the input read sits rather than of anything in the demo format.
+`1000:44f0`:
+
+    if tube.state <> 0 then goto RunStateMachine;    { 1000:45e7 }
+    if not InputAvailable then goto RunStateMachine; { CALLF [ds:$2352] }
+    btn := ReadButtons;                              { CALLF [ds:$2356] }
+    ...
+
+The driver vectors are **not called at all** on a frame where the tube is
+sliding or tipping. For live play that is invisible - not reading the keyboard
+and reading it then ignoring it look identical. For a **replay** it is the whole
+mechanism, because in demo playback those vectors are the demo reader and
+calling one is what advances the recording.
+
+So a recording is one byte per frame the tube was *idle*. A replay that steps
+the stream unconditionally drifts the first time the player moves and never
+recovers - the tube slides for three frames (6 px a frame over the 18 px stop
+pitch, `1000:45f3`), so three frames of the recording are consumed that the
+original would have held back.
+
+**Measured, and it is exact.** The demo's first Left presses are at stream
+indices 16, 17 and 20. Under the idle gate the original consumes them at three
+separate idle frames and ends at stop 3; consumed one-per-frame the middle one
+lands mid-slide and is lost, ending at stop 4. Modelling both against six
+sampled `(atom y -> tube x)` pairs read off the running original - the atom's
+own 4 px/frame rise serving as the frame clock - the idle-gated model matches
+**6 of 6 exactly** and the unconditional one matches 1.
+
+### What the four fixes were worth
+
+Measured on the spawn-by-spawn roll count, which is the sharpest form of the
+oracle: at each dispense, how many times has `Random` been called? The original's
+count is read by mapping a live `RandSeed` sample back through the LCG orbit
+(see below), so it needs no frame alignment at all.
+
+| state | first spawn whose roll count differs |
+|---|---|
+| before | **4** of 15, then game over at frame 1,049 |
+| after | **25** of 35, then game over at frame 1,700 |
+
+Spawns 1..24 now agree on the roll count exactly, which means the column
+re-rolls, the type rolls and the whole network-occupancy pattern agree with
+them. Something remains at spawn 25, where the port spends two rolls the
+original does not.
+
+### Reading `RandSeed` gives an exact call count, and it needs no breakpoint
+
+The plan was to break on `Random` and count hits. That does not work on this
+rig, and the negative was checked before being believed: the entry address is
+right (exactly **one** copy of the LCG's signature exists in the whole address
+space, at runtime linear `0x1f7fb`), the stub itself works (a breakpoint at the
+seed write `1000:6008` fires, with `DX:AX = 0x322d385e`), and the code runs
+(`RandSeed` advances) - yet `Z0` on the RTL never traps, on `core=normal`,
+whether or not it is the first breakpoint set. Unresolved.
+
+It does not matter, because the generator hands over a better instrument for
+free. `RandSeed := RandSeed * $08088405 + 1` is a **bijection**, so the orbit
+from the demo's seed visits each value at most once and a single read of
+`RandSeed` maps straight back to *how many times `Random` has been called*.
+Build `{seed -> k}` for a few hundred thousand steps, sample the guest at
+leisure, and look the answer up.
+
+It also validates the port's generator on the way: over 737 samples taken across
+three minutes of the running demo, **every one** landed on the orbit computed
+from `DEMO.SCR`'s seed by the port's own algorithm.
 
 ## Router state 7 - the descent, the catch and the miss
 

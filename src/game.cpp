@@ -175,14 +175,16 @@ int velocityFor(Difficulty d) {
 
 }  // namespace
 
-Game::Game(int cols, int rows, Difficulty diff, uint32_t seed)
+Game::Game(int cols, int rows, Difficulty diff, uint32_t seed,
+           std::vector<std::pair<int, uint32_t>>* randomTrace)
     : board_(cols, rows),
       tubeCapacity_(kTubeCapacity),
       dropsRemaining_(dropsFor(diff)),
       startingDrops_(dropsFor(diff)),
       spawnInterval_(kSpawnIntervalFrames[difficultyIndex(diff)]),
       networkVel_(velocityFor(diff)),
-      rng_(seed ? seed : 1) {
+      rng_(seed ? seed : 1),
+      randomTrace_(randomTrace) {
     // 1000:43d6. The test tube STARTS IN A RANDOM COLUMN - `tube.stop :=
     // Random(6) + 1` - and it is the session's very first call to the
     // generator, before anything is dispensed.
@@ -195,7 +197,19 @@ Game::Game(int cols, int rows, Difficulty diff, uint32_t seed)
     tubeColumn_ = random(kAtomSlots);
     tubeX_ = kTubeStopX[tubeColumn_ + 1];
     tubeTargetX_ = tubeX_;
-    spawnTimer_ = spawnInterval_;
+    // `1000:3be0` seeds the dispenser countdown with **1**, not with the
+    // interval - it is the last thing the session's setup does, right after the
+    // loop that parks all twelve records at (303, 186). The tick is
+    // `Dec(timer); if timer = 0 then dispense`, so a seed of 1 fires on the
+    // very first frame and only then reloads the full period.
+    //
+    // The port seeded it with the interval, which delayed the first dispense by
+    // one whole period and slid the entire recorded input stream 50 frames out
+    // of step with the game. That is why the demo's player kept reaching for
+    // atoms that were not there: the demo's first Left presses are at stream
+    // frames 16, 17 and 20, and the original consumes them SIXTEEN frames after
+    // its first atom appears, not thirty-three frames before it.
+    spawnTimer_ = 1;
     tube_.reserve(static_cast<size_t>(tubeCapacity_));
 }
 
@@ -258,6 +272,7 @@ void Game::setTubeAtoms(const std::vector<int8_t>& v) {
 // read as UNSIGNED. That is a scaled fraction of the range, not a modulus, and
 // it is not the same sequence a `% n` would give from the same seed.
 int Game::random(int n) {
+    if (randomTrace_) randomTrace_->emplace_back(n, rng_);
     rng_ = rng_ * 0x08088405u + 1u;
     return static_cast<int>(
         (static_cast<uint64_t>(rng_) * static_cast<uint32_t>(n)) >> 32);
@@ -577,11 +592,46 @@ void Game::spawn() {
 // frames, because six frames is exactly how long the animation takes to hand
 // the state back. The port used to edge-detect A, which made holding it do
 // nothing at all.
+// Down or B speeds the atom heading for the column the tube is under, from
+// `1000:4534`:
+//
+//     case tube.stop of
+//       1: atom[3].velocity := $480;      4: atom[6].velocity := $480;
+//       3: atom[1].velocity := $480;      6: atom[4].velocity := $480;
+//     else atom[tube.stop].velocity := $480
+//
+// - the four literal cases write fixed frame offsets that decode to exactly
+// those slots at the array's 28-byte stride, so the permutation is 1<->3 and
+// 4<->6 with 2 and 5 fixed. That is just "the slot whose destination x is where
+// the tube is", so comparing the x values reproduces it without hard-coding it.
+//
+// TWO things about WHERE this sits, both of which the port had wrong:
+//
+//   * it is INSIDE `if tube.state = 0`, so a tube that is sliding or tipping
+//     grants no boost at all. The port ran it unconditionally every frame.
+//   * it runs BEFORE the Left/Right handler updates `tube.stop`, so on the
+//     frame a direction is pressed the boost still goes to the slot the tube
+//     was leaving. The port moved the tube first and boosted after.
+//
+// The velocity field is reloaded by the router at the end of every frame, so
+// this lasts exactly one frame and the player has to hold the button - which is
+// what the recorded demo does, holding Down for 150 of its first 250 frames.
+void Game::boostAtomUnderTube(uint8_t buttons) {
+    if (!(buttons & (button::kDown | button::kB))) return;
+    for (int c = 1; c <= kAtomSlots; ++c) {
+        if (atoms_[c].active() &&
+            kAtomColumnX[atoms_[c].column] == playColumnX(tubeColumn_)) {
+            atoms_[c].velocity = kBoostVel;
+        }
+    }
+}
+
 void Game::stepTube(uint8_t buttons) {
     if (tubeState_ == 0) {
         if (buttons & button::kA) {
             tubeState_ = 3;
         }
+        boostAtomUnderTube(buttons);
         if ((buttons & button::kLeft) && tubeColumn_ > 0) {
             tubeState_ = 1;
             --tubeColumn_;
@@ -705,21 +755,6 @@ void Game::stepFrame(uint8_t buttons) {
     updateBeaker();
 
     stepTube(buttons);
-
-    // Down or B speeds the atom heading for the column the tube is under.
-    // The original dispatches on the tube's stop index through a chain of
-    // comparisons - 1 to slot 3, 3 to slot 1, 4 to slot 6, 6 to slot 4, and
-    // the rest to the same-numbered slot - which is just "the slot whose
-    // destination x is where the tube is". Comparing the x values reproduces
-    // it without hard-coding the permutation.
-    if (buttons & (button::kDown | button::kB)) {
-        for (int c = 1; c <= kAtomSlots; ++c) {
-            if (atoms_[c].active() &&
-                kAtomColumnX[atoms_[c].column] == playColumnX(tubeColumn_)) {
-                atoms_[c].velocity = kBoostVel;
-            }
-        }
-    }
 
     // The router runs over all TWELVE records, then the dispenser ticks. Both
     // are unconditional in the original - it does not wait for the network to

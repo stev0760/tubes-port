@@ -5,8 +5,10 @@
 
 #include <SDL2/SDL.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <utility>
 #include <string>
 #include <vector>
 
@@ -196,6 +198,31 @@ constexpr int kFurnGroup1 = 32;   // and again after this many
 constexpr int kFurnTotal = static_cast<int>(sizeof(kFurniture) /
                                             sizeof(kFurniture[0]));
 
+// DEMO.SCR is recorded at TUBES 301, not 101.
+//
+// `DS:0x1d4f` is the difficulty INDEX - `1000:a483` switches on it and is the
+// only writer of the three constants the session runs on:
+//
+//     0 -> drops 9, velocity 0x100, spawn interval 0x46 (70)     Tubes 101
+//     1 -> drops 6, velocity 0x180, spawn interval 0x3c (60)     Tubes 201
+//     2 -> drops 3, velocity 0x200, spawn interval 0x32 (50)     Tubes 301
+//
+// and the menu's View Demo arm sets `[0x1d4f] := 2` at `1000:b272` before
+// calling the session. It was read as a mode flag at first because the same arm
+// also sets `[0x1d4e]` and `[0x1d4c]`, and because `1000:b1ee` presets the
+// difficulty block to the 101 values before the menu loop - which made 101 look
+// like what the demo inherits. It is not: a483 rewrites the block on entry.
+//
+// Confirmed live: the running demo reads 3 at the drops counter (0x245bc)
+// before the session has made its first `Random` call. Only arm 2 produces a 3.
+//
+// This matters far more than "the demo starts with fewer lives". The interval
+// sets how often an atom is dispensed and the velocity how fast it travels, so
+// at 101 the port was dispensing on a 70-frame beat against a recording made on
+// a 50-frame one. The recorded player was reaching for atoms that were not
+// there yet - which is exactly the symptom the oracle reported.
+constexpr tubes::Difficulty kDemoDifficulty = tubes::Difficulty::k301;
+
 struct Options {
     std::string gameDir = ".";
     int scale = 0;              // 0 = pick the largest that fits
@@ -209,6 +236,7 @@ struct Options {
     bool dumpSfx = false;       // print every .SFX header and exit
     bool playDemo = false;      // replay DEMO.SCR through the live loop
     bool demoTrace = false;     // run DEMO.SCR headless and print the spawns
+    int randomTrace = 0;        // with --demo-trace: print the first N rolls
     std::string gameBg = "GAMEBG1.GFX";   // backdrop, for matching a capture
     double renderSeconds = 0;   // 0 = one pass, songs loop forever
     bool help = false;
@@ -338,6 +366,9 @@ Options parseArgs(int argc, char** argv) {
             o.dumpRegs = argv[++i];
         } else if (a == "--demo-trace") {
             o.demoTrace = true;
+        } else if (a == "--random-trace" && i + 1 < argc) {
+            o.demoTrace = true;
+            o.randomTrace = std::atoi(argv[++i]);
         } else if (a == "--play-demo") {
             o.playDemo = true;
         } else if (a == "--dump-sfx") {
@@ -725,19 +756,77 @@ int main(int argc, char** argv) {
         }
         std::printf("# DEMO.SCR seed 0x%08x, %zu frames\n", dm.seed,
                     dm.input.size());
-        tubes::Game g(kCols, kRows, tubes::Difficulty::k101, dm.seed);
+        // What the recorded player is actually holding. The Down/B boost is
+        // the difference between a 4 px/frame traverse and a 9 px/frame one,
+        // so how often it is pressed sets how long a record stays occupied -
+        // and that decides how often the spawn re-rolls its column.
+        {
+            static const char* kNames[6] = {"Up", "Down", "Left", "Right",
+                                            "A(tip)", "B"};
+            static const uint8_t kBits[6] = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20};
+            const size_t win = std::min<size_t>(dm.input.size(), 250);
+            std::printf("# first %zu recorded inputs held:", win);
+            for (int b = 0; b < 6; ++b) {
+                size_t held = 0;
+                for (size_t f = 0; f < win; ++f)
+                    if (dm.input[f] & kBits[b]) ++held;
+                std::printf("  %s=%zu", kNames[b], held);
+            }
+            std::printf("\n");
+        }
+        // The rig's exp18_random_calls.py logs the same two fields off the
+        // original, breaking on `Random`'s own entry, so the first index where
+        // the two disagree is the divergence - and the original's log names the
+        // call site that produced it.
+        std::vector<std::pair<int, uint32_t>> rolls;
+        // Always collected: the per-spawn roll count below is the comparison
+        // that matters, and it is cheap. `--random-trace N` only controls how
+        // many individual rolls get printed.
+        tubes::Game g(kCols, kRows, kDemoDifficulty, dm.seed, &rolls);
         bool wasActive[tubes::kAtomRecords + 1] = {};
+        int born[tubes::kAtomRecords + 1] = {};
         int spawns = 0;
-        for (size_t f = 0; f < dm.input.size() && !g.gameOver(); ++f) {
-            g.stepOnce(dm.input[f]);
+        // One byte per IDLE frame - see Game::acceptsInput. The frame count is
+        // therefore larger than the byte count, so the loop ends when the
+        // recording is exhausted rather than after input.size() frames.
+        size_t idx = 0;
+        for (size_t f = 0; idx < dm.input.size() && !g.gameOver(); ++f) {
+            const uint8_t btn = g.acceptsInput() ? dm.input[idx++] : 0;
+            g.stepOnce(btn);
             for (int c = 1; c <= tubes::kAtomSlots; ++c) {
                 const bool now = g.atom(c).active();
                 if (now && !wasActive[c]) {
-                    std::printf("spawn %4d frame %5zu col %d type %2d\n",
-                                ++spawns, f, c, g.atom(c).colour);
+                    // The cumulative roll count is the field the rig can match
+                    // without any notion of time: `RandSeed` is one orbit of an
+                    // injective LCG, so reading it off the original converts
+                    // straight back into "how many times Random has been
+                    // called". Spawn N is spawn N in both runs, so comparing
+                    // the count AT each spawn needs no frame alignment - and
+                    // needs no breakpoint, which is what made this the usable
+                    // instrument after Z0 on the RTL turned out not to trap.
+                    std::printf("spawn %4d frame %5zu col %d type %2d rolls %zu\n",
+                                ++spawns, f, c, g.atom(c).colour, rolls.size());
+                    born[c] = static_cast<int>(f);
+                } else if (!now && wasActive[c]) {
+                    // The record going free is half the spawn rule: the column
+                    // is re-rolled up to ten times looking for a FREE slot, so
+                    // how long an atom occupies its record decides how often
+                    // the original retries - and the retry count is exactly
+                    // what the rig's roll count measures.
+                    std::printf("free        frame %5zu col %d  after %d frames\n",
+                                f, c, static_cast<int>(f) - born[c]);
                 }
                 wasActive[c] = now;
             }
+        }
+        if (opt.randomTrace) {
+            const size_t lim = std::min(rolls.size(),
+                                        static_cast<size_t>(opt.randomTrace));
+            for (size_t i = 0; i < lim; ++i) {
+                std::printf("roll %4zu n %3d seed 0x%08x\n", i, rolls[i].first,
+                            rolls[i].second);
+            }
+            std::printf("# %zu rolls total\n", rolls.size());
         }
         std::printf("# %d spawns, score %d, chains %d, drops %d/%d%s\n", spawns,
                     g.score(), g.chains(), g.dropsRemaining(),
@@ -874,7 +963,8 @@ int main(int argc, char** argv) {
                     demo.input.size());
     }
 
-    tubes::Game game(kCols, kRows, tubes::Difficulty::k101,
+    tubes::Game game(kCols, kRows,
+                     opt.playDemo ? kDemoDifficulty : tubes::Difficulty::k101,
                      opt.playDemo ? demo.seed : 0x9E3779B9u);
     game.setFallHeight(kFallHeight);
     if (!opt.renderState.empty() && !loadState(opt.renderState, game)) return 1;
@@ -1042,16 +1132,18 @@ int main(int argc, char** argv) {
         // to --auto, which simulates first and draws once at the end.
         if (opt.screenshot.empty()) {
             if (opt.playDemo) {
-                // The recording is one byte per GAME frame, so it is consumed
-                // at the fixed step rather than through `update`'s real-time
-                // conversion. Same accumulator, driving an index instead.
+                // The recording is consumed at the fixed game step rather than
+                // through `update`'s real-time conversion - same accumulator,
+                // driving an index instead. One byte per frame the tube was
+                // IDLE, not per frame: see Game::acceptsInput.
                 demoAccum += dt * 18.2f;
                 int steps = static_cast<int>(demoAccum);
                 demoAccum -= static_cast<float>(steps);
                 if (steps > 8) steps = 8;
                 for (int k = 0; k < steps; ++k) {
                     if (demoFrame >= demo.input.size()) { running = false; break; }
-                    game.stepOnce(demo.input[demoFrame++]);
+                    game.stepOnce(game.acceptsInput() ? demo.input[demoFrame++]
+                                                      : 0);
                 }
             } else {
                 game.update(opt.demo ? scriptedInput(game) : readKeyboard(), dt);

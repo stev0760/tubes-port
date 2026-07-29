@@ -2363,3 +2363,122 @@ That is the same off-by-one-record base this project already chased for two
 sessions and which the rig skill warns about. It should be `0x24188`. Fix it
 before capturing anything, or the trace will be one record out and the next
 session will go hunting a phantom.
+
+## 2026-07-28 - the demo replay, from diverging at spawn 4 to spawn 25
+
+Four findings, all from code, all found by the oracle rather than by looking at
+the game. The port now replays `DEMO.SCR` through 24 spawns with the roll count
+matching the original's exactly at every one.
+
+### The instrument, after the intended one failed
+
+The plan was to break on `Random` and count hits per frame. It does not work on
+this rig. The negative was checked before being believed, because a negative
+result is only as good as the filter that produced it:
+
+* the entry address is right - a scan of the whole address space finds **one**
+  copy of the LCG's signature, at runtime linear `0x1f7fb`;
+* the stub works - a breakpoint at the seed write `1000:6008` fires, and
+  `DX:AX` there is `0x322d385e`, exactly the seed in `DEMO.SCR`;
+* the code runs - `RandSeed` demonstrably advances.
+
+Yet `Z0` on the RTL never traps, on `core=normal`, first breakpoint or not. Left
+unresolved, because the generator hands over a strictly better instrument for
+free: `RandSeed * $08088405 + 1` is a **bijection**, so the orbit from the demo's
+seed visits each value once and a single read of `RandSeed` maps back to *how
+many times `Random` has been called*. No breakpoints, no per-call round trips,
+and it samples a free-running guest.
+
+Paired with the spawn count that gives a comparison needing no frame alignment
+at all: at spawn N, how many rolls has each side made? Spawn N is spawn N in
+both runs. It also validated the port's generator on the way - **737 samples,
+every one on the orbit**.
+
+### 1. The demo runs at Tubes 301
+
+The first sample said `drops = 3` before the session had made its first
+`Random` call. The port assumed 101, whose seed is 9.
+
+`1000:a483` switches on `DS:0x1d4f` and is the only writer of the three
+constants a session runs on - drops, velocity and spawn interval, `9/$100/70`,
+`6/$180/60`, `3/$200/50`. The menu's View Demo arm sets `[0x1d4f] := 2` at
+`1000:b272`. **`DS:0x1d4f` is the difficulty index, not the mode flag the notes
+had it as.**
+
+It read as a mode flag for a good reason worth recording: `1000:b1ee` presets
+the block to the *101* values once before the menu loop, and the View Demo arm
+sets two neighbouring flags as well - so 101 looked like what the demo
+inherits. `a483` rewrites the block on entry to every session.
+
+Confirmed twice live: the difficulty block reads `3 / $200 / $32` twelve seconds
+in against `9 / $100 / $46` at the menu one keypress earlier, and a screenshot of
+the same moment has the HUD saying `3 Drops`.
+
+### 2. The first dispense is on frame zero
+
+`1000:3be0` seeds the dispenser countdown with **1**, not with the interval, as
+the last act of session setup. The tick is `Dec; if = 0 then dispense`, so the
+first atom appears immediately.
+
+The port seeded it with the interval, delaying the first atom by a whole period
+and sliding the recorded input stream 50 frames out of step with the game for
+the rest of the session.
+
+### 3. The Down/B boost is in the wrong place twice
+
+`1000:4534` sits **inside** `if tube.state = 0`, so a sliding or tipping tube
+grants no boost - the port ran it every frame. And it sits **before** the
+Left/Right handler updates `tube.stop`, so on a press frame the boost goes to
+the slot the tube is leaving - the port moved first and boosted after.
+
+### 4. A `.SCR` is one byte per IDLE frame
+
+The load-bearing one, and it is a consequence of *where* the input read sits
+rather than of the demo format. `1000:44f0` jumps past the whole input block
+when the tube's state is not 0, so the driver vectors are never **called** on a
+frame where the tube is sliding or tipping. Live, that is invisible - not
+reading the keyboard and reading it then ignoring it look identical. In demo
+playback those vectors **are** the recording, so calling one is what advances
+it.
+
+A replay that steps the stream unconditionally therefore drifts the first time
+the player moves and never recovers: a slide is three frames, so three bytes get
+consumed that the original held back.
+
+Measured, and exactly: the demo's first Left presses are at stream indices 16,
+17 and 20, and the original ends at stop 3 - which needs all three, only
+possible if the middle one waits for the slide to finish. Modelling both
+readings against six `(atom y -> tube x)` pairs sampled off the running
+original, with the atom's own 4 px/frame rise as the frame clock, the idle-gated
+model matches **6 of 6** and the unconditional one matches 1.
+
+### What it was worth
+
+| | first spawn whose roll count differs | reached |
+|---|---|---|
+| before | 4 of 15 | frame 1,049, score 0 |
+| after | **25** of 35 | frame 1,700, score 4,000, 7 chains |
+
+Spawns 1..24 agree on the roll count exactly, so the column re-rolls, the type
+rolls and the network occupancy all agree with them. Something remains at spawn
+25, where the port spends two rolls the original does not.
+
+And the physics is right, not merely close. Comparing how long each record stays
+occupied - the thing that decides whether the spawn has to re-roll - against the
+original's own array sampled over sixty seconds:
+
+    spawn   col   original   port        spawn   col   original   port
+      1      1      52.9      53           8      4      62.4      63
+      2      2      53.1      54           9      6      48.2      50
+      3      4      46.1      47          10      5      50.6      51
+      4      4      43.7      44          11      4      50.6      51
+      5      1      46.0      47          12      6      57.6      58
+      6      4      46.0      46          13      1      62.3      62
+      7      1      78.2      78          14      6      73.7      73
+
+Fourteen consecutive atoms, same column, same lifetime to within the +/-1 frame
+of converting the original's wall-clock samples at 62 ms a frame. Before the
+fixes the port was taking 86 to 95 frames where the original took 47.
+
+170 checks pass, up from 161. The eight pixel captures are unchanged at 0.02%
+to 0.22%.

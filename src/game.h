@@ -11,6 +11,7 @@
 #pragma once
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "board.h"
@@ -252,7 +253,13 @@ constexpr int kAtomRecords = 12;
 
 class Game {
 public:
-    Game(int cols, int rows, Difficulty diff, uint32_t seed);
+    // `randomTrace`, if given, collects every `Random(n)` call as (n, seed
+    // going in). It is a CONSTRUCTOR argument rather than a setter because the
+    // session's very first roll - the test tube's starting column, 1000:43d6 -
+    // happens in here, and a sink attached afterwards silently loses it. That
+    // is the exact off-by-one the trace exists to find.
+    Game(int cols, int rows, Difficulty diff, uint32_t seed,
+         std::vector<std::pair<int, uint32_t>>* randomTrace = nullptr);
 
     // Callers pass the raw button state each frame. NOTHING is edge-detected:
     // the original gates its whole input block on the test tube being idle
@@ -277,6 +284,18 @@ public:
     // while it is sliding. Renderers want the x; the board wants the stop.
     int tubeColumn() const { return tubeColumn_; }
     int tubeX() const { return tubeX_; }
+    // `1000:44f0` tests the tube's state and, when it is not 0, jumps straight
+    // past the input block to the state machine - so the input driver is not
+    // CALLED AT ALL on a frame where the tube is sliding or tipping.
+    //
+    // For live play that is invisible: not reading the keyboard and reading it
+    // then ignoring it look the same. For a REPLAY it is the whole ball game,
+    // because in demo playback those driver vectors are the demo reader and
+    // calling one is what advances the recording. A `.SCR` is therefore one
+    // byte per frame the tube was IDLE, not one byte per frame - so a replay
+    // that steps the stream unconditionally drifts out of step the first time
+    // the player moves, and never recovers.
+    bool acceptsInput() const { return tubeState_ == 0; }
     // The tipping animation's phase, 1..3 as far as any renderer sees - it
     // selects TESTUBE1/2/3. Phase 4 exists but never survives to a draw.
     uint8_t tubePhase() const { return tubePhase_; }
@@ -384,6 +403,9 @@ private:
     // The test tube's own state machine, `1000:45e7` - the slide between stops
     // and the tipping animation.
     void stepTube(uint8_t buttons);
+    // The Down/B boost, `1000:4534` - inside the tube's `state = 0` guard and
+    // before the Left/Right handler moves the stop.
+    void boostAtomUnderTube(uint8_t buttons);
     // Phase 4: hand the mouth's record to a free record of 7..12 - `1000:4715`.
     void releaseTippedAtom();
     // Append a slot the way the Multiplier fills do - `1000:092d`.
@@ -456,6 +478,7 @@ private:
     int moveTimer_ = 0;
 
     uint32_t rng_ = 1;
+    std::vector<std::pair<int, uint32_t>>* randomTrace_ = nullptr;
 };
 
 }  // namespace tubes

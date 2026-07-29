@@ -1037,6 +1037,47 @@ void testScrHeader() {
           "a header with no room for a seed is rejected");
 }
 
+void testFirstDispenseIsImmediate() {
+    // `1000:3be0` seeds the dispenser countdown with 1, not with the interval,
+    // as the last act of the session setup. The tick is `Dec; if = 0 then
+    // dispense`, so the first atom appears on frame ZERO.
+    //
+    // Seeding it with the interval instead delayed the first dispense by a
+    // whole period, which slid a replayed recording out of step with the game
+    // for the rest of the session.
+    tubes::Game g(6, 5, tubes::Difficulty::k301, 0x322d385eu);
+    bool any = false;
+    for (int c = 1; c <= tubes::kAtomSlots; ++c) any |= g.atom(c).active();
+    check(!any, "nothing is in flight before the first step");
+    g.stepOnce(0);
+    for (int c = 1; c <= tubes::kAtomSlots; ++c) any |= g.atom(c).active();
+    check(any, "the first atom is dispensed on frame 0, not after a period");
+}
+
+void testInputIsReadOnlyWhileTheTubeIsIdle() {
+    // `1000:44f0` jumps past the whole input block when the tube's state is not
+    // 0, so the input driver is never CALLED on a frame where the tube is
+    // sliding or tipping. In demo playback that driver IS the recording, so a
+    // `.SCR` holds one byte per IDLE frame - which is what `acceptsInput`
+    // exists to let the replay honour.
+    tubes::Game g(6, 5, tubes::Difficulty::k301, 0x322d385eu);
+    check(g.acceptsInput(), "a parked tube accepts input");
+
+    const int before = g.tubeColumn();
+    check(before > 0, "the seeded tube has room to move left");
+    g.stepOnce(tubes::button::kLeft);
+    check(g.tubeColumn() == before - 1, "Left moves the stop immediately");
+    check(!g.acceptsInput(), "and the tube stops accepting while it slides");
+
+    // The slide is 6 px a frame over an 18 px pitch (`1000:45f3`), so it is
+    // busy for two more frames and a Left arriving in them is not seen.
+    g.stepOnce(tubes::button::kLeft);
+    check(!g.acceptsInput(), "still sliding one frame later");
+    check(g.tubeColumn() == before - 1, "and the second Left is ignored");
+    g.stepOnce(tubes::button::kLeft);
+    check(g.acceptsInput(), "the tube is idle again after three frames");
+}
+
 }  // namespace
 
 int main() {
@@ -1095,6 +1136,8 @@ int main() {
     testSfxVoiceIsSingle();
     testTurboPascalRandom();
     testScrHeader();
+    testFirstDispenseIsImmediate();
+    testInputIsReadOnlyWhileTheTubeIsIdle();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

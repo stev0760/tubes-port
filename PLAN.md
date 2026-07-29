@@ -129,7 +129,7 @@ Absent entirely:
 | Wave structure: briefings, objectives, modifiers | large |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |
-| Demo playback (`.SCR` replay through the same loop) | small, and it is the regression oracle |
+| Demo playback (`.SCR` replay through the same loop) | **built**; matches to spawn 24 of 35 |
 
 Pixel accuracy against the original reads **0.02% to 0.22%** of structural
 pixels differing, over eight paused captures with the backdrop excluded - down
@@ -251,52 +251,49 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
 
 **In priority order:**
 
-1. **IN PROGRESS: make the demo replay match.** The machinery is built -
-   `--play-demo` runs `DEMO.SCR` through the live loop and `--demo-trace` runs
-   it headless in 7 ms and prints every spawn. The generator is Turbo Pascal's
-   and the seed comes from the recording.
+1. **IN PROGRESS: make the demo replay match.** The oracle now runs 24 spawns
+   deep. `--demo-trace` replays `DEMO.SCR` headless and prints, per spawn, the
+   column, the type and the **cumulative `Random` call count**; `--play-demo`
+   runs the same thing through the live loop.
 
-   **It does not match yet.** The port loses all nine drops inside the first
-   1,050 frames of an 11,970-frame recording, which means the atoms are not
-   where the recorded player reaches for them. One cause is already found and
-   fixed - the tube's starting column is `Random(6) + 1` and the port parked it
-   in the middle, throwing every later roll off by one call. Something else
-   remains.
+   **Spawns 1..24 match the original exactly on the roll count**, which means
+   the column re-rolls, the type rolls and the whole network-occupancy pattern
+   agree with them. Four causes were found and fixed - all in
+   `docs/reversing-notes.md`, all from code:
 
-   The next step is the **other half of the oracle**, on the rig. Guessing from
-   this side has reached its limit. Do it in this order - the first check is
-   much sharper than diffing spawn lists, because it pins the divergence to an
-   exact call rather than to a symptom.
+   * the demo runs at **Tubes 301**, not 101 (`1000:a483` switches on
+     `DS:0x1d4f`, and View Demo sets it to 2 at `1000:b272`);
+   * the first dispense is on **frame zero** - `1000:3be0` seeds the countdown
+     with 1, not with the interval;
+   * the Down/B boost is **inside** `if tube.state = 0` and **before** the
+     Left/Right handler moves the stop (`1000:4534`);
+   * a `.SCR` is **one byte per IDLE frame**, because `1000:44f0` skips the
+     input read entirely while the tube is sliding or tipping, and in demo
+     playback that read is what advances the recording.
 
-   **1. Count the `Random` calls.** The generator's step is `2000:75bb`, which
-   is runtime linear **`0x1F7FB`** in `tubes.conf` (Ghidra `2685:0d6b`, and
-   `L = 0x0824`). The GDB stub has no watchpoints but execution breakpoints are
-   all this needs: break there, run attract mode, and count hits per frame. The
-   port makes a known number of calls per frame - one per spawn attempt plus
-   the type roll - so any difference is the answer directly.
+   **The remaining divergence is at spawn 25**, where the port spends two rolls
+   the original does not - two extra column re-rolls, so the port is holding a
+   record occupied that the original has already freed. Atom lifetimes are the
+   thing to look at: the port's now run 52..79 frames against a 50-frame
+   dispense period, and the original's record 1 completes in ~51.
 
-   **2. Read `RandSeed` itself.** It is `DGROUP:0xd24`, runtime linear
-   **`0x207B4`**, 4 bytes little-endian. Read it right after the demo starts:
-   it should equal `0x322d385e`, the seed in `DEMO.SCR`. Then read it again
-   after N frames and compare against the port's after the same N. Where they
-   part is where the extra or missing call is.
+   **The instrument to use.** Do NOT try to break on `Random`; that was tried
+   and does not work here (see the worklog - one copy of the LCG, right address,
+   working stub, `core=normal`, and `Z0` still never traps). Instead:
 
-   **3. Only then diff the spawn sequences**, `--demo-trace` against a capture.
+   * `RandSeed` at `DGROUP:0xd24`, runtime linear **`0x207B4`**, 4 bytes LE.
+     The LCG is a bijection, so `{seed -> k}` over the orbit from the demo's
+     seed turns one read into an **exact `Random` call count**.
+     `~/Dev/tubes-tooling/exp19_seed_count.py` does this.
+   * Anchor on `1000:6008` (runtime linear `0xE248`), the instruction that
+     writes the demo's seed - it is cold code and it *does* trap, so t=0 is the
+     session's first frame.
+   * `exp21_tube_track.py` samples the atom array and the tube struct together.
+     Align by **atom y** rather than by wall clock: an unboosted atom rises at
+     exactly 4 px a frame, so its y is a frame counter.
 
-   Two live hypotheses, in order of suspicion:
-
-   * a `Random` call in the session prologue the port does not make. `1000:43d6`
-     was one such and is now fixed; there may be more between there and the
-     first `1000:4918` dispense.
-   * the difficulty the recording was made at. The port assumes Tubes 101, and
-     the difficulty sets the spawn interval (70/60/50) and every velocity, so
-     the wrong one changes the timing of everything even with a correct
-     generator. Check what attract mode passes to `1000:9e53`.
-
-   **FIX `demo_trace.py` BEFORE USING IT.** Its `ARRAY` constant is `0x241A4`,
-   which is `array[2]` - the off-by-one-record base this project already chased
-   for two sessions. It should be **`0x24188`**. The tell, per the rig skill, is
-   an emitted index disagreeing with the record's own `+0x0c` column field.
+   `demo_trace.py`'s `ARRAY` constant is now **`0x24188`** (it was `0x241A4`,
+   which is `array[2]`).
 2. **Wave structure**, the largest remaining piece and the gate on several
    things already half-implemented: the objective plane, the disabled-element
    modifier, the wave-mode HUD counters, `DS:0x1d4e`'s modes 4, 5 and 6, and
