@@ -60,6 +60,7 @@ Percentages are judgement calls, so the breakdown matters more than the number.
 | The beaker update `1000:22a6` | **done** - three planes, four matchers, fade, gravity |
 | The tipping animation `1000:463a`, and records 7..12 | **done** - four phases, state 8 and state 9 |
 | Text rendering and the HUD | **done** - the colour walk, the shadow, both fonts |
+| Sound: the `.SFX` header from the driver side, and which sound plays when | **done** |
 | Beaker-side specials `1000:2790` | **done** - AntiMatter, Blocker, Convertor |
 | Catch-time specials `1000:180c` | **done** - Bonus, Multiplier, EvilMultiplier, Filler |
 | Scoring and the chain bonus multiplier | **done**, from code rather than the manual |
@@ -116,13 +117,15 @@ Working, and transliterated rather than invented:
   and under it a transliterated text renderer, so a glyph is a vertical colour
   walk off one palette index with a shadow, exactly as `2000:35ec` draws it
 - music: all ten songs, correct at the register level
+- **sound effects**: the eleven fade families plus DROP, HITGLASS and HITATOM,
+  each fired from the site the original calls `PlaySound` at, through ONE voice
+  because that is all `SBSOUND.DRV` has
 
 Absent entirely:
 
 | Missing | Size |
 |---|---|
 | The wave-mode HUD ball counters at `DS:0x200a` | small, and wave-mode only |
-| Sound effects | small |
 | Wave structure: briefings, objectives, modifiers | large |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |
@@ -248,17 +251,12 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
 
 **In priority order:**
 
-1. **Sound effects.** Every hook now exists: the matcher names the fade family
-   whose `.SFX` to play, and `Game::takeSound()` hands it to the caller. The
-   catch-time specials name theirs too - the Bonus plays a fixed one from the
-   frame at `-0x4a`, and the tube's arrival picks between `-0x76` and `-0x7a`
-   depending on whether the atom landed in the bottom slot.
-2. **Demo playback.** `.SCR` is decoded and `Game::update` already takes the
+1. **Demo playback.** `.SCR` is decoded and `Game::update` already takes the
    same button bits it records, so replaying one through the live loop is
    mostly plumbing - and it is the regression oracle the prime directive asks
    for. Every rule landed since the beaker has been checked by unit test and
    by eye; none has been checked against the original's own play.
-3. **Wave structure**, the largest remaining piece and the gate on several
+2. **Wave structure**, the largest remaining piece and the gate on several
    things already half-implemented: the objective plane, the disabled-element
    modifier, the wave-mode HUD counters, `DS:0x1d4e`'s modes 4, 5 and 6, and
    the tails inside the catch-time specials that only run in mode 4.

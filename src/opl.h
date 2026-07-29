@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "mus.h"
+#include "sfx.h"
 
 // opl3.h declares `typedef struct _opl3_chip opl3_chip;`, so the tag is what
 // can be forward-declared here; including the C header would leak into every
@@ -61,6 +62,17 @@ public:
     void setPaused(bool paused);
     bool isOpen() const { return deviceId_ != 0; }
 
+    // Opens the device without starting any music, so sound effects can play
+    // on their own. Harmless if the device is already open.
+    bool openSilent(std::string& error, int sampleRate = 44100);
+
+    // Starts `s` on the single effects voice, cutting off whatever was
+    // playing - which is what `SBSOUND.DRV` does. `s` must outlive the call;
+    // the caller owns the decoded sounds.
+    void playSound(const Sound* s);
+
+    int deviceRate() const { return deviceRate_; }
+
     // Renders a song to a mono/stereo buffer without an audio device, for
     // offline verification. `seconds` bounds songs, which loop forever.
     static bool renderOffline(const Archive& drivers, const Bytes& song,
@@ -78,6 +90,10 @@ private:
     void mix(int16_t* out, int frames);
 
     uint32_t deviceId_ = 0;
+    int deviceRate_ = 44100;
+    // The effects voice is mixed on top of the music in the same callback, so
+    // there is one device and one clock for both.
+    SfxVoice sfxVoice_;
     FmTables tables_{};
     std::unique_ptr<OplChip> chip_;
     std::unique_ptr<MusSequencer> seq_;

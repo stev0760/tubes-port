@@ -18,6 +18,7 @@ add_executable(tubes-port
     src/gfx.cpp
     src/screen.cpp
     src/font.cpp
+    src/sfx.cpp
     src/board.cpp
     src/game.cpp
     src/mus.cpp
@@ -32,7 +33,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 add_executable(tubes-tests src/board_test.cpp src/board.cpp src/game.cpp
-                            src/font.cpp src/screen.cpp src/gfx.cpp)
+                            src/font.cpp src/screen.cpp src/gfx.cpp
+                            src/sfx.cpp)
 target_include_directories(tubes-tests PRIVATE src)
 enable_testing()
 add_test(NAME board COMMAND tubes-tests)

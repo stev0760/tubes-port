@@ -61,6 +61,32 @@ constexpr uint8_t kPoured = 3;
 constexpr uint8_t kRelease = 4;   // never rendered; see kTipFrames below
 }  // namespace tubephase
 
+// The session holds one sound handle per ATOM TYPE, `sound[t]` at `F9 - 0x72 +
+// 4t`, loaded by name at `1000:a2e0` onward. Index 0 of that same array is
+// `DROP.SFX`, so a lost atom is literally the sound of type nothing:
+//
+//     sound[0]      DROP        an atom lost, or tipped into a full column
+//     sound[1..7]   R/G/B/C/P/Y/PNK FADE
+//     sound[8]      FFADE       Flashium
+//     sound[9]      AFADE       the AntiMatter blast
+//     sound[10]     GLDFADE     a Bonus caught
+//     sound[18]     CRFADE      the Crystal
+//
+// and three more sit just below the array, at -0x76, -0x7a and -0x7e. Types
+// 11..17 and 19 have no sound, which is the same set that has no fade family.
+//
+// ONE plays at a time. `SBSOUND.DRV`'s play entry calls its own stop routine
+// before anything else and holds a single position/length pair, so a new sound
+// cuts off whatever was going.
+namespace sfx {
+constexpr int8_t kNone = -1;
+constexpr int8_t kDrop = 0;          // = sound[0]; 1..19 are the atom types
+constexpr int8_t kHitGlass = 20;     // F9-0x76, landing on the beaker floor
+constexpr int8_t kHitAtom = 21;      // F9-0x7a, landing on another atom
+constexpr int8_t kSelect = 22;       // F9-0x7e, the wave-mode element cycle
+constexpr int8_t kCount = 23;
+}  // namespace sfx
+
 // The playfield geometry lives in four consecutive six-word tables in DGROUP,
 // which is why no tube x value ever appears in a comparison in the game loop.
 // Read out of the image at DGROUP:0x00 rather than inferred:
@@ -296,10 +322,16 @@ public:
 
     // Non-zero while a clear animation is running.
     int clearTimer() const { return clearTimer_; }
-    // The fade family whose sound to play, consumed by the caller.
+    // The sound to play, consumed by the caller. See `namespace sfx` - it is an
+    // atom type for the fade families and DROP, or one of the three ids above
+    // it. `sfx::kNone` means nothing happened.
+    //
+    // One slot, not a queue, because the driver has one voice: a second event
+    // in the same frame simply cuts off the first, which is exactly what
+    // calling `PlaySound` twice does on the original.
     int8_t takeSound() {
         const int8_t s = pendingSound_;
-        pendingSound_ = kEmpty;
+        pendingSound_ = sfx::kNone;
         return s;
     }
 
@@ -395,7 +427,7 @@ private:
     // 1000:1c70 sets this to 10 on a match; the frame loop counts it down and
     // will not declare a wave complete while it is running.
     int clearTimer_ = 0;
-    int8_t pendingSound_ = kEmpty;
+    int8_t pendingSound_ = sfx::kNone;
     int chains_ = 0;
     bool gameOver_ = false;
 

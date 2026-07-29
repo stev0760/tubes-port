@@ -47,9 +47,8 @@ MusicPlayer::~MusicPlayer() {
     }
 }
 
-bool MusicPlayer::open(const Archive& drivers, std::string& error,
-                       int sampleRate) {
-    if (!loadTables(drivers, tables_, error)) return false;
+bool MusicPlayer::openSilent(std::string& error, int sampleRate) {
+    if (deviceId_ != 0) return true;
 
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
         error = std::string("SDL_InitSubSystem(audio): ") + SDL_GetError();
@@ -70,12 +69,22 @@ bool MusicPlayer::open(const Archive& drivers, std::string& error,
         error = std::string("SDL_OpenAudioDevice: ") + SDL_GetError();
         return false;
     }
-
-    chip_.reset(new OplChip(have.freq));
-    seq_.reset(new MusSequencer(tables_, *chip_));
-    samplesPerTick_ = have.freq / kMusTickHz;
-    tickAccumulator_ = 0.0;
+    deviceRate_ = have.freq;
     SDL_PauseAudioDevice(deviceId_, 0);
+    return true;
+}
+
+bool MusicPlayer::open(const Archive& drivers, std::string& error,
+                       int sampleRate) {
+    if (!loadTables(drivers, tables_, error)) return false;
+    if (!openSilent(error, sampleRate)) return false;
+
+    SDL_LockAudioDevice(deviceId_);
+    chip_.reset(new OplChip(deviceRate_));
+    seq_.reset(new MusSequencer(tables_, *chip_));
+    samplesPerTick_ = deviceRate_ / kMusTickHz;
+    tickAccumulator_ = 0.0;
+    SDL_UnlockAudioDevice(deviceId_);
     return true;
 }
 
@@ -114,7 +123,23 @@ void MusicPlayer::audioCallback(void* userdata, uint8_t* stream, int len) {
 
 // Steps the sequencer from the sample clock, so tempo does not drift with
 // the video frame rate the way it would if the game loop drove it.
+void MusicPlayer::playSound(const Sound* s) {
+    if (deviceId_ == 0) return;
+    // The callback runs on the audio thread and reads the voice, so the swap
+    // has to be atomic with respect to it.
+    SDL_LockAudioDevice(deviceId_);
+    sfxVoice_.play(s, deviceRate_);
+    SDL_UnlockAudioDevice(deviceId_);
+}
+
 void MusicPlayer::mix(int16_t* out, int frames) {
+    // With no song loaded there is nothing to step, but the effects voice
+    // still has to be serviced - `--no-music` should not mean no sound.
+    if (!seq_ || !chip_) {
+        for (int i = 0; i < frames * 2; ++i) out[i] = 0;
+        sfxVoice_.mix(out, frames);
+        return;
+    }
     int done = 0;
     while (done < frames) {
         if (tickAccumulator_ <= 0.0) {
@@ -127,6 +152,7 @@ void MusicPlayer::mix(int16_t* out, int frames) {
         tickAccumulator_ -= chunk;
         done += chunk;
     }
+    sfxVoice_.mix(out, frames);
 }
 
 bool MusicPlayer::renderOffline(const Archive& drivers, const Bytes& song,

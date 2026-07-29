@@ -306,6 +306,10 @@ void Game::updateBeaker() {
         clearTimer_ = kClearFrames;
         pendingSound_ = s.soundType;
     }
+    // 1000:2777, at the tail of the gravity pass: if anything moved this frame,
+    // one HITATOM. Not one per atom - a whole beaker settling is a single
+    // knock, which is why the flag is a boolean and not a count.
+    if (s.settled) pendingSound_ = sfx::kHitAtom;
     chains_ += s.chainsVertical + s.chainsHorizontal + s.chainsDiagonal;
 
     // 1000:2410 - one sixth of the award, paid every frame the ramp is live.
@@ -413,6 +417,7 @@ void Game::catchSpecial() {
             rampIncrement_ = scorePending_ * scoreMultiplier_ / rampSteps_;
         }
         score_ += rampIncrement_;           // 1000:08c4
+        pendingSound_ = kBonus;             // 1000:083b, sound[10] = GLDFADE
     }
 
     if (!board_.specialsEnabled()) return;
@@ -823,6 +828,10 @@ void Game::stepAtom(Falling& a) {
             if (a.y > rest) {
                 a.y = rest;
                 a.arrived = true;
+                // 1000:18b3 - the bottom slot rings the glass, anything above
+                // it knocks against the atom below.
+                pendingSound_ = (a.slotDy == kSlotDy[1]) ? sfx::kHitGlass
+                                                         : sfx::kHitAtom;
             }
             break;
         }
@@ -850,11 +859,14 @@ void Game::stepAtom(Falling& a) {
                 // 1000:16d3. The column is full: the atom is destroyed and it
                 // costs a drop. It does NOT sit on top or bounce.
                 if (a.colour != kBonus && dropsRemaining_ > 0) --dropsRemaining_;
-                pendingSound_ = a.colour;
+                pendingSound_ = sfx::kDrop;      // 1000:172a
                 break;
             }
             board_.set(col, row - 1, a.colour);
-            pendingSound_ = a.colour;
+            // 1000:1765. Reaching the floor rings the glass; landing on a
+            // stack knocks. Same pair as the in-tube slide above.
+            pendingSound_ = (row == board_.rows()) ? sfx::kHitGlass
+                                                   : sfx::kHitAtom;
             break;
         }
 
@@ -933,6 +945,7 @@ void Game::stepAtom(Falling& a) {
     if (a.y > kLostY) {
         a.y = kLostY;
         a.state = atomstate::kLanded;
+        pendingSound_ = sfx::kDrop;         // 1000:15a0, whatever was missed
         // 1000:153e. A missed BONUS costs nothing. It is the same exemption the
         // full-column loss in state 9 makes, and the port had it in one place
         // and not the other.

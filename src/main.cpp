@@ -17,6 +17,7 @@
 #include "opl.h"
 #include "res.h"
 #include "screen.h"
+#include "sfx.h"
 
 namespace {
 
@@ -112,6 +113,29 @@ const char* kFadeFamilies[tubes::kTypeCount] = {
     nullptr,      // 19 MYSTBALL is a rendering state, not a ball
 };
 
+// The sound table, indexed exactly as the original's is - by ATOM TYPE, with
+// index 0 the sound of losing one. Loaded by name at `1000:a2e0` onward; types
+// 11..17 and 19 are silent, which is the same set that has no fade family.
+const char* kSoundFiles[tubes::sfx::kCount] = {
+    "DROP.SFX",         //  0  an atom lost, or tipped into a full column
+    "RFADE.SFX",        //  1  Redium
+    "GFADE.SFX",        //  2  Greenium
+    "BFADE.SFX",        //  3  Bluium
+    "CFADE.SFX",        //  4  Cyanium
+    "PFADE.SFX",        //  5  Purplium
+    "YFADE.SFX",        //  6  Yellowium
+    "PNKFADE.SFX",      //  7  Pinkium
+    "FFADE.SFX",        //  8  Flashium
+    "AFADE.SFX",        //  9  the AntiMatter blast
+    "GLDFADE.SFX",      // 10  a Bonus caught
+    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,  // 11..17
+    "CRFADE.SFX",       // 18  the Crystal
+    nullptr,            // 19  MYSTBALL is a rendering state, not a ball
+    "HITGLASS.SFX",     // 20  landing on the beaker floor
+    "HITATOM.SFX",      // 21  landing on another atom, and the beaker settling
+    "SELECT.SFX",       // 22  the wave-mode element cycle
+};
+
 // How many distinct values a beaker cell can take: `type + 19 * fadeFrame`
 // runs to 152 before the cell empties, so the sprite table needs 153 slots.
 constexpr int kCellStates = tubes::kCellClearAbove + 1;
@@ -181,6 +205,7 @@ struct Options {
     std::string renderMus;      // render a song to WAV and exit
     std::string dumpRegs;       // print the OPL register stream and exit
     std::string renderState;    // load a captured state, render it, exit
+    bool dumpSfx = false;       // print every .SFX header and exit
     std::string gameBg = "GAMEBG1.GFX";   // backdrop, for matching a capture
     double renderSeconds = 0;   // 0 = one pass, songs loop forever
     bool help = false;
@@ -308,6 +333,8 @@ Options parseArgs(int argc, char** argv) {
             o.renderSeconds = std::atof(argv[++i]);
         } else if (a == "--dump-regs" && i + 1 < argc) {
             o.dumpRegs = argv[++i];
+        } else if (a == "--dump-sfx") {
+            o.dumpSfx = true;
         } else if (a == "--render-state" && i + 1 < argc) {
             o.renderState = argv[++i];
         } else if (a == "--gamebg" && i + 1 < argc) {
@@ -336,6 +363,7 @@ void usage() {
         "  --render-mus NAME OUT.wav   render a song to WAV and exit\n"
         "  --seconds N       length for --render-mus (default: one pass)\n"
         "  --dump-regs NAME  print the OPL2 register stream and exit\n"
+        "  --dump-sfx        print every .SFX header and exit\n"
         "  --help\n"
         "\n"
         "Controls: left/right move the test tube, Down speeds the atom,\n"
@@ -643,6 +671,32 @@ int main(int argc, char** argv) {
     const bool haveDrivers =
         drivers.open(opt.gameDir + "/DRIVERS.RES", driverErr);
 
+    // Prints every .SFX header the way `tools/sfx_decode.py INFO` does, so the
+    // two decoders can be diffed. Music is verified by diffing its register
+    // stream against the Python tool rather than by listening; this is the same
+    // check for the digital side, and it is what caught the rate being a WORD.
+    if (opt.dumpSfx) {
+        for (const auto& kv : res.entries()) {
+            const std::string& name = kv.first;
+            if (name.size() < 4 ||
+                name.compare(name.size() - 4, 4, ".SFX") != 0) {
+                continue;
+            }
+            tubes::Bytes raw;
+            tubes::Sound snd;
+            std::string sfxErr;
+            if (!res.read(name, raw, sfxErr) ||
+                !tubes::decodeSfx(raw, snd, sfxErr)) {
+                std::printf("  %-16s ERROR %s\n", name.c_str(),
+                            sfxErr.c_str());
+                continue;
+            }
+            std::printf("  %-16s %5d Hz %7zu samples  \"%s\"\n", name.c_str(),
+                        snd.rate, snd.pcm.size(), snd.name.c_str());
+        }
+        return 0;
+    }
+
     if (!opt.dumpRegs.empty() || !opt.renderMus.empty()) {
         if (!haveDrivers) {
             std::fprintf(stderr, "error: %s\n", driverErr.c_str());
@@ -817,8 +871,38 @@ int main(int argc, char** argv) {
     }
 
     // Music is best-effort: a missing DRIVERS.RES or a busy audio device
-    // must not stop the game from being playable.
+    // must not stop the game from being playable. Sound effects are the same,
+    // and they do not need DRIVERS.RES at all - the .SFX resources are in
+    // TUBES.RES and the driver only ever fed them to the card.
+    // DECLARATION ORDER MATTERS. The audio callback holds a bare pointer into
+    // `sounds` while a voice is playing, and locals are destroyed in reverse,
+    // so `sounds` has to be declared FIRST - then `music` closes the device in
+    // its destructor while the samples are still alive. The other way round is
+    // a use-after-free on the audio thread on the way out.
+    tubes::Sound sounds[tubes::sfx::kCount];
     tubes::MusicPlayer music;
+    if (opt.screenshot.empty()) {
+        std::string audioErr;
+        if (!music.openSilent(audioErr)) {
+            std::fprintf(stderr, "sound disabled: %s\n", audioErr.c_str());
+        } else {
+            int loadedSfx = 0, wanted = 0;
+            for (int i = 0; i < tubes::sfx::kCount; ++i) {
+                if (!kSoundFiles[i]) continue;
+                ++wanted;
+                tubes::Bytes raw;
+                std::string err;
+                if (res.read(kSoundFiles[i], raw, err) &&
+                    tubes::decodeSfx(raw, sounds[i], err)) {
+                    ++loadedSfx;
+                } else {
+                    std::fprintf(stderr, "  %s: %s\n", kSoundFiles[i],
+                                 err.c_str());
+                }
+            }
+            std::printf("loaded %d/%d sound effects\n", loadedSfx, wanted);
+        }
+    }
     if (!opt.music.empty() && opt.screenshot.empty()) {
         std::string musicErr;
         tubes::Bytes song;
@@ -885,6 +969,14 @@ int main(int argc, char** argv) {
         // to --auto, which simulates first and draws once at the end.
         if (opt.screenshot.empty()) {
             game.update(opt.demo ? scriptedInput(game) : readKeyboard(), dt);
+            // One voice, so one sound a frame: a second event in the same
+            // frame has already replaced the first inside Game, which is what
+            // calling the driver's PlaySound twice does.
+            const int8_t want = game.takeSound();
+            if (want >= 0 && want < tubes::sfx::kCount &&
+                sounds[want].valid()) {
+                music.playSound(&sounds[want]);
+            }
         }
 
         screen.clear(0);

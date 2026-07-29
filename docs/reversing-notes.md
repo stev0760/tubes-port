@@ -574,6 +574,67 @@ is copied verbatim.
     tools/sfx_decode.py INFO <file.SFX>...
     tools/sfx_decode.py WAV  <outdir> <file.SFX>...
 
+### `SBSOUND.DRV` reads the same header - two corrections
+
+The format above came off the files. The **Sound Blaster driver** is a second
+consumer of the same byte stream, which is this project's most reliable
+technique, and its play entry at offset `0x344` walks the header directly:
+
+    if [SI] <> $F1 then exit;             { the marker }
+    SI := SI + $20;  CX := [SI];          { the rate - a WORD }
+    SI := SI + 2;
+    DSP($40, 256 - (1000000 div CX));     { the time constant }
+    if [SI] <> 0 then <another path>      { the flag, at $22 }
+    else begin SI := SI + 3;  BX := [SI];  SI := SI + 2 end;
+    <DMA BX bytes from DS:SI>
+
+Two things change:
+
+* the rate is a **word at `0x20`**, not a longword. Every shipped sound is
+  8000 Hz so the high half is zero and the file side could not tell.
+* the unknown byte is at **`0x22`**, not `0x24` - the driver reads it
+  immediately after the rate and takes a different path when it is set. Every
+  shipped sound has it clear, so what that path expects is still unknown.
+
+The count at `0x25` and the PCM at `0x27` are confirmed unchanged: `SI` is
+`0x22`, `+3` puts it at `0x25`, the word there is the DMA length and `+2` is
+the data.
+
+### There is ONE voice
+
+`0x344` opens by calling the driver's own stop routine at `0x422`:
+
+    if playing then begin <halt the DMA>; <reset the DSP> end
+
+and the whole driver holds a single position/length pair in the sixteen bytes
+at `cs:0x20`. In 1,158 bytes there is no mixing anywhere. **A new sound cuts
+off whatever was playing** - so two events in one frame is not two sounds, it
+is the second one.
+
+### Which sound plays when
+
+The session holds one handle per **atom type**, `sound[t]` at `F9 - 0x72 + 4t`,
+loaded by name from `1000:a2e0`. Index 0 of the same array is `DROP`, so a lost
+atom is the sound of type nothing. Three more sit just below it.
+
+| slot | file | played by |
+|---|---|---|
+| `sound[0]` | `DROP` | `1000:15a0` an atom missed; `1000:172a` tipped into a full column |
+| `sound[1..7]` | `R/G/B/C/P/Y/PNK FADE` | the four matchers, by the type the run matched AS |
+| `sound[8]` | `FFADE` | a Flashium run |
+| `sound[9]` | `AFADE` | `1000:0f6f`, the AntiMatter blast |
+| `sound[10]` | `GLDFADE` | `1000:083b`, a Bonus caught |
+| `sound[18]` | `CRFADE` | `1000:0690`, the Crystal |
+| `F9-0x76` | `HITGLASS` | `1000:1776` landing on the beaker floor; `1000:18c9` reaching the tube's bottom slot |
+| `F9-0x7a` | `HITATOM` | `1000:1796` landing on a stack; `1000:18de` landing on an atom in the tube; `1000:278c` the beaker settling |
+| `F9-0x7e` | `SELECT` | `1000:4be4`, `1000:4ce9` - wave-mode element cycling, not ported |
+
+Types 11..17 and 19 are silent, which is the same set that has no fade family.
+
+`1000:278c` is worth a line: the settle sound is fired **once** at the tail of
+the gravity pass if anything moved, not once per atom. A whole beaker
+collapsing is a single knock, which is why the flag behind it is a boolean.
+
 ### Format status
 
 | Format | Count | Status |

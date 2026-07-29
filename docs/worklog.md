@@ -2241,3 +2241,56 @@ staying in the tube, which went away when the tip started going through records
 7..12.
 
 144 checks pass, up from 134. The eight pixel captures are unchanged.
+
+## 2026-07-28 - sound effects, and the driver as a second consumer
+
+The `.SFX` format was already "solved" from the file side. Reading
+`SBSOUND.DRV`, which eats the same byte stream, corrected two things and
+settled a third that could not have been settled any other way.
+
+Its play entry at offset `0x344` walks the header directly - marker, rate,
+flag, length, data - and that is enough to see that **the rate is a word at
+0x20, not a longword**, and that **the unknown byte is at 0x22, not 0x24**. The
+file side could not tell either: every shipped sound is 8000 Hz, so the rate's
+high half is zero, and every shipped sound has the flag clear.
+
+"Find a second consumer of the same data" is the top entry in CLAUDE.md's list
+of what has actually worked, and it paid again for the cost of one `objdump`.
+
+### One voice, and it is from code
+
+`0x344` opens by calling the driver's own stop routine, and the whole 1,158
+bytes hold a single position/length pair. **A new sound cuts off whatever was
+playing.** So `Game` keeps one pending sound and a later event in the same
+frame simply replaces the earlier one - which is exactly what calling
+`PlaySound` twice does on the original, rather than a simplification.
+
+I had been about to implement a four-voice mixer on the grounds that it "sounds
+better". It would have been wrong, and nothing in play would have made that
+obvious.
+
+### The sound table is indexed by atom type
+
+`sound[t]` at `F9 - 0x72 + 4t`, and index 0 of the same array is `DROP` - so a
+lost atom is the sound of type nothing. That fell out of noticing that CRFADE
+sits at `-0x2a`, which is `-0x72 + 4*18`, and 18 is the Crystal. AFADE at
+`-0x4e` is type 9 and GLDFADE at `-0x4a` is type 10, both of which check.
+
+Every emit site in `game.cpp` now names the address it came from. The settle
+sound is worth one note: `1000:278c` fires it **once** at the tail of the
+gravity pass if anything moved, not once per atom.
+
+### Verification
+
+Headers and PCM were both diffed against `tools/sfx_decode.py`: name, rate and
+sample count agree on all 24, and the PCM is **byte-identical** on all 24
+against the reference WAVs. `--dump-sfx` is the standing version of that check,
+the same idea as `--dump-regs` for music.
+
+One real bug found on the way out rather than in play: the audio callback holds
+a bare pointer into the sound table while a voice is live, and the two were
+declared in the order that destroys the samples first. Swapped, and checked
+under ASan with a voice still playing - not by running the game under `timeout`,
+which kills it before any destructor runs and would have proved nothing.
+
+154 checks pass, up from 144.

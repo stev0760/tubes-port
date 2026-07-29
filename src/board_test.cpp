@@ -17,6 +17,7 @@
 #include "font.h"
 #include "game.h"
 #include "screen.h"
+#include "sfx.h"
 
 namespace {
 
@@ -901,6 +902,94 @@ void testFlashiumCyclesEveryFourFrames() {
           "Flashium holds each of the seven colours for four frames, then wraps");
 }
 
+// --- sound, the .SFX header and the single voice ------------------------
+
+// Builds a .SFX the way the files are laid out, so the header offsets are
+// exercised rather than assumed.
+tubes::Bytes makeSfx(const std::string& name, int rate,
+                     const std::vector<uint8_t>& pcm, uint8_t flag = 0) {
+    tubes::Bytes b(0x27, 0);
+    b[0] = 0xf1;
+    b[1] = static_cast<uint8_t>(name.size());
+    for (size_t i = 0; i < name.size(); ++i) b[2 + i] = name[i];
+    b[0x20] = static_cast<uint8_t>(rate & 0xff);
+    b[0x21] = static_cast<uint8_t>(rate >> 8);
+    b[0x22] = flag;
+    b[0x25] = static_cast<uint8_t>(pcm.size() & 0xff);
+    b[0x26] = static_cast<uint8_t>(pcm.size() >> 8);
+    b.insert(b.end(), pcm.begin(), pcm.end());
+    return b;
+}
+
+void testSfxHeader() {
+    tubes::Sound s;
+    std::string err;
+    check(tubes::decodeSfx(makeSfx("Smack!", 8000, {1, 2, 3}), s, err),
+          "a well-formed .SFX decodes");
+    check(s.name == "Smack!" && s.rate == 8000 &&
+          s.pcm == std::vector<uint8_t>({1, 2, 3}),
+          "name, rate and PCM all come off the right offsets");
+
+    // SBSOUND.DRV bails on a bad marker before it reads anything else.
+    tubes::Bytes bad = makeSfx("x", 8000, {1});
+    bad[0] = 0;
+    check(!tubes::decodeSfx(bad, s, err), "a missing 0xf1 marker is rejected");
+
+    // The rate is a WORD at 0x20 - the driver loads CX from there and divides
+    // 1000000 by it. A longword reading cannot be told apart in the shipped
+    // files, which are all 8000 Hz, but 0x22 is the flag and not the rate's
+    // third byte: set it and the driver takes a path this port cannot follow.
+    check(!tubes::decodeSfx(makeSfx("x", 8000, {1}, 1), s, err),
+          "the flag at 0x22 is refused rather than guessed at");
+}
+
+void testSfxVoiceResamples() {
+    tubes::Sound s;
+    std::string err;
+    tubes::decodeSfx(makeSfx("t", 8000, {0x80, 0xc0, 0x40, 0x80}), s, err);
+
+    // At a matching device rate the step is exactly one, so the samples come
+    // out untouched - centred on 0x80 and scaled.
+    tubes::SfxVoice v;
+    v.play(&s, 8000);
+    std::vector<int16_t> buf(4 * 2, 0);
+    v.mix(buf.data(), 4);
+    check(buf[0] == 0 && buf[2] == 0x40 * 96 && buf[4] == -0x40 * 96,
+          "at a matched rate the PCM plays through unchanged");
+    check(buf[0] == buf[1] && buf[2] == buf[3], "and to both channels");
+
+    // Twice the device rate holds each source sample for two output frames.
+    tubes::SfxVoice up;
+    up.play(&s, 16000);
+    std::vector<int16_t> wide(8 * 2, 0);
+    up.mix(wide.data(), 8);
+    check(wide[2] == 0 && wide[4] == 0x40 * 96 && wide[6] == 0x40 * 96,
+          "at double the rate each sample lasts two frames");
+}
+
+void testSfxVoiceIsSingle() {
+    // `SBSOUND.DRV`'s play entry calls its own stop routine first, so a second
+    // sound cuts off the first rather than mixing with it.
+    tubes::Sound a, b;
+    std::string err;
+    tubes::decodeSfx(makeSfx("a", 8000, {0xff, 0xff, 0xff, 0xff}), a, err);
+    tubes::decodeSfx(makeSfx("b", 8000, {0x80, 0x80}), b, err);
+
+    tubes::SfxVoice v;
+    v.play(&a, 8000);
+    std::vector<int16_t> buf(2 * 2, 0);
+    v.mix(buf.data(), 2);
+    check(buf[0] == 0x7f * 96, "the first sound is playing");
+    v.play(&b, 8000);
+    std::vector<int16_t> two(2 * 2, 0);
+    v.mix(two.data(), 2);
+    check(two[0] == 0, "starting another replaces it outright");
+
+    // And it releases the voice at the end rather than looping or hanging.
+    v.mix(two.data(), 2);
+    check(!v.busy(), "a finished sound frees the voice");
+}
+
 }  // namespace
 
 int main() {
@@ -954,6 +1043,9 @@ int main() {
     testTippingTubeCannotCatch();
     testMissedBonusCostsNothing();
     testFlashiumCyclesEveryFourFrames();
+    testSfxHeader();
+    testSfxVoiceResamples();
+    testSfxVoiceIsSingle();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
