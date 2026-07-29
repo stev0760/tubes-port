@@ -4998,11 +4998,28 @@ in the right place all along. The catch window is eleven pixels against a nine
 pixel step - one frame - so it took only a few atoms for one to arrive after the
 tube had moved on.
 
-**4. What it was worth.** With the ramp transliterated, all 44 spawns the
-capture covers agree with the original in **column, type and frame** (residual
-±1.3 frames, which is the fit's own noise). The replay runs to frame 2,912
-instead of 1,627, and the port's first missed atom - frame 911, between rolls 51
-and 53 - is the same one the original misses.
+**4. What it was worth.** With the ramp transliterated, the port and the
+original agree on **which frame every byte of the recording is consumed at**,
+over all 1,184 common byte counts, with residuals of -0.7 to +1.6 frames - and
+that covers the port's entire life, frames 0 to 2,963. Every spawn in that range
+agrees in column, type and frame. The port's first missed atom, frame 911, is
+the one the original misses too.
+
+### Attract mode does not play the whole recording
+
+`DEMO.SCR` holds 11,970 input bytes, but the original's demo session ends at
+frame ~4,572 having consumed **2,395** of them. So the recording outlives the
+session that replays it, and the session ends for a gameplay reason rather than
+by running off the end of the stream - which is consistent with the reader's
+`avail` bounds check never being the thing that stops it.
+
+The port ends at frame 2,963 with 2,196 bytes consumed, on two atoms lost at
+frames 2,912 and 2,963 that the original keeps. Since the byte schedule, the
+tube and the dispenser are all frame-exact up to that point, the remaining
+difference is two specific catches, late in a run where the ramp has already
+moved both the interval and the velocity several times. That is where to look
+next; `exp23_demo_index.py` should capture the drops counter (`0x245bc`) too, so
+the original's own losses can be placed against the port's.
 
 ### The catch tests the tube's ACTUAL x, not its stop
 

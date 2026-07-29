@@ -2648,3 +2648,17 @@ capture, so whether those are real needs a longer run.
 
 181 checks pass, up from 172. The eight pixel captures are unchanged at 0.02% to
 0.22%.
+
+### Verified over the whole run, after the fact
+
+A 400-second rig capture settles the range question. The port and the original
+agree on **which frame every byte of the recording is consumed at** - 1,184
+common byte counts, residuals -0.7 to +1.6 frames - across frames 0 to 2,963,
+the port's entire life.
+
+Two things fell out of it. **Attract mode does not play the whole recording**:
+`DEMO.SCR` holds 11,970 input bytes and the original consumes 2,395 before its
+session ends at frame ~4,572, so the stream outlives the session and the
+reader's `avail` bounds check is never what stops it. And the remaining gap is
+now two specific catches - the port loses atoms at frames 2,912 and 2,963 that
+the original keeps, with everything measurable identical up to that point.

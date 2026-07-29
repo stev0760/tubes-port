@@ -288,12 +288,27 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
    **All 44 spawns the capture covers now agree in column, type and frame** to
    ±1.3 frames, which is the measurement's own noise.
 
-   **What is left.** The replay now dies at frame 2,912 of 11,970, on two atoms
-   missed at frames 2,912 and 2,963. The 175-second rig capture ends at about
-   frame 2,844 with the original still holding 2 drops, so those two are just
-   past the evidence - **the next step is simply a longer capture**
-   (`exp23_demo_index.py OUT.jsonl 400`) to see whether the original catches
-   them.
+   **Verified over the whole run.** The port and the original agree on which
+   frame every byte of the recording is consumed at - 1,184 common byte counts,
+   residuals -0.7 to +1.6 frames - across frames 0 to 2,963, which is the
+   port's entire life. Every spawn in that range matches in column, type and
+   frame.
+
+   **What is left: two catches.** The port ends at frame 2,963 having consumed
+   2,196 bytes, on atoms lost at frames 2,912 and 2,963. The original keeps
+   both and runs to frame ~4,572 on 2,395 bytes. Everything measurable agrees up
+   to that point, so the difference is those two catches specifically, late in a
+   run where the ramp has already moved the interval and the velocity several
+   times.
+
+   Next step: add the drops counter (`0x245bc`) to `exp23_demo_index.py` so the
+   original's own losses can be placed against the port's, then compare the two
+   atoms' trajectories frame by frame the way record 3 was compared.
+
+   **Also worth knowing: attract mode does not play the whole recording.**
+   `DEMO.SCR` holds 11,970 input bytes and the original consumes 2,395 of them
+   before the session ends, so the stream outlives the session and `avail`'s
+   bounds check is never what stops it.
 
    **The instruments, all built and all cheap to re-run:**
 
