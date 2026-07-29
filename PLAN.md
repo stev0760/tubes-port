@@ -251,11 +251,25 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
 
 **In priority order:**
 
-1. **Demo playback.** `.SCR` is decoded and `Game::update` already takes the
-   same button bits it records, so replaying one through the live loop is
-   mostly plumbing - and it is the regression oracle the prime directive asks
-   for. Every rule landed since the beaker has been checked by unit test and
-   by eye; none has been checked against the original's own play.
+1. **IN PROGRESS: make the demo replay match.** The machinery is built -
+   `--play-demo` runs `DEMO.SCR` through the live loop and `--demo-trace` runs
+   it headless in 7 ms and prints every spawn. The generator is Turbo Pascal's
+   and the seed comes from the recording.
+
+   **It does not match yet.** The port loses all nine drops inside the first
+   1,050 frames of an 11,970-frame recording, which means the atoms are not
+   where the recorded player reaches for them. One cause is already found and
+   fixed - the tube's starting column is `Random(6) + 1` and the port parked it
+   in the middle, throwing every later roll off by one call. Something else
+   remains.
+
+   The next step is the **other half of the oracle**: capture the original's
+   own spawn sequence on the rig - `demo_trace.py` already reads the atom array
+   and the grid out of a running attract mode - and diff it against
+   `--demo-trace`. Guessing at the remaining difference from this side has
+   already reached its limit. The likely candidates are a `Random` call in the
+   session prologue the port does not make, and the difficulty the demo was
+   recorded at, which the port assumes is Tubes 101.
 2. **Wave structure**, the largest remaining piece and the gate on several
    things already half-implemented: the objective plane, the disabled-element
    modifier, the wave-mode HUD counters, `DS:0x1d4e`'s modes 4, 5 and 6, and

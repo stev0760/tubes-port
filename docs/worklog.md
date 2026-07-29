@@ -2294,3 +2294,51 @@ under ASan with a voice still playing - not by running the game under `timeout`,
 which kills it before any destructor runs and would have proved nothing.
 
 154 checks pass, up from 144.
+
+## 2026-07-28 - the demo oracle, and what it found in its first run
+
+`--play-demo` replays `DEMO.SCR` through the live loop; `--demo-trace` runs the
+whole 11,970-frame recording headless in seven milliseconds and prints every
+atom the dispenser rolls. The spawn sequence is the sharpest form of the check
+because the recording stores only the player's buttons: which colour appears in
+which column is decided entirely by `Random`, by the generator *and* by how many
+times each frame calls it.
+
+### Three things settled on the way
+
+**`DS:0xd24` is `RandSeed`, not "the demo pointer".** The notes had it as a
+pointer for several sessions. The RTL's own generator reads it at `2000:75bb`,
+and `1000:6008` writes the four bytes `1000:5fd9` reads out of the demo - so
+the "[inferred]" seed in the `.SCR` header is now proven, and it is why attract
+mode is deterministic from a cold boot.
+
+**`Random` is `(RandSeed * n) shr 32`**, not `mod n`. `2000:75bb` is
+`RandSeed * $08088405 + 1` written in shifts and adds; `2000:755e` keeps the
+top 32 bits of a 48-bit product. The port's xorshift could never have replayed
+a recording however correct the rules were.
+
+**The input bits are now read out of the handler** rather than inferred from
+run statistics - `1000:4511` tests `$10` for tip, `$04` left, `$08` right,
+`$02`/`$20` boost. The old inference was right, which is a nice result for it.
+
+### What the oracle found
+
+First run: the port loses all nine drops by frame 979 of 11,970 and catches
+almost nothing. The recorded player was reaching for atoms that were not there.
+
+Cause, at `1000:43d6`: **the test tube starts in a random column.**
+`tube.stop := Random(6) + 1`, and it is the session's *first* call to the
+generator. The port parked it in the middle. That is wrong twice - the tube in
+the wrong place, and every subsequent roll off by one call, so the entire spawn
+sequence differed.
+
+Fixed, and the sequence changed. It still diverges: the demo now dies at frame
+1,049 instead of 979. So there is at least one more difference, and guessing at
+it from this side has reached its limit - the next step is capturing the
+original's own spawn sequence on the rig and diffing the two.
+
+That is the point of an oracle. Six sessions of rules landed on unit tests and
+eyeballing, and the first thing this one did was find a bug none of them could
+see.
+
+161 checks pass, up from 154. The pixel captures are unchanged.

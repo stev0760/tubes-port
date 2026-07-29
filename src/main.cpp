@@ -17,6 +17,7 @@
 #include "opl.h"
 #include "res.h"
 #include "screen.h"
+#include "scr.h"
 #include "sfx.h"
 
 namespace {
@@ -206,6 +207,8 @@ struct Options {
     std::string dumpRegs;       // print the OPL register stream and exit
     std::string renderState;    // load a captured state, render it, exit
     bool dumpSfx = false;       // print every .SFX header and exit
+    bool playDemo = false;      // replay DEMO.SCR through the live loop
+    bool demoTrace = false;     // run DEMO.SCR headless and print the spawns
     std::string gameBg = "GAMEBG1.GFX";   // backdrop, for matching a capture
     double renderSeconds = 0;   // 0 = one pass, songs loop forever
     bool help = false;
@@ -333,6 +336,10 @@ Options parseArgs(int argc, char** argv) {
             o.renderSeconds = std::atof(argv[++i]);
         } else if (a == "--dump-regs" && i + 1 < argc) {
             o.dumpRegs = argv[++i];
+        } else if (a == "--demo-trace") {
+            o.demoTrace = true;
+        } else if (a == "--play-demo") {
+            o.playDemo = true;
         } else if (a == "--dump-sfx") {
             o.dumpSfx = true;
         } else if (a == "--render-state" && i + 1 < argc) {
@@ -364,6 +371,8 @@ void usage() {
         "  --seconds N       length for --render-mus (default: one pass)\n"
         "  --dump-regs NAME  print the OPL2 register stream and exit\n"
         "  --dump-sfx        print every .SFX header and exit\n"
+        "  --play-demo       replay DEMO.SCR through the live game loop\n"
+        "  --demo-trace      run DEMO.SCR headless and print every spawn\n"
         "  --help\n"
         "\n"
         "Controls: left/right move the test tube, Down speeds the atom,\n"
@@ -697,6 +706,52 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    // Runs DEMO.SCR at full speed with no window and prints every atom the
+    // dispenser rolls. This is the regression oracle the prime directive asks
+    // for, and the spawn sequence is the sharpest form of it: the recording
+    // stores only the player's buttons, so which colour appears in which column
+    // is decided entirely by `Random` - by the generator AND by how many times
+    // each frame calls it. Nothing else in the port cross-checks that.
+    //
+    // It is also robust to timing. A trace captured off the original by polling
+    // its memory cannot be aligned frame for frame, but the Nth atom it
+    // dispenses is the Nth either way.
+    if (opt.demoTrace) {
+        tubes::Bytes raw;
+        tubes::Demo dm;
+        if (!res.read("DEMO.SCR", raw, err) || !tubes::decodeScr(raw, dm, err)) {
+            std::fprintf(stderr, "error: %s\n", err.c_str());
+            return 1;
+        }
+        std::printf("# DEMO.SCR seed 0x%08x, %zu frames\n", dm.seed,
+                    dm.input.size());
+        tubes::Game g(kCols, kRows, tubes::Difficulty::k101, dm.seed);
+        bool wasActive[tubes::kAtomRecords + 1] = {};
+        int spawns = 0;
+        for (size_t f = 0; f < dm.input.size() && !g.gameOver(); ++f) {
+            g.stepOnce(dm.input[f]);
+            for (int c = 1; c <= tubes::kAtomSlots; ++c) {
+                const bool now = g.atom(c).active();
+                if (now && !wasActive[c]) {
+                    std::printf("spawn %4d frame %5zu col %d type %2d\n",
+                                ++spawns, f, c, g.atom(c).colour);
+                }
+                wasActive[c] = now;
+            }
+        }
+        std::printf("# %d spawns, score %d, chains %d, drops %d/%d%s\n", spawns,
+                    g.score(), g.chains(), g.dropsRemaining(),
+                    g.startingDrops(), g.gameOver() ? ", GAME OVER" : "");
+        std::printf("# grid");
+        for (int r = 0; r < g.board().rows(); ++r) {
+            for (int c = 0; c < g.board().cols(); ++c) {
+                std::printf(" %d", g.board().typeAt(c, r));
+            }
+        }
+        std::printf("\n");
+        return 0;
+    }
+
     if (!opt.dumpRegs.empty() || !opt.renderMus.empty()) {
         if (!haveDrivers) {
             std::fprintf(stderr, "error: %s\n", driverErr.c_str());
@@ -804,7 +859,23 @@ int main(int argc, char** argv) {
     std::printf("loaded %d/%d atoms, %d/3 test tube frames\n", loaded, drawable,
                 tubeFrames);
 
-    tubes::Game game(kCols, kRows, tubes::Difficulty::k101, 0x9E3779B9u);
+    // The demo carries the generator state its recording was made against, so
+    // the session has to be seeded from it before anything rolls a die.
+    tubes::Demo demo;
+    if (opt.playDemo) {
+        tubes::Bytes raw;
+        std::string demoErr;
+        if (!res.read("DEMO.SCR", raw, demoErr) ||
+            !tubes::decodeScr(raw, demo, demoErr)) {
+            std::fprintf(stderr, "error: %s\n", demoErr.c_str());
+            return 1;
+        }
+        std::printf("DEMO.SCR: seed 0x%08x, %zu frames\n", demo.seed,
+                    demo.input.size());
+    }
+
+    tubes::Game game(kCols, kRows, tubes::Difficulty::k101,
+                     opt.playDemo ? demo.seed : 0x9E3779B9u);
     game.setFallHeight(kFallHeight);
     if (!opt.renderState.empty() && !loadState(opt.renderState, game)) return 1;
 
@@ -944,6 +1015,8 @@ int main(int argc, char** argv) {
     if (haveFg) scene.blit(foreground);
 
     bool running = true;
+    float demoAccum = 0.0f;
+    size_t demoFrame = 0;
     Uint32 last = SDL_GetTicks();
 
     while (running) {
@@ -968,7 +1041,21 @@ int main(int argc, char** argv) {
         // a crash that needs both a full beaker and a live render is invisible
         // to --auto, which simulates first and draws once at the end.
         if (opt.screenshot.empty()) {
-            game.update(opt.demo ? scriptedInput(game) : readKeyboard(), dt);
+            if (opt.playDemo) {
+                // The recording is one byte per GAME frame, so it is consumed
+                // at the fixed step rather than through `update`'s real-time
+                // conversion. Same accumulator, driving an index instead.
+                demoAccum += dt * 18.2f;
+                int steps = static_cast<int>(demoAccum);
+                demoAccum -= static_cast<float>(steps);
+                if (steps > 8) steps = 8;
+                for (int k = 0; k < steps; ++k) {
+                    if (demoFrame >= demo.input.size()) { running = false; break; }
+                    game.stepOnce(demo.input[demoFrame++]);
+                }
+            } else {
+                game.update(opt.demo ? scriptedInput(game) : readKeyboard(), dt);
+            }
             // One voice, so one sound a frame: a second event in the same
             // frame has already replaced the first inside Game, which is what
             // calling the driver's PlaySound twice does.

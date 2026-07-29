@@ -105,7 +105,9 @@ bool MusicPlayer::play(const Bytes& data, std::string& error) {
 }
 
 void MusicPlayer::stop() {
-    if (deviceId_ == 0) return;
+    // The device can be open with no sequencer behind it: `openSilent` gives
+    // sound effects a device of their own when music is off.
+    if (deviceId_ == 0 || !seq_) return;
     SDL_LockAudioDevice(deviceId_);
     seq_->silence();
     events_.clear();

@@ -254,9 +254,18 @@ class Game {
 public:
     Game(int cols, int rows, Difficulty diff, uint32_t seed);
 
-    // `held` is edge-detected internally, so callers pass the raw button
-    // state each frame rather than tracking presses themselves.
+    // Callers pass the raw button state each frame. NOTHING is edge-detected:
+    // the original gates its whole input block on the test tube being idle
+    // (`1000:44f0`) and reads the buttons as levels, so holding A tips once
+    // every six frames rather than once. The port used to edge-detect A, which
+    // made holding it do nothing at all.
     void update(uint8_t buttons, float dt);
+
+    // Advances EXACTLY one game frame. `update` turns elapsed real time into a
+    // variable number of frames, which is right for a player and wrong for a
+    // recording: `DEMO.SCR` is one input byte per frame and replaying it has to
+    // consume them one for one.
+    void stepOnce(uint8_t buttons);
 
     const Board& board() const { return board_; }
 
@@ -357,6 +366,9 @@ public:
     void setTubeAtoms(const std::vector<int8_t>& v);
     // The HUD is part of the frame now, so a captured state has to be able to
     // describe it or a mid-game capture can never be matched.
+    // Exposes one roll of the generator, so a test can check it against the
+    // algorithm rather than against itself.
+    int rollForTest(int n) { return random(n); }
     void setScore(int v) { score_ = v; }
     void setChains(int v) { chains_ = v; }
     void setDropsRemaining(int v) { dropsRemaining_ = v; }
@@ -386,7 +398,7 @@ private:
     // The original moves things a whole number of pixels per frame, so the
     // simulation steps in frames and `update()` only converts real time into
     // them.
-    void stepFrame(uint8_t buttons, uint8_t pressed);
+    void stepFrame(uint8_t buttons);
 
     Board board_;
     // Index 1..12; [0] is never used, matching the Pascal array. 1..6 are the
@@ -443,11 +455,6 @@ private:
     // change takes three frames.
     int moveTimer_ = 0;
 
-    uint8_t prevButtons_ = 0;
-    // Press edges seen since the last frame was stepped. The caller may update
-    // faster than the fixed step, so a press can arrive on a call that steps no
-    // frames; without holding it here that press would be swallowed.
-    uint8_t pendingPressed_ = 0;
     uint32_t rng_ = 1;
 };
 

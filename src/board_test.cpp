@@ -17,6 +17,7 @@
 #include "font.h"
 #include "game.h"
 #include "screen.h"
+#include "scr.h"
 #include "sfx.h"
 
 namespace {
@@ -990,6 +991,52 @@ void testSfxVoiceIsSingle() {
     check(!v.busy(), "a finished sound frees the voice");
 }
 
+// --- the RNG and the recording ----------------------------------------
+
+void testTurboPascalRandom() {
+    // `2000:75bb` is `RandSeed := RandSeed * $08088405 + 1`, and `2000:755e`
+    // takes the top 32 bits of the 48-bit product `RandSeed * n`. That is a
+    // scaled fraction of the range, NOT a modulus, so it is a different
+    // sequence from the same seed - which is exactly why the port's old
+    // xorshift could never have replayed a demo.
+    //
+    // The expected values are computed from the algorithm above, independently
+    // of the implementation under test.
+    tubes::Game g(6, 5, tubes::Difficulty::k101, 1);
+    // The constructor spends one roll on the tube's starting column
+    // (`1000:43d6`), so the sequence here starts at the second value.
+    check(g.tubeColumn() == 0, "seed 1 puts the tube in column 0");
+
+    uint32_t s = 1;
+    auto expect = [&s](int n) {
+        s = s * 0x08088405u + 1u;
+        return static_cast<int>((static_cast<uint64_t>(s) * n) >> 32);
+    };
+    check(expect(6) == 0, "the reference generator agrees with the binary");
+    bool ok = true;
+    for (int i = 0; i < 64; ++i) {
+        if (g.rollForTest(6) != expect(6)) ok = false;
+    }
+    check(ok, "and the port matches it for 64 consecutive rolls");
+}
+
+void testScrHeader() {
+    // u16 count covering everything after itself, then the u32 seed that goes
+    // straight into RandSeed, then one input byte per frame.
+    tubes::Bytes raw = {0x08, 0x00,                    // count = 8
+                        0x5e, 0x38, 0x2d, 0x32,        // seed
+                        0x02, 0x06, 0x00, 0x10};       // four frames
+    tubes::Demo d;
+    std::string err;
+    check(tubes::decodeScr(raw, d, err), "a .SCR decodes");
+    check(d.seed == 0x322d385eu, "the seed is little-endian at offset 2");
+    check(d.input == std::vector<uint8_t>({0x02, 0x06, 0x00, 0x10}),
+          "and the input runs from offset 6 for `count - 4` bytes");
+
+    check(!tubes::decodeScr(tubes::Bytes{0x00, 0x00}, d, err),
+          "a header with no room for a seed is rejected");
+}
+
 }  // namespace
 
 int main() {
@@ -1046,6 +1093,8 @@ int main() {
     testSfxHeader();
     testSfxVoiceResamples();
     testSfxVoiceIsSingle();
+    testTurboPascalRandom();
+    testScrHeader();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

@@ -183,7 +183,18 @@ Game::Game(int cols, int rows, Difficulty diff, uint32_t seed)
       spawnInterval_(kSpawnIntervalFrames[difficultyIndex(diff)]),
       networkVel_(velocityFor(diff)),
       rng_(seed ? seed : 1) {
-    tubeColumn_ = cols / 2;
+    // 1000:43d6. The test tube STARTS IN A RANDOM COLUMN - `tube.stop :=
+    // Random(6) + 1` - and it is the session's very first call to the
+    // generator, before anything is dispensed.
+    //
+    // The port used to park it in the middle. That is wrong twice over: the
+    // tube is in the wrong place, and, worse, every later roll is off by one
+    // call, so the whole spawn sequence differs. Replaying DEMO.SCR is what
+    // exposed it - the recorded player missed all nine drops in 979 frames
+    // because the atoms were not where the recording expected them.
+    tubeColumn_ = random(kAtomSlots);
+    tubeX_ = kTubeStopX[tubeColumn_ + 1];
+    tubeTargetX_ = tubeX_;
     spawnTimer_ = spawnInterval_;
     tube_.reserve(static_cast<size_t>(tubeCapacity_));
 }
@@ -224,14 +235,32 @@ void Game::setTubeAtoms(const std::vector<int8_t>& v) {
     }
 }
 
-// xorshift32 - deterministic, so a fixed seed replays identically. The
-// original calls a library `Random(n)`; only the distribution below is
-// transliterated, not the generator.
+// Turbo Pascal 7's `Random`, transliterated. This used to be an xorshift32,
+// which was fine for "deterministic across runs" and useless for the one thing
+// that matters now: replaying `DEMO.SCR` requires the SAME sequence the
+// original produces, because the demo records only the player's buttons and
+// every atom it catches was rolled by this generator.
+//
+// The step is `2000:75bb`, which computes `RandSeed * $08088405 + 1` with
+// shifts and adds rather than a 32-bit multiply the 8086 does not have:
+//
+//     AX := RandSeedLo;  BX := RandSeedHi;  CX := AX;
+//     DX:AX := AX * $8405;          { CS:[0xda1], dumped and checked }
+//     CX := CX shl 3;  CH := CH + CL;      { lo * $0808 }
+//     DX := DX + CX;  DX := DX + BX;
+//     BX := BX shl 2;  DX := DX + BX;  DH := DH + BL;
+//     BX := BX shl 5;  DH := DH + BL;      { hi * $8405 }
+//     AX := AX + 1;  DX := DX + carry;
+//     RandSeed := DX:AX
+//
+// and `Random(n)` at `2000:755e` steps it and takes the top 32 bits of the
+// 48-bit product `RandSeed * n` - i.e. `(RandSeed * n) shr 32`, with RandSeed
+// read as UNSIGNED. That is a scaled fraction of the range, not a modulus, and
+// it is not the same sequence a `% n` would give from the same seed.
 int Game::random(int n) {
-    rng_ ^= rng_ << 13;
-    rng_ ^= rng_ >> 17;
-    rng_ ^= rng_ << 5;
-    return static_cast<int>(rng_ % static_cast<uint32_t>(n));
+    rng_ = rng_ * 0x08088405u + 1u;
+    return static_cast<int>(
+        (static_cast<uint64_t>(rng_) * static_cast<uint32_t>(n)) >> 32);
 }
 
 // The dispensed type, transliterated from `1000:49fd`. One roll of 1..11
@@ -672,7 +701,7 @@ void Game::releaseTippedAtom() {
 
 // One frame of the dispenser path. Speeds are the measured px/frame values,
 // and each leg ends when it reaches its target rather than after a duration.
-void Game::stepFrame(uint8_t buttons, uint8_t pressed) {
+void Game::stepFrame(uint8_t buttons) {
     updateBeaker();
 
     stepTube(buttons);
@@ -960,11 +989,13 @@ void Game::stepAtom(Falling& a) {
     }
 }
 
+void Game::stepOnce(uint8_t buttons) {
+    if (gameOver_) return;
+    stepFrame(buttons);
+}
+
 void Game::update(uint8_t buttons, float dt) {
     if (gameOver_) return;
-
-    pendingPressed_ |= static_cast<uint8_t>(buttons & ~prevButtons_);
-    prevButtons_ = buttons;
 
     // Convert elapsed real time into whole frames. The original is a
     // fixed-step game - every speed it uses is a whole number of pixels per
@@ -975,13 +1006,7 @@ void Game::update(uint8_t buttons, float dt) {
     frameAccum_ -= static_cast<float>(steps);
     if (steps > 8) steps = 8;   // a stall must not teleport atoms
 
-    for (int i = 0; i < steps && !gameOver_; ++i) {
-        // Only the first stepped frame sees the press edges, or holding a key
-        // across several frames would register as several distinct taps.
-        const uint8_t edge = (i == 0) ? pendingPressed_ : static_cast<uint8_t>(0);
-        if (i == 0) pendingPressed_ = 0;
-        stepFrame(buttons, edge);
-    }
+    for (int i = 0; i < steps && !gameOver_; ++i) stepFrame(buttons);
 }
 
 }  // namespace tubes

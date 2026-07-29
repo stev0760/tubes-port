@@ -437,8 +437,8 @@ as the backdrop, loads it plus `DEMO.SCR`, and stores the demo pointer at
 `DS:0xd24`. That pointer is read by `1000:3a67` - at 9,382 bytes the largest
 function in the binary, i.e. the main game loop.
 
-    u16   frame count (bytes following this field)
-    u32   RNG seed          [inferred]
+    u16   frame count (bytes following this field, seed included)
+    u32   RNG seed          PROVEN - see below
     u8[]  one input bitmask per frame
 
 | Bit | Control | Evidence in the shipped demo |
@@ -450,8 +450,24 @@ function in the binary, i.e. the main game loop.
 | `0x10` | button A | 134 frames, never held |
 | `0x20` | button B | unused |
 
-Bit assignments are **inferred from behaviour**, not yet read out of the
-input handler. The reasoning: `0x04` and `0x08` have near-identical run
+### The seed is proven, and `DS:0xd24` is RandSeed
+
+`1000:5fd9` reads four bytes out of the demo and `1000:6008` stores them into
+`DS:0xd24`. That location was previously written up as "the demo pointer"; it
+is Turbo Pascal's **`RandSeed`** - the RTL's own generator reads it at
+`2000:75bb`. So attract mode is deterministic from a cold boot because the
+recording carries the exact generator state it was made against.
+
+The backdrop roll at `1000:5f54` happens **before** the seeding, so it does not
+perturb the demo's sequence.
+
+### The bits are read out of the input handler now
+
+`1000:4511` onward tests the byte `2000:2356` returns: `$10` tips, `$04` is
+left, `$08` is right, and `$02` or `$20` is the speed boost. That confirms the
+inference below and settles `$01` as up by elimination.
+
+The original reasoning, kept because it was right: The reasoning: `0x04` and `0x08` have near-identical run
 statistics as a left/right pair should; only `0x02` is held for long
 stretches; and across 11,970 frames the impossible combinations never occur -
 `0x03` (up+down) and `0x0c` (left+right) are entirely absent - while the four
@@ -4746,6 +4762,41 @@ They are a tube going over.
 That gate is what lets the animation own the slots' positions. Without it the
 router's state 8 would put every slot back at `tube.x + 3` and slide its y
 toward the resting offset on the very frame the animation moved it.
+
+## `Random` is Turbo Pascal 7's, and the port now uses it
+
+`2000:75bb` is the step, written with shifts and adds because the 8086 has no
+32-bit multiply:
+
+    AX := RandSeedLo;  BX := RandSeedHi;  CX := AX;
+    DX:AX := AX * $8405;                  { CS:[0xda1], dumped }
+    CX := CX shl 3;  CH := CH + CL;       { + lo * $0808 }
+    DX := DX + CX;  DX := DX + BX;
+    BX := BX shl 2;  DX := DX + BX;  DH := DH + BL;
+    BX := BX shl 5;  DH := DH + BL;       { + hi * $8405 }
+    AX := AX + 1;  DX := DX + carry;
+    RandSeed := DX:AX
+
+which is `RandSeed := RandSeed * $08088405 + 1`. And `Random(n)` at
+`2000:755e` steps it, then multiplies the 32-bit seed by the range and keeps
+the **top 32 bits of the 48-bit product** - `(RandSeed * n) shr 32`, a scaled
+fraction rather than a modulus. A `mod n` from the same seed is a different
+sequence, which is why the port's old xorshift could never have replayed a
+recording however correct the rules were.
+
+### The tube starts in a random column
+
+`1000:43d6`, in the session setup:
+
+    tube.count := 0;
+    FillChar(@tube.slots, $8C, 0);
+    tube.stop := Random(6) + 1;
+    tube.x := stopX[tube.stop]
+
+**This is the session's first call to the generator**, before anything is
+dispensed. The port used to park the tube in the middle, which was wrong twice
+over: the tube in the wrong place, and every later roll off by one call, so the
+whole spawn sequence differed. Replaying `DEMO.SCR` is what exposed it.
 
 ## Router state 7 - the descent, the catch and the miss
 
