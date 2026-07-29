@@ -785,6 +785,7 @@ int main(int argc, char** argv) {
         tubes::Game g(kCols, kRows, kDemoDifficulty, dm.seed, &rolls);
         bool wasActive[tubes::kAtomRecords + 1] = {};
         int born[tubes::kAtomRecords + 1] = {};
+        int drops = g.dropsRemaining();
         int spawns = 0;
         // One byte per IDLE frame - see Game::acceptsInput. The frame count is
         // therefore larger than the byte count, so the loop ends when the
@@ -807,7 +808,12 @@ int main(int argc, char** argv) {
                     std::printf("spawn %4d frame %5zu col %d type %2d rolls %zu\n",
                                 ++spawns, f, c, g.atom(c).colour, rolls.size());
                     born[c] = static_cast<int>(f);
-                } else if (!now && wasActive[c]) {
+                }
+                if (g.dropsRemaining() != drops) {
+                    drops = g.dropsRemaining();
+                    std::printf("MISS        frame %5zu  drops now %d\n", f, drops);
+                }
+                if (!now && wasActive[c]) {
                     // The record going free is half the spawn rule: the column
                     // is re-rolled up to ten times looking for a FREE slot, so
                     // how long an atom occupies its record decides how often

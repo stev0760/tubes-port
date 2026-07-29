@@ -129,7 +129,7 @@ Absent entirely:
 | Wave structure: briefings, objectives, modifiers | large |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |
-| Demo playback (`.SCR` replay through the same loop) | **built**; matches to spawn 24 of 35 |
+| Demo playback (`.SCR` replay through the same loop) | **built**; all 35 spawns exact, tube timing drifts |
 
 Pixel accuracy against the original reads **0.02% to 0.22%** of structural
 pixels differing, over eight paused captures with the backdrop excluded - down
@@ -256,10 +256,15 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
    column, the type and the **cumulative `Random` call count**; `--play-demo`
    runs the same thing through the live loop.
 
-   **Spawns 1..24 match the original exactly on the roll count**, which means
-   the column re-rolls, the type rolls and the whole network-occupancy pattern
-   agree with them. Four causes were found and fixed - all in
-   `docs/reversing-notes.md`, all from code:
+   **All 35 spawns the port produces match the original exactly** - column,
+   type and cumulative roll count. Since the spawn re-rolls its column up to ten
+   times looking for a free record, that means the network occupancy matched at
+   every spawn too. The dispenser is exact. (An earlier note here claimed a
+   divergence at spawn 25; that was an artifact of counting `Random`-call
+   plateaus, which include Multiplier fills. Retracted.)
+
+   Four causes were found and fixed - all in `docs/reversing-notes.md`, all from
+   code:
 
    * the demo runs at **Tubes 301**, not 101 (`1000:a483` switches on
      `DS:0x1d4f`, and View Demo sets it to 2 at `1000:b272`);
@@ -271,11 +276,29 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
      input read entirely while the tube is sliding or tipping, and in demo
      playback that read is what advances the recording.
 
-   **The remaining divergence is at spawn 25**, where the port spends two rolls
-   the original does not - two extra column re-rolls, so the port is holding a
-   record occupied that the original has already freed. Atom lifetimes are the
-   thing to look at: the port's now run 52..79 frames against a 50-frame
-   dispense period, and the original's record 1 completes in ~51.
+   **What is still wrong is the TUBE'S TIMING, not the dispenser.** The port
+   makes the same 142 column moves in the same order, about **fourteen frames
+   early** by frame 1,550. It therefore boosts atoms the original does not, and
+   two atoms arrive at the mouth after the tube has moved on and are lost
+   (frames 1,627 and 1,674) - which is what ends the replay at spawn 35.
+
+   Running ahead means the port has MORE idle frames, so it eats the recording
+   faster: something keeps the original's tube busy that the port does not
+   model. Both known busy states are verified correct - the slide is 3 frames,
+   the tip is 6 frames of which 5 skip input.
+
+   Next place to look: `1000:44fa` calls `[ds:$2352]` ("input available?") and
+   only then `[ds:$2356]`. **Which of the two advances the recording is not
+   established**, and there is a second call site for the same pair at
+   `1000:32d3` - another nested procedure of `1000:9e53`, reading into the same
+   `SS:[DI+0xfe4e]` and cycling `DS:0x1d4d` between 1 and 5. If that runs during
+   a session it consumes bytes the port knows nothing about. Read those two
+   vectors live on the rig and disassemble what they point at.
+
+   A one-byte start offset is also measured and deliberately **not** applied -
+   see `docs/reversing-notes.md`. It makes the tube track exactly for ~57 frames
+   instead of 16, but nothing in the decompiled setup has been found that
+   consumes it, and it does not account for the drift.
 
    **The instrument to use.** Do NOT try to break on `Random`; that was tried
    and does not work here (see the worklog - one copy of the LCG, right address,

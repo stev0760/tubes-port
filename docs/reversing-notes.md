@@ -4889,22 +4889,93 @@ sampled `(atom y -> tube x)` pairs read off the running original - the atom's
 own 4 px/frame rise serving as the frame clock - the idle-gated model matches
 **6 of 6 exactly** and the unconditional one matches 1.
 
-### What the four fixes were worth
+### What the four fixes were worth: the dispenser is exact
 
 Measured on the spawn-by-spawn roll count, which is the sharpest form of the
 oracle: at each dispense, how many times has `Random` been called? The original's
 count is read by mapping a live `RandSeed` sample back through the LCG orbit
 (see below), so it needs no frame alignment at all.
 
-| state | first spawn whose roll count differs |
-|---|---|
-| before | **4** of 15, then game over at frame 1,049 |
-| after | **25** of 35, then game over at frame 1,700 |
+**Every one of the 35 spawns the port produces now matches the original's
+exactly** - column, type and cumulative roll count. Before the fixes it diverged
+at spawn 4 and lost every drop by frame 1,049.
 
-Spawns 1..24 now agree on the roll count exactly, which means the column
-re-rolls, the type rolls and the whole network-occupancy pattern agree with
-them. Something remains at spawn 25, where the port spends two rolls the
-original does not.
+That is a stronger statement than it sounds. The column is re-rolled up to ten
+times looking for a free record, so a matching roll count at spawn N means the
+network occupancy matched at every spawn up to N as well.
+
+**A retracted claim.** This was first written up as "matches to spawn 24,
+diverges at 25". That was an artifact of the measurement, not a property of the
+port: the original's spawn list had been derived from the *plateaus* of the
+`Random` call count, and a Multiplier caught by the tube also moves that count
+(four `Random(8)` rolls at `1000:08d2`) without dispensing anything. Comparing
+against spawns actually detected in the atom array instead, there is no
+divergence. The lesson is the project's usual one from the other direction: a
+positive result is only as good as the thing it counted.
+
+### What is still wrong: the tube runs AHEAD of the recording
+
+The dispenser is exact and the tube's *move sequence* is exact - over the 142
+column moves the port makes, it visits the same stops in the same order as the
+original. What is not exact is **when**.
+
+By frame 1,550 the port's tube is roughly **fourteen frames ahead** of the
+original's, and the effect is not subtle at the point it bites. Watching the
+same atom cross the top lane:
+
+    ORIGINAL record 3   x = 67, 75, 87, 95, 103    tube x = 158,158,158,146,134
+    PORT     record 3   x = 67, 76, 85, 94, 103    tube x = 104,104,104,104,104
+
+Samples are ~2.4 frames apart, so the original crosses at 4 px a frame and the
+port at 9 - because the port's tube has already reached stop 1, which boosts
+slot 3, while the original's is still two columns away. The port's atom
+therefore arrives at the mouth on a frame when the tube has moved on, and is
+lost. Two of the demo's atoms die that way, at frames 1,627 and 1,674, which is
+what ends the replay at spawn 35 instead of letting it run on.
+
+Running ahead means the port has **more idle frames** than the original: it
+consumes the recording faster. Since a byte is consumed on exactly the frames
+the tube is idle, something keeps the original's tube busy that the port does
+not model. Both known busy states have been checked and are right:
+
+* the **slide** is 3 frames - 6 px a frame over the 18 px stop pitch, with
+  `1000:45f3`'s `if x <= target then snap` ending it;
+* the **tip** is 6 frames in state 3, of which **5** skip input. The press frame
+  still reads a byte, because the input block runs before the state machine that
+  sets state 3. Measured off the original as well as read from the code.
+
+**And there is a one-byte offset at the start**, measured but not yet explained.
+The demo's first three Left presses are at stream indices 16, 17 and 20, and the
+original acts on them at frames 15, 18 and 23 - which is what the idle gate
+predicts only if the byte consumed on frame 0 is index **1**, not index 0.
+Skipping one byte makes the port's tube track the original exactly for the first
+~57 frames instead of diverging at frame 16. It is not in the port, because
+nothing in the decompiled setup has been found that consumes it, and fitting an
+offset to make a measurement come out is exactly the move this project forbids.
+It is recorded here as a measurement awaiting its cause. Note it does NOT
+account for the drift above - with the byte skipped the two atoms are still
+lost, at frames 1,628 and 1,673.
+
+Where to look next: `1000:44fa` calls `[ds:$2352]` ("input available?") and only
+then `[ds:$2356]`. Which of the two advances the recording is not established,
+and there is a second call site for the same pair at `1000:32d3`, in another
+nested procedure of `1000:9e53` that reads into the same `SS:[DI+0xfe4e]` button
+byte and cycles `DS:0x1d4d` between 1 and 5. If that runs during a session it
+consumes bytes the port knows nothing about.
+
+### The catch tests the tube's ACTUAL x, not its stop
+
+`rec.x = tube.x + 3`, so the two differ for the three frames of a slide: Left
+and Right move the stop immediately and the tube then takes 6 px a frame to
+catch up. A tube on its way to a column does not catch there yet, and one on its
+way out still catches at the column it is leaving until it has physically left.
+
+The port compared stop indices, which caught an atom up to three frames early.
+That is not a wash, because the tube holds five: catching early can fill it and
+`tube.count <> 5` then refuses a later atom the original had room for.
+
+The boost at `1000:4534` genuinely does use the stop index, so the asymmetry
+between the two tests is the original's rather than an oversight.
 
 ### Reading `RandSeed` gives an exact call count, and it needs no breakpoint
 

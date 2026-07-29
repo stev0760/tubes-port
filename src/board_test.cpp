@@ -1078,6 +1078,29 @@ void testInputIsReadOnlyWhileTheTubeIsIdle() {
     check(g.acceptsInput(), "the tube is idle again after three frames");
 }
 
+void testTipSkipsFiveFramesOfInput() {
+    // How long the tube is busy is how many bytes of a recording get skipped,
+    // so the tip's length is load-bearing for the replay and not just for the
+    // animation. `1000:463a`: a 2-frame divider steps a phase that starts at 1,
+    // and `1000:4701` hands the state back on the frame the phase reaches 4.
+    //
+    // That is six frames in state 3 - but only FIVE frames of skipped input.
+    // The press frame still reads a byte, because the input block runs before
+    // the state machine that puts the tube into state 3. Counting the press
+    // frame as skipped is an easy off-by-one and it is the wrong number.
+    tubes::Game g(6, 5, tubes::Difficulty::k301, 0x322d385eu);
+    g.setTubeAtoms({1, 2});
+    check(g.acceptsInput(), "the tube reads the byte that presses A");
+    g.stepOnce(tubes::button::kA);
+
+    int skipped = 0;
+    for (int i = 0; i < 20 && !g.acceptsInput(); ++i) {
+        ++skipped;
+        g.stepOnce(0);
+    }
+    check(skipped == 5, "a tip swallows exactly five frames of input");
+}
+
 }  // namespace
 
 int main() {
@@ -1138,6 +1161,7 @@ int main() {
     testScrHeader();
     testFirstDispenseIsImmediate();
     testInputIsReadOnlyWhileTheTubeIsIdle();
+    testTipSkipsFiveFramesOfInput();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

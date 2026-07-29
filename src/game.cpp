@@ -97,6 +97,12 @@ constexpr int kAccelY = 50;
 constexpr int kCatchTop = 60;
 constexpr int kCatchBottom = 70;
 
+// The tube's sprite is drawn 3 px left of the column it serves, so an atom
+// sitting in its mouth is at `tube.x + 3`. The same +3 appears in the router's
+// in-tube state and in the six waypoint targets, which are the six column x's
+// minus three.
+constexpr int kTubeMouthDx = 3;
+
 // `1000:1516`. Past this the atom is lost; the original pins its y here as
 // well, before handing the record to the two-frame teardown.
 constexpr int kLostY = 187;
@@ -984,12 +990,22 @@ void Game::stepAtom(Falling& a) {
     // record goes to state 1 rather than straight to free, so its slot cannot
     // be reused for two more frames.
     //
-    // The atom's column is the original's 1..6 numbering and the board's is
-    // 0..5, and they are not in the same order - kAtomColumnX runs
-    // 143,125,107,197,179,161. Compare the x positions rather than the
-    // indices, which sidesteps the mapping entirely.
+    // The test is `rec.x = tube.x + 3` - the tube's ACTUAL x, not its stop
+    // index. The two differ for the three frames of a slide, because Left and
+    // Right move the stop immediately and the tube then takes 6 px a frame to
+    // catch up. So a tube on its way to a column does NOT catch there yet, and
+    // a tube on its way out still catches at the one it is leaving until it has
+    // physically left.
+    //
+    // The port compared stop indices, which caught an atom up to three frames
+    // early. That is not a wash: catching early puts an extra atom in a tube
+    // that holds five, and `tube.count <> 5` then refuses a LATER atom the
+    // original had room for. Two of the demo's atoms were lost that way.
+    //
+    // Note the boost at `1000:4534` genuinely does use the stop index, so the
+    // asymmetry between the two tests is the original's, not an oversight here.
     if (a.y >= kCatchTop && a.y <= kCatchBottom &&
-        kAtomColumnX[a.column] == playColumnX(tubeColumn_) &&
+        a.x == tubeX_ + kTubeMouthDx &&
         !tubeFull() && tubeState_ != 3) {
         // Into the mouth, not into the stack: the atom becomes slot[count] and
         // then SLIDES down to its resting offset over the next few frames. The

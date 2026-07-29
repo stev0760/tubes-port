@@ -2482,3 +2482,74 @@ fixes the port was taking 86 to 95 frames where the original took 47.
 
 170 checks pass, up from 161. The eight pixel captures are unchanged at 0.02%
 to 0.22%.
+
+## 2026-07-28 - the spawn-25 divergence was the measurement, not the port
+
+Went looking for the divergence at spawn 25 reported at the end of the previous
+entry. It does not exist.
+
+That entry compared the port's spawns against a list built from the *plateaus*
+of the original's `Random` call count - one plateau, one spawn. But a Multiplier
+caught by the tube also moves that count, four `Random(8)` rolls at
+`1000:08d2`, without dispensing anything. Spawn 23 dispenses a type 12, the
+tube catches it, and the fill shows up as a plateau that shifts every later
+index by one.
+
+Rebuilt against spawns actually detected in the original's atom array:
+
+    n  | orig col type rolls | port col type rolls
+     1 |     1    11     4   |    1    11     4
+    ...                      | ...
+    35 |     5     1    95   |    5     1    95
+
+**All 35 spawns identical** - column, type and cumulative roll count. Since the
+spawn re-rolls its column up to ten times looking for a free record, a matching
+roll count at spawn N means the network occupancy matched at every spawn up to
+N too. The dispenser is exact.
+
+The lesson is this project's usual one, inverted: a *positive* result is only as
+good as the thing it counted. The filter that produced "spawn 25" could not tell
+a dispense from a tube fill.
+
+### What is actually wrong: the tube runs ahead
+
+The port's tube makes the same 142 column moves in the same order as the
+original. It just makes them too early - about **fourteen frames** ahead by
+frame 1,550. At the point it bites, on the same atom crossing the top lane:
+
+    ORIGINAL record 3   x = 67, 75, 87, 95, 103   tube x = 158,158,158,146,134
+    PORT     record 3   x = 67, 76, 85, 94, 103   tube x = 104,104,104,104,104
+
+Samples are ~2.4 frames apart, so the original crosses at 4 px a frame and the
+port at 9 - the port's tube has already reached stop 1, which boosts slot 3,
+while the original's is two columns away. The atom then arrives at the mouth
+after the tube has gone. Two atoms die that way, at frames 1,627 and 1,674, and
+that is what ends the replay at spawn 35.
+
+Running ahead means the port has MORE idle frames, so it eats the recording
+faster. Both busy states were checked and are right: the slide is 3 frames, and
+the tip is 6 frames in state 3 of which **5** skip input - the press frame still
+reads a byte, because the input block runs before the state machine that sets
+state 3. Counting the press frame as skipped is the easy off-by-one, and a test
+was written asserting the wrong number before the arithmetic was done properly.
+
+A one-byte offset at the start is also measured and deliberately NOT applied.
+The demo's first three Lefts are at indices 16, 17 and 20 and the original acts
+on them at frames 15, 18 and 23, which the idle gate predicts only if frame 0
+consumes index 1. Skipping a byte makes the tube track exactly for ~57 frames
+instead of diverging at 16 - but nothing in the decompiled setup has been found
+that consumes it, and fitting an offset to make a measurement come out is the
+move the prime directive forbids. It also does not account for the drift: with
+the byte skipped the same two atoms are still lost.
+
+### One real fix that came out of it
+
+The catch tests `rec.x = tube.x + 3` - the tube's ACTUAL x, not its stop index.
+The two differ for the three frames of a slide. The port compared stop indices,
+catching an atom up to three frames early, which matters because the tube holds
+five: an early catch can fill it and make `tube.count <> 5` refuse a later atom
+the original had room for. The boost at `1000:4534` does use the stop index, so
+the asymmetry is the original's.
+
+172 checks pass, up from 170. The eight pixel captures are unchanged at 0.02%
+to 0.22%.
