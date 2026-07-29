@@ -294,21 +294,31 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
    port's entire life. Every spawn in that range matches in column, type and
    frame.
 
-   **What is left: two catches.** The port ends at frame 2,963 having consumed
-   2,196 bytes, on atoms lost at frames 2,912 and 2,963. The original keeps
-   both and runs to frame ~4,572 on 2,395 bytes. Everything measurable agrees up
-   to that point, so the difference is those two catches specifically, late in a
-   run where the ramp has already moved the interval and the velocity several
-   times.
+   **What is left: ONE ATOM.** The port's first miss is the original's, byte
+   for byte. What it never gets is the Bonus at byte 2,188 that hands the
+   original a drop back, because record 4 - dispensed at the same byte in both -
+   reaches the catch window at byte 2,125 instead of 2,122, and in those three
+   frames the tube leaves stop 6.
 
-   Next step: add the drops counter (`0x245bc`) to `exp23_demo_index.py` so the
-   original's own losses can be placed against the port's, then compare the two
-   atoms' trajectories frame by frame the way record 3 was compared.
+   The port's copy is already behind during its **rise**: at byte 2,092 the
+   original is at y = 119 and the port at y = 162. Start there. The beaker rules
+   everything else out - 649 of 663 comparable samples identical, with all 14
+   exceptions downstream of this atom.
 
-   **Also worth knowing: attract mode does not play the whole recording.**
-   `DEMO.SCR` holds 11,970 input bytes and the original consumes 2,395 of them
-   before the session ends, so the stream outlives the session and `avail`'s
-   bounds check is never what stops it.
+   `tubes-port --demo-csv` emits per-frame `state:y` for all six network records
+   beside the stream index, which is exactly what the rig capture holds for the
+   original, so the two trajectories diff directly.
+
+   **Compare like with like.** The CSV briefly wrote `typeAt()` (fade stripped)
+   against the original's raw cells, and the diff then reported - convincingly -
+   a matcher bug that did not exist. Both sides must be raw `type + 19*fade`.
+
+   **Attract mode does not play the whole recording, and nothing is after it.**
+   Real input runs to about byte 3,950 of 11,970; the rest is slack, with six
+   stray `0x05` bytes and then nothing. The session itself ends earlier still,
+   at byte ~2,395, when the drops underflow - see `docs/reversing-notes.md`.
+   Since a `.SCR` carries no difficulty and View Demo hardcodes Tubes 301, the
+   recording was probably made at an easier setting than it is replayed at.
 
    **The instruments, all built and all cheap to re-run:**
 

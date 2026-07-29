@@ -2662,3 +2662,71 @@ session ends at frame ~4,572, so the stream outlives the session and the
 reader's `avail` bounds check is never what stops it. And the remaining gap is
 now two specific catches - the port loses atoms at frames 2,912 and 2,963 that
 the original keeps, with everything measurable identical up to that point.
+
+## 2026-07-29 - what is after the demo (nothing), and why it ends where it does
+
+Two questions from watching the build, both now measured.
+
+### "It seems to end in the same spot - I wonder what's after?"
+
+Nothing. `DEMO.SCR` holds 11,970 input bytes and real play - `02` Down, `04`
+Left, `08` Right, `10` A - runs from the start to about byte **3,950**. After
+that only six lone `0x05` bytes appear, at 4,216, 4,234, 4,269, 5,356, 7,585 and
+8,930, and nothing beyond. The recording is roughly four thousand frames of play
+sitting in a twelve-kilobyte buffer; the `count` field describes the buffer, not
+the performance.
+
+### And it ends on DROPS, not on the stream
+
+Reading the drops counter through a run:
+
+    bytes   693   3 -> 2      a miss
+    bytes  2188   2 -> 3      a BONUS caught - the only thing that gives one back
+    bytes  2276   3 -> 2
+    bytes  2320   2 -> 1
+    bytes  2352   1 -> 0
+    bytes  2367   0 -> 255    the byte underflows: game over
+
+So the recorded player is beaten by the allowance about 1,600 bytes before their
+own input runs out, and the reader's `avail` bounds check is never what stops
+playback.
+
+The likely reason is worth stating because it is testable: **the recording was
+probably made at an easier setting than the one attract mode replays it at.**
+Nothing in a `.SCR` carries a difficulty - only the seed - and View Demo
+hardcodes Tubes 301 with its three drops. A performance recorded at 101's nine
+would run much further than the replay of it does.
+
+### "How are there 2 catches missed still?"
+
+They are one atom, and everything else is right.
+
+The port's first miss is the original's, byte for byte: both lose a drop at byte
+693 with the score at 1,000. What the port never gets is the **Bonus at byte
+2,188** that hands the original a drop back.
+
+The beaker settles the rest. Comparing the original's cell plane against the
+port's - raw `type + 19*fade` on both sides - 649 of 663 comparable samples are
+identical, and all 14 exceptions follow the one late atom.
+
+That atom is record 4, dispensed around byte 2,087 in both. It reaches the catch
+window at byte 2,125 in the port and 2,122 in the original, and in those three
+frames the tube leaves stop 6 - so the original catches it at y = 63 and the
+port watches it fall. Traced back, the port's copy is already behind during its
+RISE: at byte 2,092 the original is at y = 119 and the port at y = 162. That is
+where to pick up.
+
+### A measurement bug that gave a confident wrong answer
+
+The port's CSV first wrote `Board::typeAt()`, which strips the fade, against the
+original's raw cells. Every clearing cell then looked unmatched, and the diff
+reported - with the right cells, the right types and a plausible mechanism -
+that the port's matcher was missing a Flashium-seeded diagonal. It was not:
+those cells sat at fade frame 4 and were clearing normally. Compare like with
+like, and prefer the rawest form of both sides.
+
+`--demo-csv` now emits the raw cell plane, the drops, the score, the tube's
+contents count and per-frame `state:y` for all six network records, which is
+exactly the set the rig capture holds for the original.
+
+181 checks pass. The eight pixel captures are unchanged at 0.02% to 0.22%.

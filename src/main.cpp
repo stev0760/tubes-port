@@ -796,7 +796,7 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr, "cannot write %s\n", opt.demoCsv.c_str());
                 return 1;
             }
-            std::fprintf(csv, "frame,idx,btn,tubex,tubestop,tubebusy,rolls\n");
+            std::fprintf(csv, "frame,idx,btn,tubex,tubestop,tubebusy,rolls,drops,score,tubecount,atoms,grid\n");
         }
         // Always collected: the per-spawn roll count below is the comparison
         // that matters, and it is cheap. `--random-trace N` only controls how
@@ -815,9 +815,30 @@ int main(int argc, char** argv) {
             const int wasBusy = g.acceptsInput() ? 0 : 1;
             g.stepOnce(btn);
             if (csv) {
-                std::fprintf(csv, "%zu,%zu,%u,%d,%d,%d,%zu\n", f, idx, btn,
-                             g.tubeX(), g.tubeColumn() + 1, wasBusy,
-                             rolls.size());
+                std::fprintf(csv, "%zu,%zu,%u,%d,%d,%d,%zu,%d,%d,%d,", f, idx,
+                             btn, g.tubeX(), g.tubeColumn() + 1, wasBusy,
+                             rolls.size(), g.dropsRemaining(), g.score(),
+                             static_cast<int>(g.tubeAtoms().size()));
+                // The six network records: state and y, which is what a catch
+                // turns on.
+                for (int c = 1; c <= tubes::kAtomSlots; ++c) {
+                    std::fprintf(csv, "%d:%d;", g.atom(c).state, g.atom(c).y);
+                }
+                std::fprintf(csv, ",");
+                // The beaker, in the original's own row-major order, so the two
+                // sides diff cell for cell. A catch that goes the other way
+                // shows up here long before it shows up in the score.
+                // The RAW cell, `type + 19*fadeFrame`, which is what the
+                // original's beaker plane holds. Writing typeAt() here instead
+                // strips the fade and makes every clearing cell look like an
+                // unmatched one - it produced a confident false report of the
+                // matcher missing a diagonal.
+                for (int r = 0; r < g.board().rows(); ++r) {
+                    for (int c = 0; c < g.board().cols(); ++c) {
+                        std::fprintf(csv, "%02x", g.board().at(c, r) & 0xFF);
+                    }
+                }
+                std::fprintf(csv, "\n");
             }
             for (int c = 1; c <= tubes::kAtomSlots; ++c) {
                 const bool now = g.atom(c).active();
