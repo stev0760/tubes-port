@@ -129,7 +129,7 @@ Absent entirely:
 | Wave structure: briefings, objectives, modifiers | large |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |
-| Demo playback (`.SCR` replay through the same loop) | **built**; all 35 spawns exact, tube timing drifts |
+| Demo playback (`.SCR` replay through the same loop) | **built**; 44/44 spawns exact in column, type and frame |
 
 Pixel accuracy against the original reads **0.02% to 0.22%** of structural
 pixels differing, over eight paused captures with the backdrop excluded - down
@@ -276,44 +276,39 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
      input read entirely while the tube is sliding or tipping, and in demo
      playback that read is what advances the recording.
 
-   **What is still wrong is the TUBE'S TIMING, not the dispenser.** The port
-   makes the same 142 column moves in the same order, about **fourteen frames
-   early** by frame 1,550. It therefore boosts atoms the original does not, and
-   two atoms arrive at the mouth after the tube has moved on and are lost
-   (frames 1,627 and 1,674) - which is what ends the replay at spawn 35.
+   **The last cause is found and fixed: the ENDURANCE RAMP, `1000:235c`.** The
+   dispense interval drops five frames every ten MATCHES (and the network
+   velocity climbs 0x20 with it), driven by the matchers' run count - not by
+   time, not by atoms dispensed. The original's spawns sit on 50-frame centres
+   for 29 atoms and then switch to 45; the port dispensed at 50 forever, so its
+   atoms arrived progressively late against a tube that was correct throughout.
+   That is the "green ball dropped" the build showed. See
+   `docs/reversing-notes.md`.
 
-   Running ahead means the port has MORE idle frames, so it eats the recording
-   faster: something keeps the original's tube busy that the port does not
-   model. Both known busy states are verified correct - the slide is 3 frames,
-   the tip is 6 frames of which 5 skip input.
+   **All 44 spawns the capture covers now agree in column, type and frame** to
+   ±1.3 frames, which is the measurement's own noise.
 
-   Next place to look: `1000:44fa` calls `[ds:$2352]` ("input available?") and
-   only then `[ds:$2356]`. **Which of the two advances the recording is not
-   established**, and there is a second call site for the same pair at
-   `1000:32d3` - another nested procedure of `1000:9e53`, reading into the same
-   `SS:[DI+0xfe4e]` and cycling `DS:0x1d4d` between 1 and 5. If that runs during
-   a session it consumes bytes the port knows nothing about. Read those two
-   vectors live on the rig and disassemble what they point at.
+   **What is left.** The replay now dies at frame 2,912 of 11,970, on two atoms
+   missed at frames 2,912 and 2,963. The 175-second rig capture ends at about
+   frame 2,844 with the original still holding 2 drops, so those two are just
+   past the evidence - **the next step is simply a longer capture**
+   (`exp23_demo_index.py OUT.jsonl 400`) to see whether the original catches
+   them.
 
-   A one-byte start offset is also measured and deliberately **not** applied -
-   see `docs/reversing-notes.md`. It makes the tube track exactly for ~57 frames
-   instead of 16, but nothing in the decompiled setup has been found that
-   consumes it, and it does not account for the drift.
+   **The instruments, all built and all cheap to re-run:**
 
-   **The instrument to use.** Do NOT try to break on `Random`; that was tried
-   and does not work here (see the worklog - one copy of the LCG, right address,
-   working stub, `core=normal`, and `Z0` still never traps). Instead:
-
-   * `RandSeed` at `DGROUP:0xd24`, runtime linear **`0x207B4`**, 4 bytes LE.
-     The LCG is a bijection, so `{seed -> k}` over the orbit from the demo's
-     seed turns one read into an **exact `Random` call count**.
-     `~/Dev/tubes-tooling/exp19_seed_count.py` does this.
-   * Anchor on `1000:6008` (runtime linear `0xE248`), the instruction that
-     writes the demo's seed - it is cold code and it *does* trap, so t=0 is the
-     session's first frame.
-   * `exp21_tube_track.py` samples the atom array and the tube struct together.
-     Align by **atom y** rather than by wall clock: an unboosted atom rises at
-     exactly 4 px a frame, so its y is a frame counter.
+   * `exp23_demo_index.py` - reads the demo reader's own stream index at
+     **`0x24c2e`** alongside the atom array and the tube, which is the sharpest
+     alignment key there is: it needs no notion of time.
+   * `tubes-port --demo-csv FILE` - the same fields per frame from the port.
+   * `exp19_seed_count.py` - `RandSeed` mapped back through the LCG orbit for an
+     exact `Random` call count.
+   * Anchor every run on `1000:6008` (linear `0xE248`), the demo's seed write.
+     Set breakpoints only while HALTED; the stub does not arm one on a running
+     target.
+   * **Fit slope AND intercept** when converting the guest's wall clock into
+     frames. Fitting through the origin manufactures a smooth phantom drift -
+     it cost most of a session.
 
    `demo_trace.py`'s `ARRAY` constant is now **`0x24188`** (it was `0x241A4`,
    which is `array[2]`).
@@ -592,7 +587,11 @@ Cheap and high-impact once the mechanic is settled.
 - the difficulty progression - seeds `3, 30, 2, 0, 3, 8` plus globals 50 and
   25, stepping every 15 and every 20 levels, with level bands at
   30 / 60 / 75 / 90 / 95 / 101. Variables not yet named; trace them from
-  `9e53` into `3a67` through the Pascal static link.
+  `9e53` into `3a67` through the Pascal static link. **The endurance half of
+  this is now done** - `1000:235c` takes five frames off the dispense interval
+  and adds 0x20 to the velocity every ten MATCHES; see
+  `docs/reversing-notes.md`. What is still unread is the WAVE progression at
+  `1000:a616` / `a630` / `a646`, which moves the same variables per level.
 - **wave definitions.** A wave briefing carries an objective ("live through 30
   atoms") and often a **modifier** - a disabled element that still spawns but
   cannot be cleared, atoms hidden until they leave a tube, beaker atoms morphing

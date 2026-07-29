@@ -1078,6 +1078,43 @@ void testInputIsReadOnlyWhileTheTubeIsIdle() {
     check(g.acceptsInput(), "the tube is idle again after three frames");
 }
 
+void testEnduranceRampStepsOnMatches() {
+    // `1000:235c`. The game speeds up as you CLEAR - not with time, and not
+    // with atoms dispensed. Every fifth match drops the dispense interval by
+    // five frames; every tenth adds 0x20 to the network velocity and hands the
+    // five frames back, so the net shape is -5 frames per ten matches.
+    //
+    // This is what made the demo replay fall apart. The original's spawns land
+    // on 50-frame centres for 29 atoms and then switch to 45, on the frame its
+    // fifth match landed; the port dispensed at 50 forever, so its atoms
+    // arrived progressively late against a tube that was in the right place.
+    tubes::Game g(6, 5, tubes::Difficulty::k301, 0x322d385eu);
+    check(g.spawnIntervalForTest() == 50, "Tubes 301 seeds a 50-frame interval");
+    const int vel0 = g.networkVelForTest();
+
+    for (int i = 0; i < 4; ++i) g.stepRampForTest(1);
+    check(g.spawnIntervalForTest() == 50, "four matches do not move it");
+    g.stepRampForTest(1);
+    check(g.spawnIntervalForTest() == 45, "the fifth match drops it to 45");
+    check(g.networkVelForTest() == vel0, "and leaves the velocity alone");
+
+    // A frame with no runs must not re-fire the crossing, and must not clear
+    // the latch either - the latch is cleared by the counter MOVING OFF a
+    // multiple of five, which a runless frame does not do.
+    g.stepRampForTest(0);
+    check(g.spawnIntervalForTest() == 45, "a runless frame does not step it");
+
+    for (int i = 0; i < 4; ++i) g.stepRampForTest(1);
+    check(g.spawnIntervalForTest() == 45, "still 45 at nine matches");
+    g.stepRampForTest(1);
+    // The tenth hits both arms: -5 then +5, and the velocity climbs.
+    check(g.spawnIntervalForTest() == 45, "the tenth cancels back to 45");
+    check(g.networkVelForTest() == vel0 + 0x20, "and adds 0x20 to the velocity");
+
+    for (int i = 0; i < 5; ++i) g.stepRampForTest(1);
+    check(g.spawnIntervalForTest() == 40, "the fifteenth takes it to 40");
+}
+
 void testTipSkipsFiveFramesOfInput() {
     // How long the tube is busy is how many bytes of a recording get skipped,
     // so the tip's length is load-bearing for the replay and not just for the
@@ -1162,6 +1199,7 @@ int main() {
     testFirstDispenseIsImmediate();
     testInputIsReadOnlyWhileTheTubeIsIdle();
     testTipSkipsFiveFramesOfInput();
+    testEnduranceRampStepsOnMatches();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

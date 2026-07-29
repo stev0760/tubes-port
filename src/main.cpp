@@ -237,6 +237,7 @@ struct Options {
     bool playDemo = false;      // replay DEMO.SCR through the live loop
     bool demoTrace = false;     // run DEMO.SCR headless and print the spawns
     int randomTrace = 0;        // with --demo-trace: print the first N rolls
+    std::string demoCsv;        // with --demo-trace: per-frame state, for the rig
     std::string gameBg = "GAMEBG1.GFX";   // backdrop, for matching a capture
     double renderSeconds = 0;   // 0 = one pass, songs loop forever
     bool help = false;
@@ -369,6 +370,9 @@ Options parseArgs(int argc, char** argv) {
         } else if (a == "--random-trace" && i + 1 < argc) {
             o.demoTrace = true;
             o.randomTrace = std::atoi(argv[++i]);
+        } else if (a == "--demo-csv" && i + 1 < argc) {
+            o.demoTrace = true;
+            o.demoCsv = argv[++i];
         } else if (a == "--play-demo") {
             o.playDemo = true;
         } else if (a == "--dump-sfx") {
@@ -404,6 +408,7 @@ void usage() {
         "  --dump-sfx        print every .SFX header and exit\n"
         "  --play-demo       replay DEMO.SCR through the live game loop\n"
         "  --demo-trace      run DEMO.SCR headless and print every spawn\n"
+        "  --demo-csv FILE   with it, write per-frame state for the rig diff\n"
         "  --help\n"
         "\n"
         "Controls: left/right move the test tube, Down speeds the atom,\n"
@@ -779,6 +784,20 @@ int main(int argc, char** argv) {
         // the two disagree is the divergence - and the original's log names the
         // call site that produced it.
         std::vector<std::pair<int, uint32_t>> rolls;
+        // Per-frame state, in the form the rig diffs against the original.
+        // `idx` is the key that matters: the original's demo reader keeps its
+        // stream index at `24c1:001e` (linear 0x24c2e) and `read` increments
+        // it, so the two sides can be aligned on the byte being consumed
+        // rather than on any notion of time.
+        std::FILE* csv = nullptr;
+        if (!opt.demoCsv.empty()) {
+            csv = std::fopen(opt.demoCsv.c_str(), "w");
+            if (!csv) {
+                std::fprintf(stderr, "cannot write %s\n", opt.demoCsv.c_str());
+                return 1;
+            }
+            std::fprintf(csv, "frame,idx,btn,tubex,tubestop,tubebusy,rolls\n");
+        }
         // Always collected: the per-spawn roll count below is the comparison
         // that matters, and it is cheap. `--random-trace N` only controls how
         // many individual rolls get printed.
@@ -793,7 +812,13 @@ int main(int argc, char** argv) {
         size_t idx = 0;
         for (size_t f = 0; idx < dm.input.size() && !g.gameOver(); ++f) {
             const uint8_t btn = g.acceptsInput() ? dm.input[idx++] : 0;
+            const int wasBusy = g.acceptsInput() ? 0 : 1;
             g.stepOnce(btn);
+            if (csv) {
+                std::fprintf(csv, "%zu,%zu,%u,%d,%d,%d,%zu\n", f, idx, btn,
+                             g.tubeX(), g.tubeColumn() + 1, wasBusy,
+                             rolls.size());
+            }
             for (int c = 1; c <= tubes::kAtomSlots; ++c) {
                 const bool now = g.atom(c).active();
                 if (now && !wasActive[c]) {
@@ -844,6 +869,7 @@ int main(int argc, char** argv) {
             }
         }
         std::printf("\n");
+        if (csv) std::fclose(csv);
         return 0;
     }
 

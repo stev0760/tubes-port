@@ -2553,3 +2553,98 @@ the asymmetry is the original's.
 
 172 checks pass, up from 170. The eight pixel captures are unchanged at 0.02%
 to 0.22%.
+
+## 2026-07-29 - the endurance ramp, and why a green ball dropped
+
+The demo replay is closed. All 44 spawns the rig capture covers now agree with
+the original in column, type and FRAME.
+
+The symptom, reported from watching the build: everything looks perfect and then
+it falls apart with a green ball missed. That ball is spawn 32, column 3, type 2
+- Greenium - lost at frame 1,627, and it turned out to be the exact atom the
+oracle had been pointing at.
+
+### The cause: `1000:235c`, and it fires on MATCHES
+
+    if runsThisFrame >= 1 then
+      if (waveMode = 1) or (waveMode = 0) then begin
+        Inc(counter);                            { [fe84], a BYTE }
+        if counter = 0 then exit;
+        if counter mod 5 = 0 then begin
+            if not latch5 then begin
+                spawnInterval := spawnInterval - 5;  latch5 := true end
+        end else latch5 := false;
+        if counter mod 10 = 0 then begin
+            if not latch10 then begin
+                velocity      := velocity + $20;
+                spawnInterval := spawnInterval + 5;  latch10 := true end
+        end else latch10 := false
+      end
+
+Five frames off the dispense interval per ten matches, with the velocity
+climbing 0x20 alongside. Not per atom, not per wave, not on a timer - **per
+match**, which is why nothing about it shows up early and why watching the game
+would never have produced it.
+
+Measured on the running original, its spawns are 50 frames apart for 29 atoms
+and then 45:
+
+    spawn 29  frame 1400.1        spawn 32  frame 1535.5
+    spawn 30  frame 1445.3   <-   spawn 33  frame 1580.6
+
+The port dispensed at 50 forever. Everything else was already right - the tube
+was in the correct place on the correct frame the whole time - so its atoms just
+arrived later and later. The catch window is eleven pixels against a nine pixel
+step, one frame wide, so it only took a few atoms before one arrived after the
+tube had gone. Hence: perfect, perfect, perfect, dropped ball.
+
+### Three of the four steps to it disproved something
+
+**The input vectors, read rather than assumed.** Demo playback swaps
+`DS:0x2352` / `DS:0x2356` from the keyboard driver to its own reader at
+`24c1:00a6` / `24c1:00bc`. `read` advances the stream and `avail` only
+bounds-checks, so one byte per frame the game calls `read` - confirming the
+model the port already had, rather than correcting it. `CS:[0x1e]` is the stream
+index at linear **0x24c2e**, and it starts at 6 because it is a file offset: the
+loader ate the count and the seed through the same buffer.
+
+That address was already in `demo_trace.py`'s comments, as one of two candidates
+a monotonicity scan had dismissed as false positives. It was the real one.
+
+**The second `[ds:$2352]` call site was a red herring.** `1000:32d3`, in
+`FUN_1000_2dd0`, is reached only from `1000:5cfc` behind `2000:5e52`
+(KeyPressed) - a real keypress, which never happens during attract mode.
+
+**The 14-frame drift did not exist.** An earlier comparison had the port's byte
+consumption running ahead by a smoothly growing margin. It was the fit:
+calibrating the guest's frame rate through the ORIGIN forced the line through a
+wrong anchor and manufactured exactly the kind of slow monotonic error that
+reads as a real drift. Fitting slope and intercept collapsed the residuals from
+±12 to ±1.7 frames over 680 samples. The byte schedule had been correct all
+along, which is what pointed at the atoms instead.
+
+That is now three entries for the same lesson from three directions: a negative
+result is only as good as its filter, a positive result is only as good as what
+it counted, and a trend is only as good as the model fitted to it.
+
+### Also fixed
+
+The catch tests `rec.x = tube.x + 3` - the tube's actual x, not its stop index,
+which differ for the three frames of a slide. Catching up to three frames early
+matters because the tube holds five: an early catch can fill it and make
+`tube.count <> 5` refuse a later atom the original had room for.
+
+### Where it stands
+
+| | first divergence | reached |
+|---|---|---|
+| two sessions ago | spawn 4 of 15 | frame 1,049, score 0 |
+| last session | none in 35 spawns | frame 1,700, score 4,000 |
+| now | none in 44 | frame 2,912, score 11,500 |
+
+The port's first missed atom, frame 911, is the one the original misses too. Its
+next two are at frames 2,912 and 2,963, just past the end of the 175-second
+capture, so whether those are real needs a longer run.
+
+181 checks pass, up from 172. The eight pixel captures are unchanged at 0.02% to
+0.22%.

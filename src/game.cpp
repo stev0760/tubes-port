@@ -334,6 +334,67 @@ int8_t Game::nextColour() {
 // One frame of the beaker: `1000:22a6`, which the frame body calls once at
 // `1000:47d0` whether or not anything is happening - that is what animates the
 // clear and the settle. The ramp's own clock is NOT here; see `stepScoreRamp`.
+// THE ENDURANCE RAMP, `1000:235c`. The game speeds up as you clear, and it is
+// driven by MATCHES - not by atoms dispensed, and not by time:
+//
+//     if runsThisFrame >= 1 then                        { 1000:2342 }
+//       if (waveMode = 1) or (waveMode = 0) then begin
+//         Inc(counter);                                 { [fe84], a BYTE }
+//         if counter = 0 then exit;                     { wrap guard, 1000:2368 }
+//         if counter mod 5 = 0 then begin
+//             if not latch5 then begin
+//                 spawnInterval := spawnInterval - 5;
+//                 latch5 := true end
+//         end else latch5 := false;
+//         if counter mod 10 = 0 then begin
+//             if not latch10 then begin
+//                 velocity      := velocity + $20;
+//                 spawnInterval := spawnInterval + 5;
+//                 latch10 := true end
+//         end else latch10 := false
+//       end
+//
+// The two latches make each crossing fire once. Every tenth match the two
+// adjustments cancel, so the net shape is: the interval drops five frames per
+// ten matches while the velocity climbs 0x20 with it.
+//
+// THIS IS WHY THE DEMO REPLAY FELL APART, and it stayed hidden for a long time
+// because nothing about it is visible early. The original's spawns land on
+// exact 50-frame centres for 29 atoms and then switch to 45, on the frame its
+// fifth match landed. The port dispensed at 50 forever, so from there its atoms
+// arrived later and later against a test tube that was in the right place the
+// whole time - and the first thing anyone notices is a green ball dropping.
+// Measured off the running original: spawn 29 at frame 1400.1 and spawn 30 at
+// 1445.3, where the port had 1400 and 1450.
+//
+// `1000:23fe` increments the same counter on the path for the other wave modes,
+// which the port has no equivalent for.
+void Game::stepEnduranceRamp(int runs) {
+    if (runs < 1) return;
+
+    rampCounter_ = static_cast<uint8_t>(rampCounter_ + 1);
+    if (rampCounter_ != 0) {
+        if (rampCounter_ % 5 == 0) {
+            if (!rampLatch5_) {
+                // A byte and a word in the original, so they wrap there too.
+                spawnInterval_ = (spawnInterval_ - 5) & 0xFF;
+                rampLatch5_ = true;
+            }
+        } else {
+            rampLatch5_ = false;
+        }
+        if (rampCounter_ % 10 == 0) {
+            if (!rampLatch10_) {
+                networkVel_ = (networkVel_ + 0x20) & 0xFFFF;
+                spawnInterval_ = (spawnInterval_ + 5) & 0xFF;
+                rampLatch10_ = true;
+            }
+        } else {
+            rampLatch10_ = false;
+        }
+    }
+}
+
 void Game::updateBeaker() {
     const BoardStep s = board_.step();
 
@@ -361,6 +422,8 @@ void Game::updateBeaker() {
     // knock, which is why the flag is a boolean and not a count.
     if (s.settled) pendingSound_ = sfx::kHitAtom;
     chains_ += s.chainsVertical + s.chainsHorizontal + s.chainsDiagonal;
+
+    stepEnduranceRamp(s.runs);
 
     // 1000:2410 - one sixth of the award, paid every frame the ramp is live.
     if (rampSteps_ > 0) {

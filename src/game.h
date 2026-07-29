@@ -388,6 +388,10 @@ public:
     // Exposes one roll of the generator, so a test can check it against the
     // algorithm rather than against itself.
     int rollForTest(int n) { return random(n); }
+    // The two values the endurance ramp moves, so a test can watch it step.
+    int spawnIntervalForTest() const { return spawnInterval_; }
+    int networkVelForTest() const { return networkVel_; }
+    void stepRampForTest(int runs) { stepEnduranceRamp(runs); }
     void setScore(int v) { score_ = v; }
     void setChains(int v) { chains_ = v; }
     void setDropsRemaining(int v) { dropsRemaining_ = v; }
@@ -400,6 +404,10 @@ private:
     void spawn();
     void stepAtom(Falling& a);
     void updateBeaker();
+    // The endurance ramp, `1000:235c` - the dispense interval and the network
+    // velocity both move as the player clears. Takes the number of runs the
+    // matchers formed this frame, which is the original's `[BP-8]`.
+    void stepEnduranceRamp(int runs);
     // The test tube's own state machine, `1000:45e7` - the slide between stops
     // and the tipping animation.
     void stepTube(uint8_t buttons);
@@ -471,6 +479,13 @@ private:
     int spawnTimer_ = 1;
     int spawnInterval_ = kSpawnIntervalFrames[0];
     int networkVel_ = 2 * kSubPixel;
+    // The endurance ramp, `1000:235c`: both of these move as you clear, which
+    // is why neither is a constant after the difficulty seeds them. `[fe84]`
+    // is a byte in the original and is allowed to wrap; the two latches are
+    // `[fe46]` and `[fe47]`, and they exist so a crossing fires once.
+    uint8_t rampCounter_ = 0;
+    bool rampLatch5_ = false;
+    bool rampLatch10_ = false;
     float frameAccum_ = 0.0f;     // real time carried between frames
 
     // The tube slides at 6 px/frame over an 18 px column pitch, so a column

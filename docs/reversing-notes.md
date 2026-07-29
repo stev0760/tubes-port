@@ -4913,55 +4913,96 @@ against spawns actually detected in the atom array instead, there is no
 divergence. The lesson is the project's usual one from the other direction: a
 positive result is only as good as the thing it counted.
 
-### What is still wrong: the tube runs AHEAD of the recording
+### The endurance ramp: the game speeds up as you CLEAR
 
-The dispenser is exact and the tube's *move sequence* is exact - over the 142
-column moves the port makes, it visits the same stops in the same order as the
-original. What is not exact is **when**.
+`1000:235c`, inside the beaker update and gated on the matchers having formed at
+least one run this frame (`[BP-8] >= 1`, the same count the score multiplier
+uses):
 
-By frame 1,550 the port's tube is roughly **fourteen frames ahead** of the
-original's, and the effect is not subtle at the point it bites. Watching the
-same atom cross the top lane:
+    if runsThisFrame >= 1 then
+      if (waveMode = 1) or (waveMode = 0) then begin
+        Inc(counter);                            { [fe84], a BYTE }
+        if counter = 0 then exit;                { wrap guard }
+        if counter mod 5 = 0 then begin
+            if not latch5 then begin
+                spawnInterval := spawnInterval - 5;  latch5 := true end
+        end else latch5 := false;
+        if counter mod 10 = 0 then begin
+            if not latch10 then begin
+                velocity      := velocity + $20;
+                spawnInterval := spawnInterval + 5;  latch10 := true end
+        end else latch10 := false
+      end
 
-    ORIGINAL record 3   x = 67, 75, 87, 95, 103    tube x = 158,158,158,146,134
-    PORT     record 3   x = 67, 76, 85, 94, 103    tube x = 104,104,104,104,104
+The counter is `[BP+0xfe84]`, seeded to 0 at `1000:a4e4`; the two latches are
+`[fe46]` and `[fe47]` and exist so a crossing fires once. Every tenth match the
+two adjustments cancel, so the net shape is **five frames off the dispense
+interval per ten matches**, with the network velocity climbing 0x20 alongside.
 
-Samples are ~2.4 frames apart, so the original crosses at 4 px a frame and the
-port at 9 - because the port's tube has already reached stop 1, which boosts
-slot 3, while the original's is still two columns away. The port's atom
-therefore arrives at the mouth on a frame when the tube has moved on, and is
-lost. Two of the demo's atoms die that way, at frames 1,627 and 1,674, which is
-what ends the replay at spawn 35 instead of letting it run on.
+**It is driven by matches, not by time and not by atoms dispensed.** That is the
+part no amount of watching would have given up, and it is why it stayed hidden:
+for the first 29 atoms of the demo nothing about it is visible at all.
 
-Running ahead means the port has **more idle frames** than the original: it
-consumes the recording faster. Since a byte is consumed on exactly the frames
-the tube is idle, something keeps the original's tube busy that the port does
-not model. Both known busy states have been checked and are right:
+### How the demo replay was finally closed
 
-* the **slide** is 3 frames - 6 px a frame over the 18 px stop pitch, with
-  `1000:45f3`'s `if x <= target then snap` ending it;
-* the **tip** is 6 frames in state 3, of which **5** skip input. The press frame
-  still reads a byte, because the input block runs before the state machine that
-  sets state 3. Measured off the original as well as read from the code.
+The port had the tube exactly right and the dispenser exactly right, and still
+lost a green ball at frame 1,627. The chain of measurements that found it is
+worth keeping, because three of the four steps disproved a hypothesis rather
+than confirming one.
 
-**And there is a one-byte offset at the start**, measured but not yet explained.
-The demo's first three Left presses are at stream indices 16, 17 and 20, and the
-original acts on them at frames 15, 18 and 23 - which is what the idle gate
-predicts only if the byte consumed on frame 0 is index **1**, not index 0.
-Skipping one byte makes the port's tube track the original exactly for the first
-~57 frames instead of diverging at frame 16. It is not in the port, because
-nothing in the decompiled setup has been found that consumes it, and fitting an
-offset to make a measurement come out is exactly the move this project forbids.
-It is recorded here as a measurement awaiting its cause. Note it does NOT
-account for the drift above - with the byte skipped the two atoms are still
-lost, at frames 1,628 and 1,673.
+**1. The `.SCR` reader, read rather than guessed.** Demo playback swaps the two
+input vectors for its own reader (measured live - `DS:0x2352` and `DS:0x2356`
+point into the keyboard driver at the menu and into `24c1:00a6` / `24c1:00bc`
+inside the demo):
 
-Where to look next: `1000:44fa` calls `[ds:$2352]` ("input available?") and only
-then `[ds:$2356]`. Which of the two advances the recording is not established,
-and there is a second call site for the same pair at `1000:32d3`, in another
-nested procedure of `1000:9e53` that reads into the same `SS:[DI+0xfe4e]` button
-byte and cycles `DS:0x1d4d` between 1 and 5. If that runs during a session it
-consumes bytes the port knows nothing about.
+    avail   LES SI,CS:[0x1a] / ADD SI,CS:[0x1e]
+            XOR AX,AX / CMP SI,CS:[0x20] / JA +1 / INC AX / RETF
+    read    LES SI,CS:[0x1a] / ADD SI,CS:[0x1e]
+            MOV AL,ES:[SI] / INC word ptr CS:[0x1e] / RETF
+
+So **`read` advances the stream and `avail` only bounds-checks**, confirming one
+byte per frame the game calls `read` - which `1000:44f0` gates on the tube being
+idle. The port's model was right.
+
+`CS:[0x1e]` is the stream index, at linear **`0x24c2e`**, and it starts at **6**
+- it is a file offset, so the loader consumed the `u16 count` and the `u32 seed`
+through the same buffer. Bytes consumed = `index - 6`.
+
+That address is in `demo_trace.py`'s comments as one of two candidates a
+monotonicity scan turned up and **dismissed as false positives**. It was the
+real thing, thrown away by a filter that could not tell a counter from a
+coincidence.
+
+**2. The byte schedule was never wrong.** With the index readable, the port and
+the original can be aligned on the byte being consumed rather than on time. Over
+680 samples the two agree on *which frame each byte is consumed at* to within
+±1.7 frames.
+
+An earlier version of this comparison reported a smooth ±12-frame drift and sent
+this session hunting a phantom. The cause was the fit: calibrating the guest's
+frame rate through the ORIGIN forced the line through a wrong anchor and
+manufactured exactly the kind of slow monotonic error that looks like a real
+drift. Fitting slope *and* intercept collapsed the residuals to ±1.7. Another
+entry for the list - a positive result is only as good as the model behind it.
+
+**3. So it was the atoms, not the input.** Detecting the original's spawns and
+converting to frames:
+
+    spawn 29   frame 1400.1        spawn 32   frame 1535.5
+    spawn 30   frame 1445.3   <-   spawn 33   frame 1580.6
+    spawn 31   frame 1490.5        spawn 34   frame 1625.8
+
+Exactly 50 frames apart for 29 atoms, then exactly 45. The port dispensed at 50
+forever, so from spawn 30 its atoms ran later and later against a tube that was
+in the right place all along. The catch window is eleven pixels against a nine
+pixel step - one frame - so it took only a few atoms for one to arrive after the
+tube had moved on.
+
+**4. What it was worth.** With the ramp transliterated, all 44 spawns the
+capture covers agree with the original in **column, type and frame** (residual
+±1.3 frames, which is the fit's own noise). The replay runs to frame 2,912
+instead of 1,627, and the port's first missed atom - frame 911, between rolls 51
+and 53 - is the same one the original misses.
 
 ### The catch tests the tube's ACTUAL x, not its stop
 
