@@ -2796,3 +2796,58 @@ misses where one was a gain.
 
 185 checks pass, up from 181, including one that fails on the per-frame reading.
 The eight pixel captures are unchanged at 0.02% to 0.22%.
+
+## 2026-07-30 - the wave table, and it is 75 literal arms
+
+The demo replay closed the day before, so the next item was the largest one
+left: wave structure. It came apart in a single pass, and the question that
+opened it was small - **who writes `DS:0x1d4e`?**
+
+`FindScalarRefs.java` answers with a contiguous run of 22 functions between
+`1000:62f1` and `1000:8320`, each setting the mode byte and sharing nothing
+else. They are the objective templates, one procedure per briefing.
+`MapProgram.java` then names their single caller: `1000:86b8`, the briefing
+screen, whose body is an if-chain **75 arms long** on the wave number.
+
+Everything followed from there:
+
+* 25 objective routines, including `1000:8581`, Mystery Wave, which rolls one
+  of four and runs it outright;
+* the six counters they read, written as **immediates** at `1000:a4cd` - and
+  they turned out to be `3, 30, 2, 0, 3, 8`, the exact list `PLAN.md` had
+  carried for two sessions as "difficulty seeds, variables not yet named";
+* the progression at `1000:a616`, which runs **only on a cleared wave**;
+* `1000:192f`, the scoring hook, where an all-Flashium run satisfies any
+  colour;
+* `-0x1ff`, the flag that makes a Continue replay a wave with the objective it
+  already had.
+
+The check that mattered came free. A black-box session months ago had warped a
+save to sample nine briefings out of the running game. Feeding the seeds
+through the decompiled table reproduces **all nine**, kind and count -
+including that waves 10 and 15 share an objective, which the sweep could only
+record as a coincidence, and wave 50's "Mischief Crystals: 1", which is seed 0
+with `1000:66cb`'s own `Inc` in front of it. Two independent readings of the
+same six numbers.
+
+Three commits: the notes, `src/wave.{h,cpp}` with its tests, and the wiring
+into `Game`. Then `1000:2a4a`, the Task Display, and `--wave N` to play one.
+
+**Two things worth remembering.**
+
+The scoring hook is called from `1000:1c3b` - after the distinct-run test and
+before `ADD [pending], 250`, on the path every seed takes. So it fires **once
+per seed**, and a run of four spends two of the objective. That is the third
+time this binary has counted seeds where an event would have been the obvious
+guess, and the first time it was checked before being written.
+
+And the argument order of `OutText` is `x, y, colour, mode, text`, which had to
+be read off the HUD's own drops draw at `1000:5782` rather than taken from the
+decompiler - Ghidra lists call arguments in reverse push order. Getting it
+backwards would have put the Task Display on its side.
+
+One correction landed with it: the seven 8x7 balls at `DS:0x200a` were recorded
+as the wave-mode HUD counters because they were the right size and the right
+count and nothing else claimed them. The draw site indexes `DS:0x1da6` instead,
+the ordinary ball table. `0x200a` is unowned again, and `1000:2894` is the
+candidate. Shape is not ownership.

@@ -240,6 +240,7 @@ struct Options {
     std::string demoCsv;        // with --demo-trace: per-frame state, for the rig
     std::string gameBg = "GAMEBG1.GFX";   // backdrop, for matching a capture
     double renderSeconds = 0;   // 0 = one pass, songs loop forever
+    int wave = 0;               // 0 = Endurance; 1..75 starts Wave mode there
     bool help = false;
 };
 
@@ -381,6 +382,8 @@ Options parseArgs(int argc, char** argv) {
             o.renderState = argv[++i];
         } else if (a == "--gamebg" && i + 1 < argc) {
             o.gameBg = argv[++i];
+        } else if (a == "--wave" && i + 1 < argc) {
+            o.wave = std::atoi(argv[++i]);
         } else if (a == "--help" || a == "-h") {
             o.help = true;
         } else {
@@ -409,6 +412,11 @@ void usage() {
         "  --play-demo       replay DEMO.SCR through the live game loop\n"
         "  --demo-trace      run DEMO.SCR headless and print every spawn\n"
         "  --demo-csv FILE   with it, write per-frame state for the rig diff\n"
+        "  --wave N          start Wave mode on wave N (1..75) instead of\n"
+        "                    Endurance. There is no briefing screen yet, and\n"
+        "                    the marked-atom, crystal and pre-filled waves\n"
+        "                    cannot be finished until their setup routines are\n"
+        "                    decompiled - see PLAN.md.\n"
         "  --help\n"
         "\n"
         "Controls: left/right move the test tube, Down speeds the atom,\n"
@@ -510,6 +518,65 @@ void drawHud(tubes::Screen& screen, const tubes::Game& game,
         tubes::drawTextCentred(screen, small, 0, 319, 21, kPopColour, kPopMode,
                                "x" + std::to_string(game.scoreMultiplier()));
     }
+}
+
+// The Task Display, `1000:2a4a` - the small ball and the number in the top
+// left corner that say what the current wave wants.
+//
+//     if (counter <> 0) and not mysteryHidden then begin
+//       case waveMode of
+//         4: Draw(ball[taskColour], 10, 6);
+//         5: Draw(crystal, 10, 6);
+//         6: Draw(ball[taskColour], 10, 6); Draw(marker, 11, 8)
+//         else Draw2894(...)                  { modes 2 and 3 }
+//       end;
+//       n := counter;
+//       if      n <  10 then OutText(Str(n), mode 1, 127, y 10, x 10)
+//       else if n <= 99 then OutText(Str(n), mode 1, 127, y 10, x  6)
+//       else                 OutText(Str(n), mode 1, 127, y 10, x  2)
+//     end
+//
+// The three x values are 10, 6 and 2 - a step of 4, which is half the big
+// font's advance, so the number is CENTRED about x = 14 rather than moved.
+//
+// `1000:2894`, the modes 2 and 3 arm, is not decompiled: it draws the chain
+// illustration that shows which orientation is wanted. Left undrawn rather
+// than invented, so those waves show their count and nothing else.
+void drawTaskDisplay(tubes::Screen& screen, const tubes::Game& game,
+                     const tubes::Font& big, bool haveBig,
+                     const tubes::Sprite* atoms, const bool* haveAtom,
+                     const tubes::Sprite* furn, const bool* haveFurn) {
+    const tubes::WaveObjective& obj = game.objective();
+    if (!tubes::isWaveMode(obj.mode)) return;
+    if (obj.counter == 0 || obj.mysteryHidden) return;
+
+    // Flashium has no sprite of its own - the original rewrites its table slot
+    // every fourth frame - so the Task Display of a wave with no required
+    // colour cycles, which is exactly what was observed in wave 6.
+    const int8_t taskColour = game.taskDisplay().colour;
+    const int8_t ball = taskColour == tubes::kFlashium ? game.flashColour()
+                                                       : taskColour;
+    switch (obj.mode) {
+        case tubes::WaveMode::kSurvive:
+            if (haveAtom[ball]) screen.draw(atoms[ball], 10, 6);
+            break;
+        case tubes::WaveMode::kCrystals:
+            if (haveAtom[tubes::kCrystal]) {
+                screen.draw(atoms[tubes::kCrystal], 10, 6);
+            }
+            break;
+        case tubes::WaveMode::kMarked:
+            if (haveAtom[ball]) screen.draw(atoms[ball], 10, 6);
+            if (haveFurn[kMarker]) screen.draw(furn[kMarker], 11, 8);
+            break;
+        default:
+            break;   // 1000:2894, unread
+    }
+
+    if (!haveBig) return;
+    const std::string n = std::to_string(obj.counter);
+    const int x = obj.counter < 10 ? 10 : (obj.counter <= 99 ? 6 : 2);
+    tubes::drawText(screen, big, x, 10, 127, tubes::textmode::kFadeDown, n);
 }
 
 bool loadFont(const tubes::Archive& res, const std::string& name, int advance,
@@ -1028,6 +1095,16 @@ int main(int argc, char** argv) {
                      opt.playDemo ? kDemoDifficulty : tubes::Difficulty::k101,
                      opt.playDemo ? demo.seed : 0x9E3779B9u);
     game.setFallHeight(kFallHeight);
+    // `1000:9e53`'s new-game arm seeds the wave number from `DS:0x1d50` and
+    // then loops brief-play-advance. Only the first half of that exists here:
+    // there is no briefing screen and no stats blackboard, so the loop below
+    // just steps to the next wave when one is cleared.
+    if (opt.wave > 0) {
+        while (game.progress().wave < opt.wave) game.advanceWave();
+        game.startWave();
+        std::printf("Wave %d: mode %d, %d to go\n", game.progress().wave,
+                    static_cast<int>(game.waveMode()), game.objective().counter);
+    }
     if (!opt.renderState.empty() && !loadState(opt.renderState, game)) return 1;
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -1208,6 +1285,18 @@ int main(int argc, char** argv) {
                 }
             } else {
                 game.update(opt.demo ? scriptedInput(game) : readKeyboard(), dt);
+            }
+            // `1000:9e53`'s loop, minus the two screens it goes through: the
+            // stats blackboard at `1000:8da5` and the briefing at `1000:86b8`.
+            // The progression itself is faithful - `1000:a616` runs only on a
+            // wave that was CLEARED.
+            if (game.waveComplete()) {
+                game.advanceWave();
+                game.startWave();
+                std::printf("Wave %d: mode %d, %d to go\n",
+                            game.progress().wave,
+                            static_cast<int>(game.waveMode()),
+                            game.objective().counter);
             }
             // One voice, so one sound a frame: a second event in the same
             // frame has already replaced the first inside Game, which is what
@@ -1390,6 +1479,8 @@ int main(int argc, char** argv) {
         if (haveBeaker) screen.draw(beaker, kGridX - 4, kGridY);
 
         drawHud(screen, game, bigFont, smallFont, haveBig, haveSmall);
+        drawTaskDisplay(screen, game, bigFont, haveBig, atoms, haveAtom, furn,
+                        haveFurn);
 
         screen.toRgba(pal, rgba);
         SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kScreenWidth * 4);

@@ -5684,3 +5684,68 @@ its objective.
 * Whether the shareware really carries all 75 arms or the later ones are dead;
   the dispatch has them, and published notes claim the registered version
   "adds 50 waves".
+
+
+## The Task Display is `1000:2a4a`, and it draws a full-size ball
+
+The three fields the Task Display shows live in `1000:3a67`'s own frame, not
+`9e53`'s, and are seeded from the objective at `1000:3ac7`:
+
+    taskColour := reqColour;  if reqColour = 0 then taskColour := 8
+    taskChain  := reqChain
+    if waveMode = 4 then taskCount := counter else taskCount := 0
+
+A required colour of **0 shows Flashium**, which has no sprite of its own and
+whose table slot is rewritten every fourth frame - so a "form N chains using
+any atom" wave shows a *cycling* ball. That is the same mechanism the wave 6
+sampling caught and read as a rotating counter, and it needs no separate
+explanation.
+
+`1000:2a4a` itself:
+
+    if (counter <> 0) and not mysteryHidden then begin
+      case waveMode of
+        4: Draw(ballTable[taskColour], 10, 6);
+        5: Draw(ballTable[18], 10, 6);                  { the Crystal }
+        6: Draw(ballTable[taskColour], 10, 6);
+           Draw(marker, 11, 8)
+        else Draw2894                                   { modes 2 and 3 }
+      end;
+      n := counter;
+      if      n <= 9   then OutText(n, x 10, y 10, 127, mode 1)
+      else if n <= 99  then OutText(n, x  6, y 10, 127, mode 1)
+      else                  OutText(n, x  2, y 10, 127, mode 1)
+    end
+
+The three x values step by **4**, half the big font's advance, so the number is
+**centred about x = 14** rather than moved - and at y = 10 against a ball at
+y = 6 it is drawn *over* the ball, which is exactly what the wave 6 capture
+showed ("a count overlaid on the ball").
+
+**Argument order, settled.** `OutText` pushes `x, y, colour, mode, text`, read
+off the HUD's own drops draw at `1000:5782` - `PUSH 0x109` is x = 265, which
+the port already renders correctly. Ghidra lists call arguments in *reverse*
+push order, so a decompiled `049b(str, 1, 0x7f, 10, 10)` is `mode 1, colour
+127, y 10, x 10`. Getting this backwards would have put the whole Task Display
+on its side.
+
+### Correction: `DS:0x200a`'s 8x7 balls are NOT the Task Display
+
+These notes recorded the seven 8x7 sprites at `DS:0x200a` as "Wave mode HUD
+elements" because they had no known draw site and the wave 6 capture showed a
+small ball under `Chains`. The draw site is now read, and it indexes
+**`DS:0x1da6`** - the ordinary 16x16 ball table - not `0x200a`.
+
+So `0x200a` is unattributed again. The candidate is `1000:2894`, the arm
+`2a4a` takes in modes 2 and 3, which has to illustrate a required *chain*
+orientation - three small balls in a row, a column or a diagonal would want
+exactly a half-size sprite and exactly seven colours.
+
+Worth noting how the wrong attribution happened: the sprites were the right
+size and the right count for what was on screen, and nothing else claimed
+them. That is a coincidence of shape, and this binary has produced several.
+The draw site is the only thing that settles ownership.
+
+Also still unread: `2000:3b15`, which `2a4a` draws through, is a **different**
+sprite entry point from `2321:0905`, which the briefings use. Whether the two
+differ in more than the caller is not established.

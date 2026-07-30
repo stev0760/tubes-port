@@ -117,6 +117,11 @@ Working, and transliterated rather than invented:
 - **the HUD**: Chains, the centred score and Drops, with the score pop-ups -
   and under it a transliterated text renderer, so a glyph is a vertical colour
   walk off one palette index with a shadow, exactly as `2000:35ec` draws it
+- **wave mode's rules**: the 75-wave table from `1000:86b8`, all 25 objective
+  routines, the six counters and the progression at `1000:a616`, the scoring
+  hook `1000:192f` firing once per SEED, the 720-frame Task Display clock and
+  the wave-complete test - in `src/wave.{h,cpp}`, with `--wave N` to play one
+- the **Task Display**, `1000:2a4a` - the ball and the count over it
 - music: all ten songs, correct at the register level
 - **sound effects**: the eleven fade families plus DROP, HITGLASS and HITATOM,
   each fired from the site the original calls `PlaySound` at, through ONE voice
@@ -126,8 +131,9 @@ Absent entirely:
 
 | Missing | Size |
 |---|---|
-| The wave-mode HUD ball counters at `DS:0x200a` | small, and wave-mode only |
-| Wave structure: briefings, objectives, modifiers | large |
+| Wave structure: the briefing screen, the stats blackboard, the Continue screen | large |
+| Four wave-setup routines: marked atoms, crystals, the pre-filled beaker, the beaker morph | medium, and they gate 9 of the 25 objectives |
+| `1000:2894`, the chain illustration in the Task Display for modes 2 and 3 | small |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |
 | Demo playback (`.SCR` replay through the same loop) | **DONE** - matches end to end, terminates on the original's own last byte |
