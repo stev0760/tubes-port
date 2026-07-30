@@ -65,14 +65,13 @@ Percentages are judgement calls, so the breakdown matters more than the number.
 | Catch-time specials `1000:180c` | **done** - Bonus, Multiplier, EvilMultiplier, Filler |
 | Scoring and the chain bonus multiplier | **done**, from code rather than the manual |
 | Wave definitions: the 75-wave table, 25 objective templates, the modifiers, the progression | **done** - `1000:86b8` is the table, `1000:a616` steps it |
+| The four wave-setup routines | **done** - `1000:0000` marked, `0236` crystals, `035e` pre-fill, `4bf6` the morph |
+| The Mischief Crystal, end to end | **done** - the 10-byte record, the teleport `1000:0560`, the AntiMatter removal `041c`, the gravity follow `04ca` |
 
 Still unread, and most of it is inside `1000:3a67`'s 9,382 bytes:
 
-- `1000:041c`, the Crystal's teleport, which `1000:0f3b` calls in wave mode 5
-- the four wave-setup helpers the objective system calls: `1000:0000` (place N
-  marked atoms), `1000:0236` (place N crystals), `1000:035e` (pre-fill the
-  beaker) and the beaker morph body at `1000:4bf6`
 - `1000:8c38`, the Continue screen, and `1000:9499`, reached on clearing wave 75
+- `1000:2894`, the chain illustration the Task Display draws in modes 2 and 3
 - `.SPR`, `.BIN`, `.ANM`
 
 ### The engine: ~40%

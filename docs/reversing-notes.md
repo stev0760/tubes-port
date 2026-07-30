@@ -5749,3 +5749,200 @@ The draw site is the only thing that settles ownership.
 Also still unread: `2000:3b15`, which `2a4a` draws through, is a **different**
 sprite entry point from `2321:0905`, which the briefings use. Whether the two
 differ in more than the caller is not established.
+
+
+## The four wave-setup routines, and the Crystal's whole life
+
+`1000:3a67`'s prologue calls three of them, at `3b51`, `3b65` and `3b7a`:
+
+    if waveMode = 6 then PlaceMarked(marked)        { 1000:0000 }
+    if waveMode = 5 then PlaceCrystals(crystals)    { 1000:0236 }
+    if preFillBeaker then PreFill(preFillSize)      { 1000:035e }
+
+and the fourth, the morph, is inline at `1000:4bf6` on the 720-frame clock.
+
+All three share one idiom, and it is worth naming once because it appears five
+times between them:
+
+    repeat col := Random(6) + 1 until cells[1, col] = 0;   { a column with room }
+    row := 1;
+    while (row <> 5) and (cells[row + 1, col] = 0) do Inc(row);   { fall to rest }
+
+Cells are `array[1..5, 1..6]` at `[BP-0x25]`, the marked plane at `[BP-0x43]`
+and the objective plane at `[BP-0x61]`, so `cells[1, col]` is `[BP + col -
+0x1f]` and a full column is one test.
+
+### `1000:0000` - place N marked atoms, and cover them
+
+    for n downto 1 do begin
+      repeat col := Random(6)+1; row := Random(5)+1 until cells[row,col] = 0;
+      while (row <> 5) and (cells[row+1,col] = 0) do Inc(row);
+      cells[row, col]     := Random(8) + 1;      { 1..8 - Flashium included }
+      objective[row, col] := 1                   { the MARKER overlay }
+    end;
+
+    k := 8;
+    if markedCovered then                        { -0x187, wave 28 and friends }
+      while k <> 0 do begin
+        <pick a column with room, fall to rest>
+        cells[row, col] := k mod 7 + 1;  Dec(k);
+        Inc(col); if col > 6 then col := 1
+      end;
+    if markedXenon then                          { -0x188 }
+      while k <> 0 do begin
+        <the same>
+        cells[row, col] := 11;  Dec(k);
+        Inc(col); if col > 6 then col := 1
+      end
+
+Three things are not obvious. The marked atom's **type is rolled 1..8**, so a
+marked cell can be a Flashium. The two modifier loops share **one** counter
+`k`, seeded 8 once - so the second is dead if the first ran, which is harmless
+only because `643b` and `6592` never set both flags. And both walk the columns
+**round robin** from wherever the last placement left off rather than rolling
+each time, which is what spreads the cover out instead of burying one column.
+
+`k mod 7 + 1` for k = 8 down to 1 gives colours 2, 1, 7, 6, 5, 4, 3, 2.
+
+### `1000:035e` - pre-fill the beaker
+
+The same loop again, standing on its own:
+
+    col := Random(6) + 1;
+    while n <> 0 do begin
+      <pick a column with room, fall to rest>
+      cells[row, col] := n mod 7 + 1;  Dec(n);
+      Inc(col); if col > 6 then col := 1
+    end
+
+with `n` = 8, the `-0x17b` seed. So "the beaker will already contain atoms"
+means **eight**, spread one per column round robin, coloured 2, 1, 7, 6, 5, 4,
+3, 2 - deterministic apart from the starting column.
+
+### `1000:0236` - place N Crystals, and the record they get
+
+    for i := 1 to n do begin
+      crystal[i].arriving  := 1;
+      crystal[i].departing := 0;
+      crystal[i].step      := 0;
+      repeat crystal[i].col := Random(6)+1; crystal[i].row := Random(5)+1
+      until cells[crystal[i].row, crystal[i].col] = 0;
+      while (crystal[i].row <> 5) and (cells[row+1, col] = 0) do Inc(row);
+      cells[row, col]   := 18;
+      crystal[i].active := 0;
+      crystal[i].timer  := (dispenseInterval * 10 * i) div n
+    end
+
+**The Crystal has a record**, 10 bytes, `array[1..n]` based at `[BP-0x1f8]` of
+`1000:9e53`'s frame. Element 0 would sit exactly on top of the objective block
+- `-0x1f8` IS `rotateColour` - but only 1..n are ever touched, so the two
+coexist. Anyone chasing these offsets should expect that overlap and not read
+it as aliasing.
+
+| offset | field |
+|---|---|
+| +0 | **arriving** - the reverse fade is running |
+| +1 | **active** |
+| +2 | **departing** - the forward fade is running |
+| +3 | fade step counter |
+| +4 | col |
+| +5 | row |
+| +6, +7 | destination col, row |
+| +8 | timer, a word |
+
+The timers are **staggered**: `interval * 10 * i div n` spreads n crystals
+evenly over one full period, so they never all jump at once.
+
+### `1000:0560` - the Crystal teleports, and `CRFADE` is how
+
+Called from `1000:47c4`, guarded by `waveMode = 5`, immediately **before** the
+beaker update `1000:22a6`. Per crystal, per frame:
+
+    if arriving then
+      if cells[row,col] = 18 then arriving := false
+      else Dec(cells[row,col], 19);          { walk the fade BACKWARDS }
+
+    if departing then begin
+      Dec(step);
+      if step = 0 then begin
+        col := destCol;  row := destRow;
+        cells[row,col]  := 151;              { = 18 + 19*7, the LAST fade frame }
+        marked[row,col] := 0;
+        departing := false;  arriving := true;
+        PlaySound(CRFADE)
+      end
+    end;
+
+    if timer = 0 then begin
+      timer := dispenseInterval * 10;
+      tries := 10;
+      repeat                                  { choose somewhere to go }
+        destCol := Random(6) + 1;
+        r := 1; while (r < 5) and (cells[r,destCol] = 0) do Inc(r);
+        destRow := r + Random(5 - r);
+        if (cells[destRow,destCol] <> 0) and (cells[destRow,destCol] < 11)
+          then tries := 1;                    { an ordinary atom - take it }
+        Dec(tries)
+      until tries = 0;
+      marked[row,col] := 1;                   { the fade pass animates it out }
+      departing := true;  step := 7;
+      PlaySound(CRFADE)
+    end
+    else Dec(timer)
+
+So the animation the notes guessed at is exactly right, and now derived: the
+crystal **marks its own cell** so the ordinary fade pass runs `CRFADE` forward
+over it, then reappears at the destination on frame 6 of the same family and
+walks it **backwards** to frame 0. One sprite family, played out and then in.
+`CRFADE1` being its static sprite is not an oddity; frame 0 is where it rests.
+
+Two consequences worth stating. The destination is chosen to be **an occupied
+cell holding an ordinary atom**, and landing there **overwrites it** - so a
+Crystal eats an atom every time it moves, which is what "contaminating the
+beaker" means mechanically. And it moves every `interval * 10` frames, so it
+speeds up with the wave progression exactly as the dispenser does.
+
+### `1000:041c` - CORRECTION: this is the removal, not the teleport
+
+`PLAN.md` and these notes both carried `1000:041c` as "the Crystal's teleport".
+It is not. `1000:0e08`, the AntiMatter blast, calls it at `1000:0f47` with the
+cell it is about to destroy:
+
+    for i := 1 to crystalCount do
+      if crystal[i].arriving and (crystal[i].col = col) and (crystal[i].row = row)
+      then begin
+        if counter <> 0 then Dec(counter);    { the wave objective }
+        crystal[i].arriving := 0
+      end
+
+That is the whole reason a crystal is "removed with Anti-Matter, never by
+matching": nothing else calls it. The teleport is `1000:0560`, above.
+
+### `1000:04ca` - and the record follows its cell down
+
+The gravity pass calls it at `1000:2750` whenever a cell holding type 18 falls
+a row, with the old and new positions; it finds the record at the old position
+and rewrites its `col`/`row`. Without it a crystal that settled a row would
+become invulnerable, because `041c` would look for it where it no longer is.
+
+### `1000:4bf6` - the beaker morph, and it is a ROTATION
+
+    for row := 1 to 5 do
+      for col := 1 to 6 do
+        if (cells[row,col] > 0) and (cells[row,col] < 8)
+           and (marked[row,col] = 0) then begin
+          Inc(cells[row,col]);
+          if cells[row,col] = 8 then cells[row,col] := 1
+        end;
+    PlaySound(SELECT)
+
+Every settled ordinary atom steps to the **next** colour, 7 wrapping to 1.
+Specials, Flashium and anything mid-fade are skipped - the `< 8` test excludes
+a fading cell for free, since a fading cell holds `type + 19*frame`.
+
+The obvious guess would have been "each atom becomes a random other atom", and
+it is wrong in a way that changes the mechanic completely. A uniform rotation
+is a **permutation**, so every chain in the beaker survives it intact. What it
+destroys is the player's *plan*: the atoms in the test tube and in the network
+do not morph, so the two reds you were saving for the beaker's reds are now
+looking at greens.
