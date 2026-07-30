@@ -379,6 +379,7 @@ public:
     const WaveObjective& objective() const { return objective_; }
     const WaveProgress& progress() const { return progress_; }
     const TaskDisplay& taskDisplay() const { return task_; }
+    const std::vector<Crystal>& crystals() const { return crystals_; }
 
     // Runs `1000:86b8`'s briefing for the wave the progress is on and seeds
     // the play state from it - `1000:3ac7`. `replay` is the original's
@@ -510,6 +511,8 @@ private:
     WaveObjective objective_;
     WaveProgress progress_;
     TaskDisplay task_;
+    // `1000:0236`'s array. Only mode 5 ever has any.
+    std::vector<Crystal> crystals_;
     // Seeded 720 at `1000:3b00`, reloaded at `1000:4b6d`. ONE timer serves
     // both the Task Display rotation and the beaker morph.
     int taskTimer_ = kTaskTimerFrames;

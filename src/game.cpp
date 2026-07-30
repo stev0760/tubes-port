@@ -227,6 +227,14 @@ Game::Game(int cols, int rows, Difficulty diff, uint32_t seed,
     board_.setRunObserver([this](RunKind k, int8_t type) {
         creditObjective(k, type);
     });
+    // `1000:04ca` and `1000:041c`, the two places outside the crystal's own
+    // tick that touch its record.
+    board_.setCrystalFellObserver([this](int c, int from, int to) {
+        crystalCellFell(crystals_, c, from, to);
+    });
+    board_.setCrystalBlastedObserver([this](int c, int r) {
+        removeCrystalAt(crystals_, objective_, c, r);
+    });
 }
 
 // `1000:86b8` without the drawing, then `1000:3a67`'s prologue at `1000:3ac7`.
@@ -286,17 +294,17 @@ void Game::startWave(bool replay) {
         placeMarkedAtoms(board_, progress_.marked, objective_.markedCovered,
                          objective_.markedXenon, roll);
     }
+    crystals_.clear();
+    if (objective_.mode == WaveMode::kCrystals) {
+        placeCrystals(board_, crystals_, progress_.crystals,
+                      progress_.interval, roll);
+    }
     if (objective_.preFillBeaker) {
         seedPreFilledBeaker(board_, progress_.preFill, roll);
     }
 
-    // PLACEHOLDER. One wave-setup routine is decompiled but not yet ported,
-    // so mode 5 waves place no crystals and cannot be finished:
-    //
-    //     1000:0236   place `progress.crystals` crystals     (mode 5)
-    //
-    // and `-0x189`, atoms hidden until they leave a tube, is a render rule
-    // that `board.h` records but no draw site here honours yet.
+    // PLACEHOLDER. `-0x189`, atoms hidden until they leave a tube, is a
+    // render rule that `board.h` records but no draw site here honours yet.
 }
 
 // `1000:192f`. Board calls this once per SEED - see Board::setRunObserver.
@@ -926,6 +934,15 @@ void Game::releaseTippedAtom() {
 // One frame of the dispenser path. Speeds are the measured px/frame values,
 // and each leg ends when it reaches its target rather than after a duration.
 void Game::stepFrame(uint8_t buttons) {
+    // `1000:47c4`, immediately before the beaker update, and gated on the mode
+    // there too.
+    if (objective_.mode == WaveMode::kCrystals) {
+        if (stepCrystals(board_, crystals_, progress_.interval,
+                         [this](int n) { return random(n); })) {
+            pendingSound_ = kCrystal;   // CRFADE, sound[18]
+        }
+    }
+
     updateBeaker();
 
     stepTube(buttons);

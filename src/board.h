@@ -203,6 +203,30 @@ public:
         onRun_ = std::move(f);
     }
 
+    // The Crystal's teleport marks its own cell so the ordinary fade pass runs
+    // `CRFADE` forward over it - `1000:0560`. Nothing else outside Board
+    // touches this plane.
+    void setMarked(int c, int r, bool on);
+
+    // `1000:2729`. When a cell holding a Crystal falls a row, the crystal's
+    // record has to follow it (`1000:04ca`) or the AntiMatter removal would
+    // look for it where it no longer is. The test is `cell mod 19 = 18`, so a
+    // crystal mid-teleport counts too.
+    void setCrystalFellObserver(std::function<void(int c, int from, int to)> f) {
+        onCrystalFell_ = std::move(f);
+    }
+
+    // `1000:0f24`, inside the blast's per-cell loop and BEFORE the cell is
+    // overwritten. This is the only way a Crystal is ever removed, which is
+    // what "removed with Anti-Matter, never by matching" means in code.
+    //
+    // The guard the original writes here is `cell mod 18 = 0`, not the
+    // `mod 19 = 18` the gravity pass uses. They agree only because types
+    // 11..17 have null fade pointers; both are kept as written.
+    void setCrystalBlastedObserver(std::function<void(int c, int r)> f) {
+        onCrystalBlasted_ = std::move(f);
+    }
+
     // The first cell holding exactly `want`, in row-major order - `1000:0c82`,
     // which scans the 30-byte plane with a byte search and divides the index
     // by 6. Matching is on the RAW cell, so a fading atom is never found.
@@ -235,6 +259,8 @@ private:
     bool specialsEnabled_ = true;
     int objectivesCleared_ = 0;
     std::function<void(RunKind, int8_t)> onRun_;
+    std::function<void(int, int, int)> onCrystalFell_;
+    std::function<void(int, int)> onCrystalBlasted_;
 };
 
 }  // namespace tubes

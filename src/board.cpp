@@ -63,6 +63,11 @@ void Board::set(int c, int r, Cell raw) {
     cells_[idx(c, r)] = raw;
 }
 
+void Board::setMarked(int c, int r, bool on) {
+    if (!inBounds(c, r)) return;
+    marked_[idx(c, r)] = on ? 1 : 0;
+}
+
 void Board::setObjective(int c, int r, bool on) {
     if (!inBounds(c, r)) return;
     objective_[idx(c, r)] = on ? 1 : 0;
@@ -226,6 +231,11 @@ void Board::gravityPass(BoardStep& out) {
             marked_[idx(c, r)] = 0;
             objective_[idx(c, dst)] = objective_[idx(c, r)];
             objective_[idx(c, r)] = 0;
+
+            // `1000:2729`: `cell mod 19 = 18` is a Crystal in any fade frame.
+            if (onCrystalFell_ && v % kFadeStride == kCrystal) {
+                onCrystalFell_(c, r, dst);
+            }
         }
     }
 }
@@ -276,9 +286,12 @@ void Board::applyAntiMatter(BoardStep& out) {
 
     for (int rr = top; rr < top + rowSpan && rr < rows_; ++rr) {
         for (int cc = left; cc < left + colSpan && cc < cols_; ++cc) {
-            if (cells_[idx(cc, rr)] == 0) continue;
+            const Cell was = cells_[idx(cc, rr)];
+            if (was == 0) continue;
             cells_[idx(cc, rr)] = kAntiMatter;
             marked_[idx(cc, rr)] = 1;
+            // `1000:0f24`, and the original's own `mod 18` test.
+            if (onCrystalBlasted_ && was % 18 == 0) onCrystalBlasted_(cc, rr);
         }
     }
     out.soundType = kAntiMatter;

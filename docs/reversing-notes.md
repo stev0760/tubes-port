@@ -5841,14 +5841,18 @@ it as aliasing.
 
 | offset | field |
 |---|---|
-| +0 | **arriving** - the reverse fade is running |
-| +1 | **active** |
+| +0 | **active** - `1000:041c` tests this and clears it |
+| +1 | **arriving** - the reverse fade is running |
 | +2 | **departing** - the forward fade is running |
 | +3 | fade step counter |
 | +4 | col |
 | +5 | row |
 | +6, +7 | destination col, row |
 | +8 | timer, a word |
+
+`+0` and `+1` were the wrong way round on a first reading and are fixed here:
+`1000:0236` writes `+0 := 1` first and `+1 := 0` last, and `1000:041c` tests
+`+0` and clears it, so `+0` is the live flag.
 
 The timers are **staggered**: `interval * 10 * i div n` spreads n crystals
 evenly over one full period, so they never all jump at once.
@@ -5858,7 +5862,7 @@ evenly over one full period, so they never all jump at once.
 Called from `1000:47c4`, guarded by `waveMode = 5`, immediately **before** the
 beaker update `1000:22a6`. Per crystal, per frame:
 
-    if arriving then
+    if arriving then                        { record +1 }
       if cells[row,col] = 18 then arriving := false
       else Dec(cells[row,col], 19);          { walk the fade BACKWARDS }
 
@@ -5909,11 +5913,17 @@ It is not. `1000:0e08`, the AntiMatter blast, calls it at `1000:0f47` with the
 cell it is about to destroy:
 
     for i := 1 to crystalCount do
-      if crystal[i].arriving and (crystal[i].col = col) and (crystal[i].row = row)
+      if crystal[i].active and (crystal[i].col = col) and (crystal[i].row = row)
       then begin
         if counter <> 0 then Dec(counter);    { the wave objective }
-        crystal[i].arriving := 0
+        crystal[i].active := 0
       end
+
+and the guard in front of it, at `1000:0f24`, is **`cell mod 18 = 0`** - not
+the `cell mod 19 = 18` the gravity pass uses at `1000:272f`. The two tests
+agree in practice only because types 11..17 have null fade pointers and so
+never hold a value that is a multiple of 18 without being a Crystal. Both are
+transliterated as written rather than unified.
 
 That is the whole reason a crystal is "removed with Anti-Matter, never by
 matching": nothing else calls it. The teleport is `1000:0560`, above.

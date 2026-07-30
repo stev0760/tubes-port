@@ -120,6 +120,13 @@ Working, and transliterated rather than invented:
   routines, the six counters and the progression at `1000:a616`, the scoring
   hook `1000:192f` firing once per SEED, the 720-frame Task Display clock and
   the wave-complete test - in `src/wave.{h,cpp}`, with `--wave N` to play one
+- the **wave setup**: the marked atoms with their covering and Xenon variants
+  (`1000:0000`), the pre-filled beaker (`1000:035e`), and the beaker morph
+  (`1000:4bf6`) - which is a colour ROTATION, so it preserves every chain
+- **the Mischief Crystal, whole**: placed with staggered clocks (`1000:0236`),
+  teleporting through `CRFADE` played out and back in (`1000:0560`), its record
+  following its cell down the gravity pass (`1000:04ca`), and removable only by
+  AntiMatter (`1000:041c`)
 - the **Task Display**, `1000:2a4a` - the ball and the count over it
 - music: all ten songs, correct at the register level
 - **sound effects**: the eleven fade families plus DROP, HITGLASS and HITATOM,
@@ -131,8 +138,8 @@ Absent entirely:
 | Missing | Size |
 |---|---|
 | Wave structure: the briefing screen, the stats blackboard, the Continue screen | large |
-| Four wave-setup routines: marked atoms, crystals, the pre-filled beaker, the beaker morph | medium, and they gate 9 of the 25 objectives |
 | `1000:2894`, the chain illustration in the Task Display for modes 2 and 3 | small |
+| The hidden-atom modifier `-0x189` - `MYSTBALL` drawn in place of the real type | small |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |
 | Demo playback (`.SCR` replay through the same loop) | **DONE** - matches end to end, terminates on the original's own last byte |

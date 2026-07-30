@@ -23,6 +23,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <vector>
 
 #include "board.h"
 
@@ -217,6 +218,60 @@ void seedPreFilledBeaker(Board& board, int n, const RollFn& roll);
 // it. Specials, Flashium and anything mid-fade are skipped - the `< 8` test
 // excludes a fading cell for free, since a fading cell holds `type + 19*frame`.
 void rotateBeakerColours(Board& board);
+
+// ---------------------------------------------------------------------------
+// The Mischief Crystal.
+//
+// It is the one atom with a life of its own: it is placed by the wave setup,
+// teleports on a clock of its own, eats an atom every time it lands, and can
+// only ever be removed with AntiMatter. Four routines and one record:
+//
+//     1000:0236   place them, and stagger their clocks
+//     1000:0560   the tick - the teleport state machine
+//     1000:041c   the removal, called by the AntiMatter blast
+//     1000:04ca   keep the record following its cell down the gravity pass
+// ---------------------------------------------------------------------------
+
+// `array[1..n]` of 10 bytes at `1000:9e53`'s `[BP-0x1f8]`. Element 0 would sit
+// exactly on top of the objective block - `-0x1f8` IS `rotateColour` - but
+// only 1..n are ever touched, so the two coexist in the original's frame.
+struct Crystal {
+    bool active = false;      // +0, and `1000:041c` is what clears it
+    bool arriving = false;    // +1, the reverse fade is running
+    bool departing = false;   // +2, the forward fade is running
+    int step = 0;             // +3
+    int col = 0;              // +4
+    int row = 0;              // +5
+    int destCol = 0;          // +6
+    int destRow = 0;          // +7
+    int timer = 0;            // +8, a word
+};
+
+// `1000:0236`. The clocks are staggered `interval * 10 * i div n`, so n
+// crystals spread evenly over one period instead of all jumping together.
+void placeCrystals(Board& board, std::vector<Crystal>& crystals, int n,
+                   int interval, const RollFn& roll);
+
+// `1000:0560`, called from `1000:47c4` immediately before the beaker update.
+// Returns true on any frame a crystal starts or finishes a jump, which is
+// when the original plays `CRFADE`.
+//
+// The animation is one fade family played out and then back in: the crystal
+// marks its own cell so the ordinary fade pass runs `CRFADE` forward over it,
+// then reappears at the destination holding the LAST fade frame and walks that
+// value backwards to the static sprite. `CRFADE1` being its resting sprite is
+// not an oddity - frame 0 is where it lives.
+bool stepCrystals(Board& board, std::vector<Crystal>& crystals, int interval,
+                  const RollFn& roll);
+
+// `1000:041c`. The blast tells it about a cell it is destroying; if a crystal
+// is there, the wave's objective ticks down and the record goes inactive.
+void removeCrystalAt(std::vector<Crystal>& crystals, WaveObjective& obj,
+                     int col, int row);
+
+// `1000:04ca`, from the gravity pass.
+void crystalCellFell(std::vector<Crystal>& crystals, int col, int fromRow,
+                     int toRow);
 
 // `1000:192f`, called by every matcher with the orientation of the run it just
 // found and the type that run resolved to. Returns true if it counted - which

@@ -141,6 +141,104 @@ void rotateBeakerColours(Board& board) {
     }
 }
 
+void placeCrystals(Board& board, std::vector<Crystal>& crystals, int n,
+                   int interval, const RollFn& roll) {
+    crystals.clear();
+    if (n <= 0) return;
+    crystals.resize(static_cast<size_t>(n));
+    for (int i = 1; i <= n; ++i) {
+        Crystal& x = crystals[static_cast<size_t>(i - 1)];
+        x.active = true;
+        x.departing = false;
+        x.step = 0;
+        for (int guard = 0; guard < 1000; ++guard) {
+            x.col = roll(board.cols());
+            x.row = roll(board.rows());
+            if (board.at(x.col, x.row) == kEmpty) break;
+        }
+        x.row = restRow(board, x.col, x.row);
+        board.set(x.col, x.row, static_cast<Cell>(kCrystal));
+        x.arriving = false;
+        // Staggered, so n crystals never jump on the same frame.
+        x.timer = interval * 10 * i / n;
+    }
+}
+
+bool stepCrystals(Board& board, std::vector<Crystal>& crystals, int interval,
+                  const RollFn& roll) {
+    bool sound = false;
+    for (Crystal& x : crystals) {
+        if (!x.active) continue;
+
+        // Arriving: walk the fade value BACKWARDS one frame per step until it
+        // is the static sprite again.
+        if (x.arriving) {
+            const Cell v = board.at(x.col, x.row);
+            if (v == static_cast<Cell>(kCrystal)) {
+                x.arriving = false;
+            } else {
+                board.set(x.col, x.row, static_cast<Cell>(v - kFadeStride));
+            }
+        }
+
+        // Departing: the ordinary fade pass is animating the cell out. When
+        // the seven steps are up, land at the destination on the LAST fade
+        // frame and start walking back.
+        if (x.departing && --x.step == 0) {
+            x.col = x.destCol;
+            x.row = x.destRow;
+            board.set(x.col, x.row,
+                      static_cast<Cell>(kCrystal + kFadeStride * 7));
+            board.setMarked(x.col, x.row, false);
+            x.departing = false;
+            x.arriving = true;
+            sound = true;
+        }
+
+        if (x.timer != 0) {
+            --x.timer;
+            continue;
+        }
+
+        // The clock. Pick somewhere to go, preferring a cell that holds an
+        // ordinary atom - landing there OVERWRITES it, which is what
+        // "contaminating the beaker" means mechanically.
+        x.timer = interval * 10;
+        int tries = 10;
+        do {
+            x.destCol = roll(board.cols());
+            int r = 0;
+            while (r < board.rows() - 1 && board.at(x.destCol, r) == kEmpty) ++r;
+            x.destRow = r + roll(board.rows() - 1 - r);
+            const Cell v = board.at(x.destCol, x.destRow);
+            if (v != kEmpty && v < kXenon) tries = 1;
+            --tries;
+        } while (tries != 0);
+
+        board.setMarked(x.col, x.row, true);   // the fade pass takes it from here
+        x.departing = true;
+        x.step = 7;
+        sound = true;
+    }
+    return sound;
+}
+
+void removeCrystalAt(std::vector<Crystal>& crystals, WaveObjective& obj,
+                     int col, int row) {
+    for (Crystal& x : crystals) {
+        if (!x.active || x.col != col || x.row != row) continue;
+        if (obj.counter != 0) --obj.counter;
+        x.active = false;
+    }
+}
+
+void crystalCellFell(std::vector<Crystal>& crystals, int col, int fromRow,
+                     int toRow) {
+    for (Crystal& x : crystals) {
+        if (x.col == col && x.row == fromRow) x.row = toRow;
+    }
+}
+
 Objective objectiveForWave(int wave) {
     if (wave < 1 || wave > kWaveCount) return O::kAnyAtom;
     return kWaveTable[wave - 1];

@@ -1623,6 +1623,115 @@ void testMorphSkipsAClearingCell() {
     check(b.at(0, 4) == before, "a clearing cell does not morph");
 }
 
+
+void testCrystalsArePlacedWithStaggeredClocks() {
+    using namespace tubes;
+    Board b(6, 5);
+    std::vector<Crystal> xs;
+    FixedRolls roll{{1}};
+    placeCrystals(b, xs, 2, 50, std::ref(roll));
+    check(xs.size() == 2, "two crystals are placed");
+    check(b.count() == 2, "and both are in the beaker");
+    for (const Crystal& x : xs) {
+        check(b.typeAt(x.col, x.row) == kCrystal, "each record points at its cell");
+        check(x.active && !x.arriving && !x.departing, "and starts settled");
+    }
+    // `interval * 10 * i div n` - evenly spread over one period.
+    check(xs[0].timer == 250 && xs[1].timer == 500,
+          "the two clocks are staggered across one period");
+}
+
+void testCrystalTeleportsOutAndBackIn() {
+    using namespace tubes;
+    Board b = make({
+        "......",
+        "......",
+        "......",
+        "......",
+        "12345.",
+    });
+    std::vector<Crystal> xs(1);
+    Crystal& x = xs[0];
+    x.active = true;
+    x.col = 0; x.row = 4;
+    b.set(0, 4, static_cast<Cell>(kCrystal));
+    x.timer = 0;                       // due now
+
+    FixedRolls roll{{2}};              // destination column 2, row offset 2
+    check(stepCrystals(b, xs, 50, std::ref(roll)), "the clock fires and plays CRFADE");
+    check(x.departing && x.step == 7, "it leaves over seven steps");
+    check(b.isMarked(0, 4), "and marks its own cell so the fade pass runs it out");
+    check(x.timer == 500, "the clock reloads to interval * 10");
+
+    for (int i = 0; i < 6; ++i) {
+        stepCrystals(b, xs, 50, std::ref(roll));
+        check(x.departing, "still leaving");
+    }
+    check(stepCrystals(b, xs, 50, std::ref(roll)), "the seventh step lands it");
+    check(!x.departing && x.arriving, "and turns the fade around");
+    check(x.col == x.destCol && x.row == x.destRow, "the record moved with it");
+    // 151 = 18 + 19*7, the LAST frame of CRFADE - it walks back from there.
+    check(b.at(x.col, x.row) == kCrystal + kFadeStride * 7,
+          "it arrives on the last fade frame");
+    check(!b.isMarked(x.col, x.row), "with the destination unmarked");
+
+    // Seven steps of 19 walk 151 back to 18, and the flag clears on the frame
+    // AFTER that - the test is `if cell = 18 then arriving := false`, so it
+    // costs one more tick to notice.
+    for (int i = 0; i < 7; ++i) stepCrystals(b, xs, 50, std::ref(roll));
+    check(b.typeAt(x.col, x.row) == kCrystal, "and walks back to the static sprite");
+    check(x.arriving, "the flag is still set on the frame it arrives");
+    stepCrystals(b, xs, 50, std::ref(roll));
+    check(!x.arriving, "and clears on the next one");
+}
+
+void testCrystalGoesOnlyToAntiMatter() {
+    using namespace tubes;
+    Game g(6, 5, Difficulty::k101, 5150u);
+    while (g.progress().wave < 50) g.advanceWave();
+    g.startWave();
+    check(g.waveMode() == WaveMode::kCrystals, "wave 50 is mode 5");
+    check(g.objective().counter == 1, "and asks for one crystal");
+    check(g.crystals().size() == 1, "which is in the beaker");
+
+    const int col = g.crystals()[0].col;
+    const int row = g.crystals()[0].row;
+    Board& b = g.boardMutable();
+
+    // Clearing a chain right beside it does nothing at all.
+    const int other = (col + 1) % 6;
+    b.set(other, 2, kRedium);
+    b.set(other, 3, kRedium);
+    b.set(other, 4, kRedium);
+    for (int i = 0; i < 12; ++i) g.stepOnce(0);
+    check(g.objective().counter == 1, "a chain beside a crystal does not remove it");
+
+    // AntiMatter landing on it does. `1000:0e08` blasts 3x3 and tells
+    // `1000:041c` about every cell it consumes.
+    b.set(col, row, static_cast<Cell>(kCrystal));
+    b.set(col, row - 1 < 0 ? row + 1 : row - 1, kAntiMatter);
+    for (int i = 0; i < 4; ++i) g.stepOnce(0);
+    check(g.objective().counter == 0, "AntiMatter is the only thing that removes one");
+}
+
+void testCrystalRecordFollowsItsCellDown() {
+    using namespace tubes;
+    // `1000:04ca`. Without it a crystal that settled a row would be
+    // invulnerable, because the removal would look where it no longer is.
+    Board b(6, 5);
+    std::vector<Crystal> xs(1);
+    xs[0].active = true;
+    xs[0].col = 3;
+    xs[0].row = 1;
+    b.set(3, 1, static_cast<Cell>(kCrystal));
+    b.setCrystalFellObserver([&xs](int c, int from, int to) {
+        crystalCellFell(xs, c, from, to);
+    });
+    b.step();
+    check(b.typeAt(3, 2) == kCrystal, "the cell fell one row");
+    check(xs[0].row == 2, "and the record followed it");
+}
+
 }  // namespace
 
 int main() {
@@ -1703,6 +1812,10 @@ int main() {
     testMarkedAtomsAreFlaggedAndCanBeCovered();
     testMorphIsARotationNotARoll();
     testMorphSkipsAClearingCell();
+    testCrystalsArePlacedWithStaggeredClocks();
+    testCrystalTeleportsOutAndBackIn();
+    testCrystalGoesOnlyToAntiMatter();
+    testCrystalRecordFollowsItsCellDown();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
