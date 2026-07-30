@@ -145,6 +145,11 @@ bool Board::matchAt(int c, int r, int dc, int dr, RunKind kind, BoardStep& out) 
         }
     }
 
+    // `1000:1c3b`, on the same path as the award below and with the same
+    // per-seed frequency. The type passed is what the run RESOLVED to after
+    // any wildcard adoption, which is why an all-Flashium run arrives as 8.
+    if (onRun_) onRun_(kind, static_cast<int8_t>(matchType));
+
     out.award += awardFor(kind);
     out.soundType = static_cast<int8_t>(matchType);   // the family sound follows what it matched AS
     return true;

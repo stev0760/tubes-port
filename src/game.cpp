@@ -217,6 +217,85 @@ Game::Game(int cols, int rows, Difficulty diff, uint32_t seed,
     // its first atom appears, not thirty-three frames before it.
     spawnTimer_ = 1;
     tube_.reserve(static_cast<size_t>(tubeCapacity_));
+
+    // Endurance until a caller says otherwise. `1000:1b2e:4e51` sets mode 1
+    // for it and the objective block stays zero, which is exactly what every
+    // `mode <> 0 and mode <> 1` test in the original is looking for.
+    objective_.mode = WaveMode::kEndurance;
+    progress_.interval = spawnInterval_;
+    progress_.velocity = networkVel_;
+    board_.setRunObserver([this](RunKind k, int8_t type) {
+        creditObjective(k, type);
+    });
+}
+
+// `1000:86b8` without the drawing, then `1000:3a67`'s prologue at `1000:3ac7`.
+void Game::startWave(bool replay) {
+    applyBriefing(objectiveForWave(progress_.wave), progress_, objective_,
+                  [this](int n) { return random(n); }, replay);
+    task_ = seedTaskDisplay(objective_);
+    waveComplete_ = false;              // 1000:3a6b
+
+    // `1000:3a67` is called once per WAVE, so its prologue is a per-wave
+    // reset, not a per-session one. Only the parts this port already models
+    // are listed; each has its address.
+    board_.clear();                     // 1000:3b06..3b3b, three FillChars
+    for (int i = 1; i <= kAtomRecords; ++i) atoms_[i] = Falling{};
+    tube_.clear();
+    scorePending_ = 0;                  // 1000:3a7b
+    scoreMultiplier_ = 0;               // 1000:3a85
+    rampSteps_ = 0;
+    rampIncrement_ = 0;
+    clearTimer_ = 0;
+    bonusAward_ = 0;                    // 1000:3a8d - per WAVE, not per session
+    flashTick_ = 1;                     // 1000:3ab3
+    flashColour_ = kRedium;             // 1000:3ab8
+    taskTimer_ = kTaskTimerFrames;      // 1000:3b00
+    spawnTimer_ = 1;                    // 1000:3be0 - the first atom is on frame zero
+
+    // `1000:43d6`, and it is per WAVE for the same reason: every wave starts
+    // the tube in a fresh random column.
+    //
+    // KNOWN DEVIATION, and flagged rather than papered over. The constructor
+    // makes this same roll, because for Endurance the constructor IS the wave
+    // setup - `1000:9e53` runs `1000:3a67` once and never briefs. A wave-mode
+    // caller therefore spends one Random call more than the original before
+    // its first wave. It costs nothing today and will come out when 9e53's
+    // loop is ported and the constructor splits into session and wave setup.
+    tubeColumn_ = random(kAtomSlots);
+    tubeX_ = kTubeStopX[tubeColumn_ + 1];
+    tubeTargetX_ = tubeX_;
+    tubeState_ = 0;
+    tubePhase_ = tubephase::kUpright;
+    tipDivider_ = 0;
+    moveTimer_ = 0;
+
+    spawnInterval_ = progress_.interval;
+    networkVel_ = progress_.velocity;
+
+    // The one modifier that is already implemented: `1000:1afe` refuses to
+    // seed or extend a run in the disabled colour.
+    board_.setDisabledType(objective_.disabledColour);
+    board_.setObjectiveMode(objective_.mode == WaveMode::kMarked);
+
+    // PLACEHOLDER. Four wave-setup routines are named but not yet decompiled,
+    // so four modifiers do nothing here yet and are left visibly undone rather
+    // than approximated:
+    //
+    //     1000:0000   place `progress.marked` marked atoms   (mode 6)
+    //     1000:0236   place `progress.crystals` crystals     (mode 5)
+    //     1000:035e   pre-fill the beaker with `preFill`     (-0x1f2)
+    //     1000:4bf6   morph every beaker cell on the timer   (-0x1f0)
+    //
+    // and `-0x189`, atoms hidden until they leave a tube, is a render rule
+    // with no site read yet either.
+}
+
+// `1000:192f`. Board calls this once per SEED - see Board::setRunObserver.
+// The routine's own first act is the mode test, so Endurance falls straight
+// through it and pays nothing for the hook.
+void Game::creditObjective(RunKind kind, int8_t matchType) {
+    creditRun(objective_, kind, matchType, task_);
 }
 
 // The fill routines `Move` the mouth's whole record into the new slot and then
@@ -640,6 +719,15 @@ void Game::spawn() {
     spawnTimer_ = spawnInterval_;
     if (atoms_[col].state != atomstate::kFree) return;
 
+    // `1000:4b31`, in the dispense path: a "live through N atoms" wave counts
+    // atoms SENT OUT, not caught. Once the count is spent the original clears
+    // the new record's `+8` instead; that field is not identified yet, and the
+    // wave ends on the same frame anyway.
+    if (objective_.mode == WaveMode::kSurvive && objective_.counter > 0) {
+        --objective_.counter;
+        task_.count = objective_.counter;
+    }
+
     Falling& a = atoms_[col];
     a = Falling{};
     a.column = col;
@@ -870,6 +958,20 @@ void Game::stepFrame(uint8_t buttons) {
     // Last, as `1000:58c5` is - after the router, so a special caught this
     // frame has already armed the ramp.
     stepScoreRamp();
+
+    // `1000:4b5f`: one counter, reloaded at 720, driving both the timed Task
+    // Display rotation and the beaker morph. The morph body is not read yet.
+    if (--taskTimer_ <= 0) {
+        taskTimer_ = kTaskTimerFrames;
+        if (taskTimerExpired(objective_, task_)) pendingSound_ = sfx::kSelect;
+    }
+
+    // `1000:5cff`, the frame tail. Endurance never reaches it - the test is
+    // `mode <> 0 and mode <> 1` there too.
+    if (isWaveMode(objective_.mode) && objective_.counter == 0 &&
+        clearTimer_ == 0 && task_.count == 0) {
+        waveComplete_ = true;
+    }
 }
 
 // One frame of one atom: `FUN_1000_0f80`, transliterated, plus the catch and

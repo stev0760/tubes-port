@@ -17,6 +17,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 namespace tubes {
@@ -192,6 +193,16 @@ public:
     void setSpecialsEnabled(bool on) { specialsEnabled_ = on; }
     bool specialsEnabled() const { return specialsEnabled_; }
 
+    // `1000:192f`, the wave-objective hook. Every matcher calls it from the
+    // same unconditional path as the award - `1000:1c3b`, after the
+    // distinct-run test and before `ADD [pending], 250` - so it fires ONCE PER
+    // SEED, not once per distinct run. That distinction has been got wrong
+    // twice in this project, so it is checked here rather than assumed: a run
+    // of four ticks a wave objective down TWICE.
+    void setRunObserver(std::function<void(RunKind, int8_t)> f) {
+        onRun_ = std::move(f);
+    }
+
     // The first cell holding exactly `want`, in row-major order - `1000:0c82`,
     // which scans the 30-byte plane with a byte search and divides the index
     // by 6. Matching is on the RAW cell, so a fading atom is never found.
@@ -223,6 +234,7 @@ private:
     bool objectiveMode_ = false;
     bool specialsEnabled_ = true;
     int objectivesCleared_ = 0;
+    std::function<void(RunKind, int8_t)> onRun_;
 };
 
 }  // namespace tubes

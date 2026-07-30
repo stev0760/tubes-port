@@ -1418,6 +1418,108 @@ void testEveryWaveHasAnArm() {
     }
 }
 
+
+void testAWaveCountsDownThroughTheGame() {
+    using namespace tubes;
+    // Wave 5 is "form 3 vertical chains using any atoms" - mode 2, the
+    // orientation-only arm, whose target is the OTHER chain counter, seeded 3.
+    Game g(6, 5, Difficulty::k101, 12345u);
+    g.startWave();                     // progress starts on wave 1
+    check(g.waveMode() == WaveMode::kColour, "wave 1 is a colour-mode wave");
+
+    while (g.progress().wave < 5) g.advanceWave();
+    g.startWave();
+    check(g.waveMode() == WaveMode::kOrientation, "wave 5 is mode 2");
+    check(g.objective().counter == 3, "and asks for three chains");
+    check(g.objective().reqChain == chaincode::kVertical, "vertical ones");
+
+    // A vertical three in the bottom-left corner, stepped until it clears.
+    Board& b = g.boardMutable();
+    b.set(0, 2, kRedium);
+    b.set(0, 3, kRedium);
+    b.set(0, 4, kRedium);
+    g.stepOnce(0);
+    check(g.objective().counter == 2, "a vertical three ticks the objective down");
+    check(!g.waveComplete(), "and does not finish it");
+
+    // A horizontal three must not count in a vertical wave.
+    b.clear();
+    b.set(1, 4, kGreenium);
+    b.set(2, 4, kGreenium);
+    b.set(3, 4, kGreenium);
+    g.stepOnce(0);
+    check(g.objective().counter == 2, "a horizontal three counts for nothing");
+}
+
+void testRunOfFourTicksTheObjectiveTwice() {
+    using namespace tubes;
+    // `1000:192f` is called from the same unconditional path as the award, so
+    // it fires once per SEED. Two of this project's worst bugs were "once per
+    // event" assumptions, so this is the check that says which it is.
+    Game g(6, 5, Difficulty::k101, 999u);
+    while (g.progress().wave < 5) g.advanceWave();
+    g.startWave();
+    check(g.objective().counter == 3, "wave 5 asks for three");
+
+    Board& b = g.boardMutable();
+    b.set(0, 1, kBluium);
+    b.set(0, 2, kBluium);
+    b.set(0, 3, kBluium);
+    b.set(0, 4, kBluium);
+    g.stepOnce(0);
+    check(g.objective().counter == 1, "a vertical FOUR has two seeds and pays twice");
+}
+
+void testSurviveWaveCountsAtomsDispensed() {
+    using namespace tubes;
+    Game g(6, 5, Difficulty::k101, 7u);
+    while (g.progress().wave < 2) g.advanceWave();
+    g.startWave();
+    check(g.waveMode() == WaveMode::kSurvive, "wave 2 is mode 4");
+    check(g.objective().counter == 30, "and asks for 30 atoms");
+    check(g.taskDisplay().count == 30, "which the Task Display shows");
+
+    const int before = g.objective().counter;
+    // The first dispense is on frame zero, so one step is one atom.
+    g.stepOnce(0);
+    check(g.objective().counter == before - 1, "an atom dispensed ticks it down");
+    check(g.taskDisplay().count == g.objective().counter, "the display follows");
+}
+
+void testWaveCompletesOnlyOnceNothingIsClearing() {
+    using namespace tubes;
+    Game g(6, 5, Difficulty::k101, 31337u);
+    while (g.progress().wave < 5) g.advanceWave();
+    g.startWave();
+
+    Board& b = g.boardMutable();
+    for (int c = 0; c < 3; ++c) {
+        b.set(c, 2, kCyanium);
+        b.set(c, 3, kCyanium);
+        b.set(c, 4, kCyanium);
+    }
+    g.stepOnce(0);
+    check(g.objective().counter == 0, "three vertical threes spend the objective");
+    // `1000:5cff` will not call a wave complete while the clear timer runs -
+    // that is what stops a cascade being cut off mid-animation.
+    check(!g.waveComplete(), "but the clear timer holds the wave open");
+    for (int i = 0; i < 12; ++i) g.stepOnce(0);
+    check(g.waveComplete(), "and it completes once the timer runs out");
+}
+
+void testEnduranceIgnoresAllOfIt() {
+    using namespace tubes;
+    Game g(6, 5, Difficulty::k301, 4242u);
+    check(g.waveMode() == WaveMode::kEndurance, "a Game starts in Endurance");
+    Board& b = g.boardMutable();
+    b.set(0, 2, kYellowium);
+    b.set(0, 3, kYellowium);
+    b.set(0, 4, kYellowium);
+    g.stepOnce(0);
+    check(g.score() > 0, "a match still scores");
+    check(!g.waveComplete(), "and no wave is ever complete");
+}
+
 }  // namespace
 
 int main() {
@@ -1489,6 +1591,11 @@ int main() {
     testContinueReplaysTheSameObjective();
     testMysteryWaveHidesOneOfFour();
     testEveryWaveHasAnArm();
+    testAWaveCountsDownThroughTheGame();
+    testRunOfFourTicksTheObjectiveTwice();
+    testSurviveWaveCountsAtomsDispensed();
+    testWaveCompletesOnlyOnceNothingIsClearing();
+    testEnduranceIgnoresAllOfIt();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

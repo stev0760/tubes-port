@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "board.h"
+#include "wave.h"
 
 namespace tubes {
 
@@ -366,6 +367,32 @@ public:
     int chains() const { return chains_; }
     bool gameOver() const { return gameOver_; }
 
+    // ---- Wave mode -------------------------------------------------------
+    //
+    // A Game is one WAVE, not one session. `1000:9e53` owns the loop around
+    // `1000:3a67` - brief, play, show the stats, step the progression - so
+    // the caller drives that with `startWave` and `waveComplete`.
+    //
+    // Endurance is the default and touches none of this: its mode is 1, and
+    // every wave test in the original is `mode <> 0 and mode <> 1`.
+    WaveMode waveMode() const { return objective_.mode; }
+    const WaveObjective& objective() const { return objective_; }
+    const WaveProgress& progress() const { return progress_; }
+    const TaskDisplay& taskDisplay() const { return task_; }
+
+    // Runs `1000:86b8`'s briefing for the wave the progress is on and seeds
+    // the play state from it - `1000:3ac7`. `replay` is the original's
+    // `-0x1ff`: after a Continue the objective must come back identical.
+    void startWave(bool replay = false);
+
+    // `1000:5cff`: the counter is spent, nothing is still clearing, and the
+    // Task Display has no count left to run down.
+    bool waveComplete() const { return waveComplete_; }
+
+    // `1000:a616`, and it runs ONLY on a cleared wave. The caller then calls
+    // `startWave` again for the next one.
+    void advanceWave() { progress_.advance(); }
+
     // Height of the play area in pixels; the dispenser drops across it.
     void setFallHeight(float h) { fallHeight_ = h; }
 
@@ -427,6 +454,8 @@ private:
     void catchSpecial();
     int random(int n);
     int8_t nextColour();
+    // `1000:192f`, wired to Board's per-seed hook.
+    void creditObjective(RunKind kind, int8_t matchType);
     // The original moves things a whole number of pixels per frame, so the
     // simulation steps in frames and `update()` only converts real time into
     // them.
@@ -474,6 +503,17 @@ private:
     int8_t pendingSound_ = sfx::kNone;
     int chains_ = 0;
     bool gameOver_ = false;
+
+    // Wave mode. `objective_` is `1000:9e53`'s `-0x1ef`..`-0x1ff` block,
+    // `progress_` its six counters, `task_` the three fields in `1000:3a67`'s
+    // own frame that the Task Display draws from.
+    WaveObjective objective_;
+    WaveProgress progress_;
+    TaskDisplay task_;
+    // Seeded 720 at `1000:3b00`, reloaded at `1000:4b6d`. ONE timer serves
+    // both the Task Display rotation and the beaker morph.
+    int taskTimer_ = kTaskTimerFrames;
+    bool waveComplete_ = false;
 
     float fallHeight_ = 130.0f;   // retained for callers; unused by the path
     // Counts DOWN to the next dispense and is reloaded from the interval, the
