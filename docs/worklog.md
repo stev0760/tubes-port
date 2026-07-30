@@ -2851,3 +2851,39 @@ as the wave-mode HUD counters because they were the right size and the right
 count and nothing else claimed them. The draw site indexes `DS:0x1da6` instead,
 the ordinary ball table. `0x200a` is unowned again, and `1000:2894` is the
 candidate. Shape is not ownership.
+
+### Later the same day: the four setup routines
+
+`PLAN.md` had them as the gate on nine of the 25 objectives, and they came out
+in one pass too. Three share a single idiom - pick a column that is not full,
+let the atom fall to rest - so `1000:0000`, `1000:035e` and the two cover loops
+are the same eight lines with a different fill value.
+
+The morph, `1000:4bf6`, is the one that would have been got wrong. It is a
+**rotation**: every settled ordinary atom steps to the next colour, 7 wrapping
+to 1. That is a permutation, so every chain already in the beaker survives it
+intact - which is the opposite of what "the atoms in the beaker will morph into
+another atom" suggests. What it actually destroys is the player's plan, since
+the test tube and the network do not morph with it.
+
+`1000:0236` gave up more than it was asked for: the Crystal has a 10-byte
+record, and following it produced `1000:0560` (the teleport), `1000:04ca` (the
+record following its cell down the gravity pass) and a **correction** -
+`1000:041c`, carried for months as "the Crystal's teleport", is the *removal*,
+called by the AntiMatter blast. Nothing else calls it, which is exactly why a
+crystal is "removed with Anti-Matter, never by matching".
+
+The teleport also settles an old loose end honestly: `CRFADE` is one family
+played out and then back in, and `CRFADE1` is its resting sprite because frame
+0 is where it lives. That had been the standing guess since the type table was
+read; it is derived now.
+
+Two small self-corrections landed with it, both from re-reading rather than
+from a failing test: record `+0` is `active` and `+1` is `arriving`, not the
+reverse; and the blast and the gravity pass test for a Crystal **two different
+ways** - `cell mod 18 = 0` and `cell mod 19 = 18` - which agree only because
+types 11..17 have null fade pointers. Both are transliterated as written.
+
+Wave 19 now opens with eight atoms in the beaker, wave 20 with three carrying
+the `MARKER` overlay - the first time that plane has had anything to show - and
+wave 50 with a Crystal that teleports and can be blasted. 390 checks.
