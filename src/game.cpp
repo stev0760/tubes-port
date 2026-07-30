@@ -273,22 +273,30 @@ void Game::startWave(bool replay) {
     spawnInterval_ = progress_.interval;
     networkVel_ = progress_.velocity;
 
-    // The one modifier that is already implemented: `1000:1afe` refuses to
-    // seed or extend a run in the disabled colour.
+    // `1000:1afe` refuses to seed or extend a run in the disabled colour.
     board_.setDisabledType(objective_.disabledColour);
     board_.setObjectiveMode(objective_.mode == WaveMode::kMarked);
 
-    // PLACEHOLDER. Four wave-setup routines are named but not yet decompiled,
-    // so four modifiers do nothing here yet and are left visibly undone rather
-    // than approximated:
+    // `1000:3b40`, `3b54` and `3b68` - the three placements, in this order and
+    // BEFORE the tube's column is rolled below, which is where `1000:43d6`
+    // sits. Getting the order wrong would not change the beaker but would
+    // change every roll after it.
+    auto roll = [this](int n) { return random(n); };
+    if (objective_.mode == WaveMode::kMarked) {
+        placeMarkedAtoms(board_, progress_.marked, objective_.markedCovered,
+                         objective_.markedXenon, roll);
+    }
+    if (objective_.preFillBeaker) {
+        seedPreFilledBeaker(board_, progress_.preFill, roll);
+    }
+
+    // PLACEHOLDER. One wave-setup routine is decompiled but not yet ported,
+    // so mode 5 waves place no crystals and cannot be finished:
     //
-    //     1000:0000   place `progress.marked` marked atoms   (mode 6)
     //     1000:0236   place `progress.crystals` crystals     (mode 5)
-    //     1000:035e   pre-fill the beaker with `preFill`     (-0x1f2)
-    //     1000:4bf6   morph every beaker cell on the timer   (-0x1f0)
     //
     // and `-0x189`, atoms hidden until they leave a tube, is a render rule
-    // with no site read yet either.
+    // that `board.h` records but no draw site here honours yet.
 }
 
 // `1000:192f`. Board calls this once per SEED - see Board::setRunObserver.
@@ -964,6 +972,11 @@ void Game::stepFrame(uint8_t buttons) {
     if (--taskTimer_ <= 0) {
         taskTimer_ = kTaskTimerFrames;
         if (taskTimerExpired(objective_, task_)) pendingSound_ = sfx::kSelect;
+        // `1000:4bf6`. The same SELECT, from the same slot at `-0x7e`.
+        if (objective_.morphBeaker) {
+            rotateBeakerColours(board_);
+            pendingSound_ = sfx::kSelect;
+        }
     }
 
     // `1000:5cff`, the frame tail. Endurance never reaches it - the test is

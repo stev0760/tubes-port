@@ -1520,6 +1520,109 @@ void testEnduranceIgnoresAllOfIt() {
     check(!g.waveComplete(), "and no wave is ever complete");
 }
 
+
+void testPreFilledBeakerIsEightRoundRobin() {
+    using namespace tubes;
+    // `1000:035e`. Eight atoms, one per column round robin from a random
+    // start, coloured `n mod 7 + 1` counting DOWN from 8: 2 1 7 6 5 4 3 2.
+    Board b(6, 5);
+    FixedRolls roll{{0}};                    // start at column 0
+    seedPreFilledBeaker(b, 8, std::ref(roll));
+    check(b.count() == 8, "the pre-fill places exactly eight");
+    // Six columns, eight atoms: columns 0 and 1 get two, the rest one.
+    check(b.typeAt(0, 4) == kGreenium, "the first is n mod 7 + 1 with n = 8");
+    check(b.typeAt(1, 4) == kRedium, "then n = 7 gives Redium");
+    check(b.typeAt(2, 4) == kPinkium, "then n = 6 wraps to Pinkium");
+    check(b.typeAt(0, 3) == kBluium, "the seventh lands on top of the first");
+    check(b.typeAt(1, 3) == kGreenium, "and the eighth on the second");
+}
+
+void testMarkedAtomsAreFlaggedAndCanBeCovered() {
+    using namespace tubes;
+    // `1000:0000`. Three marked atoms, then eight ordinary ones on top.
+    Board b(6, 5);
+    FixedRolls roll{{1}};                    // every roll returns 1 mod n
+    placeMarkedAtoms(b, 3, false, false, std::ref(roll));
+    int flagged = 0;
+    for (int r = 0; r < 5; ++r)
+        for (int c = 0; c < 6; ++c) if (b.isObjective(c, r)) ++flagged;
+    check(flagged == 3, "three marked atoms carry the MARKER flag");
+    check(b.count() == 3, "and nothing else is placed");
+
+    Board covered(6, 5);
+    FixedRolls roll2{{1}};
+    placeMarkedAtoms(covered, 3, true, false, std::ref(roll2));
+    check(covered.count() == 11, "the covered variant adds eight on top");
+
+    Board xenon(6, 5);
+    FixedRolls roll3{{1}};
+    placeMarkedAtoms(xenon, 3, false, true, std::ref(roll3));
+    int xenons = 0;
+    for (int r = 0; r < 5; ++r)
+        for (int c = 0; c < 6; ++c) if (xenon.typeAt(c, r) == kXenon) ++xenons;
+    check(xenons == 8, "the Xenon variant rings them with eight Xenons");
+
+    // The two modifier loops SHARE one counter seeded 8, so asking for both
+    // gets eight in total, not sixteen. That is the original's own bug and it
+    // is transliterated rather than tidied.
+    Board both(6, 5);
+    FixedRolls roll4{{1}};
+    placeMarkedAtoms(both, 3, true, true, std::ref(roll4));
+    check(both.count() == 11, "both flags share one counter of eight");
+}
+
+void testMorphIsARotationNotARoll() {
+    using namespace tubes;
+    // `1000:4bf6`. Every ordinary atom steps to the next colour and 7 wraps to
+    // 1; specials and Flashium are untouched.
+    Board b = make({
+        "......",
+        "......",
+        "......",
+        "1278..",     // Redium Greenium Pinkium Flashium
+        "34567.",
+    });
+    b.set(4, 3, kXenon);          // make() only understands single digits
+    rotateBeakerColours(b);
+    check(b.typeAt(0, 3) == kGreenium, "Redium becomes Greenium");
+    check(b.typeAt(1, 3) == kBluium, "Greenium becomes Bluium");
+    check(b.typeAt(2, 3) == kRedium, "Pinkium wraps to Redium");
+    check(b.typeAt(3, 3) == kFlashium, "Flashium is left alone");
+    check(b.typeAt(4, 3) == kXenon, "and so is a Xenon");
+    check(b.typeAt(4, 4) == kRedium, "the bottom row rotates too");
+
+    // The point of it being a rotation: it is a permutation, so a chain that
+    // existed before still exists after. A re-roll would not have that.
+    Board chain = make({
+        "......",
+        "......",
+        "5.....",
+        "5.....",
+        "5.....",
+    });
+    rotateBeakerColours(chain);
+    check(chain.typeAt(0, 2) == kYellowium && chain.typeAt(0, 3) == kYellowium &&
+              chain.typeAt(0, 4) == kYellowium,
+          "a vertical three is still a vertical three, one colour along");
+}
+
+void testMorphSkipsAClearingCell() {
+    using namespace tubes;
+    // A cell mid-fade holds `type + 19*frame`, so the `< 8` test excludes it
+    // for free - and the marked plane excludes it again.
+    Board b = make({
+        "......",
+        "......",
+        "3.....",
+        "3.....",
+        "3.....",
+    });
+    b.step();                       // marks the run and starts the fade
+    const Cell before = b.at(0, 4);
+    rotateBeakerColours(b);
+    check(b.at(0, 4) == before, "a clearing cell does not morph");
+}
+
 }  // namespace
 
 int main() {
@@ -1596,6 +1699,10 @@ int main() {
     testSurviveWaveCountsAtomsDispensed();
     testWaveCompletesOnlyOnceNothingIsClearing();
     testEnduranceIgnoresAllOfIt();
+    testPreFilledBeakerIsEightRoundRobin();
+    testMarkedAtomsAreFlaggedAndCanBeCovered();
+    testMorphIsARotationNotARoll();
+    testMorphSkipsAClearingCell();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

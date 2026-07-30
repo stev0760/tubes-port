@@ -185,6 +185,39 @@ void applyBriefing(Objective o, WaveProgress& progress, WaveObjective& obj,
 // `1000:3ac7`. The play session seeds the Task Display from the objective.
 TaskDisplay seedTaskDisplay(const WaveObjective& obj);
 
+// ---------------------------------------------------------------------------
+// The wave-setup routines. `1000:3a67`'s prologue calls the first three at
+// `3b51`, `3b65` and `3b7a`, immediately after it clears the three planes.
+//
+// All three share one idiom, worth naming once because it appears five times
+// between them: pick a column that is not full to the top, then let the atom
+// fall to the first free row. Only the fill value differs.
+// ---------------------------------------------------------------------------
+
+// `1000:0000`. Places `n` marked atoms, then - if the wave says so - buries
+// them under eight ordinary atoms or rings them with eight Xenons.
+//
+// The marked atom's own type is rolled `Random(8) + 1`, so a marked cell can
+// be a FLASHIUM. The two modifier loops share one counter, seeded 8 once, so
+// the second is dead if the first ran; `1000:643b` and `1000:6592` never set
+// both flags, which is the only reason that is harmless.
+void placeMarkedAtoms(Board& board, int n, bool covered, bool xenon,
+                      const RollFn& roll);
+
+// `1000:035e`. "The beaker will already contain atoms" - eight of them, one
+// per column round robin from a random start, coloured `n mod 7 + 1`.
+void seedPreFilledBeaker(Board& board, int n, const RollFn& roll);
+
+// `1000:4bf6`, on the 720-frame clock. Every settled ordinary atom steps to
+// the NEXT colour, 7 wrapping to 1 - a rotation, not a re-roll.
+//
+// That distinction is the whole mechanic. A uniform rotation is a permutation,
+// so every chain already in the beaker survives it intact; what it destroys is
+// the player's plan, because the test tube and the network do not morph with
+// it. Specials, Flashium and anything mid-fade are skipped - the `< 8` test
+// excludes a fading cell for free, since a fading cell holds `type + 19*frame`.
+void rotateBeakerColours(Board& board);
+
 // `1000:192f`, called by every matcher with the orientation of the run it just
 // found and the type that run resolved to. Returns true if it counted - which
 // is also what arms the rotation and the Mystery Wave reveal.

@@ -59,7 +59,87 @@ int8_t rollColour2to7(const RollFn& roll) {
     return static_cast<int8_t>(roll(6) + 2);
 }
 
+// The idiom the three setup routines share. `1000:3a67` holds the beaker as
+// `array[1..5, 1..6]`, so `cells[1, col]` - the top of a column - is one test,
+// and a full column is exactly that cell being occupied.
+int columnWithRoom(const Board& b, int col, const RollFn& roll) {
+    // The original spins here forever if every column is full. It never can:
+    // the most any wave places is `marked + 8` and the beaker holds 30. The
+    // bound is this port's, so a bug upstream shows as a missing atom rather
+    // than a hung frame.
+    for (int guard = 0; guard < 1000 && b.at(col, 0) != kEmpty; ++guard) {
+        col = roll(b.cols());
+    }
+    return col;
+}
+
+// `while (row <> 5) and (cells[row+1, col] = 0) do Inc(row)` - fall to rest.
+int restRow(const Board& b, int col, int row) {
+    while (row != b.rows() - 1 && b.at(col, row + 1) == kEmpty) ++row;
+    return row;
+}
+
 }  // namespace
+
+void placeMarkedAtoms(Board& board, int n, bool covered, bool xenon,
+                      const RollFn& roll) {
+    int col = 0;
+    for (; n != 0; --n) {
+        int row = 0;
+        for (int guard = 0; guard < 1000; ++guard) {
+            col = roll(board.cols());
+            row = roll(board.rows());
+            if (board.at(col, row) == kEmpty) break;
+        }
+        row = restRow(board, col, row);
+        // Random(8) + 1 - the marked atom may be a Flashium.
+        board.set(col, row, static_cast<Cell>(roll(8) + 1));
+        board.setObjective(col, row, true);
+    }
+
+    // One counter for both loops, and it is seeded once.
+    int k = 8;
+    if (covered) {
+        while (k != 0) {
+            col = columnWithRoom(board, col, roll);
+            board.set(col, restRow(board, col, 0),
+                      static_cast<Cell>(k % 7 + 1));
+            --k;
+            if (++col >= board.cols()) col = 0;
+        }
+    }
+    if (xenon) {
+        while (k != 0) {
+            col = columnWithRoom(board, col, roll);
+            board.set(col, restRow(board, col, 0),
+                      static_cast<Cell>(kXenon));
+            --k;
+            if (++col >= board.cols()) col = 0;
+        }
+    }
+}
+
+void seedPreFilledBeaker(Board& board, int n, const RollFn& roll) {
+    int col = roll(board.cols());
+    while (n != 0) {
+        col = columnWithRoom(board, col, roll);
+        board.set(col, restRow(board, col, 0), static_cast<Cell>(n % 7 + 1));
+        --n;
+        if (++col >= board.cols()) col = 0;
+    }
+}
+
+void rotateBeakerColours(Board& board) {
+    for (int r = 0; r < board.rows(); ++r) {
+        for (int c = 0; c < board.cols(); ++c) {
+            const Cell v = board.at(c, r);
+            if (v == kEmpty || v >= kFlashium) continue;
+            if (board.isMarked(c, r)) continue;
+            board.set(c, r, v + 1 == kFlashium ? static_cast<Cell>(kRedium)
+                                               : static_cast<Cell>(v + 1));
+        }
+    }
+}
 
 Objective objectiveForWave(int wave) {
     if (wave < 1 || wave > kWaveCount) return O::kAnyAtom;
