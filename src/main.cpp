@@ -1147,6 +1147,13 @@ int main(int argc, char** argv) {
     for (int f = 0; f < opt.autoFrames; ++f) {
         (void)f;
         game.update(scriptedInput(game), 1.0f / 60.0f);
+        if (game.waveComplete()) {
+            game.advanceWave();
+            game.startWave();
+            std::printf("Wave %d: mode %d, %d to go\n", game.progress().wave,
+                        static_cast<int>(game.waveMode()),
+                        game.objective().counter);
+        }
     }
     if (opt.autoFrames) {
         std::printf(
