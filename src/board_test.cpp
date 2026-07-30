@@ -1732,6 +1732,51 @@ void testCrystalRecordFollowsItsCellDown() {
     check(xs[0].row == 2, "and the record followed it");
 }
 
+
+void testTaskDisplayCyclesWhenNothingIsRequired() {
+    using namespace tubes;
+    // `1000:48ab`, on the four-frame Flashium tick. A wave that names no
+    // colour points its Task Display at the SAME cycling value Flashium uses,
+    // which is the rotating counter the wave 6 sampling measured.
+    WaveObjective any;
+    any.mode = WaveMode::kColour;
+    any.reqColour = 0;
+    any.anyOrientation = true;
+    TaskDisplay t = seedTaskDisplay(any);
+    tickTaskDisplay(any, t, kBluium);
+    check(t.colour == kBluium, "a colourless wave follows the flash colour");
+    check(t.chain == chaincode::kHorizontal, "and its chain picture cycles too");
+    tickTaskDisplay(any, t, kCyanium);
+    check(t.chain == chaincode::kVertical, "0 -> 1 -> 2");
+    tickTaskDisplay(any, t, kCyanium);
+    check(t.chain == chaincode::kDiagonal, "and wraps back to diagonal");
+
+    // A wave that DOES name one keeps it, and its chain picture holds still.
+    WaveObjective named;
+    named.mode = WaveMode::kColour;
+    named.reqColour = kPurplium;
+    named.reqChain = chaincode::kVertical;
+    TaskDisplay t2 = seedTaskDisplay(named);
+    tickTaskDisplay(named, t2, kBluium);
+    check(t2.colour == kPurplium, "a named colour is not overwritten");
+    check(t2.chain == chaincode::kVertical, "and a required chain does not cycle");
+
+    // Mode 2 names a colour in its record but does not require one, so it
+    // cycles anyway - which is why the mode is in the original's test.
+    WaveObjective orient;
+    orient.mode = WaveMode::kOrientation;
+    orient.reqColour = kGreenium;
+    TaskDisplay t3 = seedTaskDisplay(orient);
+    tickTaskDisplay(orient, t3, kYellowium);
+    check(t3.colour == kYellowium, "mode 2 cycles despite holding a colour");
+    check(t3.chain == orient.reqChain, "but shows the chain it wants");
+
+    // Both diagonals count, so the picture alternates between them.
+    check(t3.diagonalFlip, "the diagonal illustration flips every tick");
+    tickTaskDisplay(orient, t3, kYellowium);
+    check(!t3.diagonalFlip, "and flips back");
+}
+
 }  // namespace
 
 int main() {
@@ -1816,6 +1861,7 @@ int main() {
     testCrystalTeleportsOutAndBackIn();
     testCrystalGoesOnlyToAntiMatter();
     testCrystalRecordFollowsItsCellDown();
+    testTaskDisplayCyclesWhenNothingIsRequired();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

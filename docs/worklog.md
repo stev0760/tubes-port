@@ -2887,3 +2887,33 @@ types 11..17 have null fade pointers. Both are transliterated as written.
 Wave 19 now opens with eight atoms in the beaker, wave 20 with three carrying
 the `MARKER` overlay - the first time that plane has had anything to show - and
 wave 50 with a Crystal that teleports and can be blasted. 390 checks.
+
+### And `1000:2894`
+
+Small, and it closed two things at once.
+
+It draws **three half-size balls in the shape of the required chain** - a row
+for code 1, a column for code 2, and a diagonal that **alternates direction**
+every flash tick because both diagonals count. So the orientation numbering is
+confirmed a fourth time, and visually rather than by inference.
+
+The sprites come from `DS:0x200a`, which these notes had attributed to the Task
+Display on the strength of size and count, then withdrawn when `1000:2a4a`
+turned out to index `DS:0x1da6` instead. Both were right: the count modes draw
+one full-size ball, the chain modes draw three small ones. The loader at
+`1000:ad41` names them `SRBALL` .. `SPNKBALL`.
+
+It also forced a proper reading of the **draw argument order**, and that
+corrected yesterday's Task Display coordinates. `Draw` pushes `x, y, sprite`
+and Ghidra lists arguments in reverse push order, so the LAST decompiled
+argument is x. `2894` only lays out as a row and a column that way, and
+`2a4a`'s ball and `MARKER` differ by `(+2, +1)` that way - the same offset the
+beaker uses. The ball is at (6, 10), not (10, 6), which puts the count squarely
+on it and centred, since a 16-wide ball at x = 6 has its centre at 14 and the
+count is centred about 14.
+
+And the tail of the Flashium tick at `1000:48ab` explains the rotating counter
+the wave 6 sampling measured: when a wave names no colour, `taskColour` is
+pointed at the same cycling variable Flashium uses. When the orientation is
+free, the chain picture cycles as well. Both are cosmetic - they move
+`1000:3a67`'s copies, never the objective's.

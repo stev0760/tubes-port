@@ -460,6 +460,22 @@ TaskDisplay seedTaskDisplay(const WaveObjective& obj) {
     return t;
 }
 
+void tickTaskDisplay(const WaveObjective& obj, TaskDisplay& task,
+                     int8_t flashColour) {
+    // 1000:48ab. Anything that does not name one colour follows Flashium.
+    if (obj.reqColour == 0 || obj.reqColour == kFlashium ||
+        obj.mode == WaveMode::kOrientation || obj.mode == WaveMode::kSurvive ||
+        obj.mode == WaveMode::kMarked) {
+        task.colour = flashColour;
+    }
+    task.diagonalFlip = !task.diagonalFlip;             // 1000:48d8
+    if (obj.mode == WaveMode::kColour && obj.anyOrientation) {  // 1000:48e6
+        task.chain = (task.chain == chaincode::kVertical)
+                         ? chaincode::kDiagonal
+                         : static_cast<uint8_t>(task.chain + 1);
+    }
+}
+
 bool creditRun(WaveObjective& obj, RunKind kind, int8_t matchType,
                TaskDisplay& task) {
     const uint8_t code = chainCodeOf(kind);

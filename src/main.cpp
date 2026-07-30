@@ -155,6 +155,14 @@ enum Furn {
     kFurnCount
 };
 
+// The Task Display's half-size balls, `DS:0x200a`, loaded by name at
+// `1000:ad41`. Same seven colours in the same order as the full-size table,
+// and `1000:2894` is their only consumer in the game session.
+const char* kSmallBallFiles[7] = {
+    "SRBALL.CSP", "SGBALL.CSP", "SBBALL.CSP", "SCBALL.CSP",
+    "SPBALL.CSP", "SYBALL.CSP", "SPNKBALL.CSP",
+};
+
 const char* kFurnFiles[kFurnCount] = {
     "TUBEH.CSP",  "TUBEHS.CSP",  "TUBEHR.CSP",
     "TUBEV.CSP",  "TUBEVS.CSP",  "TUBEVR.CSP", "TUBEVRS.CSP",
@@ -545,32 +553,61 @@ void drawHud(tubes::Screen& screen, const tubes::Game& game,
 void drawTaskDisplay(tubes::Screen& screen, const tubes::Game& game,
                      const tubes::Font& big, bool haveBig,
                      const tubes::Sprite* atoms, const bool* haveAtom,
-                     const tubes::Sprite* furn, const bool* haveFurn) {
+                     const tubes::Sprite* furn, const bool* haveFurn,
+                     const tubes::Sprite* smallBall, const bool* haveSmallBall) {
     const tubes::WaveObjective& obj = game.objective();
     if (!tubes::isWaveMode(obj.mode)) return;
     if (obj.counter == 0 || obj.mysteryHidden) return;
 
     // Flashium has no sprite of its own - the original rewrites its table slot
-    // every fourth frame - so the Task Display of a wave with no required
-    // colour cycles, which is exactly what was observed in wave 6.
+    // every fourth frame - and the Task Display's colour is pointed at that
+    // same cycling value whenever the wave names no colour, so this ball
+    // cycles for exactly the waves the original's does.
     const int8_t taskColour = game.taskDisplay().colour;
     const int8_t ball = taskColour == tubes::kFlashium ? game.flashColour()
                                                        : taskColour;
     switch (obj.mode) {
         case tubes::WaveMode::kSurvive:
-            if (haveAtom[ball]) screen.draw(atoms[ball], 10, 6);
+            if (haveAtom[ball]) screen.draw(atoms[ball], 6, 10);
             break;
         case tubes::WaveMode::kCrystals:
             if (haveAtom[tubes::kCrystal]) {
-                screen.draw(atoms[tubes::kCrystal], 10, 6);
+                screen.draw(atoms[tubes::kCrystal], 6, 10);
             }
             break;
         case tubes::WaveMode::kMarked:
-            if (haveAtom[ball]) screen.draw(atoms[ball], 10, 6);
-            if (haveFurn[kMarker]) screen.draw(furn[kMarker], 11, 8);
+            if (haveAtom[ball]) screen.draw(atoms[ball], 6, 10);
+            if (haveFurn[kMarker]) screen.draw(furn[kMarker], 8, 11);
             break;
         default:
-            break;   // 1000:2894, unread
+            // Modes 2 and 3: `1000:2894` lays three half-size balls out in the
+            // shape of the required chain. Pitch 7 across and 5 down, which is
+            // what an 8x7 sprite wants.
+            if (ball >= 1 && ball <= 7 && haveSmallBall[ball]) {
+                const tubes::Sprite& s = smallBall[ball];
+                const uint8_t chain = game.taskDisplay().chain;
+                if (chain == tubes::chaincode::kVertical) {
+                    screen.draw(s, 10, 9);
+                    screen.draw(s, 10, 14);
+                    screen.draw(s, 10, 19);
+                } else if (chain == tubes::chaincode::kHorizontal) {
+                    screen.draw(s, 3, 14);
+                    screen.draw(s, 10, 14);
+                    screen.draw(s, 17, 14);
+                } else {
+                    // Both diagonals count, so the picture alternates between
+                    // them every flash tick rather than committing to one.
+                    if (!game.taskDisplay().diagonalFlip) {
+                        screen.draw(s, 3, 9);
+                        screen.draw(s, 17, 19);
+                    } else {
+                        screen.draw(s, 17, 9);
+                        screen.draw(s, 3, 19);
+                    }
+                    screen.draw(s, 10, 14);
+                }
+            }
+            break;
     }
 
     if (!haveBig) return;
@@ -1052,6 +1089,14 @@ int main(int argc, char** argv) {
     }
     std::printf("loaded %d/%d tube network sprites\n", furnLoaded,
                 static_cast<int>(kFurnCount));
+
+    // Indexed 1..7 by colour, so slot 0 stays empty the way the original's
+    // table does.
+    tubes::Sprite smallBall[8];
+    bool haveSmallBall[8] = {};
+    for (int i = 1; i <= 7; ++i) {
+        haveSmallBall[i] = loadSprite(res, kSmallBallFiles[i - 1], smallBall[i]);
+    }
     // The beaker's interior is exactly the grid: 106 x 65, with 4px walls, so
     // it sits 4px left of column 1 and level with row 1.
     tubes::Sprite beaker;
@@ -1487,7 +1532,7 @@ int main(int argc, char** argv) {
 
         drawHud(screen, game, bigFont, smallFont, haveBig, haveSmall);
         drawTaskDisplay(screen, game, bigFont, haveBig, atoms, haveAtom, furn,
-                        haveFurn);
+                        haveFurn, smallBall, haveSmallBall);
 
         screen.toRgba(pal, rgba);
         SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kScreenWidth * 4);

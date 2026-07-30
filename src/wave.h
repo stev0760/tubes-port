@@ -170,7 +170,21 @@ struct TaskDisplay {
     int8_t colour = 8;   // -0x1bf; `1000:3ad0` shows Flashium when none is set
     uint8_t chain = 0;   // -0x1c0
     int count = 0;       // -0x1be, non-zero only in mode 4
+    // -0x1c1. The diagonal illustration alternates direction every flash
+    // tick, because both diagonals count - `1000:48d8`.
+    bool diagonalFlip = false;
 };
+
+// `1000:486b`'s tail, on the four-frame Flashium tick. All presentation: it
+// moves the Task Display's own copies, never the objective's.
+//
+//   * when the wave requires no particular colour, the ball CYCLES the seven,
+//     off the same variable Flashium does - which is the rotating counter the
+//     wave 6 sampling measured and took for an effect of its own;
+//   * the diagonal illustration flips direction;
+//   * when the orientation is free, the chain illustration cycles too.
+void tickTaskDisplay(const WaveObjective& obj, TaskDisplay& task,
+                     int8_t flashColour);
 
 using RollFn = std::function<int(int)>;
 

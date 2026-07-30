@@ -71,7 +71,6 @@ Percentages are judgement calls, so the breakdown matters more than the number.
 Still unread, and most of it is inside `1000:3a67`'s 9,382 bytes:
 
 - `1000:8c38`, the Continue screen, and `1000:9499`, reached on clearing wave 75
-- `1000:2894`, the chain illustration the Task Display draws in modes 2 and 3
 - `.SPR`, `.BIN`, `.ANM`
 
 ### The engine: ~40%
@@ -127,7 +126,10 @@ Working, and transliterated rather than invented:
   teleporting through `CRFADE` played out and back in (`1000:0560`), its record
   following its cell down the gravity pass (`1000:04ca`), and removable only by
   AntiMatter (`1000:041c`)
-- the **Task Display**, `1000:2a4a` - the ball and the count over it
+- the **Task Display**, `1000:2a4a` and `1000:2894` - the count over a full-size
+  ball in the count modes, three half-size ones in the shape of the required
+  chain in the chain modes, and both cycling on the Flashium tick when the wave
+  names no colour
 - music: all ten songs, correct at the register level
 - **sound effects**: the eleven fade families plus DROP, HITGLASS and HITATOM,
   each fired from the site the original calls `PlaySound` at, through ONE voice
@@ -138,7 +140,6 @@ Absent entirely:
 | Missing | Size |
 |---|---|
 | Wave structure: the briefing screen, the stats blackboard, the Continue screen | large |
-| `1000:2894`, the chain illustration in the Task Display for modes 2 and 3 | small |
 | The hidden-atom modifier `-0x189` - `MYSTBALL` drawn in place of the real type | small |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |

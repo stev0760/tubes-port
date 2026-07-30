@@ -976,6 +976,8 @@ void Game::stepFrame(uint8_t buttons) {
     if (++flashTick_ == kFlashPeriod) {
         flashTick_ = 1;
         if (++flashColour_ == kFlashium) flashColour_ = kRedium;
+        // 1000:48ab onward, on the same tick and nothing but presentation.
+        tickTaskDisplay(objective_, task_, flashColour_);
     }
 
     if (--spawnTimer_ <= 0) spawn();

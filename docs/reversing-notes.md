@@ -5705,10 +5705,10 @@ explanation.
 
     if (counter <> 0) and not mysteryHidden then begin
       case waveMode of
-        4: Draw(ballTable[taskColour], 10, 6);
-        5: Draw(ballTable[18], 10, 6);                  { the Crystal }
-        6: Draw(ballTable[taskColour], 10, 6);
-           Draw(marker, 11, 8)
+        4: Draw(ballTable[taskColour], 6, 10);
+        5: Draw(ballTable[18], 6, 10);                  { the Crystal }
+        6: Draw(ballTable[taskColour], 6, 10);
+           Draw(marker, 8, 11)
         else Draw2894                                   { modes 2 and 3 }
       end;
       n := counter;
@@ -5718,9 +5718,11 @@ explanation.
     end
 
 The three x values step by **4**, half the big font's advance, so the number is
-**centred about x = 14** rather than moved - and at y = 10 against a ball at
-y = 6 it is drawn *over* the ball, which is exactly what the wave 6 capture
-showed ("a count overlaid on the ball").
+**centred about x = 14** - which is the centre of a 16-wide ball drawn at x = 6.
+Ball and number are the same height at the same y, so the number sits squarely
+on the ball, exactly as the wave 6 capture showed ("a count overlaid on the
+ball"). See "Sprite draw argument order" below: an earlier pass had these two
+coordinates the wrong way round.
 
 **Argument order, settled.** `OutText` pushes `x, y, colour, mode, text`, read
 off the HUD's own drops draw at `1000:5782` - `PUSH 0x109` is x = 265, which
@@ -5729,26 +5731,111 @@ push order, so a decompiled `049b(str, 1, 0x7f, 10, 10)` is `mode 1, colour
 127, y 10, x 10`. Getting this backwards would have put the whole Task Display
 on its side.
 
-### Correction: `DS:0x200a`'s 8x7 balls are NOT the Task Display
+### `DS:0x200a` and `DS:0x1da6` are BOTH the Task Display, in different modes
 
-These notes recorded the seven 8x7 sprites at `DS:0x200a` as "Wave mode HUD
-elements" because they had no known draw site and the wave 6 capture showed a
-small ball under `Chains`. The draw site is now read, and it indexes
-**`DS:0x1da6`** - the ordinary 16x16 ball table - not `0x200a`.
+An earlier note attributed the seven 8x7 sprites at `DS:0x200a` to the Task
+Display on the strength of their size and count alone. Reading `1000:2a4a`
+then showed it indexing `DS:0x1da6`, the ordinary 16x16 table, and the
+attribution was withdrawn with `1000:2894` named as the candidate. Reading
+`2894` settles it: **the candidate was right**, and both tables are the Task
+Display's.
 
-So `0x200a` is unattributed again. The candidate is `1000:2894`, the arm
-`2a4a` takes in modes 2 and 3, which has to illustrate a required *chain*
-orientation - three small balls in a row, a column or a diagonal would want
-exactly a half-size sprite and exactly seven colours.
+* modes **4, 5 and 6** - a count objective - draw ONE full-size ball from
+  `DS:0x1da6`, in `2a4a` itself;
+* modes **2 and 3** - a chain objective - call `1000:2894`, which draws
+  **three small balls from `DS:0x200a`** in the shape of the required chain.
 
-Worth noting how the wrong attribution happened: the sprites were the right
-size and the right count for what was on screen, and nothing else claimed
-them. That is a coincidence of shape, and this binary has produced several.
-The draw site is the only thing that settles ownership.
+The loader at `1000:ad41` names them: `SRBALL`, `SGBALL`, `SBBALL`, `SCBALL`,
+`SPBALL`, `SYBALL`, `SPNKBALL` - the seven colours again, in the same order,
+half size. `1000:2894` is their only consumer in the game session; `1000:2dd0`
+uses `[0x200a]` itself, type 1's, for something of its own.
 
-Also still unread: `2000:3b15`, which `2a4a` draws through, is a **different**
-sprite entry point from `2321:0905`, which the briefings use. Whether the two
-differ in more than the caller is not established.
+The lesson stands even though the guess came out right. Shape and count made
+the attribution *plausible*; only the draw site made it true, and in between it
+was withdrawn for exactly the right reason.
+
+### `1000:2894` - the chain illustration
+
+    if taskChain = 0 then begin                    { diagonal }
+      if not diagonalFlip then begin
+        Draw(small[taskColour],  3,  9);
+        Draw(small[taskColour], 17, 19)
+      end else begin
+        Draw(small[taskColour], 17,  9);
+        Draw(small[taskColour],  3, 19)
+      end;
+      Draw(small[taskColour], 10, 14)
+    end
+    else if taskChain = 2 then begin               { vertical }
+      Draw(small[taskColour], 10,  9);
+      Draw(small[taskColour], 10, 14);
+      Draw(small[taskColour], 10, 19)
+    end
+    else if taskChain = 1 then begin               { horizontal }
+      Draw(small[taskColour],  3, 14);
+      Draw(small[taskColour], 10, 14);
+      Draw(small[taskColour], 17, 14)
+    end
+
+Three balls on a pitch of 7 across and 5 down, which is what an 8x7 sprite
+wants. **This confirms the orientation numbering a fourth time, and visually
+this time**: code 1 lays them out in a row and code 2 in a column, so 1 really
+is horizontal and 2 vertical. And the **diagonal alternates direction** on a
+flag at `[BP-0x1c1]`, so the illustration flips between the two diagonals
+rather than committing to one - which is right, since both count.
+
+### Sprite draw argument order, settled properly
+
+`Draw` pushes `x, y, sprite`, and Ghidra lists call arguments in **reverse**
+push order - so in a decompiled `Draw(spr_lo, spr_hi, A, B)` the **last**
+argument is x and the second-to-last is y.
+
+That is checked two ways. `2894` above only lays out as a row and a column with
+this reading. And `2a4a` pushes `6, 10` for its ball and `8, 11` for the
+`MARKER` over it - a difference of `(+2, +1)`, which is exactly the offset the
+beaker draws `MARKER` at.
+
+**This corrects the Task Display coordinates given earlier in these notes**:
+the ball is at **(x 6, y 10)**, not (10, 6), and the marker at (8, 11). With
+the ball spanning x 6..21 its centre is x = 14 - which is precisely the point
+the count is centred about. Ball and number are the same 16 pixels tall at the
+same y, so the number sits squarely on the ball, which is what the wave 6
+capture showed.
+
+### The Task Display cycles on the Flashium tick
+
+`1000:486b`, the four-frame tick that rewrites Flashium's sprite slot, does
+three more things - all of them presentation, all of them wave mode:
+
+    Inc(flashTick);
+    if flashTick = 5 then begin
+      flashTick := 1;
+      Inc(flashColour); if flashColour = 8 then flashColour := 1;
+      ballTable[8] := ballTable[flashColour];
+
+      if (reqColour = 0) or (reqColour = 8)
+         or (waveMode = 2) or (waveMode = 4) or (waveMode = 6) then
+        taskColour := flashColour;                   { 1000:48d0 }
+
+      diagonalFlip := not diagonalFlip;              { 1000:48d8 }
+
+      if (waveMode = 3) and anyOrientation then      { 1000:48e6 }
+        if taskChain = 2 then taskChain := 0 else Inc(taskChain)
+    end
+
+So **when the wave requires no particular colour the Task Display ball cycles
+the seven**, on the same clock and from the same variable as Flashium. That is
+the rotating counter the wave 6 sampling measured and wrote up as an effect of
+its own; it needs no separate mechanism, and mode 4 is in the list, which is
+why wave 6 in particular showed it.
+
+And **when the orientation is free the chain illustration cycles too**, through
+diagonal, horizontal, vertical. The two rotations are the same idea applied to
+the two halves of a task, and both are cosmetic: they move `taskColour` and
+`taskChain` in `1000:3a67`'s frame, never `reqColour` or `reqChain`.
+
+`2000:3b15` and `2321:0905` remain two different sprite entry points; nothing
+here distinguishes them beyond the caller.
 
 
 ## The four wave-setup routines, and the Crystal's whole life
