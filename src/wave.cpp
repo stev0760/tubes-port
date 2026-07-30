@@ -1,0 +1,348 @@
+#include "wave.h"
+
+// Transliterated from `1000:86b8` and the twenty-five objective routines it
+// dispatches to. Read wave.h first for what each address is.
+//
+// PROVENANCE. All of it is decompiled: the 75-arm table is `86b8`'s body, the
+// per-routine field writes are those routines, the six seeds are immediates at
+// `1000:a4cd`, the progression is `1000:a616`, and `creditRun` is `1000:192f`
+// line for line. Nothing here was inferred from a briefing screenshot - though
+// the reading does reproduce all nine that the old level-warp sweep captured,
+// counts included, which is how it was checked.
+//
+// What is deliberately NOT here: the drawing. `86b8` also picks a background
+// with a `Random(10)` retry loop, and several routines roll once more for a
+// decorative sprite. Those rolls are marked at each site, because a wave-mode
+// recording could not be replayed without them.
+
+namespace tubes {
+namespace {
+
+using O = Objective;
+
+// `1000:86b8`, arm by arm. This is data in the binary and is transcribed, not
+// generated - waves 10 and 15 really do share an objective, which the sweep
+// that sampled them could only write off as a coincidence.
+constexpr Objective kWaveTable[kWaveCount] = {
+    O::kAnyAtom, O::kSurvive, O::kVerticalColour, O::kAnyAtomMorph, O::kVerticalAny,                  // 1..5
+    O::kSurviveDisabled, O::kShownAtom, O::kMarked, O::kAnyAtom, O::kVerticalColour,                  // 6..10
+    O::kAnyAtomMorph, O::kShownAtom, O::kHorizontalAny, O::kTaskChain, O::kVerticalColour,            // 11..15
+    O::kMarked, O::kShownAtom, O::kDiagonalAny, O::kAnyAtomPrefill, O::kMarked,                       // 16..20
+    O::kDiagonalColour, O::kHorizontalAny, O::kAnyAtomMorph, O::kSurvive, O::kTaskColour,             // 21..25
+    O::kSurvive, O::kDiagonalColour, O::kMarkedCovered, O::kTaskChain, O::kSurviveHidden,             // 26..30
+    O::kFlashium, O::kTaskColourTimed, O::kAnyAtomPrefill, O::kVerticalAny, O::kTaskBothTimed,        // 31..35
+    O::kSurvive, O::kHorizontalColour, O::kMarkedCovered, O::kTaskChain, O::kHorizontalColour,        // 36..40
+    O::kMarkedXenon, O::kDiagonalColour, O::kSurviveDisabled, O::kTaskBoth, O::kDiagonalAny,          // 41..45
+    O::kMystery, O::kAnyAtomPrefill, O::kFlashium, O::kHorizontalColour, O::kCrystals,                // 46..50
+    O::kMarkedXenon, O::kTaskChainTimed, O::kSurviveDisabled, O::kHorizontalAny, O::kMystery,         // 51..55
+    O::kTaskBothTimed, O::kDiagonalAny, O::kMarkedXenon, O::kVerticalAny, O::kTaskChainTimed,         // 56..60
+    O::kFlashium, O::kSurviveHidden, O::kTaskBothTimed, O::kMarkedCovered, O::kTaskBoth,              // 61..65
+    O::kTaskColourTimed, O::kAnyAtom, O::kTaskColour, O::kCrystals, O::kTaskColourTimed,              // 66..70
+    O::kMystery, O::kTaskBoth, O::kCrystals, O::kTaskChainTimed, O::kSurviveHidden,                   // 71..75
+};
+
+// `repeat colour := Random(8) + 1 until colour <= 7`, which is how six of the
+// routines pick a colour. The rejection loop is the original's - it rolls over
+// eight and throws Flashium away rather than rolling over seven.
+int8_t rollColour(const RollFn& roll) {
+    int8_t c;
+    do {
+        c = static_cast<int8_t>(roll(8) + 1);
+    } while (c > 7);
+    return c;
+}
+
+// `Random(6) + 2`, the other form. The mode 2 routines use it for the balls
+// they illustrate the briefing with, and the Task-Display-chain ones use it as
+// the colour the wave actually requires.
+int8_t rollColour2to7(const RollFn& roll) {
+    return static_cast<int8_t>(roll(6) + 2);
+}
+
+}  // namespace
+
+Objective objectiveForWave(int wave) {
+    if (wave < 1 || wave > kWaveCount) return O::kAnyAtom;
+    return kWaveTable[wave - 1];
+}
+
+// `1000:a616`. Note what is NOT stepped: the crystal count, which `1000:66cb`
+// increments for itself, and the pre-fill size, which never moves.
+void WaveProgress::advance() {
+    --interval;                              // a616
+    if (wave % 15 == 0) {
+        velocity += 0x20;                    // a62b
+        interval += 12;                      // a630 - a partial refund
+    }
+    if (wave % 20 == 0) {
+        ++chainTargetColour;                 // a646
+        ++chainTargetChain;
+        atomTarget += 10;
+        ++marked;
+    }
+    ++wave;                                  // a662
+}
+
+void applyBriefing(Objective o, WaveProgress& progress, WaveObjective& obj,
+                   const RollFn& roll, bool replay) {
+    // `1000:86b8` clears exactly these twelve before dispatching, and leaves
+    // the counter, the required colour and the required chain standing. That
+    // asymmetry is the whole Continue mechanism.
+    obj.morphBeaker = false;
+    obj.rotateOnTimer = false;
+    obj.mysteryHidden = false;
+    obj.preFillBeaker = false;
+    obj.anyOrientation = false;
+    obj.countIsShown = false;
+    obj.rotateColour = false;
+    obj.rotateChain = false;
+    obj.markedCovered = false;
+    obj.markedXenon = false;
+    obj.hiddenAtoms = false;
+    obj.disabledColour = 0;
+
+    // Mystery Wave, `1000:8581`: roll one of four, run it, then blank the Task
+    // Display. The roll is NOT guarded by the replay flag - only the routine
+    // it lands in guards its own.
+    if (o == O::kMystery) {
+        switch (roll(4)) {
+            case 0:  o = O::kShownAtom; break;
+            case 1:  o = O::kVerticalAny; break;
+            case 2:  o = O::kHorizontalAny; break;
+            default: o = O::kDiagonalAny; break;
+        }
+        applyBriefing(o, progress, obj, roll, replay);
+        obj.mysteryHidden = true;
+        return;
+    }
+
+    switch (o) {
+        // ---- mode 6, the marked atoms ------------------------------------
+        case O::kMarkedCovered:                          // 1000:643b
+            obj.markedCovered = true;
+            [[fallthrough]];
+        case O::kMarked:                                 // 1000:62f1
+            obj.mode = WaveMode::kMarked;
+            obj.counter = progress.marked;
+            // `62f1` also rolls Random(8) for the ball it illustrates the
+            // briefing with, unguarded. Kept so the stream is right once the
+            // briefing is drawn.
+            roll(8);
+            break;
+        case O::kMarkedXenon:                            // 1000:6592
+            obj.markedXenon = true;
+            obj.mode = WaveMode::kMarked;
+            obj.counter = progress.marked;
+            break;
+
+        // ---- mode 5, the Mischief Crystals -------------------------------
+        case O::kCrystals:                               // 1000:66cb
+            // The count is incremented HERE, not by the progression, and only
+            // when the wave is not being replayed. So it is "how many crystal
+            // waves you have reached" - wave 50, the first, is 1.
+            if (!replay) ++progress.crystals;
+            obj.mode = WaveMode::kCrystals;
+            obj.counter = progress.crystals;
+            break;
+
+        // ---- mode 4, live through N atoms --------------------------------
+        case O::kSurviveHidden:                          // 1000:6fd5
+            obj.hiddenAtoms = true;
+            [[fallthrough]];
+        case O::kSurvive:                                // 1000:6ede
+            obj.mode = WaveMode::kSurvive;
+            obj.counter = progress.atomTarget;
+            obj.countIsShown = true;
+            break;
+        case O::kSurviveDisabled:                        // 1000:7100
+            if (!replay) obj.disabledColour = rollColour(roll);
+            obj.mode = WaveMode::kSurvive;
+            obj.counter = progress.atomTarget;
+            obj.countIsShown = true;
+            break;
+
+        // ---- mode 3, a colour is required --------------------------------
+        case O::kFlashium:                               // 1000:67d8
+            obj.anyOrientation = true;
+            obj.reqColour = kFlashium;
+            obj.mode = WaveMode::kColour;
+            obj.counter = progress.chainTargetColour;
+            obj.countIsShown = true;
+            break;
+        case O::kShownAtom:                              // 1000:68b7
+            if (!replay) {
+                obj.reqColour = rollColour(roll);
+                obj.anyOrientation = true;
+            }
+            obj.mode = WaveMode::kColour;
+            obj.counter = progress.chainTargetColour;
+            obj.countIsShown = true;
+            break;
+        case O::kHorizontalColour:                       // 1000:69e4
+        case O::kVerticalColour:                         // 1000:6b5d
+        case O::kDiagonalColour:                         // 1000:6cd6
+            if (!replay) {
+                obj.reqColour = rollColour(roll);
+                obj.reqChain = (o == O::kHorizontalColour) ? chaincode::kHorizontal
+                             : (o == O::kVerticalColour)   ? chaincode::kVertical
+                                                           : chaincode::kDiagonal;
+            }
+            obj.mode = WaveMode::kColour;
+            obj.counter = progress.chainTargetColour;
+            break;
+
+        // ---- mode 3, the Task Display drives it --------------------------
+        // The only difference between each pair is `-0x1ef`: rotate after each
+        // task, or on the 45-second timer.
+        case O::kTaskColourTimed:                        // 1000:7802
+            obj.rotateOnTimer = true;
+            [[fallthrough]];
+        case O::kTaskColour:                             // 1000:72ad
+            if (!replay) {
+                obj.reqColour = rollColour(roll);
+                obj.anyOrientation = true;
+                obj.rotateColour = true;
+            }
+            obj.mode = WaveMode::kColour;
+            obj.counter = progress.chainTargetColour;
+            obj.countIsShown = true;
+            break;
+        case O::kTaskChainTimed:                         // 1000:798b
+            obj.rotateOnTimer = true;
+            [[fallthrough]];
+        case O::kTaskChain:                              // 1000:744d
+            if (!replay) {
+                obj.reqChain = static_cast<uint8_t>(roll(3));
+                obj.reqColour = rollColour2to7(roll);
+                obj.rotateChain = true;
+            }
+            obj.mode = WaveMode::kColour;
+            obj.counter = progress.chainTargetChain;
+            obj.countIsShown = true;
+            break;
+        case O::kTaskBothTimed:                          // 1000:7b72
+            obj.rotateOnTimer = true;
+            [[fallthrough]];
+        case O::kTaskBoth:                               // 1000:764b
+            if (!replay) {
+                obj.reqChain = static_cast<uint8_t>(roll(3));
+                obj.reqColour = rollColour2to7(roll);
+                obj.rotateColour = true;
+                obj.rotateChain = true;
+            }
+            obj.mode = WaveMode::kColour;
+            obj.counter = progress.chainTargetColour;
+            obj.countIsShown = true;
+            break;
+
+        // ---- mode 3, any atom --------------------------------------------
+        // Three routines with one body and one modifier each. None of them
+        // guards on the replay flag, because none of them rolls.
+        case O::kAnyAtomPrefill:                         // 1000:7de3
+        case O::kAnyAtomMorph:                           // 1000:7f42
+        case O::kAnyAtom:                                // 1000:7cce
+            obj.preFillBeaker = (o == O::kAnyAtomPrefill);
+            obj.morphBeaker = (o == O::kAnyAtomMorph);
+            obj.anyOrientation = true;
+            obj.reqColour = 0;
+            obj.mode = WaveMode::kColour;
+            obj.counter = progress.chainTargetColour;
+            obj.countIsShown = true;
+            break;
+
+        // ---- mode 2, an orientation is required, any colour --------------
+        case O::kHorizontalAny:                          // 1000:8056
+        case O::kVerticalAny:                            // 1000:81bb
+        case O::kDiagonalAny:                            // 1000:8320
+            if (!replay) {
+                obj.reqChain = (o == O::kHorizontalAny) ? chaincode::kHorizontal
+                             : (o == O::kVerticalAny)   ? chaincode::kVertical
+                                                        : chaincode::kDiagonal;
+                // The colour is picked but never required - mode 2 does not
+                // look at it. It only chooses the balls in the illustration.
+                obj.reqColour = rollColour2to7(roll);
+            }
+            obj.mode = WaveMode::kOrientation;
+            obj.counter = progress.chainTargetChain;
+            obj.countIsShown = true;
+            break;
+
+        case O::kMystery:
+            break;   // handled above
+    }
+}
+
+// `1000:3ac7`. A required colour of 0 shows Flashium, which is why a
+// "form N chains using any atom" wave has a cycling ball in the corner.
+TaskDisplay seedTaskDisplay(const WaveObjective& obj) {
+    TaskDisplay t;
+    t.colour = obj.reqColour == 0 ? static_cast<int8_t>(kFlashium) : obj.reqColour;
+    t.chain = obj.reqChain;
+    t.count = (obj.mode == WaveMode::kSurvive) ? obj.counter : 0;
+    return t;
+}
+
+bool creditRun(WaveObjective& obj, RunKind kind, int8_t matchType,
+               TaskDisplay& task) {
+    const uint8_t code = chainCodeOf(kind);
+    bool scored = false;
+
+    if (obj.mode == WaveMode::kOrientation) {
+        if (obj.reqChain == code && obj.counter != 0) {
+            --obj.counter;
+            scored = true;
+        }
+    } else if (obj.mode == WaveMode::kColour) {
+        // An all-Flashium run satisfies ANY colour requirement - the third
+        // arm of the test, and the one that would never have been guessed.
+        const bool colourOk = obj.reqColour == 0 || obj.reqColour == matchType ||
+                              matchType == kFlashium;
+        const bool chainOk = obj.anyOrientation || obj.reqChain == code;
+        if (colourOk && chainOk && obj.counter != 0) {
+            --obj.counter;
+            scored = true;
+        }
+    }
+
+    if (!scored) return false;
+
+    // Both rotations are suppressed when the wave rotates on the timer
+    // instead. `1000:4b73` is the other half.
+    if (obj.rotateChain && !obj.rotateOnTimer) {
+        obj.reqChain = (obj.reqChain == chaincode::kVertical)
+                           ? chaincode::kDiagonal
+                           : static_cast<uint8_t>(obj.reqChain + 1);
+        task.chain = obj.reqChain;
+    }
+    if (obj.rotateColour && !obj.rotateOnTimer) {
+        obj.reqColour = (obj.reqColour == kPinkium)
+                            ? static_cast<int8_t>(kRedium)
+                            : static_cast<int8_t>(obj.reqColour + 1);
+        task.colour = obj.reqColour;
+    }
+    // The Mystery Wave reveals itself once the first task lands.
+    if (obj.mysteryHidden) obj.mysteryHidden = false;
+    return true;
+}
+
+bool taskTimerExpired(WaveObjective& obj, TaskDisplay& task) {
+    if (!obj.rotateOnTimer) return false;
+    bool moved = false;
+    if (obj.rotateChain) {
+        obj.reqChain = (obj.reqChain == chaincode::kVertical)
+                           ? chaincode::kDiagonal
+                           : static_cast<uint8_t>(obj.reqChain + 1);
+        task.chain = obj.reqChain;
+        moved = true;
+    }
+    if (obj.rotateColour) {
+        obj.reqColour = (obj.reqColour == kPinkium)
+                            ? static_cast<int8_t>(kRedium)
+                            : static_cast<int8_t>(obj.reqColour + 1);
+        task.colour = obj.reqColour;
+        moved = true;
+    }
+    return moved;
+}
+
+}  // namespace tubes

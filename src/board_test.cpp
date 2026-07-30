@@ -19,6 +19,7 @@
 #include "screen.h"
 #include "scr.h"
 #include "sfx.h"
+#include "wave.h"
 
 namespace {
 
@@ -1170,6 +1171,253 @@ void testTipSkipsFiveFramesOfInput() {
     check(skipped == 5, "a tip swallows exactly five frames of input");
 }
 
+
+// ---------------------------------------------------------------------------
+// Wave mode: the table, the seeds and the objective hook.
+//
+// The oracle here is the old level-warp sweep, which read nine briefings out
+// of the running game before any of this was decompiled. It warped ONE save,
+// so every sample saw that save's counters - and since wave 6 said 30 atoms,
+// wave 20 said 3 marked and wave 50 said 1 crystal, those counters were
+// sitting at exactly the new-game seeds. That is what makes the comparison
+// below legitimate rather than a coincidence: the sweep and `1000:a4cd` are
+// independent readings of the same six numbers.
+// ---------------------------------------------------------------------------
+
+// A roller that hands out a fixed sequence, so a briefing's randomisation can
+// be pinned. Anything past the end repeats the last value.
+struct FixedRolls {
+    std::vector<int> values;
+    mutable size_t at = 0;
+    int operator()(int n) const {
+        int v = values.empty() ? 0 : values[at < values.size() ? at : values.size() - 1];
+        ++at;
+        return n > 0 ? v % n : 0;
+    }
+};
+
+void testWaveTableReproducesTheSampledBriefings() {
+    using namespace tubes;
+    struct Sample { int wave; Objective o; };
+    const Sample samples[] = {
+        {6,  Objective::kSurviveDisabled},   // live through 30, Yellowium disabled
+        {10, Objective::kVerticalColour},    // 2 vertical chains using Cyanium
+        {11, Objective::kAnyAtomMorph},      // 2 chains, beaker morphs every 45 s
+        {15, Objective::kVerticalColour},    // the same objective as wave 10
+        {20, Objective::kMarked},            // Marked Atoms: 3
+        {25, Objective::kTaskColour},        // colour from the Task Display
+        {30, Objective::kSurviveHidden},     // 30 atoms, hidden until they leave
+        {40, Objective::kHorizontalColour},  // 2 horizontal chains using Purplium
+        {50, Objective::kCrystals},          // remove the Mischief Crystals
+    };
+    for (const Sample& s : samples) {
+        check(objectiveForWave(s.wave) == s.o,
+              "wave " + std::to_string(s.wave) + " picks the sampled objective");
+    }
+    // Waves 10 and 15 really do share one, which the sweep could only call a
+    // coincidence.
+    check(objectiveForWave(10) == objectiveForWave(15),
+          "waves 10 and 15 share an objective, as sampled");
+}
+
+void testSeedsProduceTheSampledCounts() {
+    using namespace tubes;
+    FixedRolls roll{{0}};
+    auto brief = [&](int wave) {
+        WaveProgress p;            // the new-game seeds: 3, 30, 2, 0, 3, 8
+        p.wave = wave;
+        WaveObjective obj;
+        applyBriefing(objectiveForWave(wave), p, obj, std::ref(roll), false);
+        return std::make_pair(obj, p);
+    };
+
+    check(brief(6).first.counter == 30, "wave 6 asks for 30 atoms");
+    check(brief(6).first.mode == WaveMode::kSurvive, "wave 6 is mode 4");
+    check(brief(6).first.disabledColour != 0, "wave 6 disables an element");
+
+    check(brief(10).first.counter == 2, "wave 10 asks for 2 chains");
+    check(brief(10).first.reqChain == chaincode::kVertical, "wave 10 wants vertical");
+    check(brief(11).first.counter == 2, "wave 11 asks for 2 chains");
+    check(brief(11).first.morphBeaker, "wave 11 morphs the beaker");
+
+    check(brief(20).first.counter == 3, "wave 20 asks for 3 marked atoms");
+    check(brief(20).first.mode == WaveMode::kMarked, "wave 20 is mode 6");
+
+    check(brief(30).first.counter == 30, "wave 30 asks for 30 atoms");
+    check(brief(30).first.hiddenAtoms, "wave 30 hides atoms in the tubes");
+
+    check(brief(40).first.counter == 2, "wave 40 asks for 2 chains");
+    check(brief(40).first.reqChain == chaincode::kHorizontal, "wave 40 wants horizontal");
+
+    // Seeded at 0 and incremented by the briefing itself, so the first crystal
+    // wave asks for one.
+    auto w50 = brief(50);
+    check(w50.first.counter == 1, "wave 50 asks for 1 Mischief Crystal");
+    check(w50.second.crystals == 1, "the crystal count is stepped by the briefing");
+
+    // The orientation-only waves read the OTHER chain target, seeded at 3.
+    check(brief(13).first.counter == 3, "wave 13 asks for 3 horizontal chains");
+    check(brief(13).first.mode == WaveMode::kOrientation, "wave 13 is mode 2");
+}
+
+void testWaveProgressionStepsOnFifteensAndTwenties() {
+    using namespace tubes;
+    WaveProgress p;
+    p.interval = 70;
+    p.velocity = 0x100;
+
+    p.wave = 1; p.advance();
+    check(p.interval == 69 && p.wave == 2, "a cleared wave costs one frame of interval");
+    check(p.velocity == 0x100, "and leaves the velocity alone");
+
+    p = WaveProgress(); p.interval = 70; p.velocity = 0x100; p.wave = 15;
+    p.advance();
+    check(p.interval == 70 - 1 + 12, "every fifteenth wave refunds twelve frames");
+    check(p.velocity == 0x120, "and adds 0x20 to the velocity");
+    check(p.atomTarget == 30, "but does not touch the objective counters");
+
+    p = WaveProgress(); p.wave = 20;
+    p.advance();
+    check(p.atomTarget == 40, "every twentieth wave adds ten atoms");
+    check(p.chainTargetColour == 3 && p.chainTargetChain == 4, "and a chain to both targets");
+    check(p.marked == 4, "and one more marked atom");
+    check(p.crystals == 0, "the crystal count is NOT stepped here");
+}
+
+void testCreditRunHonoursColourAndOrientation() {
+    using namespace tubes;
+    WaveObjective obj;
+    obj.mode = WaveMode::kColour;
+    obj.counter = 2;
+    obj.reqColour = kCyanium;
+    obj.reqChain = chaincode::kVertical;
+    TaskDisplay task = seedTaskDisplay(obj);
+
+    check(!creditRun(obj, RunKind::kHorizontal, kCyanium, task),
+          "the right colour in the wrong chain does not count");
+    check(!creditRun(obj, RunKind::kVertical, kRedium, task),
+          "the wrong colour in the right chain does not count");
+    check(creditRun(obj, RunKind::kVertical, kCyanium, task) && obj.counter == 1,
+          "both right counts once");
+    // The third arm of `1000:192f`'s colour test, and the one no amount of
+    // watching would have produced.
+    check(creditRun(obj, RunKind::kVertical, kFlashium, task) && obj.counter == 0,
+          "an all-Flashium run satisfies any colour");
+    check(!creditRun(obj, RunKind::kVertical, kCyanium, task),
+          "a finished objective does not go negative");
+
+    // Mode 2 ignores the colour entirely.
+    WaveObjective any;
+    any.mode = WaveMode::kOrientation;
+    any.counter = 1;
+    any.reqChain = chaincode::kDiagonal;
+    any.reqColour = kGreenium;
+    check(creditRun(any, RunKind::kDiagonal, kPinkium, task),
+          "mode 2 counts any colour in the right chain");
+}
+
+void testTaskRotationWrapsAndPicksItsClock() {
+    using namespace tubes;
+    WaveObjective obj;
+    obj.mode = WaveMode::kColour;
+    obj.counter = 9;
+    obj.anyOrientation = true;
+    obj.reqColour = kPinkium;
+    obj.rotateColour = true;
+    TaskDisplay task = seedTaskDisplay(obj);
+
+    creditRun(obj, RunKind::kVertical, kPinkium, task);
+    check(obj.reqColour == kRedium, "the colour wraps 7 -> 1 after a task");
+    check(task.colour == kRedium, "and the Task Display follows it");
+
+    // The same wave on the 45-second clock rotates on the timer INSTEAD, not
+    // as well - that is the only difference between the two template pairs.
+    obj.rotateOnTimer = true;
+    obj.reqColour = kRedium;
+    creditRun(obj, RunKind::kVertical, kRedium, task);
+    check(obj.reqColour == kRedium, "a timed wave does not rotate on a task");
+    check(taskTimerExpired(obj, task) && obj.reqColour == kGreenium,
+          "it rotates when the 720-frame timer expires");
+
+    WaveObjective chain;
+    chain.mode = WaveMode::kColour;
+    chain.counter = 9;
+    chain.anyOrientation = true;
+    chain.rotateChain = true;
+    chain.reqChain = chaincode::kVertical;
+    TaskDisplay t2 = seedTaskDisplay(chain);
+    creditRun(chain, RunKind::kVertical, kRedium, t2);
+    check(chain.reqChain == chaincode::kDiagonal, "the chain wraps 2 -> 0");
+}
+
+void testContinueReplaysTheSameObjective() {
+    using namespace tubes;
+    FixedRolls roll{{3, 5, 1, 6, 2, 4}};
+    WaveProgress p;
+    p.wave = 10;                       // 2 vertical chains of a rolled colour
+    WaveObjective obj;
+    applyBriefing(objectiveForWave(10), p, obj, std::ref(roll), false);
+    const int8_t first = obj.reqColour;
+
+    obj.counter = 0;                   // the player got part way and died
+    applyBriefing(objectiveForWave(10), p, obj, std::ref(roll), true);
+    check(obj.reqColour == first, "a Continue keeps the wave's colour");
+    check(obj.counter == 2, "and resets the counter");
+
+    // A crystal wave must not charge the count twice for one wave either.
+    WaveProgress q;
+    q.wave = 50;
+    WaveObjective c;
+    applyBriefing(Objective::kCrystals, q, c, std::ref(roll), false);
+    applyBriefing(Objective::kCrystals, q, c, std::ref(roll), true);
+    check(q.crystals == 1, "a replayed crystal wave does not add another");
+}
+
+void testMysteryWaveHidesOneOfFour() {
+    using namespace tubes;
+    const tubes::Objective expect[4] = {
+        Objective::kShownAtom, Objective::kVerticalAny,
+        Objective::kHorizontalAny, Objective::kDiagonalAny};
+    for (int i = 0; i < 4; ++i) {
+        FixedRolls roll{{i, 0}};
+        WaveProgress p;
+        p.wave = 46;
+        WaveObjective obj;
+        applyBriefing(Objective::kMystery, p, obj, std::ref(roll), false);
+
+        WaveProgress q;
+        q.wave = 46;
+        WaveObjective plain;
+        FixedRolls roll2{{0}};
+        applyBriefing(expect[i], q, plain, std::ref(roll2), false);
+
+        check(obj.mode == plain.mode && obj.reqChain == plain.reqChain,
+              "Mystery Wave runs one of the four outright");
+        check(obj.mysteryHidden, "and blanks the Task Display until the first task");
+    }
+    // The reveal is the first credited run, not the end of the wave.
+    FixedRolls roll{{1, 0}};
+    WaveProgress p;
+    WaveObjective obj;
+    applyBriefing(Objective::kMystery, p, obj, std::ref(roll), false);
+    TaskDisplay task = seedTaskDisplay(obj);
+    creditRun(obj, RunKind::kVertical, kRedium, task);
+    check(!obj.mysteryHidden, "the first task reveals a Mystery Wave");
+}
+
+void testEveryWaveHasAnArm() {
+    using namespace tubes;
+    FixedRolls roll{{0}};
+    for (int w = 1; w <= kWaveCount; ++w) {
+        WaveProgress p;
+        p.wave = w;
+        WaveObjective obj;
+        applyBriefing(objectiveForWave(w), p, obj, std::ref(roll), false);
+        check(isWaveMode(obj.mode) && obj.counter > 0,
+              "wave " + std::to_string(w) + " sets a mode and a counter");
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -1233,6 +1481,14 @@ int main() {
     testTipSkipsFiveFramesOfInput();
     testEnduranceRampStepsOnMatches();
     testEnduranceRampCountsPerRunNotPerFrame();
+    testWaveTableReproducesTheSampledBriefings();
+    testSeedsProduceTheSampledCounts();
+    testWaveProgressionStepsOnFifteensAndTwenties();
+    testCreditRunHonoursColourAndOrientation();
+    testTaskRotationWrapsAndPicksItsClock();
+    testContinueReplaysTheSameObjective();
+    testMysteryWaveHidesOneOfFour();
+    testEveryWaveHasAnArm();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
