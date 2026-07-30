@@ -5409,3 +5409,278 @@ that keeps a running count of what is in the tube - the fills increment it per
 ball, the Filler and the router's release path decrement it, and reaching zero
 adds 2 to the clear timer. It is wave-mode machinery with nothing to hook into
 yet.
+
+
+## Wave mode, decompiled - the whole objective system
+
+The largest remaining unread block, and it came apart in one pass once the
+right question was asked: **who writes `DS:0x1d4e`?** `FindScalarRefs.java`
+answers with a contiguous run of 22 functions between `1000:62f1` and
+`1000:8320`, each setting the mode byte and nothing else in common. They are
+the objective templates, one procedure per briefing.
+
+Earlier notes recorded the wave definitions as "still open - most likely
+derived from the wave number". That guess is now retired: they are **a literal
+75-arm dispatch**, and the parameters are **six counters that step on a
+schedule**.
+
+### `1000:86b8` is the briefing screen, and its body is the wave table
+
+`1000:9e53` calls it once per wave, immediately before `1000:3a67`:
+
+    a5d2:  if waveMode <> 1 and waveMode <> 0 then Briefing        { 1000:86b8 }
+    a5e4:  PlayWave                                               { 1000:3a67 }
+
+`86b8` loads a background, prints `Wave <n>` and `You are allowed <n> drops.`,
+then runs an `if wave = 1 ... else if wave = 2 ...` chain **75 arms long**,
+calling one objective routine per arm. Endurance (`waveMode` 0 or 1) never
+reaches it, which is why the port has never needed it.
+
+**The table, wave 1..75.** Read out of the dispatch rather than transcribed:
+
+| wave | template | wave | template | wave | template |
+|---|---|---|---|---|---|
+| 1 | any | 26 | survive | 51 | marked-xenon |
+| 2 | survive | 27 | diag-colour | 52 | td-chain-45s |
+| 3 | vert-colour | 28 | marked-covered | 53 | survive-disabled |
+| 4 | any-morph | 29 | td-chain-task | 54 | horiz-any |
+| 5 | vert-any | 30 | survive-hidden | 55 | mystery |
+| 6 | survive-disabled | 31 | flashium | 56 | td-both-45s |
+| 7 | shown-atom | 32 | td-colour-45s | 57 | diag-any |
+| 8 | marked | 33 | any-prefill | 58 | marked-xenon |
+| 9 | any | 34 | vert-any | 59 | vert-any |
+| 10 | vert-colour | 35 | td-both-45s | 60 | td-chain-45s |
+| 11 | any-morph | 36 | survive | 61 | flashium |
+| 12 | shown-atom | 37 | horiz-colour | 62 | survive-hidden |
+| 13 | horiz-any | 38 | marked-covered | 63 | td-both-45s |
+| 14 | td-chain-task | 39 | td-chain-task | 64 | marked-covered |
+| 15 | vert-colour | 40 | horiz-colour | 65 | td-both-task |
+| 16 | marked | 41 | marked-xenon | 66 | td-colour-45s |
+| 17 | shown-atom | 42 | diag-colour | 67 | any |
+| 18 | diag-any | 43 | survive-disabled | 68 | td-colour-task |
+| 19 | any-prefill | 44 | td-both-task | 69 | crystals |
+| 20 | marked | 45 | diag-any | 70 | td-colour-45s |
+| 21 | diag-colour | 46 | mystery | 71 | mystery |
+| 22 | horiz-any | 47 | any-prefill | 72 | td-both-task |
+| 23 | any-morph | 48 | flashium | 73 | crystals |
+| 24 | survive | 49 | horiz-colour | 74 | td-chain-45s |
+| 25 | td-colour-task | 50 | crystals | 75 | survive-hidden |
+
+**This reproduces every briefing the level-warp sweep sampled, 9 for 9** -
+waves 6, 10, 11, 15, 20, 25, 30, 40 and 50 - including that 10 and 15 share an
+objective, which the sweep had to write off as a coincidence. The sweep was
+right and now it is derived rather than observed.
+
+### The 25 objective routines
+
+| addr | name used here | mode | what it sets |
+|---|---|---|---|
+| `62f1` | marked | 6 | counter := markedCount |
+| `643b` | marked-covered | 6 | + `-0x187` |
+| `6592` | marked-xenon | 6 | + `-0x188` |
+| `66cb` | crystals | 5 | **Inc(crystalCount)** first, then counter := it |
+| `67d8` | flashium | 3 | reqColour := 8, anyOrientation |
+| `68b7` | shown-atom | 3 | reqColour := Random 1..7, anyOrientation |
+| `69e4` | horiz-colour | 3 | reqColour := Random 1..7, reqChain := 1 |
+| `6b5d` | vert-colour | 3 | as above, reqChain := 2 |
+| `6cd6` | diag-colour | 3 | as above, reqChain := 0 |
+| `6ede` | survive | 4 | counter := atomTarget |
+| `6fd5` | survive-hidden | 4 | + `-0x189` |
+| `7100` | survive-disabled | 4 | + `-0x18a` := Random 1..7 |
+| `72ad` | td-colour-task | 3 | anyOrientation, rotateColour |
+| `744d` | td-chain-task | 3 | reqChain := Random(3), rotateChain |
+| `764b` | td-both-task | 3 | rotateColour + rotateChain |
+| `7802` | td-colour-45s | 3 | as `72ad` + **rotateOnTimer** |
+| `798b` | td-chain-45s | 3 | as `744d` + rotateOnTimer |
+| `7b72` | td-both-45s | 3 | as `764b` + rotateOnTimer |
+| `7cce` | any | 3 | reqColour := 0, anyOrientation |
+| `7de3` | any-prefill | 3 | + `-0x1f2`, the pre-filled beaker |
+| `7f42` | any-morph | 3 | + `-0x1f0`, the 45-second morph |
+| `8056` | horiz-any | 2 | reqChain := 1 |
+| `81bb` | vert-any | 2 | reqChain := 2 |
+| `8320` | diag-any | 2 | reqChain := 0 |
+| `8581` | mystery | - | calls one of `68b7`/`81bb`/`8056`/`8320` at `Random(4)`, then sets `-0x1f1` so the Task Display stays blank until the first task lands |
+
+**Chain orientation is `0 = diagonal, 1 = horizontal, 2 = vertical`** - fixed by
+the three pairs above and by the rotation wrapping `2 -> 0`.
+
+Every routine except `62f1`, `643b`, `6592`, `66cb`, `6ede`, `6fd5`, `7cce`,
+`7de3` and `7f42` wraps its randomisation in `if -0x1ff = 0`, so a **Continue
+replays the same wave with the same objective** rather than rolling a new one.
+
+### The objective record - `1000:9e53`'s frame
+
+Two groups. The **wave-independent counters** are seeded once per game and
+stepped by the progression; the **per-wave objective** is rewritten by the
+briefing every wave.
+
+| offset | field |
+|---|---|
+| `-0x170` | wave number |
+| `-0x17b` | pre-fill size - how many atoms `any-prefill` puts in the beaker |
+| `-0x17e` | drops remaining (the briefing echoes this as "you are allowed N") |
+| `-0x180` | atom velocity (word) |
+| `-0x181` | dispense interval |
+| `-0x182` | atom target, for the three `survive` templates |
+| `-0x183` | chain target when the **orientation** is what is required |
+| `-0x184` | chain target when the **colour** (or nothing) is required |
+| `-0x185` | Mischief Crystal count |
+| `-0x186` | marked-atom count |
+| `-0x187` | modifier: the marked atoms are covered |
+| `-0x188` | modifier: the marked atoms are ringed with Xenon |
+| `-0x189` | modifier: atoms hidden until they leave a tube |
+| `-0x18a` | modifier: this colour is disabled and will not clear |
+| `-0x1ef` | the rotation runs on the 45-second timer, not per task |
+| `-0x1f0` | modifier: beaker atoms morph every 45 seconds |
+| `-0x1f1` | Mystery Wave: the Task Display is blank until the first task lands |
+| `-0x1f2` | modifier: the beaker starts pre-filled |
+| `-0x1f3` | the objective is a **count** the Task Display should print |
+| `-0x1f4` | **the live objective counter** |
+| `-0x1f5` | required colour, 0 = any, 8 = Flashium |
+| `-0x1f6` | required chain orientation |
+| `-0x1f7` | orientation does not matter |
+| `-0x1f8` | rotate the required colour |
+| `-0x1f9` | rotate the required orientation |
+| `-0x1fd` | quit |
+| `-0x1fe` | game over |
+| `-0x1ff` | this wave is being replayed after a Continue |
+
+### The seeds are literals, and every observed number falls out
+
+`1000:a4c6` branches on `DS:0x1d4c`, the new-game flag. The new-game arm at
+`a4cd` writes the six counters as **immediates**:
+
+    atomTarget   := 30      { -0x182 }
+    chainTargetO := 3       { -0x183, orientation-driven waves }
+    chainTargetC := 2       { -0x184, colour-driven waves }
+    crystals     := 0       { -0x185 }
+    marked       := 3       { -0x186 }
+    preFill      := 8       { -0x17b }
+    drops        := [0x1d51]   { 9 / 6 / 3, the difficulty }
+    velocity     := [0x1d54]
+    interval     := [0x1d56]
+    wave         := [0x1d50]
+
+and the load arm at `a525` reads the same ten fields out of `DS:0x1d07..0x1d19`
+instead. **`3, 30, 2, 0, 3, 8` - the six numbers `PLAN.md` had recorded as
+"difficulty seeds, variables not yet named" - are these, in this order.**
+
+Checked against the sweep's briefings, and they are exact:
+
+| briefing | says | from |
+|---|---|---|
+| wave 6 | live through **30** atoms | atomTarget 30 |
+| waves 10, 15, 40 | form **2** chains of a colour | chainTargetC 2 |
+| wave 11 | form **2** chains, any atom | chainTargetC 2 |
+| wave 20 | Marked Atoms: **3** | marked 3 |
+| wave 50 | Mischief Crystals: **1** | crystals 0, `66cb` increments before use |
+
+The crystal count is the one that is not stepped by the progression: `66cb`
+increments it itself, so it is "how many crystal waves you have reached", and
+wave 50 - the first - is 1.
+
+### The wave progression, `1000:a616`
+
+Runs only when the wave was **cleared** (`-0x1ff = 0`), after the stats
+blackboard:
+
+    Dec(interval)                          { a616 - one frame faster every wave }
+    if wave mod 15 = 0 then begin
+      velocity := velocity + $20           { a62b }
+      interval := interval + 12            { a630 - a partial refund }
+    end;
+    if wave mod 20 = 0 then begin
+      Inc(chainTargetC); Inc(chainTargetO);
+      atomTarget := atomTarget + 10;
+      Inc(marked)                          { a646 }
+    end;
+    if wave >= 75 then EndOfGame;          { a657, 1000:9499 }
+    Inc(wave)
+
+So the difficulty curve is: the dispense interval tightens by one frame a wave
+and is partly refunded every fifteenth, while the objectives get one step
+harder every twentieth. The "level bands at 30/60/75/90/95/101" recorded
+earlier belong to something else and are not this loop.
+
+### `1000:192f` - how a chain scores against the objective
+
+Called by every matcher with the orientation code of the run it just found.
+Transliterated:
+
+    scored := false;
+    if waveMode = 2 then begin
+      if (reqChain = orientation) and (counter <> 0) then begin
+        Dec(counter); scored := true
+      end
+    end
+    else if waveMode = 3 then begin
+      if ((reqColour = 0) or (reqColour = matchType) or (matchType = 8))
+         and (anyOrientation or (reqChain = orientation))
+         and (counter <> 0) then begin
+        Dec(counter); scored := true
+      end
+    end;
+    if scored then begin
+      if rotateChain and not rotateOnTimer then begin
+        if reqChain = 2 then reqChain := 0 else Inc(reqChain);
+        taskDisplayChain := reqChain
+      end;
+      if rotateColour and not rotateOnTimer then begin
+        if reqColour = 7 then reqColour := 1 else Inc(reqColour);
+        taskDisplayColour := reqColour
+      end;
+      if mysteryHidden then begin
+        mysteryHidden := false; PlaySound(...)          { the reveal }
+      end
+    end
+
+`matchType = 8` - an all-Flashium run - satisfies **any** colour requirement.
+
+### Modes 4, 5 and 6 do not go through `192f`
+
+* **mode 4, live through N atoms.** `1000:4b31`, in the dispense path: every
+  atom sent out decrements the counter, and once it is zero the new record's
+  `+8` is cleared instead. So the objective counts atoms *dispensed*, not
+  caught, and the Task Display shows the count (`-0x1f3`).
+* **mode 5, the crystals.** `1000:2722` in the beaker update, and the count is
+  seeded into the beaker by `1000:0236` at `1000:3b5e`.
+* **mode 6, the marked atoms.** `1000:24db`, already recorded: clearing a
+  marked cell decrements the counter. `1000:0000` places them at `1000:3b4a`.
+
+### The 45-second timer
+
+One counter, `[BP-0x1b0]` in `1000:3a67`, seeded **720** at `1000:3b00` and
+reloaded at `1000:4b6d`. On expiry:
+
+* if `rotateOnTimer`, step whichever of colour and chain the wave rotates, and
+  play a sound;
+* if `morphBeaker`, walk the beaker and morph its cells.
+
+720 frames against the game's own frame beat is the "every 45 seconds" the
+briefings promise.
+
+### Ending a wave
+
+At `1000:5cff`, the tail of the frame loop:
+
+    if drops = $ff then gameOver := true;           { the underflow, already ported }
+    if waveMode not in [0,1] then
+      if (counter = 0) and (clearTimer = 0) and (taskDisplayCount = 0) then
+        waveComplete := true;
+    if clearTimer > 0 then Dec(clearTimer);
+    if not waveComplete and not gameOver and not quit then <next frame>
+
+`1000:8da5` then shows the stats blackboard and `1000:8c38` the Continue
+screen, which is what sets `-0x1ff` - and that is why a continued wave keeps
+its objective.
+
+### What this leaves open
+
+* `1000:0000` (place N marked atoms), `1000:0236` (place N crystals) and
+  `1000:035e` (pre-fill the beaker with N) are named but not read.
+* `1000:9499`, reached on clearing wave 75.
+* `1000:8c38`'s exact reset - which of drops, `-0x1fe` and `-0x1ff` it writes.
+* The beaker morph body at `1000:4bf6`.
+* Whether the shareware really carries all 75 arms or the later ones are dead;
+  the dispatch has them, and published notes claim the registered version
+  "adds 50 waves".

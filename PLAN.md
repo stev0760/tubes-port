@@ -64,14 +64,15 @@ Percentages are judgement calls, so the breakdown matters more than the number.
 | Beaker-side specials `1000:2790` | **done** - AntiMatter, Blocker, Convertor |
 | Catch-time specials `1000:180c` | **done** - Bonus, Multiplier, EvilMultiplier, Filler |
 | Scoring and the chain bonus multiplier | **done**, from code rather than the manual |
+| Wave definitions: the 75-wave table, 25 objective templates, the modifiers, the progression | **done** - `1000:86b8` is the table, `1000:a616` steps it |
 
 Still unread, and most of it is inside `1000:3a67`'s 9,382 bytes:
 
 - `1000:041c`, the Crystal's teleport, which `1000:0f3b` calls in wave mode 5
-- the **wave definition** data structure - objectives and modifiers. The
-  machinery is now half visible: `1000:192f` checks an orientation- or
-  colour-based objective, and the objective plane and the disabled-element
-  modifier are both implemented
+- the four wave-setup helpers the objective system calls: `1000:0000` (place N
+  marked atoms), `1000:0236` (place N crystals), `1000:035e` (pre-fill the
+  beaker) and the beaker morph body at `1000:4bf6`
+- `1000:8c38`, the Continue screen, and `1000:9499`, reached on clearing wave 75
 - `.SPR`, `.BIN`, `.ANM`
 
 ### The engine: ~40%
@@ -304,10 +305,29 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
    **Fit slope AND intercept** when turning the guest's wall clock into frames -
    fitting through the origin manufactures a phantom drift.
 
-2. **Wave structure**, the largest remaining piece and the gate on several
-   things already half-implemented: the objective plane, the disabled-element
-   modifier, the wave-mode HUD counters, `DS:0x1d4e`'s modes 4, 5 and 6, and
-   the tails inside the catch-time specials that only run in mode 4.
+2. **Wave structure - now DECOMPILED, and next to transliterate.** The whole
+   objective system came apart in one pass; `docs/reversing-notes.md` has it
+   under "Wave mode, decompiled". In short:
+
+   * `1000:86b8` is the briefing screen and **its body is the wave table** - a
+     75-arm dispatch on the wave number, one arm per wave, calling one of **25
+     objective routines** between `1000:62f1` and `1000:8581`.
+   * The parameters are **six counters seeded as literals** at `1000:a4cd` -
+     `3, 30, 2, 0, 3, 8`, which is exactly the list `PLAN.md` used to carry as
+     "difficulty seeds, variables not yet named" - stepped by the progression
+     at `1000:a616`: the dispense interval tightens one frame a wave with a
+     12-frame refund every fifteenth, and every twentieth wave adds a chain to
+     both chain targets, ten to the atom target and one marked atom.
+   * `1000:192f` is the scoring hook, and modes 4/5/6 bypass it - mode 4 counts
+     atoms *dispensed*, at `1000:4b31`.
+   * The reading reproduces **all nine** briefings the old level-warp sweep
+     sampled, including the wave 10 / wave 15 coincidence, and every count in
+     them.
+
+   What is left is the port work, which is large and mostly *around* the rules:
+   briefings, the stats blackboard, the Continue screen, the Task Display HUD,
+   and the four wave-setup helpers (`1000:0000`, `1000:0236`, `1000:035e`, and
+   the morph body at `1000:4bf6`) that are named but not yet read.
 
 **What is already transliterated and should not be re-derived:** the atom
 router `1000:0f80` (fixed-point, states 3/5/6/7, the two arc offset tables),
