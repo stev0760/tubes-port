@@ -6083,3 +6083,116 @@ settles a question the type table left open. An atom keeps its real type
 underneath the whole time: it still matches, still counts, still fires its
 special. The earlier speculation that a `?` might *resolve* into one of the
 letter balls on capture has nothing behind it and can be dropped.
+
+
+## The briefing screen's presentation half, `1000:86b8`
+
+The dispatch half is above, under "Wave mode, decompiled". This is everything
+around it, and it is all literals.
+
+### The frame
+
+    if a background is already held then Free it;               { 21ea:065c }
+    repeat n := Random(10) + 1 until n <> DS:0x2056;            { never twice }
+    DS:0x2056 := n;
+    Load('GAMEBG' + Str(n) + '.GFX');                           { 21ea:03c4 }
+    if error then Abort('Game Background ResourceError');
+    DS:0x2376 := 0;                                             { page 0 }
+    ... blit the background ...                                 { 2321:068d }
+    if (wave = 1) and not replay then 1b2e:0510 else 1b2e:0656; { music }
+    1b2e:0a11;
+    SetFont(big);                                               { 23e7:013b }
+    OutTextCentred(0, 319,  45, 159, 3, 'Wave ' + Str(wave));
+    OutTextCentred(0, 319,  48, 159, 3, '____________');
+    SetFont(small);
+    <zero the twelve flags, then dispatch to the objective routine>
+    OutText(76, 150, 155, 1, 'You are allowed ' + Str(drops) + ' drops.');
+    Flip;                                                       { 2321:014f }
+    k := WaitKey(0x17);                                         { 1b2e:0cd1 }
+    if (k <> 2) and (k <> 1) then k := 1b2e:0e37(0x1e);
+    replay := false;                                            { -0x1ff := 0 }
+
+The background is **re-rolled until it differs from the last one**, which is
+what stops two briefings in a row sharing a backdrop. `DS:0x2056` is the only
+thing that remembers it.
+
+### Text argument order, confirmed at the source
+
+`1000:630b` settles it beyond argument, because the pushes are literal:
+
+    PUSH 0x4c        x = 76
+    PUSH 0x55        y = 85
+    PUSH -0x65       colour = 0x9b = 155
+    PUSH 0x1         mode = 1
+    PUSH CS / PUSH DI    the string
+    CALLF 2000:36ab
+
+and the same routine's illustration pushes `x = 150, y = 110` for the ball and
+`x = 152, y = 111` for the `MARKER` over it - the `(+2, +1)` the beaker uses.
+So `OutText(x, y, colour, mode, text)` and `Draw(x, y, sprite)`, first pushed
+first, and Ghidra's argument lists are the reverse of that.
+
+### The layout, every routine
+
+Body text is **x = 76 (sometimes 75), colour 155, mode 1**, on a **10-pixel
+line pitch**. The composed line - the one carrying the count - is
+`OutTextCentred(0, 319, y, 155, 1, ...)`.
+
+The one thing that is not uniform is worth having: **the modifier sentence is a
+different colour**. Every template that carries one draws its objective in
+**155** and its modifier in **169**, at x = 75:
+
+| routine | objective lines (y) | modifier lines (y, colour 169) |
+|---|---|---|
+| `62f1` marked | 85, 95 | - |
+| `643b` marked-covered | 75, 85, 95, 105 | - |
+| `6592` marked-xenon | 70, 80, 90, 100, 110 | - |
+| `66cb` crystals | 75, 85, 95 | - |
+| `67d8` flashium | 95, 105 | - |
+| `68b7` shown-atom | 85 | - |
+| `6ede` survive | 85, 95 | - |
+| `6fd5` survive-hidden | 80, 90, 110 | - |
+| `7100` survive-disabled | 80, 90 | 125, 135 |
+| `72ad` td-colour | 90, 100 | 115, 125, 135 |
+| `744d` td-chain | 80, 90, 100 | 115, 125, 135 |
+| `764b` td-both | 80, 90, 100 | 115, 125, 135 |
+| `7802` td-colour-45s | 90, 100 | 115, 125 |
+| `798b` td-chain-45s | 80, 90, 100 | 115, 125 |
+| `7b72` td-both-45s | 80, 90, 100 | 115, 125 |
+| `7cce` any | 95, 105 | - |
+| `7de3` any-prefill | 90, 100 | 115, 125 |
+| `7f42` any-morph | 90, 100 | 115, 125, 135 |
+| `8056` horiz-any | 125, 135 | - |
+| `81bb` vert-any | 125, 135 | - |
+| `8320` diag-any | 125, 135 | - |
+| `8581` mystery | 70, 80, 90, 100, 110, 120, 130 | - |
+
+### The illustrations are FULL-size balls
+
+Unlike the Task Display's, the briefing draws from `DS:0x1da6` at a pitch of
+**20 across and 15 down**:
+
+| routine | balls |
+|---|---|
+| `62f1` marked | one at (150, 110) with `MARKER` at (152, 111) |
+| `66cb` crystals | one Crystal at (150, 110) |
+| `68b7` shown-atom | one at (152, 110) - the atom the wave wants |
+| `69e4` horiz-colour | (130, 110) (150, 110) (170, 110) |
+| `6b5d` vert-colour | (150, 95) (150, 110) (150, 125) |
+| `6cd6` diag-colour | **six** - (100,95) (115,110) (130,125) and (205,95) (190,110) (175,125) |
+| `8056` horiz-any | (130, 95) (150, 95) (170, 95) |
+| `81bb` vert-any | (150, 80) (150, 95) (150, 110) |
+| `8320` diag-any | **six**, the same X one row higher |
+
+The two diagonal templates draw **both** diagonals side by side rather than
+one, which is the briefing saying "either direction" in pictures - the same
+thing the scoring does by giving both diagonals one counter.
+
+### What is left: the text itself
+
+Everything above is geometry and can live in this repository. The briefing
+**prose cannot**: it is the game's own text, which is why the template list is
+kept in `wave-templates.md` outside this tree. The strings sit in the code
+image at roughly `0x5f00`..`0x8700`, as Pascal ShortStrings, and the shipped
+`TUBES.EXE` is LZEXE-packed, so reaching them at runtime means unpacking the
+user's own executable the way `tools/unpack.sh` does offline.

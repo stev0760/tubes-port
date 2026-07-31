@@ -141,7 +141,8 @@ Absent entirely:
 
 | Missing | Size |
 |---|---|
-| Wave structure: the briefing screen, the stats blackboard, the Continue screen | large |
+| The briefing screen `1000:86b8` | **decompiled**, geometry and all; blocked on the text, which is game data and lives in the packed `TUBES.EXE` |
+| The stats blackboard `1000:8da5` and the Continue screen `1000:8c38` | medium |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |
 | Demo playback (`.SCR` replay through the same loop) | **DONE** - matches end to end, terminates on the original's own last byte |
