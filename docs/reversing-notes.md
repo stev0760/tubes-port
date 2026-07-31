@@ -7631,6 +7631,58 @@ was looking at these two pages plus the menu. The pages differ only in the
 heading and the ten rows, so paging through them does look like one screen that
 will not dismiss.
 
+### The F2 save screen, `1000:2dd0`
+
+Same routine as the in-game key handler and the F1 help, which is why it never
+showed up as a function of its own. It draws STRAIGHT OVER THE PLAY FIELD -
+captured to be sure, because the page calls at `1000:3062` looked like they
+might be clearing one - and the result is as hard to read on the original as it
+is in the port.
+
+    SetFont(STARTREK.816)
+    WriteCentred(0, 319, 22, $2f, 3, 'Save Game')
+    WriteCentred(0, 319, 25, $2f, 3, '_________')
+    WriteAt(30,  50, $1e, 3, 'Description')
+    WriteAt(30,  53, $1e, 3, '____________________')
+    if mode = 1 then begin
+      WriteAt(242, 50, $1e, 3, 'Chains');  WriteAt(242, 53, $1e, 3, '______')
+    end else begin
+      WriteAt(258, 50, $1e, 3, 'Wave');    WriteAt(258, 53, $1e, 3, '____')
+    end
+    SetFont(SCRIPT.816)
+    for i := 1 to 5 do begin
+      WriteAt(30, i * 17 + 50, $1e, 3,
+              if rec.len <> 0 then rec.desc else '( Available )')
+      Str(rec[+$28] : 6, s)                  { or rec[+$26] : 4 in Wave mode }
+      WriteAt(242, i * 17 + 50, $1e, 3, s)   { 258 in Wave mode }
+    end
+
+**The same mode split as the menu's slot list**, down to the heading x: 242 plus
+six characters and 258 plus four both end at 290. And the number is drawn for
+EVERY row, because `1000:31a8` sits after the two arms join - an empty slot
+shows a right-justified `0`. The port guarded that on "the record exists" and
+the capture said otherwise.
+
+The selected row is flanked by `SRBALL.CSP` at x 15 and 299, four pixels below
+the row - the small red ball from the Task Display's own set, loaded into
+`DS:0x200a` at `1000:ada2`. Down and Up move the selection and it WRAPS at five.
+
+RETURN copies the record out to the scratch, takes its description as the line
+to edit, clears the cell and lets the player type. **There is no cursor.** The
+high score screen pulses a 4 x 4 block at `1000:9757`; this loop draws
+characters and erases an 8-wide cell on backspace, and that is all. It was
+given one by analogy for a revision, which is the invention the prime directive
+exists to prevent.
+
+`1000:3620` ends the typing on ESC or RETURN and they are NOT the same:
+
+* **RETURN** commits - an empty description becomes `Undescribed`
+  (`CS:0x2d92`), the fourteen session fields are filled in, the whole 0x50-byte
+  record is `Move`d into the bank, `1b2e:00ac` writes the file, and
+  `1000:3722` holds for 20 retraces before the game resumes;
+* **ESC** at `1000:3635` jumps straight past all of it to the exit. It abandons
+  the save rather than committing what has been typed.
+
 ## Wave 75 is the last wave, and it is the hidden-atom objective
 
 Confirmed by playing it, after warping `TUBES.SAV`'s wave byte at `0x206`:

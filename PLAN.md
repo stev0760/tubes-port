@@ -277,15 +277,10 @@ changes a rule.
 
 **The next step is section 4B below.** The session loop is closed (4A, done):
 brief, play, banner, stats, Continue, back to the title, with ESC and Pause
-working. What is left before a player can sit down with the whole program are
-the menu items that *look* implemented and are not - Save/Load and Attract
-mode. (High Scores is done, both screens transliterated.) Both are cheaper
-than they look: `TUBES.SAV` is already structurally decoded,
-`Menu::setSaveSlotLive` and `MenuChoice::slot` are wired and waiting, and
-`DEMO.SCR` already replays correctly end to end.
-
-Save/load also un-sticks **F2** in the in-game key handler, which is read but
-inert for exactly the same reason.
+working. What is left before a player can sit down with the whole program is **attract
+mode** - the 720-frame countdown runs and restarts where it should hand off to
+`DEMO.SCR`, which the port already replays correctly end to end. High Scores
+and Save/Load are both done, screens and all, and F2 works.
 
 `1000:3a67` itself is **done** - this section's original task - and the method
 below is what did it. Keep it.
@@ -741,17 +736,15 @@ which is worse than absent - it looks broken.
    **0 pixels of 64,000**, unmasked (`grab_hiscores.py`, `diff_hiscores.py`).
    The entry screen has no capture yet - it needs a qualifying score - and is
    the only part still on the disassembly alone.
-4. **Save / load. LOAD DONE, save outstanding.** `TUBES.SAV` is fully decoded
-   (`src/save.{h,cpp}`) and Continue Saved Game works end to end: the slot list
-   is built from the file, an empty slot is ignored exactly as `1b2e:4f70`
-   ignores it, and `Game::loadFrom` restores all fourteen fields. The captured
-   slot list diffs at 252 of 64,000 pixels, all of them the turning star's
-   rotation phase.
+4. **Save / load. DONE, both halves.** `TUBES.SAV` is fully decoded
+   (`src/save.{h,cpp}`), Continue Saved Game works end to end, and F2 saves.
+   The captured slot list diffs at 252 of 64,000 pixels, all of them the
+   turning star's rotation phase; the F2 screen carries 99% of the original's
+   own ink at the same coordinates, which is as exact as a screen drawn over a
+   live play field can be compared.
 
-   Left: the **F2 save screen** inside `1000:2dd0` - the slot picker, the typed
-   description, and `1b2e:00ac`'s two `BlockWrite`s. `Game::saveInto` and
-   `stampSaveNonces` are written and tested; nothing calls them yet. F2 stays
-   inert until it lands.
+   Still inert: **F1 help**, whose body is in `1b2e:2d63` and is not
+   decompiled.
 5. **Attract mode.** The 720-frame countdown runs and restarts; it should hand
    off to `DEMO.SCR`, which the port already replays correctly end to end.
    `1b2e:52bf` returns **9** for exactly this.

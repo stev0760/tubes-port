@@ -115,6 +115,17 @@ std::string saveSlotLabel(SaveBank bank, const SaveSlot& s) {
            kSaveLabelChains;
 }
 
+std::string saveSlotDetail(SaveBank bank, const SaveSlot& s) {
+    const int width = bank == SaveBank::kWave ? kSaveWaveWidth
+                                              : kSaveChainsWidth;
+    std::string t = std::to_string(bank == SaveBank::kWave ? s.wave
+                                                          : s.chainsThisWave);
+    if (static_cast<int>(t.size()) < width) {
+        t.insert(t.begin(), static_cast<size_t>(width) - t.size(), ' ');
+    }
+    return t;
+}
+
 void stampSaveNonces(SaveFile& f, int a, int b) {
     // The nonce IS the sixth record's interval byte - it is stored through the
     // same field, at bank + 0x1bb.

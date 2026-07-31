@@ -276,6 +276,7 @@ struct Options {
     int wave = 0;               // 0 = Endurance; 1..75 starts Wave mode there
     int titlePage = -1;         // -1 off; 0 the bare title; 1..7 a menu page
     int hsPage = -1;            // -1 off; 0 Endurance, 1 Wave in the viewer
+    bool f2 = false;            // open the F2 save screen, for capture
     // Harness only. `--screenshot` captures the first frame drawn, which can
     // never show a screen that is reached by PLAYING - the banners, the stats
     // screen and the Continue prompt are all past a game over. These two run
@@ -437,6 +438,8 @@ Options parseArgs(int argc, char** argv) {
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 o.titlePage = std::atoi(argv[++i]);
             }
+        } else if (a == "--f2") {
+            o.f2 = true;
         } else if (a == "--hiscores") {
             // The viewer's two pages, for capturing against the original:
             // `--hiscores` is Endurance and `--hiscores 1` is Wave.
@@ -879,6 +882,21 @@ void drawContinue(tubes::Screen& screen, int ticksLeft,
     }
 }
 
+// `1000:9757`'s typing cursor: a 4 x 4 block whose colour walks 0x91..0x9e and
+// back, one step a frame, so it pulses rather than blinks. The save screen's
+// description field uses the same loop and therefore the same cursor.
+void drawTypingCursor(tubes::Screen& screen, int cx, int cy, int phase) {
+    uint8_t* px = screen.pixelsMutable();
+    const uint8_t col = static_cast<uint8_t>(tubes::kHsCursorBase + phase);
+    for (int yy = cy; yy < cy + tubes::kHsCursorSize; ++yy) {
+        if (yy < 0 || yy >= tubes::kScreenHeight) continue;
+        for (int xx = cx; xx < cx + tubes::kHsCursorSize; ++xx) {
+            if (xx < 0 || xx >= tubes::kScreenWidth) continue;
+            px[static_cast<size_t>(yy) * tubes::kScreenWidth + xx] = col;
+        }
+    }
+}
+
 // `2321:060b(10, 37, 299, 118, 111)`, the panel both high-score screens put
 // over the chalkboard. It is what hides the equations chalked into
 // `BLACKBRD.GFX`, so the board reads as blank behind the table.
@@ -914,7 +932,6 @@ void drawHiScores(tubes::Screen& screen, const tubes::HiScoreBankData& bank,
                   const tubes::Font& heading, bool haveHeading,
                   const tubes::Font& body, bool haveBody, int editRow,
                   const std::string& editName, int cursorPhase) {
-    uint8_t* px = screen.pixelsMutable();
     fillHiScorePanel(screen);
 
     if (haveHeading) {
@@ -940,17 +957,10 @@ void drawHiScores(tubes::Screen& screen, const tubes::HiScoreBankData& bank,
         // `1000:9757`: a 4 x 4 block just past the last character, its colour
         // walking 0x91..0x9e.
         if (i == editRow && cursorPhase > 0) {
-            const int cx = static_cast<int>(name.size()) * 8 + tubes::kHsCursorDX;
-            const int cy = y + tubes::kHsCursorDY;
-            const uint8_t col =
-                static_cast<uint8_t>(tubes::kHsCursorBase + cursorPhase);
-            for (int yy = cy; yy < cy + tubes::kHsCursorSize; ++yy) {
-                if (yy < 0 || yy >= tubes::kScreenHeight) continue;
-                for (int xx = cx; xx < cx + tubes::kHsCursorSize; ++xx) {
-                    if (xx < 0 || xx >= tubes::kScreenWidth) continue;
-                    px[static_cast<size_t>(yy) * tubes::kScreenWidth + xx] = col;
-                }
-            }
+            drawTypingCursor(screen,
+                             static_cast<int>(name.size()) * 8 +
+                                 tubes::kHsCursorDX,
+                             y + tubes::kHsCursorDY, cursorPhase);
         }
     }
 }
@@ -998,6 +1008,82 @@ void drawHiScoreViewer(tubes::Screen& screen, const tubes::HiScoreBankData& bank
         tubes::drawTextCentred(screen, heading, 0, 319, tubes::kHsViewTitleY,
                                tubes::kHsViewTitleColour,
                                tubes::textmode::kPeak, title);
+    }
+}
+
+// The F2 save screen, `1000:2dd0`'s save arm. It draws over the play field the
+// frame loop left up - the original flips to the other video page and puts this
+// on it, so the caller supplies whatever background it likes.
+//
+// `1b2e:52bf`'s slot list and this share their mode split: Endurance counts
+// CHAINS and Wave counts WAVES, right down to the heading's x, so the two words
+// end in the same column.
+void drawSaveScreen(tubes::Screen& screen, const tubes::SaveBankData& bank,
+                    tubes::SaveBank which, int selected, bool typing,
+                    const std::string& editText,
+                    const tubes::Font& heading, bool haveHeading,
+                    const tubes::Font& script, bool haveScript,
+                    const tubes::Sprite* marker, bool haveMarker) {
+    if (haveHeading) {
+        tubes::drawTextCentred(screen, heading, 0, 319, tubes::kSaveTitleY,
+                               tubes::kSaveTitleColour, tubes::textmode::kPeak,
+                               tubes::kSaveTitle);
+        tubes::drawTextCentred(screen, heading, 0, 319, tubes::kSaveRuleY,
+                               tubes::kSaveTitleColour, tubes::textmode::kPeak,
+                               tubes::kSaveTitleRule);
+        // 1000:30b6. The headings are in the heading font; only the rows are
+        // cursive.
+        tubes::drawText(screen, heading, tubes::kSaveRowX, tubes::kSaveHeadY,
+                        tubes::kSaveRowColour, tubes::textmode::kPeak,
+                        tubes::kSaveHeadDesc);
+        tubes::drawText(screen, heading, tubes::kSaveRowX,
+                        tubes::kSaveHeadRuleY, tubes::kSaveRowColour,
+                        tubes::textmode::kPeak, tubes::kSaveHeadDescRule);
+        const bool wave = which == tubes::SaveBank::kWave;
+        const int hx = wave ? tubes::kSaveWaveX : tubes::kSaveChainsX;
+        tubes::drawText(screen, heading, hx, tubes::kSaveHeadY,
+                        tubes::kSaveRowColour, tubes::textmode::kPeak,
+                        wave ? tubes::kSaveHeadWave : tubes::kSaveHeadChains);
+        tubes::drawText(screen, heading, hx, tubes::kSaveHeadRuleY,
+                        tubes::kSaveRowColour, tubes::textmode::kPeak,
+                        wave ? tubes::kSaveHeadWaveRule
+                             : tubes::kSaveHeadChainsRule);
+    }
+
+    if (haveScript) {
+        for (int i = 1; i <= tubes::kSaveSlotsShown; ++i) {
+            const tubes::SaveSlot& rec = bank.slots[i - 1];
+            const int y = tubes::saveRowY(i);
+            // 1000:316b: a live record shows its description, an empty one the
+            // "( Available )" literal. The row being typed shows the live text.
+            std::string left;
+            if (typing && i == selected) left = editText;
+            else if (rec.live()) left = rec.description;
+            else left = tubes::kSaveAvailable;
+            tubes::drawText(screen, script, tubes::kSaveRowX, y,
+                            tubes::kSaveRowColour, tubes::textmode::kPeak,
+                            left);
+            // 1000:31a8 sits AFTER the two arms join, so the number is drawn
+            // for every row - an empty slot shows a right-justified 0. The
+            // port guarded it on `live()` and the capture said otherwise.
+            const int x = which == tubes::SaveBank::kWave
+                              ? tubes::kSaveWaveX : tubes::kSaveChainsX;
+            tubes::drawText(screen, script, x, y, tubes::kSaveRowColour,
+                            tubes::textmode::kPeak,
+                            tubes::saveSlotDetail(which, rec));
+            // NO CURSOR. The high score screen pulses a 4x4 block at
+            // `1000:9757`; this loop has nothing of the kind - it draws the
+            // characters and erases an 8-wide cell on backspace, and that is
+            // all. It was given one by analogy for one revision, which is
+            // exactly the kind of invention the prime directive forbids.
+        }
+    }
+
+    // 1000:3357: SRBALL either side of the selected row.
+    if (haveMarker) {
+        const int y = tubes::saveRowY(selected) + tubes::kSaveMarkerDY;
+        screen.draw(*marker, tubes::kSaveMarkerLeftX, y);
+        screen.draw(*marker, tubes::kSaveMarkerRightX, y);
     }
 }
 
@@ -1712,6 +1798,16 @@ int main(int argc, char** argv) {
                          static_cast<std::streamsize>(raw.size()));
     };
 
+    // `1b2e:00ac`. Same harness guard as the high score table, and for the
+    // same reason: this is the player's own game directory.
+    auto writeSaves = [&]() {
+        if (harness) return;
+        const std::vector<uint8_t> raw = tubes::encodeSaves(saves);
+        std::ofstream sf(savePath, std::ios::binary);
+        if (sf) sf.write(reinterpret_cast<const char*>(raw.data()),
+                         static_cast<std::streamsize>(raw.size()));
+    };
+
     tubes::Image blackboard;
     const bool haveBlackboard = loadImage(res, "BLACKBRD.GFX", blackboard, -1);
 
@@ -2241,6 +2337,15 @@ int main(int argc, char** argv) {
     float hsCursorAccum = 0.0f;
     // Counts out the applause between finishing the name and committing it.
     float hsHold = 0.0f;
+
+    // The F2 save screen, `1000:2dd0`'s save arm. It blocks the frame loop the
+    // same way Pause does - the original calls it from inside the loop body
+    // and does not come back until it is done.
+    bool saveScreen = opt.f2;
+    int saveSlotSel = 1;              // `DS:0x1d4d`
+    bool saveTyping = false;
+    std::string saveDesc;
+    float saveWritten = 0.0f;         // `1000:3722`'s 20-retrace hold
     tubes::HiScoreBank hsBank = tubes::HiScoreBank::kWave;
 
     // The standalone viewer the menu opens, `1b2e:61b6` - now decompiled, so
@@ -2496,6 +2601,77 @@ int main(int argc, char** argv) {
             // through to the tube, which reads the keyboard separately.
             const uint8_t code = originalKeyCode(k);
 
+            // The save screen owns the keyboard while it is up, exactly as
+            // the typing loops do - `1000:2dd0` does not return until ESC or
+            // a completed save. `1000:3382` is the navigation and `1000:3423`
+            // the two keys that end it.
+            if (saveScreen) {
+                if (saveWritten > 0.0f) continue;      // the written hold
+                if (!saveTyping) {
+                    if (k == SDLK_DOWN) {
+                        // 1000:3393: five slots, and it WRAPS.
+                        saveSlotSel = saveSlotSel == tubes::kSaveSlotsShown
+                                          ? 1 : saveSlotSel + 1;
+                    } else if (k == SDLK_UP) {
+                        saveSlotSel = saveSlotSel == 1
+                                          ? tubes::kSaveSlotsShown
+                                          : saveSlotSel - 1;
+                    } else if (k == SDLK_RETURN) {
+                        // 1000:3448: the record is copied out and its
+                        // description becomes the line being edited, so
+                        // re-saving over a slot starts from what was there.
+                        const tubes::SaveBank b =
+                            gameMode == 1 ? tubes::SaveBank::kEndurance
+                                          : tubes::SaveBank::kWave;
+                        saveDesc = saves[b].slots[saveSlotSel - 1].description;
+                        saveTyping = true;
+                    } else if (k == SDLK_ESCAPE) {
+                        saveScreen = false;            // 1000:3435
+                    }
+                    continue;
+                }
+                // The typing loop, the same one `1000:9744` runs for a high
+                // score name - bounded here by the field's own 30 rather than
+                // the high score screen's 25.
+                if (k == SDLK_ESCAPE) {
+                    // `1000:3635` jumps straight to the exit: ESC out of the
+                    // description abandons the save, it does not commit it
+                    // with whatever has been typed.
+                    saveScreen = false;
+                    saveTyping = false;
+                } else if (k == SDLK_RETURN) {
+                    const tubes::SaveBank b =
+                        gameMode == 1 ? tubes::SaveBank::kEndurance
+                                      : tubes::SaveBank::kWave;
+                    tubes::SaveSlot& rec = saves[b].slots[saveSlotSel - 1];
+                    // 1000:3654 onward: the description first, then the
+                    // fourteen session fields, then the whole record into the
+                    // bank and the file out.
+                    rec.setDescription(saveDesc.empty()
+                                           ? tubes::kSaveUndescribed
+                                           : saveDesc);
+                    game->saveInto(rec, totals);
+                    // `1b2e:00ac` rolls two random numbers before writing, so
+                    // saving perturbs the sequence - in the original too.
+                    tubes::stampSaveNonces(
+                        saves, game->rollForTest(tubes::kSaveNonceMax) + 1,
+                        game->rollForTest(tubes::kSaveNonceMax) + 1);
+                    writeSaves();
+                    saveTyping = false;
+                    saveWritten = tubes::kSaveWrittenSeconds;
+                } else if (k == SDLK_BACKSPACE) {
+                    if (!saveDesc.empty()) saveDesc.pop_back();
+                } else if (k >= 0x20 && k <= 0x7e &&
+                           static_cast<int>(saveDesc.size()) <
+                               tubes::kSaveDescMax) {
+                    const bool shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
+                    char c = static_cast<char>(k);
+                    if (shift && c >= 'a' && c <= 'z') c = c - 'a' + 'A';
+                    saveDesc.push_back(c);
+                }
+                continue;
+            }
+
             // F5 first: while paused the original is blocked inside
             // `repeat until ReadKey = $bf`, so NOTHING else is looked at and
             // only F5 gets out.
@@ -2602,11 +2778,19 @@ int main(int argc, char** argv) {
             case tubes::GameAction::kSoundToggle:
                 soundOn = !soundOn;
                 break;
-            case tubes::GameAction::kHelp:
             case tubes::GameAction::kSave:
-                // `1b2e:2d63`'s help body and the F2 slot picker are read as
-                // a dispatch but their screens are not decompiled. Left inert
-                // rather than invented.
+                // `1000:3062`: the screen comes up on the slot the player last
+                // used, and the game is frozen until it is done.
+                saveScreen = true;
+                saveTyping = false;
+                saveWritten = 0.0f;
+                if (saveSlotSel < 1 || saveSlotSel > tubes::kSaveSlotsShown) {
+                    saveSlotSel = 1;
+                }
+                break;
+            case tubes::GameAction::kHelp:
+                // `1b2e:2d63`'s help body is read as a dispatch but its screen
+                // is not decompiled. Left inert rather than invented.
                 break;
             default:
                 break;
@@ -2664,7 +2848,8 @@ int main(int argc, char** argv) {
                     game->stepOnce(game->acceptsInput() ? demo.input[demoFrame++]
                                                       : 0);
                 }
-            } else if (sstage == tubes::SessionStage::kPlay && !paused) {
+            } else if (sstage == tubes::SessionStage::kPlay && !paused &&
+                       !saveScreen) {
                 game->update(opt.demo ? scriptedInput(*game) : readKeyboard(), dt);
             }
 
@@ -2748,6 +2933,17 @@ int main(int argc, char** argv) {
                     stage = Stage::kTitle;
                     menu.raise();
                     playSong("TUBES.MUS");
+                }
+            }
+
+            // `1000:3722`: twenty retraces after the file is written, deaf,
+            // and then the game resumes where it left off.
+            if (saveWritten > 0.0f) {
+                saveWritten -= dt;
+                if (saveWritten <= 0.0f) {
+                    saveWritten = 0.0f;
+                    saveScreen = false;
+                    refreshSaveSlots();
                 }
             }
 
@@ -3058,6 +3254,14 @@ int main(int argc, char** argv) {
             drawHiScores(screen, hiScores[hsBank], headingFont, haveHeading,
                          scriptFont, haveScript, hsRow, hsName,
                          hsHold > 0.0f ? 0 : hsCursor);
+        }
+        if (saveScreen) {
+            const tubes::SaveBank b = gameMode == 1
+                                          ? tubes::SaveBank::kEndurance
+                                          : tubes::SaveBank::kWave;
+            drawSaveScreen(screen, saves[b], b, saveSlotSel, saveTyping,
+                           saveDesc, headingFont, haveHeading, scriptFont,
+                           haveScript, &smallBall[1], haveSmallBall[1]);
         }
         if (paused) drawPaused(screen, headingFont, haveHeading);
 

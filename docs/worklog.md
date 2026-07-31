@@ -3190,3 +3190,37 @@ on screen.
 That function has been correct since the title screen landed, because until
 today no page it was used on had live text. The remaining 252 pixels are the
 star's rotation phase, which a single-frame capture cannot control.
+
+### The F2 save screen, and the cursor that was not there
+
+The write half. `1000:2dd0` holds it, which is why it never appeared as a
+function of its own: the in-game key handler, the F1 help and the save screen
+are one 3,064-byte routine.
+
+Two things came out of capturing it rather than reasoning about it, and both
+would have shipped wrong:
+
+- **the number column is drawn for every row.** `1000:31a8` sits after the
+  "live description" and "( Available )" arms join, so an empty slot shows a
+  right-justified `0`. The port had guarded it on the record existing, which is
+  what anyone would write.
+- **the background really is the raw play field.** The page calls at
+  `1000:3062` looked like they might be clearing a page first. They do not, and
+  the original is exactly as hard to read as the port.
+
+And one that came out of reading the listing after the capture raised the
+question: **there is no typing cursor.** The high score screen pulses a 4 x 4
+block at `1000:9757` and this loop does nothing of the kind - it draws
+characters and erases an 8-wide cell on backspace. The port had been given one
+by analogy for a revision. A capture cannot refute a cursor (the pulse dims to
+nothing at one end), so this is a case where the code had to settle it and the
+capture only prompted the question.
+
+The other thing the listing settled: ESC and RETURN are not the same key here.
+`1000:3635` jumps ESC straight past the write to the exit, so backing out of
+the description abandons the save rather than committing what has been typed.
+
+The screen carries 99.1% of the original's heading ink and 99.5% of its row ink
+at the same coordinates. It cannot be diffed exactly, because what is behind it
+is a live play field with a random backdrop - the one screen in the game where
+the zero-pixel method does not apply.

@@ -208,6 +208,48 @@ inline int saveRowY(int slot) {            // slot is 1-based, as the loop is
     return slot * kSaveRowPitch + kSaveRowY0;
 }
 
+// The title, in STARTREK.816 - `DS:0x2110`, set at `1000:3077`.
+constexpr int kSaveTitleY = 22;            // 0x16
+constexpr int kSaveRuleY = 25;             // 0x19
+constexpr uint8_t kSaveTitleColour = 47;   // 0x2f
+constexpr const char* kSaveTitle = "Save Game";
+constexpr const char* kSaveTitleRule = "_________";
+
+// The column headings, at the row grid's own y - `1000:30b6` onward. **The
+// second column depends on the mode, exactly as the menu's slot list does**:
+// Endurance counts chains and Wave counts waves, and even the x differs so the
+// two headings end in the same column (242 + 6*8 = 258 + 4*8 = 290).
+constexpr int kSaveHeadY = 50;             // 0x32, the same row as slot 0 would be
+constexpr int kSaveHeadRuleY = 53;         // 0x35
+constexpr const char* kSaveHeadDesc = "Description";
+constexpr const char* kSaveHeadDescRule = "____________________";
+constexpr int kSaveChainsX = 242;          // 0xf2
+constexpr int kSaveWaveX = 258;            // 0x102
+constexpr const char* kSaveHeadChains = "Chains";
+constexpr const char* kSaveHeadChainsRule = "______";
+constexpr const char* kSaveHeadWave = "Wave";
+constexpr const char* kSaveHeadWaveRule = "____";
+// `2000:5a90`: the number is `Str(n : width)`, right-justified, and the two
+// modes use different widths.
+constexpr int kSaveChainsWidth = 6;
+constexpr int kSaveWaveWidth = 4;
+
+// `1000:3357`: the selected row is flanked by SRBALL.CSP - the small red ball
+// from the Task Display's own set, loaded into `DS:0x200a` at `1000:ada2` -
+// four pixels below the row's y.
+constexpr int kSaveMarkerLeftX = 15;       // 0x0f
+constexpr int kSaveMarkerRightX = 299;     // 0x12b
+constexpr int kSaveMarkerDY = 4;
+
+// `1000:3722`: 20 retraces after the file is written, before the game resumes.
+// ESC jumps past both the write and this hold.
+constexpr int kSaveWrittenRetraces = 0x14;
+constexpr float kSaveWrittenSeconds =
+    static_cast<float>(kSaveWrittenRetraces) / 70.0f;
+
+// The second column's text for a slot, matching the heading above it.
+std::string saveSlotDetail(SaveBank bank, const SaveSlot& s);
+
 }  // namespace tubes
 
 #endif  // TUBES_SAVE_H
