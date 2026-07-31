@@ -6680,3 +6680,75 @@ many runs it created.
 | `func_0x0002fa23` | `1b2e:4743` | page flip / present |
 | `func_0x0002fc16` | `1b2e:4936` | (options, unread) |
 | `func_0x0002fd55` | `1b2e:4a75` | (redefine input, unread) |
+
+### The "big font" is a SLOT, and the title screen's is STARTREK.816
+
+`DS:0x2110` is not "the big font", it is the *current* big font, and each stage
+loads what it wants into it through `2000:3fab`. The HUD's was identified as
+`FUTURE.816` by pulling a digit out of a captured frame and matching it byte
+for byte; that is still right, and it is right **for the HUD**.
+
+The title screen's is not the same file. Rendering `Start Game` from each of
+the four `.816` fonts and scoring lit pixels against the menu capture:
+
+| Font | advance | y | hit | miss |
+|---|---|---|---|---|
+| **`STARTREK.816`** | **8** | **34** | **344** | **7** |
+| `STARTREK.816` | 8 | 33 | 302 | 49 |
+| `FUTURE.816` | - | - | *no competitive fit* | |
+
+and `y = 34` is exactly `yBase + 1*16` = `18 + 16`, computed independently. So
+the match pins the font, the advance and the row at once.
+
+Two things follow. The general one: **do not assume one font per size.** The
+specific one: this was tried on the briefing's title band as well, since a
+wrong font there would explain glyphs "two rows taller" - and it does **not**
+fit. `FUTURE.816` remains the best of the four for `Wave 1` (209 hit, 40 miss)
+but no font and no row is decisive, so the briefing title band is still open
+and the font-slot theory does not close it either.
+
+### The title screen draws the foreground over the WHOLE screen
+
+`1b2e:5754` is
+
+    Blit2(0, 0, TUBESFG, 320, 200)          { 2321:0711, masked }
+
+a full-screen masked blit, run once before the loop, with `2321:0792` having
+pointed the restore source at `TUBESBG` first. So the visible screen is the
+background with the foreground stencilled over all of it - and the per-frame
+`2321:0874` stamp on the atom's 16 x 13 box is only the *repair* after the atom
+is drawn, not the only place the foreground appears.
+
+Porting only the box put the atom inside the pipes correctly and left the rest
+of the network as a flat silhouette: every pipe wall away from the atom was
+missing. The tell was a 14.8% diff over artwork that looked right at a glance,
+and sampling two pixels settled it - `(200, 160)` is grey 56 in the original
+and black in the port.
+
+With both blits, and with `STARTREK.816`:
+
+| Region | differing |
+|---|---|
+| the eight menu text rows | **0.00%** |
+| lower artwork, `y 150..199` | 0.43% |
+| whole screen | **0.25%** |
+
+(excluding the atom's box and the two star columns, which animate).
+
+### Escape, `1b2e:50cf`
+
+The menu-up key handler tests `0x1b` (ESC) or joystick button `0x20` and then
+runs a chain of comparisons on the current page. It is a fixed parent table,
+**not** the page you came from:
+
+    1 -> 7      2 -> 1      3 -> 2      4 -> 2
+    5 -> 2      6 -> 1      7 -> 1
+
+ESC on the *main* menu therefore opens the `Exit Tubes?` confirm rather than
+doing nothing, and since `SetMenuPage` resets the item to 1 it arrives with
+**Yes** selected. That is exactly the behaviour `docs/debug-rig.md` records
+from driving the original ("ESC out of a submenu lands on Exit Tubes? with YES
+highlighted") - observation and code agreeing after the fact.
+
+`SetMenuPage` does still save the outgoing page at `[BP-4]`, and the escape arm
+does not read it. What that copy is for is not yet known.

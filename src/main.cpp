@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <utility>
@@ -234,6 +235,11 @@ constexpr int kFurnTotal = static_cast<int>(sizeof(kFurniture) /
 // there yet - which is exactly the symptom the oracle reported.
 constexpr tubes::Difficulty kDemoDifficulty = tubes::Difficulty::k301;
 
+// The program's stages, in the order `1000:aaba` calls them. Only the title
+// and the session exist so far; the splashes, the instructions slideshow and
+// the stats blackboard are the gaps.
+enum class Stage { kTitle, kPlay };
+
 struct Options {
     std::string gameDir = ".";
     int scale = 0;              // 0 = pick the largest that fits
@@ -252,6 +258,7 @@ struct Options {
     std::string gameBg = "GAMEBG1.GFX";   // backdrop, for matching a capture
     double renderSeconds = 0;   // 0 = one pass, songs loop forever
     int wave = 0;               // 0 = Endurance; 1..75 starts Wave mode there
+    int titlePage = -1;         // -1 off; 0 the bare title; 1..7 a menu page
     bool help = false;
 };
 
@@ -393,6 +400,14 @@ Options parseArgs(int argc, char** argv) {
             o.renderState = argv[++i];
         } else if (a == "--gamebg" && i + 1 < argc) {
             o.gameBg = argv[++i];
+        } else if (a == "--title") {
+            // Optional page: `--title` alone is the bare title screen, and
+            // `--title N` raises the menu on page N. For capturing against
+            // the original, which is how the star placement got fixed.
+            o.titlePage = 0;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                o.titlePage = std::atoi(argv[++i]);
+            }
         } else if (a == "--wave" && i + 1 < argc) {
             o.wave = std::atoi(argv[++i]);
         } else if (a == "--help" || a == "-h") {
@@ -675,6 +690,78 @@ void drawBriefing(tubes::Screen& screen, const tubes::Game& game,
 // `1000:2894`, the modes 2 and 3 arm, is not decompiled: it draws the chain
 // illustration that shows which orientation is wanted. Left undrawn rather
 // than invented, so those waves show their count and nothing else.
+// The title screen, `1b2e:52bf`, and its menu, `1b2e:4d80`.
+//
+// `TUBESBG.GFX` and `TUBESFG.GFX` are a background/foreground pair - the word
+// TUBES drawn as a connected tube network - and the atom travels INSIDE the
+// pipes. That works here for the same reason it works on the play field: the
+// atom is drawn, then a 16 x 13 box of the foreground is stamped back over it,
+// so the pipe walls come back on top and the ball shows through only where the
+// foreground is transparent. Same routine, `2321:0874`, same 16 x 13 box.
+void drawTitle(tubes::Screen& screen, const tubes::Image& bg,
+               const tubes::Screen& fgScene, bool haveArt,
+               const tubes::Menu& menu, const tubes::TitleAtom& atom,
+               const tubes::Sprite* atoms, const bool* haveAtom, int atomBall,
+               const tubes::Image* stars, const bool* haveStar,
+               const tubes::Font& big, bool haveBig,
+               const tubes::Image& fg, const tubes::Font& small,
+               bool haveSmall) {
+    screen.clear(0);
+    if (haveArt) {
+        screen.blit(bg);
+        // `1b2e:5754`: a full-screen MASKED blit of the foreground,
+        // `2321:0711(0, 0, fg, 320, 200)`. Without it the pipe walls are
+        // simply absent - the network reads as a flat silhouette, which is
+        // what happened when only the atom's own box was stamped.
+        screen.blit(fg);
+    }
+
+    // `1b2e:5780`, drawn once under the artwork with the SMALL font, which
+    // `1b2e:576b` selects just before it. Mode 3, no shadow bit.
+    if (haveSmall) {
+        tubes::drawTextCentred(screen, small, 0, 319, 190, 157, 3,
+                               "Copyright 1994 Absolute Magic");
+        tubes::drawText(screen, small, 294, 190, 157, 3, "v1.0");
+    }
+
+    // The atom, then the foreground back over its box.
+    if (atomBall >= 1 && atomBall < tubes::kTypeCount && haveAtom[atomBall]) {
+        screen.draw(atoms[atomBall], atom.x, atom.y);
+    }
+    if (haveArt) screen.stamp(fgScene, atom.x, atom.y, 16, 13);
+
+    if (!menu.up() || !haveBig) return;
+
+    const tubes::Page p = menu.page();
+    const tubes::MenuPage& page = tubes::kMenuPages[static_cast<int>(p)];
+
+    // `1b2e:4743`. The title is drawn only when the page has one - page 1's is
+    // empty - with its rule two rows below.
+    if (page.title[0]) {
+        tubes::drawTextCentred(screen, big, 0, 319, tubes::menuTitleY(p),
+                               tubes::kMenuTitleColour, tubes::kMenuTitleMode,
+                               page.title);
+        tubes::drawTextCentred(screen, big, 0, 319, tubes::menuRuleY(p),
+                               tubes::kMenuTitleColour, tubes::kMenuTitleMode,
+                               tubes::menuRule(p));
+    }
+
+    // Every item in one colour: the SELECTION is marked by the stars alone,
+    // which is why there is no highlight colour here.
+    for (int i = 1; i <= page.count; ++i) {
+        tubes::drawTextCentred(screen, big, 0, 319, tubes::menuItemY(p, i),
+                               tubes::kMenuItemColour, tubes::kMenuItemMode,
+                               menu.itemText(i));
+    }
+
+    const tubes::StarPlacement s = tubes::placeStars(p, menu.item());
+    const int f = menu.starFrame();
+    if (f >= 1 && f <= tubes::kStarFrames && haveStar[f]) {
+        screen.blit(stars[f], s.xLeft, s.y);
+        screen.blit(stars[f], s.xRight, s.y);
+    }
+}
+
 void drawTaskDisplay(tubes::Screen& screen, const tubes::Game& game,
                      const tubes::Font& big, bool haveBig,
                      const tubes::Sprite* atoms, const bool* haveAtom,
@@ -1160,6 +1247,19 @@ int main(int argc, char** argv) {
     // GAMEBG for the wave that is about to START - into `[BP-0x86]`, which
     // `1000:3a67` blits at `1000:3c0b` - and draws its own text over a
     // blackboard scene instead. Confirmed by capturing the original.
+    // The title screen's pair, and the four star frames the Pascal main
+    // program loads as shared sprites (`1000:aaba`) - which is why the title
+    // screen itself only names four files and not these.
+    tubes::Image titleBg, titleFg;
+    const bool haveTitleBg = loadImage(res, "TUBESBG.GFX", titleBg, 0);
+    const bool haveTitleFg = loadImage(res, "TUBESFG.GFX", titleFg, 0);
+    tubes::Image stars[tubes::kStarFrames + 1];
+    bool haveStar[tubes::kStarFrames + 1] = {};
+    for (int i = 1; i <= tubes::kStarFrames; ++i) {
+        haveStar[i] = loadImage(res, "STAR" + std::to_string(i) + ".GFX",
+                                stars[i], 0);
+    }
+
     tubes::Image blackboard;
     const bool haveBlackboard = loadImage(res, "BLACKBRD.GFX", blackboard, -1);
     bool haveFg = loadImage(res, "GAMEFG.GFX", foreground, 0);
@@ -1245,6 +1345,13 @@ int main(int argc, char** argv) {
     // three do not come close.
     tubes::Font bigFont, smallFont;
     const bool haveBig = loadFont(res, "FUTURE.816", 8, 7, bigFont);
+    // The "big font" is a SLOT, `DS:0x2110`, not one font: each stage loads
+    // what it wants into it. The HUD's is FUTURE.816, proven byte for byte
+    // against a captured digit; the title screen's is STARTREK.816, matched
+    // the same way against a capture of the menu - 344 lit pixels hit and 7
+    // missed at advance 8, where FUTURE.816 does not come close.
+    tubes::Font titleFont;
+    const bool haveTitleFont = loadFont(res, "STARTREK.816", 8, 7, titleFont);
     const bool haveSmall = loadFont(res, "TINY6X8.88", 6, 4, smallFont);
     const int tubeFrames = static_cast<int>(haveTube[1]) +
                            static_cast<int>(haveTube[2]) +
@@ -1432,7 +1539,79 @@ int main(int argc, char** argv) {
     scene.clear(0);
     if (haveFg) scene.blit(foreground);
 
+    // The title screen's foreground, as a Screen so `stamp` can take a box out
+    // of it - the same arrangement as `scene` above.
+    tubes::Screen titleFgScene;
+    titleFgScene.clear(0);
+    if (haveTitleFg) titleFgScene.blit(titleFg);
+
+    // `1b2e:52bf`. Every harness entry point - a screenshot, a scripted run, a
+    // recorded demo, a captured state, an explicit wave - goes straight to the
+    // session, so the flags keep working exactly as they did.
+    const bool harness = !opt.screenshot.empty() || opt.autoFrames > 0 ||
+                         opt.demo || opt.playDemo || !opt.renderState.empty() ||
+                         opt.wave > 0;
+    Stage stage = (harness && opt.titlePage < 0) ? Stage::kPlay : Stage::kTitle;
+    tubes::Menu menu;
+    tubes::TitleAtom titleAtom;
+    // `1b2e:5312`: one of the seven ordinary colours, rolled once on entry.
+    int titleBall = game->rollForTest(7) + 1;
+    int attractTimer = tubes::kAttractTimeout;
+    if (opt.titlePage > 0) {
+        // Navigate there the way a player would, rather than setting the page
+        // directly - so a capture can only show a page the menu really reaches.
+        menu.raise();
+        switch (opt.titlePage) {
+        case 3: menu.select(); menu.select(); break;        // Start, Endurance
+        case 2: menu.select(); break;                       // Start Game
+        case 4: menu.moveDown(); menu.select(); menu.select(); break;
+        case 5: menu.moveDown(); menu.select();
+                menu.moveDown(); menu.select(); break;
+        case 6: menu.moveDown(); menu.moveDown(); menu.select(); break;
+        case 7: for (int k = 0; k < 7; ++k) menu.moveDown();
+                menu.select(); break;
+        default: break;
+        }
+    }
+
     bool running = true;
+
+    // The present tail, shared. This is a lambda rather than repeated code
+    // because a previous version duplicated it for an overlay and `continue`d
+    // past the screenshot arm, which made `--screenshot` hang forever with
+    // nothing written.
+    auto presentFrame = [&]() {
+        screen.toRgba(pal, rgba);
+        SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kScreenWidth * 4);
+
+        int winW = 0, winH = 0;
+        SDL_GetRendererOutputSize(ren, &winW, &winH);
+        int s = std::max(1, std::min(winW / tubes::kScreenWidth,
+                                     winH / tubes::kScreenHeight));
+        SDL_Rect dst{(winW - tubes::kScreenWidth * s) / 2,
+                     (winH - tubes::kScreenHeight * s) / 2,
+                     tubes::kScreenWidth * s, tubes::kScreenHeight * s};
+
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+        SDL_RenderClear(ren);
+        SDL_RenderCopy(ren, tex, nullptr, &dst);
+        SDL_RenderPresent(ren);
+
+        if (!opt.screenshot.empty()) {
+            SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormatFrom(
+                rgba.data(), tubes::kScreenWidth, tubes::kScreenHeight, 32,
+                tubes::kScreenWidth * 4, SDL_PIXELFORMAT_RGBA32);
+            if (surf) {
+                SDL_SaveBMP(surf, opt.screenshot.c_str());
+                SDL_FreeSurface(surf);
+                std::printf("wrote %s\n", opt.screenshot.c_str());
+            }
+            running = false;
+        }
+
+        SDL_Delay(16);
+    };
+
     // `1000:a5d2`: the briefing runs once per wave, before `1000:3a67`, and
     // holds until a key. `1000:632f` rolls its decorative ball, so that roll
     // belongs to the screen rather than to the wave.
@@ -1450,14 +1629,59 @@ int main(int argc, char** argv) {
     while (running) {
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
-            if (ev.type == SDL_QUIT) running = false;
-            if (ev.type == SDL_KEYDOWN &&
-                (ev.key.keysym.sym == SDLK_ESCAPE ||
-                 ev.key.keysym.sym == SDLK_q)) {
-                running = false;
-            } else if (ev.type == SDL_KEYDOWN && briefingUp) {
-                briefingUp = false;
+            if (ev.type == SDL_QUIT) { running = false; continue; }
+            if (ev.type != SDL_KEYDOWN) continue;
+            const SDL_Keycode k = ev.key.keysym.sym;
+
+            if (stage == Stage::kTitle) {
+                // Every accepted press resets the attract countdown.
+                attractTimer = tubes::kAttractTimeout;
+                if (!menu.up()) {
+                    // The two-key protocol, `DS:0x1d42`: ESC, SPACE or RETURN
+                    // raises the menu and the press is SWALLOWED, so it cannot
+                    // also pick an item.
+                    if (k == SDLK_ESCAPE || k == SDLK_SPACE ||
+                        k == SDLK_RETURN) {
+                        menu.raise();
+                    }
+                    continue;
+                }
+                if (k == SDLK_UP) menu.moveUp();
+                else if (k == SDLK_DOWN) menu.moveDown();
+                else if (k == SDLK_ESCAPE) menu.back();
+                else if (k == SDLK_RETURN || k == SDLK_SPACE) {
+                    switch (menu.select()) {
+                    case tubes::MenuResult::kPlay: {
+                        static const tubes::Difficulty kDiff[3] = {
+                            tubes::Difficulty::k101, tubes::Difficulty::k201,
+                            tubes::Difficulty::k301};
+                        const tubes::MenuChoice& c = menu.choice();
+                        newSession(kDiff[c.difficulty], 0x9E3779B9u);
+                        // `DS:0x1d4e`: 2 is Wave mode, which starts at wave 1
+                        // and briefs before playing. Endurance has no wave
+                        // structure and no briefing.
+                        if (c.mode == 2) {
+                            game->startWave();
+                            raiseBriefing();
+                        }
+                        stage = Stage::kPlay;
+                        break;
+                    }
+                    case tubes::MenuResult::kQuit:
+                        running = false;
+                        break;
+                    default:
+                        // High Scores, Instructions, View Demo, Credits and
+                        // Load are stages that do not exist yet; the menu
+                        // simply stays up rather than pretending otherwise.
+                        break;
+                    }
+                }
+                continue;
             }
+
+            if (k == SDLK_ESCAPE || k == SDLK_q) running = false;
+            else if (briefingUp) briefingUp = false;
         }
 
         Uint32 now = SDL_GetTicks();
@@ -1470,7 +1694,19 @@ int main(int argc, char** argv) {
         // only on the one frame --auto screenshots. That distinction matters:
         // a crash that needs both a full beaker and a live render is invisible
         // to --auto, which simulates first and draws once at the end.
-        if (opt.screenshot.empty()) {
+        if (stage == Stage::kTitle) {
+            // `1b2e:52bf`'s loop body: walk the atom, turn the star, and count
+            // the 720 frames down to attract mode.
+            titleAtom.step();
+            if (menu.up()) menu.tick();
+            if (--attractTimer <= 0) {
+                // The attract arm returns 9. DEMO.SCR replay through the live
+                // loop exists (`--play-demo`) but is not wired to this yet, so
+                // for now the countdown simply restarts rather than silently
+                // doing nothing.
+                attractTimer = tubes::kAttractTimeout;
+            }
+        } else if (opt.screenshot.empty()) {
             if (opt.playDemo) {
                 // The recording is consumed at the fixed game step rather than
                 // through `update`'s real-time conversion - same accumulator,
@@ -1509,6 +1745,15 @@ int main(int argc, char** argv) {
                 sounds[want].valid()) {
                 music.playSound(&sounds[want]);
             }
+        }
+
+        if (stage == Stage::kTitle) {
+            drawTitle(screen, titleBg, titleFgScene, haveTitleBg && haveTitleFg,
+                      menu, titleAtom, atoms, haveAtom, titleBall, stars,
+                      haveStar, titleFont, haveTitleFont, titleFg, smallFont,
+                      haveSmall);
+            presentFrame();
+            continue;
         }
 
         screen.clear(0);
@@ -1708,35 +1953,7 @@ int main(int argc, char** argv) {
                          haveFurn, briefDecor);
         }
 
-        screen.toRgba(pal, rgba);
-        SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kScreenWidth * 4);
-
-        int winW = 0, winH = 0;
-        SDL_GetRendererOutputSize(ren, &winW, &winH);
-        int s = std::max(1, std::min(winW / tubes::kScreenWidth,
-                                     winH / tubes::kScreenHeight));
-        SDL_Rect dst{(winW - tubes::kScreenWidth * s) / 2,
-                     (winH - tubes::kScreenHeight * s) / 2,
-                     tubes::kScreenWidth * s, tubes::kScreenHeight * s};
-
-        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
-        SDL_RenderClear(ren);
-        SDL_RenderCopy(ren, tex, nullptr, &dst);
-        SDL_RenderPresent(ren);
-
-        if (!opt.screenshot.empty()) {
-            SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormatFrom(
-                rgba.data(), tubes::kScreenWidth, tubes::kScreenHeight, 32,
-                tubes::kScreenWidth * 4, SDL_PIXELFORMAT_RGBA32);
-            if (surf) {
-                SDL_SaveBMP(surf, opt.screenshot.c_str());
-                SDL_FreeSurface(surf);
-                std::printf("wrote %s\n", opt.screenshot.c_str());
-            }
-            running = false;
-        }
-
-        SDL_Delay(16);
+        presentFrame();
     }
 
     music.stop();

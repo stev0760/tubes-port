@@ -152,8 +152,15 @@ public:
     // Enter. Returns kNone while still navigating.
     MenuResult select();
 
-    // Escape out of a submenu. The original keeps the page to return to in
-    // `[BP-4]`, so this is not a stack - one level only.
+    // Escape. NOT a stack, and not the page you came from: `1b2e:50cf` reads
+    // a fixed parent table, and ESC on the MAIN menu opens the quit confirm
+    // rather than doing nothing.
+    //
+    //     7 -> 1     1 -> 7     2 -> 1     3 -> 2
+    //     4 -> 2     5 -> 2     6 -> 1
+    //
+    // `SetMenuPage` does save the outgoing page at `[BP-4]`, but the escape
+    // arm does not read it; what that copy is for is not yet known.
     void back();
 
     // True when the slot holds a live save; the original tests the record's

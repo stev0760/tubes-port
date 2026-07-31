@@ -184,7 +184,20 @@ void Menu::moveDown() {
     if (page_ == Page::kMain) mainItem_ = item_;
 }
 
-void Menu::back() { setPage(previous_); }
+void Menu::back() {
+    // `1b2e:50cf`'s chain, in its own order.
+    static const Page kParent[kPageCount + 1] = {
+        Page::kMain,        // unused
+        Page::kQuit,        // 1 main      -> the quit confirm
+        Page::kMain,        // 2 game mode -> main
+        Page::kGameMode,    // 3 difficulty
+        Page::kGameMode,    // 4 endurance saves
+        Page::kGameMode,    // 5 wave saves
+        Page::kMain,        // 6 options
+        Page::kMain,        // 7 quit confirm
+    };
+    setPage(kParent[static_cast<int>(page_)]);
+}
 
 void Menu::setSaveSlotLive(int mode, int slot, bool live) {
     if (mode >= 1 && mode <= 2 && slot >= 1 && slot <= 5) {
