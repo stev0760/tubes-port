@@ -11,7 +11,8 @@
 //
 // What is NOT from code, and is marked where it appears:
 //
-//   * kOriginalFps, assumed to be the PC timer's 18.2 Hz;
+//   * (kOriginalFps used to be listed here as assumed; it is now
+//     measured, and derived from `21ea:06ba` - see game.h)
 //   * the specials' behaviours, which the beaker update post-processes at
 //     `1000:2790` through a scan helper that is not decoded yet.
 //
@@ -144,10 +145,10 @@ int crossArcOffset(int distanceToCorner) {
     return 1;
 }
 
-// The original's frame rate. ASSUMED, not measured: attract mode produced
-// ~17 state changes a second, and the PC timer's 18.2 Hz is the obvious
-// candidate, but nothing here proves the game loop is tied to it.
-constexpr float kOriginalFps = 18.2f;
+// The original's frame rate, now MEASURED at 16.11 Hz - see kFrameHz in
+// game.h. The "~17 state changes a second" that motivated the old 18.2 was
+// closer to right than the constant fitted to it.
+constexpr float kOriginalFps = kFrameHz;
 
 // The test tube holds five, stated outright by the in-game Detailed
 // Instructions and independent of difficulty. The old 5/3/2-by-difficulty

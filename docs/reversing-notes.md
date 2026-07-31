@@ -6874,3 +6874,55 @@ constant, so the atom was always the same blue. It now seeds from the clock for
 interactive play - the original's `Randomize` - while every harness entry point
 keeps the fixed seed so captures and traces stay reproducible. `--seed N`
 forces a specific one.
+
+### The frame rate is 16.11 Hz, not the 18.2 Hz assumed since the start
+
+`kOriginalFps` was carried at **18.2 Hz** - the PC BIOS tick - for the whole
+project, on the strength of "attract mode produced ~17 state changes a second,
+and 18.2 is the obvious candidate". `src/game.cpp` listed it in its own header
+as one of only two things in the file that were *not* from code. It was wrong
+by 12.5%.
+
+Two independent routes now agree on the real figure.
+
+**From the listing.** `21ea:06ba` waits out a per-frame period held in
+`DS:0x0d40` against a dividend of `0x91` = 145 (`21ea:0706`). Read live, that
+word is **9** in the play session and **6** on the title screen, the menu and
+the briefing:
+
+    145 / 9 = 16.11 Hz        145 / 6 = 24.17 Hz
+
+**From the demo.** `DEMO.SCR`'s byte index lives at linear `0x24c2e` and
+`demoidx.jsonl` holds 979 timed readings of it over 130 s of the original. The
+index is not a frame counter - it only advances on frames the tube is idle -
+but the port reproduces that gating exactly, so `--demo-csv`'s `frame,idx`
+columns convert it. Least squares on (wall clock, game frame), fitting slope
+**and** intercept:
+
+    16.180 Hz        intercept -2.7 frames, rms 4.0 over a 2106-frame span
+
+**0.4% apart.** The constant is now derived from the formula and corroborated
+by the fit.
+
+Two things this does and does not change:
+
+- it does **not** change the simulation. Every speed in the game is a whole
+  number of pixels per *frame*, so the frame sequence is identical - which is
+  why `--demo-trace` still ends on score 13000 and every pixel diff is
+  unmoved. It changes only how fast the port runs in real time.
+- it retires the reasoning that produced 18.2. "~17 state changes a second" was
+  the better evidence and 16.18 sits closer to it than 18.2 ever did; the
+  number was fitted to the nearest famous constant instead of to the data.
+
+**Still not resolved:** how 145 relates to the PIT divisor the game actually
+writes, which is `16384` = 72.83 Hz, exactly four times the BIOS tick.
+`72.83/9` is 8.09 Hz and the measurement contradicts it flatly, so the tick
+that `[0x0d40]` counts is not simply that interrupt. The rate is settled; the
+mechanism behind the 145 is not.
+
+**Method note.** The previous session read `145/9 = 16.11` off this very
+formula, compared it against the assumed 18.2, and concluded the *unit reading*
+must be wrong. It was the assumption that was wrong. A derived number
+disagreeing with an undocumented guess is evidence against the guess, not
+against the derivation - and this file said "ASSUMED, not measured" in the same
+breath, which should have settled which one to doubt.

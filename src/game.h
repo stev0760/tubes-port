@@ -30,25 +30,34 @@ constexpr uint8_t kA = 0x10;
 constexpr uint8_t kB = 0x20;
 }  // namespace button
 
-// The play session's frame rate. Everything in the session is counted in
-// these frames, so driving them from the render loop instead runs the game at
-// whatever the host presents at.
-constexpr float kFrameHz = 18.2f;
+// The frame rate, MEASURED - see docs/reversing-notes.md. It was carried as
+// 18.2 Hz, the PC BIOS tick, for the whole project on the strength of "attract
+// mode produced ~17 state changes a second". It is not 18.2.
+//
+// The game installs its own timer (`226c:00c6` reprograms the PIT and hooks
+// INT 8) and `21ea:06ba` waits out a per-frame period held in `DS:0x0d40`,
+// against a dividend of 145. Read live, that word is 9 in the play session and
+// 6 on the title screen, the menu and the briefing.
+//
+// Two independent routes agree:
+//
+//   145 / 9                                      = 16.11 Hz
+//   least squares of the original's DEMO.SCR byte index against wall clock,
+//   979 timed readings over 130 s, converted to game frames through the
+//   port's own exact frame->index mapping
+//                                                = 16.18 Hz
+//
+// 0.4% apart, so the formula is right and the constant is derived from it.
+//
+// NOT resolved: how 145 relates to the PIT divisor the game actually writes,
+// which is 16384 = 72.83 Hz. 72.83/9 is 8.09 Hz and is contradicted by the
+// measurement, so the tick the period counts is not simply that interrupt.
+constexpr float kFrameDividend = 145.0f;   // `21ea:0706  MOV AX,0x91`
+constexpr int kSessionPeriod = 9;          // DS:0x0d40 in the play session
+constexpr int kTitlePeriod = 6;            // ...on title, menu and briefing
 
-// ...but NOT every stage runs at the session's rate, which the first port of
-// the title screen assumed. The game installs its own PIT handler (`226c:00c6`
-// reprograms the chip and hooks INT 8) and `21ea:06ba` waits out a per-frame
-// period held in `DS:0x0d40`. Read live through the debugger, that word is
-//
-//     9  in the play session
-//     6  on the title screen, the menu and the briefing
-//
-// so those stages run exactly **1.5x** faster. That ratio is the measurement;
-// the absolute rate is not settled here - the divisor the game writes is
-// 16384, i.e. 72.83 Hz or four times the BIOS tick, but 72.83/9 does not come
-// out at the session's established 18.2 Hz, so the unit of `[0x0d40]` is not
-// simply ticks-per-frame. The ratio does not depend on resolving that.
-constexpr float kTitleHz = kFrameHz * 1.5f;   // DS:0x0d40 = 6 against 9
+constexpr float kFrameHz = kFrameDividend / kSessionPeriod;   // 16.11 Hz
+constexpr float kTitleHz = kFrameDividend / kTitlePeriod;     // 24.17 Hz
 
 enum class Difficulty {
     k101,   // 9 drops

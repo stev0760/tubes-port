@@ -477,7 +477,7 @@ void testSpeedBoostNeedsHolding() {
         a.y = 5;
         a.velocity = 0x100;
         h.setAtom(6, a);
-        for (int f = 0; f < frames; ++f) h.update(btn, 1.0f / 18.2f);
+        for (int f = 0; f < frames; ++f) h.update(btn, 1.0f / tubes::kFrameHz);
         return h.atom(6).y - 5;
     };
     check(descend(0, 5) == 10, "released: 2 px a frame, the Tubes 101 base");
@@ -498,7 +498,7 @@ void testBonusAtomIsFastByType() {
     a.y = 5;
     a.velocity = 0x100;
     h.setAtom(1, a);
-    for (int f = 0; f < 5; ++f) h.update(0, 1.0f / 18.2f);
+    for (int f = 0; f < 5; ++f) h.update(0, 1.0f / tubes::kFrameHz);
     // 2 + 9*4: the reload happens at the END of the router, so the first frame
     // still runs at whatever the record held and every frame after is fast.
     // The same one-frame lag is in the original and is not worth hiding.
@@ -532,13 +532,13 @@ void catchOne(tubes::Game& g, int8_t type,
     a.y = 55;
     a.velocity = 0x100;
     g.setAtom(6, a);
-    for (int i = 0; i < 15; ++i) g.update(0, 1.0f / 18.2f);
+    for (int i = 0; i < 15; ++i) g.update(0, 1.0f / tubes::kFrameHz);
 }
 
 // Holds A long enough for one whole tipping animation - six frames, two per
 // phase. A is level-triggered, so holding it just tips again.
 void tipOnce(tubes::Game& g) {
-    for (int i = 0; i < 6; ++i) g.update(tubes::button::kA, 1.0f / 18.2f);
+    for (int i = 0; i < 6; ++i) g.update(tubes::button::kA, 1.0f / tubes::kFrameHz);
 }
 
 void testBonusCatchPaysAndGrows() {
@@ -554,7 +554,7 @@ void testBonusCatchPaysAndGrows() {
     // The award ramps in over six frames; catchOne already ran ten, so it is
     // paid. One drop and one award, not one per frame the atom sat there -
     // the special re-enters every frame and the type rewrite is what stops it.
-    for (int i = 0; i < 15; ++i) g.update(0, 1.0f / 18.2f);
+    for (int i = 0; i < 15; ++i) g.update(0, 1.0f / tubes::kFrameHz);
     check(g.score() == 1000, "the first Bonus pays exactly 1000");
     check(g.dropsRemaining() == 10, "and exactly one drop, not one a frame");
 
@@ -562,7 +562,7 @@ void testBonusCatchPaysAndGrows() {
     // second Bonus of a session is worth 2000.
     const int before = g.score();
     catchOne(g, tubes::kBonus, g.tubeTypes());
-    for (int i = 0; i < 15; ++i) g.update(0, 1.0f / 18.2f);
+    for (int i = 0; i < 15; ++i) g.update(0, 1.0f / tubes::kFrameHz);
     check(g.score() - before == 2000, "the second Bonus pays 2000");
 }
 
@@ -644,7 +644,7 @@ void testTheTubeIsAStack() {
     // written on the spot - 9 px a frame from the tube down to row 5 at y=186.
     check(g.atom(7).state == tubes::atomstate::kTipped,
           "the tipped atom is in the spare-record pool");
-    for (int i = 0; i < 20; ++i) g.update(0, 1.0f / 18.2f);
+    for (int i = 0; i < 20; ++i) g.update(0, 1.0f / tubes::kFrameHz);
     check(g.board().typeAt(3, 4) == tubes::kGreenium, "it lands in the beaker");
 }
 
@@ -663,7 +663,7 @@ void testTipRunsFourPhasesOverSixFrames() {
     const uint8_t want[6] = {1, 2, 2, 3, 3, 1};
     bool phasesOk = true;
     for (int f = 0; f < 6; ++f) {
-        g.update(tubes::button::kA, 1.0f / 18.2f);
+        g.update(tubes::button::kA, 1.0f / tubes::kFrameHz);
         if (g.tubePhase() != want[f]) phasesOk = false;
     }
     check(phasesOk, "the tip renders phases 1,2,2,3,3 and never 4");
@@ -681,12 +681,12 @@ void testTipMovesTheContents() {
     check(g.tubeAtoms()[0].y == 120 && g.tubeAtoms()[2].y == 94,
           "at rest the slots sit at the tube's y plus 52, 39, 26");
 
-    for (int f = 0; f < 3; ++f) g.update(tubes::button::kA, 1.0f / 18.2f);
+    for (int f = 0; f < 3; ++f) g.update(tubes::button::kA, 1.0f / tubes::kFrameHz);
     check(g.tubeAtoms()[0].y == 99 && g.tubeAtoms()[1].y == 93 &&
           g.tubeAtoms()[2].y == 87, "phase 2 bunches them toward the middle");
     check(g.tubeAtoms()[0].x == restX - 1, "and steps every slot 1 px left");
 
-    for (int f = 0; f < 2; ++f) g.update(tubes::button::kA, 1.0f / 18.2f);
+    for (int f = 0; f < 2; ++f) g.update(tubes::button::kA, 1.0f / tubes::kFrameHz);
     check(g.tubeAtoms()[0].y == 82 && g.tubeAtoms()[2].y == 82,
           "phase 3 lines all five up as the tube pours");
 }
@@ -705,13 +705,13 @@ void testCaughtAtomSlidesToItsSlot() {
     a.velocity = 0x100;
     g.setAtom(6, a);
 
-    g.update(0, 1.0f / 18.2f);
+    g.update(0, 1.0f / tubes::kFrameHz);
     check(g.tubeAtoms().size() == 1, "the atom is caught");
     // 55 + 9 = 64, inside the 60..70 window, and the slide then takes it on to
     // 73 on the very same frame - the tube's slot loop runs after the network's.
     check(g.tubeAtoms()[0].y == 73 && !g.tubeAtoms()[0].arrived,
           "and starts sliding rather than appearing in its slot");
-    for (int f = 0; f < 6; ++f) g.update(0, 1.0f / 18.2f);
+    for (int f = 0; f < 6; ++f) g.update(0, 1.0f / tubes::kFrameHz);
     check(g.tubeAtoms()[0].y == 120 && g.tubeAtoms()[0].arrived,
           "it settles on slot 1 at the tube's y plus 52");
 }
@@ -724,7 +724,7 @@ void testTippedAtomFallsIntoAFullColumnAndIsLost() {
     for (int r = 0; r < 5; ++r) g.boardMutable().set(3, r, tubes::kXenon);
     g.setTubeAtoms({tubes::kRedium});
     tipOnce(g);
-    for (int f = 0; f < 30; ++f) g.update(0, 1.0f / 18.2f);
+    for (int f = 0; f < 30; ++f) g.update(0, 1.0f / tubes::kFrameHz);
     check(g.board().typeAt(3, 0) == tubes::kXenon, "the column is untouched");
     check(g.dropsRemaining() == 8, "and the tip cost a drop");
     check(!g.atom(7).active(), "the record is released either way");
@@ -834,13 +834,13 @@ void testDescentAcceleratesBelowFifty() {
     tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
     g.setTubeColumn(0);                       // out of column 6's way
     descendColumn6(g, 30, tubes::kRedium);
-    g.update(0, 1.0f / 18.2f);
+    g.update(0, 1.0f / tubes::kFrameHz);
     check(g.atom(6).y == 32, "above 50 it falls at the difficulty's 2 px");
 
     tubes::Game h(6, 5, tubes::Difficulty::k101, 5);
     h.setTubeColumn(0);
     descendColumn6(h, 80, tubes::kRedium);
-    h.update(0, 1.0f / 18.2f);
+    h.update(0, 1.0f / tubes::kFrameHz);
     check(h.atom(6).y == 89, "at or below 50 it falls a flat 9");
 }
 
@@ -851,13 +851,13 @@ void testCatchIsAWindow() {
     tubes::Game late(6, 5, tubes::Difficulty::k101, 5);
     late.setTubeColumn(3);                    // stop 3 is column 6's x, 161
     descendColumn6(late, 75, tubes::kRedium);
-    for (int f = 0; f < 3; ++f) late.update(0, 1.0f / 18.2f);
+    for (int f = 0; f < 3; ++f) late.update(0, 1.0f / tubes::kFrameHz);
     check(late.tubeAtoms().empty(), "an atom already past 70 is not caught");
 
     tubes::Game hit(6, 5, tubes::Difficulty::k101, 5);
     hit.setTubeColumn(3);
     descendColumn6(hit, 55, tubes::kRedium);
-    hit.update(0, 1.0f / 18.2f);
+    hit.update(0, 1.0f / tubes::kFrameHz);
     check(hit.tubeAtoms().size() == 1, "one landing inside the window is");
 }
 
@@ -867,7 +867,7 @@ void testTippingTubeCannotCatch() {
     g.setTubeColumn(3);
     g.setTubeAtoms({tubes::kRedium});
     descendColumn6(g, 55, tubes::kGreenium);
-    g.update(tubes::button::kA, 1.0f / 18.2f);      // starts the tip
+    g.update(tubes::button::kA, 1.0f / tubes::kFrameHz);      // starts the tip
     check(g.tubeAtoms().size() == 1, "nothing is caught mid-tip");
     check(g.atom(6).y == 64, "and the atom carries on falling");
 }
@@ -878,14 +878,14 @@ void testMissedBonusCostsNothing() {
     tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
     g.setTubeColumn(0);
     descendColumn6(g, 180, tubes::kBonus);
-    for (int f = 0; f < 3; ++f) g.update(0, 1.0f / 18.2f);
+    for (int f = 0; f < 3; ++f) g.update(0, 1.0f / tubes::kFrameHz);
     check(!g.atom(6).drawn(), "the Bonus fell past and was lost");
     check(g.dropsRemaining() == 9, "and it cost nothing");
 
     tubes::Game h(6, 5, tubes::Difficulty::k101, 5);
     h.setTubeColumn(0);
     descendColumn6(h, 180, tubes::kRedium);
-    for (int f = 0; f < 3; ++f) h.update(0, 1.0f / 18.2f);
+    for (int f = 0; f < 3; ++f) h.update(0, 1.0f / tubes::kFrameHz);
     check(h.dropsRemaining() == 8, "an ordinary atom does cost one");
 }
 
@@ -899,7 +899,7 @@ void testFlashiumCyclesEveryFourFrames() {
     std::string seen;
     for (int f = 0; f < 32; ++f) {
         seen += static_cast<char>('0' + g.flashColour());
-        g.update(0, 1.0f / 18.2f);
+        g.update(0, 1.0f / tubes::kFrameHz);
     }
     check(seen == "11112222333344445555666677771111",
           "Flashium holds each of the seven colours for four frames, then wraps");
