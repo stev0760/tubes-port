@@ -1078,7 +1078,8 @@ void drawTitle(tubes::Screen& screen, const tubes::Image& bg,
                                menu.itemText(i));
     }
 
-    const tubes::StarPlacement s = tubes::placeStars(p, menu.item());
+    const tubes::StarPlacement s =
+        tubes::placeStars(p, menu.item(), menu.itemText(menu.item()));
     const int f = menu.starFrame();
     if (f >= 1 && f <= tubes::kStarFrames && haveStar[f]) {
         screen.blit(stars[f], s.xLeft, s.y);
@@ -1662,6 +1663,26 @@ int main(int argc, char** argv) {
     // `1b2e:0243`: read `TUBES.HSC` if it is there, otherwise fill both banks
     // with the twenty names the binary ships. The file lives beside the game
     // data, which is where the original writes it.
+    // `1b2e:000a`: read `TUBES.SAV` if it is there. Unlike the high score
+    // table the game SHIPS one, zero-filled, and the reader zero-fills the
+    // banks before reading anyway - so a missing or malformed file is simply
+    // five empty slots per bank rather than an error.
+    const std::string savePath = opt.gameDir + "/TUBES.SAV";
+    tubes::SaveFile saves;
+    {
+        std::ifstream sf(savePath, std::ios::binary);
+        if (sf) {
+            std::vector<uint8_t> raw((std::istreambuf_iterator<char>(sf)),
+                                      std::istreambuf_iterator<char>());
+            if (!tubes::decodeSaves(raw, saves)) {
+                std::fprintf(stderr,
+                             "TUBES.SAV is malformed (%zu bytes); starting "
+                             "with no saved games\n", raw.size());
+                saves = tubes::SaveFile{};
+            }
+        }
+    }
+
     const std::string hiScorePath = opt.gameDir + "/TUBES.HSC";
     tubes::HiScoreFile hiScores = tubes::defaultHiScores();
     {
@@ -2044,6 +2065,21 @@ int main(int argc, char** argv) {
     // the flags keep working exactly as they did.
     Stage stage = (harness && opt.titlePage < 0) ? Stage::kPlay : Stage::kTitle;
     tubes::Menu menu;
+    // `1b2e:5427` onward: the slot pages are built from the file every time the
+    // title screen is entered, which is why a game saved this session shows up
+    // without a restart.
+    auto refreshSaveSlots = [&]() {
+        for (int mode = 1; mode <= 2; ++mode) {
+            const tubes::SaveBank b = mode == 1 ? tubes::SaveBank::kEndurance
+                                                : tubes::SaveBank::kWave;
+            for (int slot = 1; slot <= tubes::kSaveSlotsShown; ++slot) {
+                const tubes::SaveSlot& rec = saves[b].slots[slot - 1];
+                menu.setSaveSlotLive(mode, slot, rec.live());
+                menu.setSaveSlotText(mode, slot, tubes::saveSlotLabel(b, rec));
+            }
+        }
+    };
+    refreshSaveSlots();
     tubes::TitleAtom titleAtom;
     // `1b2e:5312`: one of the seven ordinary colours, rolled once on entry.
     int titleBall = game->rollForTest(7) + 1;
@@ -2380,6 +2416,43 @@ int main(int argc, char** argv) {
                         paused = false;
                         briefingUp = false;
                         if (c.mode == 2) {
+                            game->startWave();
+                            raiseBriefing();
+                        }
+                        sstage = tubes::firstStage(gameMode);
+                        playSong(sstage == tubes::SessionStage::kBriefing
+                                     ? tubes::kBriefingMusic
+                                     : tubes::playMusicFor(
+                                           game->dropsRemaining()));
+                        stage = Stage::kPlay;
+                        break;
+                    }
+                    case tubes::MenuResult::kLoad: {
+                        // `1b2e:4f70`: only a live record leaves the menu, and
+                        // `1000:a525` then restores the session from it.
+                        const tubes::MenuChoice& c = menu.choice();
+                        const tubes::SaveBank b =
+                            c.mode == 1 ? tubes::SaveBank::kEndurance
+                                        : tubes::SaveBank::kWave;
+                        const tubes::SaveSlot& rec =
+                            saves[b].slots[c.slot - 1];
+                        // The load path never visits the Difficulty page, so
+                        // the session takes its difficulty from the record's
+                        // own numbers instead: drops, interval and velocity
+                        // are all restored below. k101 is only what the Game
+                        // is built with before they are overwritten.
+                        newSession(tubes::Difficulty::k101,
+                                   bootSeed ^ 0x5bf03635u);
+                        gameMode = c.mode;
+                        flags = tubes::SessionFlags{};
+                        totals = tubes::SessionTotals{};
+                        banner = tubes::Banner::kNone;
+                        paused = false;
+                        briefingUp = false;
+                        game->loadFrom(rec, totals);
+                        if (c.mode == 2) {
+                            // A save resumes at the START of its wave, so the
+                            // briefing runs exactly as it would have.
                             game->startWave();
                             raiseBriefing();
                         }

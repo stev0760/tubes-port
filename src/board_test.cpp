@@ -2218,6 +2218,71 @@ void testASaveDescriptionLeavesResidueLikePascalDoes() {
     check(s.description.size() == 30, "and a description is capped at 30");
 }
 
+// The two banks are labelled differently, and that is the original's doing:
+// Endurance has no waves, so `1b2e:5450` prints its chain count while
+// `1b2e:55ea` prints the wave.
+void testTheTwoBanksAreLabelledDifferently() {
+    tubes::SaveSlot s;
+    s.setDescription("Stephen");
+    s.wave = 75;
+    s.chainsThisWave = 3;
+    check(tubes::saveSlotLabel(tubes::SaveBank::kWave, s) ==
+              "Stephen                 Wave 75",
+          "the Wave list shows the wave");
+    check(tubes::saveSlotLabel(tubes::SaveBank::kEndurance, s) ==
+              "Stephen               3 Chains",
+          "and the Endurance list shows chains, because it has no waves");
+    tubes::SaveSlot empty;
+    check(tubes::saveSlotLabel(tubes::SaveBank::kWave, empty).empty(),
+          "an empty slot has no row, so the page's own text stays");
+}
+
+// `1000:a525` and `1000:3660` are mirror images, so a session that saves and
+// reloads has to come back identical. That is the check the original cannot
+// fail by construction and a port easily can, by forgetting one of fourteen.
+void testASavedGameRoundTripsThroughTheSession() {
+    using namespace tubes;
+    Game g(6, 5, Difficulty::k201, 4242u);
+    while (g.progress().wave < 12) g.advanceWave();
+    g.startWave();
+    g.setScore(81250);
+    g.setDropsRemaining(4);
+    g.setChains(7);
+    SessionTotals totals;
+    totals.totalChains = 98;
+    totals.chainsThisWave = 7;
+    totals.continuesLeft = 1;
+
+    SaveSlot rec;
+    rec.setDescription("Stephen Hax");
+    g.saveInto(rec, totals);
+    check(rec.wave == 12 && rec.score == 81250 && rec.drops == 4,
+          "the session goes into the record");
+    check(rec.interval == g.progress().interval &&
+              rec.velocity == g.progress().velocity,
+          "progression included");
+
+    Game h(6, 5, Difficulty::k101, 1u);
+    SessionTotals back;
+    h.loadFrom(rec, back);
+    check(h.progress().wave == 12, "and comes back out");
+    check(h.score() == 81250 && h.dropsRemaining() == 4, "score and drops");
+    check(back.totalChains == 98 && back.continuesLeft == 1, "the totals");
+    check(h.progress().interval == g.progress().interval &&
+              h.progress().velocity == g.progress().velocity &&
+              h.progress().marked == g.progress().marked &&
+              h.progress().atomTarget == g.progress().atomTarget &&
+              h.progress().crystals == g.progress().crystals &&
+              h.progress().preFill == g.progress().preFill,
+          "and all six counters, which is what makes a loaded wave as hard as "
+          "the one that was saved");
+    // The dispenser reads its own copies, not the progression, so a load that
+    // forgot them would run the wave at the wrong speed.
+    check(h.spawnIntervalForTest() == g.progress().interval &&
+              h.networkVelForTest() == g.progress().velocity,
+          "the session's own copies follow it");
+}
+
 void testHiScoreRoundTripsByteForByte() {
     tubes::HiScoreFile f = tubes::defaultHiScores();
     std::vector<uint8_t> raw = tubes::encodeHiScores(f);
@@ -2631,6 +2696,8 @@ int main() {
     testEnduranceSkipsBothWaveScreens();
     testTheFastSongIsAboutDropsNotDifficulty();
     testSaveFileLayout();
+    testTheTwoBanksAreLabelledDifferently();
+    testASavedGameRoundTripsThroughTheSession();
     testTheSaveNonceIsTheSixthRecordsIntervalByte();
     testASaveDescriptionLeavesResidueLikePascalDoes();
     testHiScoreRoundTripsByteForByte();

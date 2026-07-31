@@ -1336,4 +1336,61 @@ void Game::update(uint8_t buttons, float dt) {
     for (int i = 0; i < steps && !gameOver_; ++i) stepFrame(buttons);
 }
 
+// ---------------------------------------------------------------------------
+// A saved game, `1000:a525` and `1000:3660`
+// ---------------------------------------------------------------------------
+//
+// Fourteen fields, and the two routines are mirror images of each other - the
+// restore reads exactly what the save wrote, in the same order, through the
+// same DGROUP copies of the record. Keeping them adjacent is the point: the
+// original's two lists are 0x3000 bytes apart and agreeing by hand.
+//
+// What is NOT saved is as informative as what is. There is no beaker, no atom
+// in flight, no test tube: a load resumes at the START of the wave it stored,
+// which is why the record needs `WaveProgress` but nothing about the board.
+void Game::loadFrom(const SaveSlot& s, SessionTotals& totals) {
+    totals.continuesLeft   = s.continuesLeft;      // 1000:a525  -0x14f
+    score_                 = static_cast<int>(s.score);   // a52c  -0x153/-0x151
+    totals.totalChains     = s.totalChains;        // a53b       -0x14e
+    dropsRemaining_        = s.drops;              // a542       -0x17e
+    progress_.wave         = s.wave;               // a549       -0x170
+    totals.chainsThisWave  = s.chainsThisWave;     // a550       -0x17c
+    progress_.velocity     = s.velocity;           // a557       -0x180
+    progress_.interval     = s.interval;           // a55e       -0x181
+    progress_.chainTargetChain  = s.chainTarget;   // a565       -0x183
+    progress_.atomTarget        = s.atomTarget;    // a56c       -0x182
+    progress_.chainTargetColour = s.colourTarget;  // a573       -0x184
+    progress_.crystals     = s.crystals;           // a57a       -0x185
+    progress_.marked       = s.marked;             // a581       -0x186
+    progress_.preFill      = s.preFill;            // a588       -0x17b
+
+    // The HUD's Chains figure is the same variable the totals carry, so it has
+    // to follow them or a loaded game shows zero until the next chain.
+    chains_ = totals.chainsThisWave;
+    // `1000:a58f`, common to both branches: the objective counter is cleared
+    // before the briefing seeds it.
+    objective_.counter = 0;
+    // The dispenser and the network read these from the session, not from the
+    // progression, and `1000:9e53` copies them across on entry either way.
+    spawnInterval_ = progress_.interval;
+    networkVel_ = progress_.velocity;
+}
+
+void Game::saveInto(SaveSlot& s, const SessionTotals& totals) const {
+    s.score          = static_cast<uint32_t>(score_);     // 1000:3660
+    s.continuesLeft  = totals.continuesLeft;              // 3678
+    s.totalChains    = totals.totalChains;                // 3680
+    s.wave           = progress_.wave;                    // 3688
+    s.drops          = dropsRemaining_;                   // 3690
+    s.chainsThisWave = chains_;                           // 3698
+    s.velocity       = progress_.velocity;                // 36a0
+    s.interval       = progress_.interval;                // 36a8
+    s.chainTarget    = progress_.chainTargetChain;        // 36b0
+    s.atomTarget     = progress_.atomTarget;              // 36b8
+    s.colourTarget   = progress_.chainTargetColour;       // 36c0
+    s.crystals       = progress_.crystals;                // 36c8
+    s.marked         = progress_.marked;                  // 36d0
+    s.preFill        = progress_.preFill;                 // 36d8
+}
+
 }  // namespace tubes

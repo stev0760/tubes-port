@@ -89,7 +89,8 @@ struct StarPlacement {
     int xRight;
     int y;
 };
-StarPlacement placeStars(Page p, int item);
+// `text` is what is actually on the row; pass null for the page's own.
+StarPlacement placeStars(Page p, int item, const char* text = nullptr);
 
 // `1b2e:4743`, the render. All items share one colour: the SELECTION is marked
 // by the stars alone, not by recolouring the text.
@@ -169,7 +170,10 @@ public:
     bool saveSlotLive(int mode, int slot) const;
 
     // Pages 4 and 5 hold "(Unavailable)" in the image and the live text is
-    // copied over each slot at runtime.
+    // copied over each slot at runtime - `1b2e:5427` onward builds one string
+    // per live record and assigns it over the menu item. `saveSlotLabel` in
+    // save.h builds the same string; this is where it is put.
+    void setSaveSlotText(int mode, int slot, const std::string& text);
     const char* itemText(int i) const;
 
     // The turning star, advanced once per frame.
@@ -186,6 +190,7 @@ private:
     int mainItem_ = 1;              // `DS:0x1d43`, the remembered main-menu row
     MenuChoice choice_;
     bool slotLive_[3][6] = {};      // [mode][slot], 1-based
+    std::string slotText_[3][6];    // the live row, empty when the slot is
     int starTick_ = 1;              // `DS:0x1d78`, 1..3
     int starFrame_ = 1;             // `DS:0x1d79`, 1..4
 };

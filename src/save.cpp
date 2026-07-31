@@ -100,6 +100,21 @@ std::vector<uint8_t> encodeSaves(const SaveFile& in) {
     return raw;
 }
 
+std::string saveSlotLabel(SaveBank bank, const SaveSlot& s) {
+    if (!s.live()) return std::string();
+    std::string label = s.description;
+    if (static_cast<int>(label.size()) < kSaveLabelPad) {
+        label.append(static_cast<size_t>(kSaveLabelPad) - label.size(), ' ');
+    } else {
+        label = label.substr(0, kSaveLabelPad);
+    }
+    if (bank == SaveBank::kWave) {
+        return label + kSaveLabelWave + std::to_string(s.wave);
+    }
+    return label + kSaveLabelChainsGap + std::to_string(s.chainsThisWave) +
+           kSaveLabelChains;
+}
+
 void stampSaveNonces(SaveFile& f, int a, int b) {
     // The nonce IS the sixth record's interval byte - it is stored through the
     // same field, at bank + 0x1bb.

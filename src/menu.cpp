@@ -164,8 +164,13 @@ std::string menuRule(Page p) {
     return n > 0 ? std::string(static_cast<size_t>(n), '_') : std::string();
 }
 
-StarPlacement placeStars(Page p, int item) {
-    const char* s = kMenuPages[static_cast<int>(p)].items[item - 1];
+StarPlacement placeStars(Page p, int item, const char* text) {
+    // The width is the TEXT'S, and on a save-slot page that is the live row
+    // rather than the "(Unavailable)" the page ships - a 31-character save row
+    // puts the stars at 16 and 287 instead of 88 and 215. Measuring the page's
+    // own string was wrong for exactly the two pages whose text is replaced at
+    // runtime, which is why it went unnoticed until the slots were filled in.
+    const char* s = text ? text : kMenuPages[static_cast<int>(p)].items[item - 1];
     int len = 0;
     while (s && s[len]) ++len;
     return {140 - 4 * len, 163 + 4 * len, menuItemY(p, item) + 2};
@@ -221,7 +226,20 @@ bool Menu::saveSlotLive(int mode, int slot) const {
     return slotLive_[mode][slot];
 }
 
+void Menu::setSaveSlotText(int mode, int slot, const std::string& text) {
+    if (mode < 1 || mode > 2 || slot < 1 || slot > 5) return;
+    slotText_[mode][slot] = text;
+}
+
 const char* Menu::itemText(int i) const {
+    // A live save's row replaces the item text; an empty slot keeps the
+    // "(Unavailable)" that is part of the page, which is what the original
+    // does by only copying over the slots it finds a record in.
+    if ((page_ == Page::kSavesEndurance || page_ == Page::kSavesWave) &&
+        i >= 1 && i <= 5) {
+        const std::string& t = slotText_[choice_.mode][i];
+        if (!t.empty()) return t.c_str();
+    }
     return kMenuPages[static_cast<int>(page_)].items[i - 1];
 }
 

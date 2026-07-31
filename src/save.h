@@ -159,6 +159,40 @@ constexpr const char* kSaveAvailable = "( Available )";
 constexpr const char* kSaveUndescribed = "Undescribed";
 
 // ---------------------------------------------------------------------------
+// The slot list, `1b2e:52bf` - and the two banks are labelled DIFFERENTLY
+// ---------------------------------------------------------------------------
+//
+// The two arms are not copies of each other, and the difference is the whole
+// point: **Endurance has no waves, so its list shows the CHAIN count.**
+//
+//     Endurance, 1b2e:5450   Pad(desc, 20) + '  '        + Str(rec[+0x28])
+//                                                        + ' Chains'
+//     Wave,      1b2e:55ea   Pad(desc, 20) + '    Wave ' + Str(rec[+0x26])
+//
+// `+0x28` is chains-this-wave and `+0x26` is the wave, so each mode lists the
+// number that means something to it. A port that printed "Wave n" in both
+// would be wrong in the half nobody would think to check.
+//
+// That difference is also what settled the offsets. The Endurance arm reads
+// bank + 0x28 and the Wave arm bank + 0x26, which looked like one of them
+// being off by two until the list was captured from the original: it reads
+// **Wave 75** and **Wave 4** for a file whose `+0x26` bytes are 75 and 4 and
+// whose `+0x28` bytes are 3 and 0. Two arms, two fields, both right.
+//
+// `2000:599a(dest, src, 20)` is taken as a PAD to 20 rather than a plain copy:
+// both labels come out 31 characters that way, and the captured list spans
+// nearly the full screen width, which a 7-character name plus nine characters
+// would not. Marked because it is the one inference here.
+constexpr int kSaveLabelPad = 20;          // 0x14
+constexpr const char* kSaveLabelWave = "    Wave ";
+constexpr const char* kSaveLabelChainsGap = "  ";
+constexpr const char* kSaveLabelChains = " Chains";
+
+// The list row for a slot, or an empty string when the slot is empty - the
+// menu leaves the image's own "(Unavailable)" showing in that case.
+std::string saveSlotLabel(SaveBank bank, const SaveSlot& s);
+
+// ---------------------------------------------------------------------------
 // The save screen, `1000:2dd0`'s F2 arm
 // ---------------------------------------------------------------------------
 //

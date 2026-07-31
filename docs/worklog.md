@@ -3139,3 +3139,54 @@ entry point that runs a session, not just the ones that look like tests.
 The diff catching it is the argument for keeping a zero-pixel check around: an
 exact comparison that has been zero once will report anything that disturbs it,
 including things that have nothing to do with rendering.
+
+## 2026-07-31 - saved games: the format, and the load path
+
+`TUBES.SAV` had five fields from comparing two samples and eight more listed as
+"matching singles" of unknown purpose. All sixteen came out of the code in one
+pass, by the method this project ranks first: `FindScalarRefs` on the two bank
+addresses gives four consumers of one byte stream - reader, writer, save screen
+and menu - and between them nothing is left to infer.
+
+The best detail is the one that was written up as a mystery. The byte at each
+bank's `+0x1bb` "differs between samples including in the bank that stayed
+empty, so it is not a checksum". It is `Random(254) + 1`, written into both
+banks on every save by `1b2e:00ac`, at what is really record 5's interval byte -
+the sixth record of six, the one no slot uses. The reader loads it into a local
+and never looks at it again. A nonce with no consumer.
+
+And the record carries `WaveProgress`, so **a save restores the progression and
+not just the wave number**. That retro-explains the level-warp sweep seeing
+wave-6 counters on a wave-75 save: it edited `+0x26` and nothing else.
+
+### The two banks are labelled differently, and that is what settled the offsets
+
+Reading the menu's slot-list arms turned up what looked like an off-by-two: the
+Endurance arm reads `bank + 0x28` and the Wave arm `bank + 0x26`. The save arm
+says `+0x26` is the wave and `+0x28` is chains-this-wave, so one of them had to
+be wrong.
+
+Neither is. **Endurance has no waves, so its list shows the chain count** -
+`Pad(desc,20) + '  ' + Str(chains) + ' Chains'` against the Wave list's
+`Pad(desc,20) + '    Wave ' + Str(wave)`. Two arms, two fields, both right, and
+a port that printed "Wave n" in both would have been wrong in the half nobody
+would think to check.
+
+That was settled by capturing the list from the original rather than by
+staring: `gamedrive/TUBES.SAV` has `+0x26` = 75 and 4 against `+0x28` = 3 and
+0, and the screen reads **Wave 75** and **Wave 4**. Nothing to interpret. This
+is measurement in the role the prime directive allows it - validating a reading,
+not deriving one.
+
+### A pixel diff found a bug in code that was already right
+
+The port's slot list came out at 326 of 64,000 differing pixels, all of them
+the two stars. `placeStars` measured `kMenuPages[...].items[i-1]` - the page's
+OWN text - and a save-slot page is precisely the page whose text is replaced at
+runtime. With a 31-character save row the stars belong at 16 and 287; it was
+putting them at 88 and 215, the width of the "(Unavailable)" that was no longer
+on screen.
+
+That function has been correct since the title screen landed, because until
+today no page it was used on had live text. The remaining 252 pixels are the
+star's rotation phase, which a single-frame capture cannot control.

@@ -741,8 +741,17 @@ which is worse than absent - it looks broken.
    **0 pixels of 64,000**, unmasked (`grab_hiscores.py`, `diff_hiscores.py`).
    The entry screen has no capture yet - it needs a qualifying score - and is
    the only part still on the disassembly alone.
-4. **Save / load.** Same file, same decoded layout. `Menu::setSaveSlotLive`
-   and `MenuChoice::slot` are already wired and waiting.
+4. **Save / load. LOAD DONE, save outstanding.** `TUBES.SAV` is fully decoded
+   (`src/save.{h,cpp}`) and Continue Saved Game works end to end: the slot list
+   is built from the file, an empty slot is ignored exactly as `1b2e:4f70`
+   ignores it, and `Game::loadFrom` restores all fourteen fields. The captured
+   slot list diffs at 252 of 64,000 pixels, all of them the turning star's
+   rotation phase.
+
+   Left: the **F2 save screen** inside `1000:2dd0` - the slot picker, the typed
+   description, and `1b2e:00ac`'s two `BlockWrite`s. `Game::saveInto` and
+   `stampSaveNonces` are written and tested; nothing calls them yet. F2 stays
+   inert until it lands.
 5. **Attract mode.** The 720-frame countdown runs and restarts; it should hand
    off to `DEMO.SCR`, which the port already replays correctly end to end.
    `1b2e:52bf` returns **9** for exactly this.

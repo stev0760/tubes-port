@@ -15,6 +15,8 @@
 #include <vector>
 
 #include "board.h"
+#include "save.h"
+#include "session.h"
 #include "wave.h"
 
 namespace tubes {
@@ -382,6 +384,13 @@ public:
     int clearTimer() const { return clearTimer_; }
     // Atoms a "survive N atoms" wave is still waiting to see out of play.
     int atomsInPlay() const { return inPlay_; }
+
+    // `1000:a525` and `1000:3660`, the two halves of a saved game. They are
+    // mirror images - fourteen fields each, in the same order - so they live
+    // together and a field added to one is obvious in the other. `SessionTotals`
+    // is the caller's, so its three fields are passed rather than owned.
+    void loadFrom(const SaveSlot& s, SessionTotals& totals);
+    void saveInto(SaveSlot& s, const SessionTotals& totals) const;
     // The sound to play, consumed by the caller. See `namespace sfx` - it is an
     // atom type for the fade families and DROP, or one of the three ids above
     // it. `sfx::kNone` means nothing happened.
