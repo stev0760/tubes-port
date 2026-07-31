@@ -19,6 +19,7 @@
 #include "opl.h"
 #include "res.h"
 #include "screen.h"
+#include "wave_text.h"
 #include "scr.h"
 #include "sfx.h"
 
@@ -526,6 +527,111 @@ void drawHud(tubes::Screen& screen, const tubes::Game& game,
         tubes::drawTextCentred(screen, small, 0, 319, 21, kPopColour, kPopMode,
                                "x" + std::to_string(game.scoreMultiplier()));
     }
+}
+
+// The briefing screen, `1000:86b8`. The dispatch half lives in wave.cpp; this
+// is its presentation, and every coordinate here is a literal the original
+// pushes - see wave_text.cpp.
+//
+//     load GAMEBG<Random(10)+1>, re-rolled until it differs from the last
+//     SetFont(big);   OutTextCentred(0, 319, 45, 159, 3, 'Wave ' + Str(n))
+//                     OutTextCentred(0, 319, 48, 159, 3, '____________')
+//     SetFont(small); <the objective routine's lines and illustration>
+//                     OutText(76, 150, 155, 1, 'You are allowed N drops.')
+//     wait for a key
+//
+// The one thing not settled from code is the justification of the padded
+// fields. Turbo Pascal's `:width` right-justifies and `Str(n:2)` clearly does,
+// so the colour names are right-justified here too; no capture of an original
+// briefing has been taken to confirm it.
+std::string padLeft(const std::string& s, size_t w) {
+    return s.size() >= w ? s : std::string(w - s.size(), ' ') + s;
+}
+
+void drawBriefing(tubes::Screen& screen, const tubes::Game& game,
+                  const tubes::Image* bg, bool haveBg,
+                  const tubes::Font& big, const tubes::Font& small,
+                  bool haveBigF, bool haveSmallF,
+                  const tubes::Sprite* atoms, const bool* haveAtom,
+                  const tubes::Sprite* furn, const bool* haveFurn,
+                  int8_t decorBall) {
+    screen.clear(0);
+    if (haveBg) screen.blit(*bg);
+
+    const tubes::WaveObjective& obj = game.objective();
+    const int count = obj.counter;
+    const int8_t colour = obj.reqColour >= 1 && obj.reqColour <= 7
+                              ? obj.reqColour
+                              : static_cast<int8_t>(1);
+    const std::string name = tubes::kElementNames[colour];
+
+    if (haveBigF) {
+        tubes::drawTextCentred(screen, big, 0, 319, tubes::kBriefTitleY,
+                               tubes::kBriefTitleColour, tubes::kBriefTitleMode,
+                               tubes::kBriefTitle +
+                                   std::to_string(game.progress().wave));
+        tubes::drawTextCentred(screen, big, 0, 319, tubes::kBriefRuleY,
+                               tubes::kBriefTitleColour, tubes::kBriefTitleMode,
+                               tubes::kBriefRule);
+    }
+    if (!haveSmallF) return;
+
+    const tubes::Briefing& b =
+        tubes::briefingFor(tubes::objectiveForWave(game.progress().wave));
+    for (int i = 0; i < b.lineCount; ++i) {
+        const tubes::BriefLine& l = b.lines[i];
+        std::string s;
+        switch (l.fmt) {
+            case tubes::BriefFmt::kLiteral:  s = l.a; break;
+            case tubes::BriefFmt::kCount:
+                s = std::string(l.a) + padLeft(std::to_string(count), 2) + l.b;
+                break;
+            case tubes::BriefFmt::kCountName:
+                s = std::string(l.a) + padLeft(std::to_string(count), 2) + l.b +
+                    padLeft(name, 9) + l.c;
+                break;
+            case tubes::BriefFmt::kName:
+                s = std::string(l.a) + padLeft(name, 9) + l.b;
+                break;
+            case tubes::BriefFmt::kNameWide:
+                s = std::string(l.a) +
+                    padLeft(tubes::kElementNames[obj.disabledColour >= 1 &&
+                                                         obj.disabledColour <= 7
+                                                     ? obj.disabledColour
+                                                     : 1],
+                            10) +
+                    l.b;
+                break;
+            case tubes::BriefFmt::kNameOnly: s = name; break;
+        }
+        if (l.x < 0) {
+            tubes::drawTextCentred(screen, small, 0, 319, l.y, l.colour, l.mode, s);
+        } else {
+            tubes::drawText(screen, small, l.x, l.y, l.colour, l.mode, s);
+        }
+    }
+
+    for (int i = 0; i < b.ballCount; ++i) {
+        const tubes::BriefBall& ball = b.balls[i];
+        int8_t type = colour;
+        switch (ball.kind) {
+            case tubes::BriefBallKind::kRequired: type = colour; break;
+            case tubes::BriefBallKind::kCrystal:  type = tubes::kCrystal; break;
+            case tubes::BriefBallKind::kRandom:   type = decorBall; break;
+            case tubes::BriefBallKind::kMarker:
+                if (haveFurn[kMarker]) screen.draw(furn[kMarker], ball.x, ball.y);
+                continue;
+        }
+        if (type >= 1 && type < tubes::kTypeCount && haveAtom[type]) {
+            screen.draw(atoms[type], ball.x, ball.y);
+        }
+    }
+
+    tubes::drawText(screen, small, tubes::kBriefDropsX, tubes::kBriefDropsY,
+                    tubes::kBriefBodyColour, 1,
+                    std::string(tubes::kBriefDropsA) +
+                        std::to_string(game.dropsRemaining()) +
+                        tubes::kBriefDropsB);
 }
 
 // The Task Display, `1000:2a4a` - the small ball and the number in the top
@@ -1295,6 +1401,16 @@ int main(int argc, char** argv) {
     if (haveFg) scene.blit(foreground);
 
     bool running = true;
+    // `1000:a5d2`: the briefing runs once per wave, before `1000:3a67`, and
+    // holds until a key. `1000:632f` rolls its decorative ball, so that roll
+    // belongs to the screen rather than to the wave.
+    bool briefingUp = opt.wave > 0;
+    int8_t briefDecor = 1;
+    auto raiseBriefing = [&]() {
+        briefingUp = true;
+        briefDecor = static_cast<int8_t>(game.rollForTest(8) + 1);
+    };
+    if (briefingUp) raiseBriefing();
     float demoAccum = 0.0f;
     size_t demoFrame = 0;
     Uint32 last = SDL_GetTicks();
@@ -1307,6 +1423,8 @@ int main(int argc, char** argv) {
                 (ev.key.keysym.sym == SDLK_ESCAPE ||
                  ev.key.keysym.sym == SDLK_q)) {
                 running = false;
+            } else if (ev.type == SDL_KEYDOWN && briefingUp) {
+                briefingUp = false;
             }
         }
 
@@ -1335,7 +1453,7 @@ int main(int argc, char** argv) {
                     game.stepOnce(game.acceptsInput() ? demo.input[demoFrame++]
                                                       : 0);
                 }
-            } else {
+            } else if (!briefingUp) {
                 game.update(opt.demo ? scriptedInput(game) : readKeyboard(), dt);
             }
             // `1000:9e53`'s loop, minus the two screens it goes through: the
@@ -1345,6 +1463,7 @@ int main(int argc, char** argv) {
             if (game.waveComplete()) {
                 game.advanceWave();
                 game.startWave();
+                raiseBriefing();
                 std::printf("Wave %d: mode %d, %d to go\n",
                             game.progress().wave,
                             static_cast<int>(game.waveMode()),
@@ -1548,6 +1667,14 @@ int main(int argc, char** argv) {
         drawHud(screen, game, bigFont, smallFont, haveBig, haveSmall);
         drawTaskDisplay(screen, game, bigFont, haveBig, atoms, haveAtom, furn,
                         haveFurn, smallBall, haveSmallBall);
+
+        // `1000:a5d2` shows the briefing INSTEAD of the play field, before
+        // `1000:3a67` ever runs, so it simply replaces everything above.
+        if (briefingUp) {
+            drawBriefing(screen, game, &background, haveBg, bigFont, smallFont,
+                         haveBig, haveSmall, atoms, haveAtom, furn, haveFurn,
+                         briefDecor);
+        }
 
         screen.toRgba(pal, rgba);
         SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kScreenWidth * 4);

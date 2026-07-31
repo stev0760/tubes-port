@@ -141,7 +141,7 @@ Absent entirely:
 
 | Missing | Size |
 |---|---|
-| The briefing screen `1000:86b8` | **decompiled**, geometry and all; blocked on the text, which is game data and lives in the packed `TUBES.EXE` |
+| The briefing screen `1000:86b8` | **done** - layout, all 25 templates, the illustrations and the drops line. **UNVERIFIED: the body colour 155 reads dark-blue-on-blue against `TUBES.PAL`.** Capture an original briefing through the rig and diff it before believing this screen |
 | The stats blackboard `1000:8da5` and the Continue screen `1000:8c38` | medium |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |

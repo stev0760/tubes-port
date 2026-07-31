@@ -6196,3 +6196,35 @@ kept in `wave-templates.md` outside this tree. The strings sit in the code
 image at roughly `0x5f00`..`0x8700`, as Pascal ShortStrings, and the shipped
 `TUBES.EXE` is LZEXE-packed, so reaching them at runtime means unpacking the
 user's own executable the way `tools/unpack.sh` does offline.
+
+### Ported, with one thing unverified
+
+`src/wave_text.cpp` carries the layout and the prose; `drawBriefing` in
+`main.cpp` draws it. Wave 20 comes out as
+
+    Wave 20
+    ____________
+    Form chains to remove marked
+    atoms from the beaker.
+             (ball)(MARKER)
+       Marked Atoms:  3
+    You are allowed 9 drops.
+
+which is the right structure, text and geometry.
+
+**What is NOT verified is the colour.** The port has one palette, `TUBES.PAL`,
+and against it the objective's colour 155 renders dark blue on the GAMEBG
+swirl - barely legible - while the modifier's 169 reads clearly. Two readings
+fit and nothing here separates them: either the original looks like that too,
+or `21ea:03c4` loads each `GAMEBG<n>.GFX` **with its own palette** and the
+briefing is not drawn against `TUBES.PAL` at all.
+
+The play field matches the original at 0.02%..0.22% on `TUBES.PAL`, so that
+palette is right for *gameplay*; it says nothing about this screen. Settling it
+needs a capture: warp a save to a wave, photograph the briefing through the
+rig, and diff. Until then this screen is drawn from correct geometry and
+possibly wrong colours, and should not be treated as matching.
+
+Also not ported: the background is whatever `--gamebg` loaded rather than
+`Random(10)+1` re-rolled against `DS:0x2056`, and the key wait is "any key"
+rather than `1b2e:0cd1`'s two-key protocol.
