@@ -73,6 +73,13 @@ about `*.RES`, `*.EXE`, `assets-extracted/`, and rendered output.
 already caught one near-miss (`__pycache__`). Never `git add -A` and trust it
 blindly.
 
+The rule has a second half that is easy to miss: **do not write to the player's
+game directory either.** `TUBES.HSC` and `TUBES.SAV` are the player's files,
+the port writes both, and a harness run has already created one by accident -
+see "Build, test, run". Reproduce captured data in a test from the constants
+instead; that is how the `TUBES.HSC` sentinel residue is pinned without the
+capture being in the repo.
+
 ## Commit discipline: small, atomic, and as you go
 
 There is **no remote**. This history is the only copy, so a working tree that
@@ -110,13 +117,19 @@ without committing loses its reasoning even if the code survives.
 
 The original game files live in the parent directory, `..`. The Ghidra
 project is at `../ghidra-project` — outside this repo on purpose, since it is
-derived from copyrighted data.
+derived from copyrighted data. So is the debugging rig and everything it
+captures, at `~/Dev/tubes-tooling/`.
+
+`src/` splits platform-agnostic logic from the SDL edge, and the split is load
+bearing: only `main.cpp` and `opl.cpp` include SDL. `board`, `game`, `wave`,
+`menu`, `session`, `hiscore`, `save`, `res`, `gfx`, `mus`, `font` and `screen`
+are all portable and must stay that way.
 
 ## Build, test, run
 
     cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
     cmake --build build -j
-    ./build/tubes-tests                      # 19 checks on the matching rules
+    ./build/tubes-tests                      # 585 checks, and rising
     ./build/tubes-port --gamedir ..
 
 Music is verified by diffing register streams, not by listening:
@@ -128,7 +141,17 @@ a sequencer bug. `--render-mus NAME OUT.wav` renders offline.
 `--screenshot FILE` renders one frame to a BMP and exits; it works headless
 under `SDL_VIDEODRIVER=dummy`. `--auto N` runs N frames of a scripted player
 first, so a headless capture shows a populated beaker. Together these are how
-rendering gets verified without a display.
+rendering gets verified without a display. `--title N`, `--hiscores [0|1]` and
+`--wave N` open a specific screen for capture, and `--dump-save FILE` decodes a
+`TUBES.SAV` and re-encodes it, so the C++ reader can be diffed against
+`tools/sav_decode.py` rather than trusted.
+
+**A harness flag must never write to the game directory.** `--auto-advance`
+walks a whole session, so it once qualified for a high score and saved a real
+`TUBES.HSC` into the player's own game files - which then silently changed what
+every later capture compared against. `saveHiScores` returns early under
+`harness` for that reason. Any NEW write path has to be checked against every
+entry point that runs a session, not just the ones that look like tests.
 
 ## Toolchain gotchas
 
@@ -164,40 +187,37 @@ paid off. Keep it up.
 - **Separate proven from guessed, in writing.** `docs/reversing-notes.md`
   marks which constants are measured and which are invented. Do not let those
   blur.
+- **A position in a frame is part of the transliteration.** The clear timer was
+  decremented at the end of the beaker update instead of after the
+  wave-complete test, one statement early, and every clear animation in the
+  game was judged a frame short. The order of statements is derived too.
 - Prefer an oracle over an opinion: exact decompressed sizes, byte-identical
-  RTL, directory offsets landing precisely at EOF.
+  RTL, directory offsets landing precisely at EOF, a re-encoded `TUBES.SAV`
+  differing in 0 of 960 bytes.
 
 ## Things known to be provisional
 
-Gameplay constants are partly recovered. **Measured:** 16x13 cells,
-playfield x range 74..245, drop limits 9/6/3, and the difficulty seed and
-progression rules in `1000:9e53`. **Also measured:** the
-playfield array is 6 x 5, read off the loop bounds in `1000:3a67` (the old
-7x10 came from the manual and was wrong in both dimensions).
-**Also measured:** the full
-cell-to-pixel mapping - x = {107,125,143,161,179,197} (pitch 18, not 16),
-y = row * 13 + 121.
+Far less than there used to be. `1000:3a67`, `1000:0f80` and `1000:9e53` are
+all transliterated, so the geometry, the atom state machine, the dispenser, the
+drops pool, the scoring ramp, the wave table and the whole progression are read
+rather than fitted. `PLAN.md` carries the list; do not duplicate it here.
 
-**Also measured, from attract mode** (`DEMO.SCR` replays through the normal
-game loop, so the demo is a full play session with no human pacing it, and it
-is deterministic - verified by diffing two cold-boot runs):
+What is worth knowing before touching gameplay:
 
-- the **atom type field is `+0x0b`**, at 96.2% over 79 settle events. The
-  earlier "refutation" of it used an array base six bytes early.
+- **the playfield array is 6 x 5**, off the loop bounds in `1000:3a67`. The old
+  7x10 came from the manual and was wrong in both dimensions.
 - **atom type numbers**: 1..7 the ordinary colours in the order Red, Green,
   Blue, Cyan, Purple, Yellow, Pink, then 8 Flashium, 9 AntiMatter, 10 Bonus,
-  11 Xenon, 12..16 the letter balls. A settled beaker cell holds this byte.
-- **drops are one pool that counts down**: seeded 9/6/3 by difficulty,
-  -1 per miss, +1 per Bonus caught, untouched by clearing a wave.
+  11 Xenon, 12..16 the letter balls, 19 the hidden-atom sprite. A settled
+  beaker cell holds `type + 19 * fadeFrame`, so one table draws both.
 - **the test tube holds 5**, stated by the in-game Instructions, not 5/3/2 by
   difficulty as the sprite heights suggested.
-- **scoring is in units of 250**, and the score *ramps* toward its award in
-  roughly sixths rather than snapping.
+- the **frame rate is 16.11 Hz**, not the 18.2 the project assumed for months.
 
-**Still guessed:** spawn rate, fall speeds, the special atoms' spawn rates, and
-how run length versus orientation splits the award (the two measured awards -
-a vertical 3 paying 250 and a diagonal 4 paying 1000 - differ in both, so they
-are confounded; a horizontal 4 or a run of 5 would separate them).
+The open gameplay questions are in `PLAN.md`'s "Known wrong" and
+"Player-reported differences" sections, which are kept current. The largest is
+still **the screen cross-fade**, which is genuinely unfound - and note that the
+obvious candidate for it, `[DS:0x230e]`, turned out to be `PlaySound`.
 
 When chasing a DS-relative global, establish which segment DS actually holds
 first. Two separate wrong turns came from this: `SS:SP` in the EXE header
@@ -214,31 +234,38 @@ difficulty, then runs the frame loop. `1000:3a67` is a **nested Pascal
 procedure** inside it, sharing its locals, which is why it appears to take no
 arguments. Decompile the two together.
 
-Presentation is incomplete: `BEAKER.CSP` is not drawn, so atoms appear to
-float, and the test tube's vertical placement is approximate.
-
 ## Open work
 
-**Read `PLAN.md` first - it opens with the next step.** In short: static
-disassembly of `1000:3a67` has hit its limit, and the technique has switched to
-watching the game run under a debugger. `PLAN.md` has the exact addresses and
-what to watch.
+**Read `PLAN.md` first - it opens with the next step.** The session loop, the
+title screen and menu, the wave table, the high score screens and loading a
+saved game are all done. What is left before a player can sit down with the
+whole program is the **F2 save screen** inside `1000:2dd0`, then attract mode
+handing off to `DEMO.SCR`, then the two splashes and the slideshows.
 
 The rig is built and lives **outside this repo**, at `~/Dev/tubes-tooling/` -
-`docs/debug-rig.md` covers it. Two things to know before planning against it.
+`docs/debug-rig.md` covers it. Three things to know before planning against it.
 It runs `assets-extracted/TUBES_UNP.EXE`, the unpacked image Ghidra analysed,
 presented to DOS as `TUBES.EXE` - debugging the shipped packed binary would
-break at LZEXE's stub instead of the game. And the GDB stub has **no memory
+break at LZEXE's stub instead of the game. The GDB stub has **no memory
 watchpoints**, only execution breakpoints, so "break on a write to the atom
-array" needs a small patch first.
+array" needs a small patch first. And `DOSBoxInstance.start()` runs
+`pkill -9 -f dosbox-x`: a capture script has no business doing that to a
+machine that may have a game running on it, so subclass it and neuter
+`_kill_existing`, as `grab_hiscores.py` does.
+
+**A static screen diffs at ZERO.** `diff_frame.py` compares only grey
+structural pixels and masks the atoms, because a gameplay frame has a random
+backdrop and things moving during the capture. A menu-side screen has none of
+that, so `diff_hiscores.py` compares all 64,000 pixels with no mask - and both
+high-score pages come back at 0. Reach for the exact comparison on any static
+screen; it has already caught a bug that had nothing to do with rendering.
 
 The segment mapping is settled: DGROUP is Ghidra `0x2785` = `L + 0x1785`, and
 `L` is `CS` at the entry breakpoint. Proven against the file, not guessed.
 
 Ports to other platforms are an eventual goal, so keep SDL at the platform
-edge - it is the portability layer, not something to avoid. Only `main.cpp`
-and `opl.cpp` include it today; `res`, `gfx`, `mus`, `board`, `game` and even
-`screen` are platform-agnostic and should stay that way.
+edge - it is the portability layer, not something to avoid. See `Layout` for
+which files may include it.
 
 ## When a search comes back empty, suspect the search
 
@@ -258,6 +285,20 @@ reporting "there is no X", check that the search could have found X. The
 tell each time was an implausible number - zero mutations in 1392 bytes of
 code is not a finding, it is a bug.
 
+**And suspect the KIND of search, not just its width.** The high score viewer
+was written up as "unfound, not absent" after `FindScalarRefs` on the two bank
+addresses returned only the loader and the entry screen, with a plausible
+reason attached: a routine taking the bank as a parameter is invisible to a
+scalar scan. The reasoning was sound and the conclusion was wrong -
+`1b2e:61b6` names both banks with plain literals. What was missing was a
+*string* search:
+
+    awk '/^@FUNC/{f=$0} /@STR/{print f" || "$0}' map.txt | grep -i "high scores"
+
+One line over a `MapProgram` dump already on disk. A screen the player can
+describe in detail cannot be code that does not exist, and this file had
+quoted one of its own strings for months.
+
 ## Reversing method that has actually worked
 
 Ranked by how often it produced the answer:
@@ -272,3 +313,10 @@ Ranked by how often it produced the answer:
 3. **Look for external standards in the decoded output.** GM program and drum
    numbers, 768-byte VGA palettes, equal-tempered frequencies — these can't
    be artifacts of a wrong decode, so they confirm independently.
+4. **When two readings of the same bytes disagree, capture the screen.** The
+   save file's menu arms read `+0x28` for Endurance and `+0x26` for Wave, which
+   looked like an off-by-two until the list was captured from the original:
+   both were right, because Endurance has no waves and lists chains instead.
+   Five minutes with the rig against an afternoon of argument - and this is
+   measurement in the role the prime directive allows, arbitrating a reading
+   rather than producing one.
