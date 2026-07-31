@@ -1451,7 +1451,7 @@ already recorded for the settled-cell table, and gives its length.
 | 16 | `FILLBALL` | none | Blocker/Filler |
 | 17 | `OBSTBALL` | none | obstacle, unidentified |
 | 18 | `CRFADE1` | `CRFADE` | the crystal |
-| 19 | `MYSTBALL` | none | unidentified |
+| 19 | `MYSTBALL` | none | **a rendering state, not a ball** - substituted at the six network draw sites while `-0x189` is set |
 
 ### Type 8 has no sprite of its own - measured
 
@@ -1787,7 +1787,11 @@ order. Third-party prose already matched types 9..16; the game's own slides matc
 
 Not documented in the slides: `MYSTBALL` (type 19) and the crystal (type 18).
 
-`MYSTBALL` is the **`?`** ball. Reported from play, unconfirmed: it **becomes a
+`MYSTBALL` is the **`?`** ball. **SOLVED, and it is not a ball** - see "The
+hidden-atom modifier" at the end of these notes: it is the sprite substituted
+for a real atom while a hidden-atom wave is running, so it has no behaviour of
+its own. The play report below is superseded and kept only as a record of the
+wrong turn. Reported from play, unconfirmed: it **becomes a
 random letter ball when caught** - i.e. it resolves into one of the five Penalty
 atoms. That would fit the `?` glyph and explain why it has no fade family: it
 never settles as itself. Testable by catching one and reading the tube contents
@@ -6043,3 +6047,39 @@ is a **permutation**, so every chain in the beaker survives it intact. What it
 destroys is the player's *plan*: the atoms in the test tube and in the network
 do not morph, so the two reds you were saving for the beaker's reds are now
 looking at greens.
+
+
+## The hidden-atom modifier, `-0x189` - and where it is NOT
+
+"Form as many chains as you possibly can to live through N atoms **that are
+hidden until they leave a tube**" is `1000:6fd5`, and the flag it sets has
+exactly **six** readers in `1000:3a67`, all of the same shape:
+
+    if hidden = 0 then Draw(ballTable[rec.type], rec.x, rec.y)
+                  else Draw(ballTable[19],       rec.x, rec.y)
+
+at `1000:4f7b`, `500e`, `5209`, `529c`, `5497` and `552a`. Type 19 is
+`MYSTBALL`, at `DS:0x1df2`.
+
+Chasing which record each site belongs to - by the type field it loads, at
+`array base + 28*i + 0x0b` - gives records **1, 6, 2, 5, 3, 4**: the six
+network slots, in the original's interleaved draw order, and nothing else.
+
+**That is the whole modifier, and where it stops is the interesting half.**
+`1000:3a67` makes 21 sprite-table draws. The six above are the only ones that
+test the flag, so:
+
+* the atoms travelling the tubes are concealed;
+* the test tube's contents are **not**;
+* records 7..12, falling out of the tube into the beaker, are **not**;
+* the settled beaker is **not**.
+
+So the concealment ends the instant an atom is caught, which is exactly what
+the briefing says, and it is achieved without any per-atom state at all - one
+global flag and a substituted sprite.
+
+**`MYSTBALL` is therefore a rendering state, not a nineteenth ball**, and this
+settles a question the type table left open. An atom keeps its real type
+underneath the whole time: it still matches, still counts, still fires its
+special. The earlier speculation that a `?` might *resolve* into one of the
+letter balls on capture has nothing behind it and can be dropped.

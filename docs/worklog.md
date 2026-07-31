@@ -2917,3 +2917,24 @@ the wave 6 sampling measured: when a wave names no colour, `taskColour` is
 pointed at the same cycling variable Flashium uses. When the orientation is
 free, the chain picture cycles as well. Both are cosmetic - they move
 `1000:3a67`'s copies, never the objective's.
+
+### The hidden-atom modifier, and `MYSTBALL` is not a ball
+
+Six readers of `-0x189` in `1000:3a67`, all the same two-line swap, and
+identifying which record each belongs to - by the type field it loads, at
+`base + 28*i + 0x0b` - gives records 1, 6, 2, 5, 3, 4: the six **network**
+slots in the original's interleaved draw order.
+
+The useful half is where it stops. `3a67` makes 21 sprite-table draws and only
+those six test the flag, so the test tube's contents, records 7..12 and the
+settled beaker all show the real atom. The concealment ends the instant an atom
+is caught - which is what "hidden until they leave a tube" says - and it is
+done with **no per-atom state at all**: one global flag and a substituted
+sprite.
+
+That also closes type 19. `MYSTBALL` has been carried since the type table was
+read as "still unidentified", with a play report that a `?` *resolves* into one
+of the letter balls on capture. It is not a ball and it resolves into nothing:
+it is the sprite a real atom wears while a hidden wave runs. The atom keeps its
+type the whole way and still matches, still counts, still fires its special.
+The play report is superseded and kept only as a record of the wrong turn.

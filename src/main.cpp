@@ -1410,13 +1410,28 @@ int main(int argc, char** argv) {
             return cell == tubes::kFlashium ? game.flashColour() : cell;
         };
 
+        // `-0x189`, the hidden-atom modifier: "live through N atoms that are
+        // HIDDEN UNTIL THEY LEAVE A TUBE". All six network draw sites carry
+        //
+        //     if hidden = 0 then Draw(ball[type], x, y)
+        //                   else Draw(MYSTBALL,   x, y)
+        //
+        // and those six are the ONLY places in `1000:3a67` that test it - not
+        // the tube's contents, not records 7..12, not the beaker grid. So the
+        // atom keeps its real type underneath and the concealment ends the
+        // moment it is caught, which is exactly what the briefing promises.
+        // `MYSTBALL` is therefore a rendering state, not a nineteenth ball.
+        const bool hideAtoms = game.objective().hiddenAtoms;
+
         auto drawAtom = [&](int col) {
             const tubes::Falling& a = game.atom(col);
             // `state > 2` is the original's own test, made at every one of the
             // six draw sites. States 0..2 are a free or parked slot.
             if (!a.drawn() || a.colour == tubes::kEmpty) return;
-            if (!haveAtom[ball(a.colour)]) return;
-            screen.draw(atoms[ball(a.colour)], a.x, a.y);
+            const int8_t sprite = hideAtoms ? static_cast<int8_t>(tubes::kMystery)
+                                            : ball(a.colour);
+            if (!haveAtom[sprite]) return;
+            screen.draw(atoms[sprite], a.x, a.y);
             screen.stamp(scene, a.x, a.y, kCellW, kCellH);
         };
 

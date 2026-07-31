@@ -126,6 +126,8 @@ Working, and transliterated rather than invented:
   teleporting through `CRFADE` played out and back in (`1000:0560`), its record
   following its cell down the gravity pass (`1000:04ca`), and removable only by
   AntiMatter (`1000:041c`)
+- the **hidden-atom modifier**, `-0x189` - `MYSTBALL` substituted at the six
+  network draw sites and nowhere else, so the concealment ends on the catch
 - the **Task Display**, `1000:2a4a` and `1000:2894` - the count over a full-size
   ball in the count modes, three half-size ones in the shape of the required
   chain in the chain modes, and both cycling on the Flashium tick when the wave
@@ -140,7 +142,6 @@ Absent entirely:
 | Missing | Size |
 |---|---|
 | Wave structure: the briefing screen, the stats blackboard, the Continue screen | large |
-| The hidden-atom modifier `-0x189` - `MYSTBALL` drawn in place of the real type | small |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |
 | Demo playback (`.SCR` replay through the same loop) | **DONE** - matches end to end, terminates on the original's own last byte |
@@ -214,7 +215,7 @@ Listed first because building on them wastes work.
    | 16 | Filler - parks a type 17 in the tube's bottom slot and discards itself (`1000:0b55`) |
    | 17 | `FILLBALL`, **settled**: `1000:472a` refuses to tip one, so the Filler's slot is dead for the rest of the session. No capacity variable exists |
    | 18 | the **Mischief Crystal** - starts in the beaker as contamination and **teleports** between cells; removed with **AntiMatter**, never by matching. `CRFADE` is its *teleport* animation (forward out, reverse back), which is why its static sprite is `CRFADE1` |
-   | 19 | `MYSTBALL`, still unidentified |
+   | 19 | `MYSTBALL` - **not a ball at all**: a rendering state, substituted for the real sprite while a hidden-atom wave is running (`-0x189`, six sites in `1000:3a67`) |
 
    A fade family is an **effect animation**, not a "can be cleared" marker: the
    seven colours are match-clears, `FFADE` the wildcard's, `GLDFADE` the Bonus,
@@ -223,7 +224,8 @@ Listed first because building on them wastes work.
    their own.
    Cell values are therefore **not** limited to 1..7 - the table runs to 19.
    Behaviours for 8-16 come from published descriptions whose ordering matches
-   the measured type order exactly; 17 and 19 are unknown.
+   the measured type order exactly; 17 is still unknown. **19 is solved** and is
+   not a ball - see the row above.
 
 ---
 

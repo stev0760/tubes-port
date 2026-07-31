@@ -1777,6 +1777,40 @@ void testTaskDisplayCyclesWhenNothingIsRequired() {
     check(!t3.diagonalFlip, "and flips back");
 }
 
+
+void testHiddenAtomsConcealButDoNotChangeAnything() {
+    using namespace tubes;
+    // `-0x189`. Six draw sites in `1000:3a67` swap MYSTBALL in for the real
+    // ball, and they are the six NETWORK records - not the tube's contents,
+    // not records 7..12, not the beaker. So it is pure presentation: the atom
+    // keeps its type all the way through and the concealment ends on the
+    // catch, which is what "hidden until they leave a tube" means.
+    Game g(6, 5, Difficulty::k101, 20250730u);
+    while (g.progress().wave < 30) g.advanceWave();
+    g.startWave();
+    check(g.objective().hiddenAtoms, "wave 30 hides the atoms in the tubes");
+    check(g.waveMode() == WaveMode::kSurvive, "and is still a survive wave");
+
+    // Run until something is in flight, then catch it and check the type came
+    // through untouched.
+    int col = 0;
+    for (int i = 0; i < 200 && col == 0; ++i) {
+        g.stepOnce(0);
+        for (int c = 1; c <= kAtomSlots; ++c) {
+            if (g.atom(c).drawn()) { col = c; break; }
+        }
+    }
+    check(col != 0, "an atom is dispensed");
+    const int8_t type = g.atom(col).colour;
+    check(type >= kRedium && type <= kMystery, "and carries a real type");
+    check(type != kMystery, "which is never MYSTBALL - that is a render state");
+
+    Game plain(6, 5, Difficulty::k101, 20250730u);
+    while (plain.progress().wave < 2) plain.advanceWave();
+    plain.startWave();
+    check(!plain.objective().hiddenAtoms, "wave 2 hides nothing");
+}
+
 }  // namespace
 
 int main() {
@@ -1862,6 +1896,7 @@ int main() {
     testCrystalGoesOnlyToAntiMatter();
     testCrystalRecordFollowsItsCellDown();
     testTaskDisplayCyclesWhenNothingIsRequired();
+    testHiddenAtomsConcealButDoNotChangeAnything();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
