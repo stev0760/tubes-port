@@ -245,12 +245,18 @@ Listed first because building on them wastes work.
 
 ## Next
 
-### 0. START HERE: close the session loop
+### 0. START HERE: the menu items that are reachable and inert
 
-**The next step is section 4A below**: a game that ends currently just stops.
-Game Over should reach the stats blackboard `1000:8da5` and return to the
-title, which is the last thing standing between this and a program a player can
-sit down with start to finish.
+**The next step is section 4B below.** The session loop is closed (4A, done):
+brief, play, banner, stats, Continue, back to the title, with ESC and Pause
+working. What is left before a player can sit down with the whole program are
+the menu items that *look* implemented and are not - High Scores, Save/Load
+and Attract mode. All three are cheaper than they look: `TUBES.SAV` is already
+structurally decoded, `Menu::setSaveSlotLive` and `MenuChoice::slot` are wired
+and waiting, and `DEMO.SCR` already replays correctly end to end.
+
+Save/load also un-sticks **F2** in the in-game key handler, which is read but
+inert for exactly the same reason.
 
 `1000:3a67` itself is **done** - this section's original task - and the method
 below is what did it. Keep it.
@@ -681,13 +687,21 @@ Cheap and high-impact once the mechanic is settled.
 The title screen and menu are **done**. What remains, ordered by how much it
 closes the loop for a player rather than by size:
 
-**A. Close the session loop.** Nothing else can be tested end to end until a
-game that ends returns somewhere.
+**A. Close the session loop. DONE** - `src/session.{h,cpp}`, commit `99b1c48`.
+The wave loop, the three end-of-session banners, the stats screen
+`1000:8da5`, the Continue screen `1000:8c38`, and `1000:2dd0`'s in-game keys
+(ESC abort, F5 pause, F3/F4 music and sound). A game that ends now returns to
+the title. Two things in it are **marked as stand-ins, not derived**:
 
-1. **Game Over -> the stats blackboard `1000:8da5` -> the title.** Today the
-   session simply stops.
-2. **The Continue screen `1000:8c38`.** `applyBriefing()` already implements
-   the Continue *mechanism*; this is its screen.
+- the stats screen's background - `2321:068d` blits a held image to `(0, 12)`,
+  not `GAMEBG` at the origin, and nothing decompiled writes `DS:0x2058`;
+- the Continue countdown's tick length, since `23e7:0024`'s unit is unread.
+  Both want a capture of the original; `--screenshot-after N` plus
+  `--auto-advance` is how the port side gets captured now.
+
+Still open from it: `1000:2dd0`'s **F1 Help** body and its **F2 Save** slot
+picker are read as a dispatch but their screens are not decompiled, so both
+keys are inert. Those belong with B below, since F2 is save/load.
 
 **B. The menu items that currently do nothing.** Each is reachable and inert,
 which is worse than absent - it looks broken.
