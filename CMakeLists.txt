@@ -23,6 +23,7 @@ add_executable(tubes-port
     src/board.cpp
     src/menu.cpp
     src/session.cpp
+    src/hiscore.cpp
     src/wave.cpp
     src/wave_text.cpp
     src/game.cpp
@@ -37,7 +38,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(tubes-port PRIVATE -Wall -Wextra)
 endif()
 
-add_executable(tubes-tests src/board_test.cpp src/board.cpp src/menu.cpp src/session.cpp src/wave.cpp src/wave_text.cpp src/game.cpp
+add_executable(tubes-tests src/board_test.cpp src/board.cpp src/menu.cpp src/session.cpp src/hiscore.cpp src/wave.cpp src/wave_text.cpp src/game.cpp
                             src/font.cpp src/screen.cpp src/gfx.cpp
                             src/sfx.cpp src/scr.cpp)
 target_include_directories(tubes-tests PRIVATE src)

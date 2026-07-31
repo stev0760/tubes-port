@@ -19,6 +19,7 @@
 #include "screen.h"
 #include "scr.h"
 #include "sfx.h"
+#include "hiscore.h"
 #include "menu.h"
 #include "session.h"
 #include "wave.h"
@@ -2036,6 +2037,108 @@ void testInformationalItemsReturnTheirNumber() {
 }
 
 
+// ---- `TUBES.HSC`, `1000:96db` --------------------------------------------
+
+// The format was read off ONE captured file, so the strongest check available
+// is that encoding the shipped defaults reproduces the layout that file has -
+// and that a decode/encode round trip is byte-identical.
+void testHiScoreRoundTripsByteForByte() {
+    tubes::HiScoreFile f = tubes::defaultHiScores();
+    std::vector<uint8_t> raw = tubes::encodeHiScores(f);
+    check(raw.size() == 792, "the file is 792 bytes");
+    check(tubes::kHiScoreBankBytes * 2 == 792, "two banks of 0x18c");
+
+    tubes::HiScoreFile back;
+    check(tubes::decodeHiScores(raw, back), "it decodes");
+    check(tubes::encodeHiScores(back) == raw, "and round trips byte for byte");
+
+    // The record layout, checked against the bytes rather than restated: the
+    // first record is a length byte then the name, and its score is at +32.
+    check(raw[0] == 12, "record 0 length is 12");
+    check(std::string(reinterpret_cast<const char*>(&raw[1]), 12) ==
+              "Ken Heckbert", "and the name follows it");
+    check(raw[32] == 0xe8 && raw[33] == 0x03, "score u32 LE at +32 is 1000");
+
+    // Bank 1 starts at 0x18c and is the WAVE table.
+    check(std::string(reinterpret_cast<const char*>(&raw[396 + 1]), 12) ==
+              "Ronald Davis", "bank 1 starts at 0x18c");
+}
+
+// An untouched bank ships ten names and an empty eleventh; the eleventh is an
+// overflow slot, not a table row. A capture of the real file shows exactly
+// that, and it is the thing an "obvious" ten-slot implementation gets wrong.
+void testTheEleventhSlotIsOverflowNotATableRow() {
+    tubes::HiScoreFile f = tubes::defaultHiScores();
+    tubes::HiScoreBankData& w = f[tubes::HiScoreBank::kWave];
+    check(w.rows[9].name == "Mike Bartelt", "slot 10 is the lowest default");
+    check(w.rows[10].empty(), "slot 11 ships empty");
+
+    const int at = tubes::insertHiScore(w, "Reverse Engineering!", 34000);
+    check(at == 0, "34000 goes to the top");
+    check(w.rows[0].name == "Reverse Engineering!", "with the name given");
+    check(w.rows[1].name == "Ronald Davis", "and pushes the old top down");
+    // The pushed-off entry lands in slot 11 rather than vanishing.
+    check(w.rows[10].name == "Mike Bartelt",
+          "the old slot 10 is pushed into slot 11, not off the end");
+}
+
+// `1000:9709` compares against slot 10, the lowest DISPLAYED entry - so a
+// score equal to it does not qualify, and one above it does.
+void testQualifyingTestsTheTenthNotTheEleventh() {
+    tubes::HiScoreFile f = tubes::defaultHiScores();
+    const tubes::HiScoreBankData& w = f[tubes::HiScoreBank::kWave];
+    check(!tubes::qualifies(w, 100), "equalling the tenth does not qualify");
+    check(!tubes::qualifies(w, 99), "nor does less");
+    check(tubes::qualifies(w, 101), "one more does");
+
+    tubes::HiScoreFile g = tubes::defaultHiScores();
+    check(tubes::insertHiScore(g[tubes::HiScoreBank::kWave], "No", 50) == -1,
+          "a non-qualifying score is refused");
+}
+
+// The typing loop stops at 25 even though the field on disk is 31.
+void testNameIsCappedAtTwentyFive() {
+    tubes::HiScoreFile f = tubes::defaultHiScores();
+    tubes::HiScoreBankData& w = f[tubes::HiScoreBank::kWave];
+    tubes::insertHiScore(w, std::string(40, 'X'), 99999);
+    check(w.rows[0].name.size() == 25, "a long name is cut to 25");
+    check(tubes::kHiScoreNameField == 31, "though the field is 31 bytes");
+}
+
+// The original seeds a new record with the sentinel and then types over it,
+// and Pascal's string assignment writes only the length and the characters -
+// so the sentinel's TAIL survives past the typed name. A captured file has `)`
+// in the byte after a 20-character name, which is character 21 of
+// `([C+C GAMES FACTORY])`. Reproducing that took the port from one differing
+// byte against the real file to none, so it is worth a test of its own.
+void testTheSentinelTailSurvivesPastTheName() {
+    tubes::HiScoreFile f = tubes::defaultHiScores();
+    tubes::HiScoreBankData& w = f[tubes::HiScoreBank::kWave];
+    tubes::insertHiScore(w, "Reverse Engineering!", 34000);
+
+    const std::string sentinel = tubes::kHsSentinel;
+    check(sentinel.size() == 21, "the sentinel is 21 characters");
+    check(w.rows[0].name.size() == 20, "the name is 20");
+    check(w.rows[0].field[20] == static_cast<uint8_t>(sentinel[20]),
+          "and byte 21 of the field is still the sentinel's last character");
+    check(w.rows[0].field[20] == ')', "which is ')'");
+
+    // Encoding must carry that residue through to the file image.
+    std::vector<uint8_t> raw = tubes::encodeHiScores(f);
+    check(raw[396 + 1 + 20] == ')', "the residue reaches the encoded bytes");
+    check(raw[396] == 20, "with the length byte still 20");
+}
+
+// A malformed file must be refused outright rather than half-loaded.
+void testAMalformedTableIsRefused() {
+    tubes::HiScoreFile out;
+    check(!tubes::decodeHiScores(std::vector<uint8_t>(100, 0), out),
+          "a short file is refused");
+    std::vector<uint8_t> bad(792, 0);
+    bad[0] = 200;                       // a length past the 31-byte field
+    check(!tubes::decodeHiScores(bad, out), "an impossible length is refused");
+}
+
 // ---- The session loop, `1000:9e53` ---------------------------------------
 
 // `1000:8da5` accumulates the running chain total IN its draw code and zeroes
@@ -2349,6 +2452,12 @@ int main() {
     testTheContinueCountdownExpiringDeclines();
     testEnduranceSkipsBothWaveScreens();
     testTheFastSongIsAboutDropsNotDifficulty();
+    testHiScoreRoundTripsByteForByte();
+    testTheEleventhSlotIsOverflowNotATableRow();
+    testQualifyingTestsTheTenthNotTheEleventh();
+    testNameIsCappedAtTwentyFive();
+    testTheSentinelTailSurvivesPastTheName();
+    testAMalformedTableIsRefused();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
