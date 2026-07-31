@@ -137,20 +137,33 @@ Working, and transliterated rather than invented:
   each fired from the site the original calls `PlaySound` at, through ONE voice
   because that is all `SBSOUND.DRV` has
 
-Absent entirely:
+The surrounding screens, and where each stands:
 
-| Missing | Size |
+| Screen | State |
 |---|---|
-| The briefing screen `1000:86b8` | **done and measured** - body text diffs at **0.09%** against a capture of the original. Open: the title band is now **0.00%** - it was STARTREK.816 rather than FUTURE.816, plus a peak row of 9, the projector slide is a measured rectangle rather than `1000:bcf1`, and the professor is absent |
-| The stats blackboard `1000:8da5` and the Continue screen `1000:8c38` | medium |
-| Menus, difficulty select, high scores, save/load | large |
-| Blackboard stats and cutscenes | medium |
-| Demo playback (`.SCR` replay through the same loop) | **DONE** - matches end to end, terminates on the original's own last byte |
+| The briefing `1000:86b8` | **done and measured** - title band **0.00%**, body **0.09%**, whole slide **0.14%**. Open: the projector slide is a measured rectangle rather than `1000:bcf1`, and the professor is absent |
+| The title screen and menu `1b2e:52bf` / `1b2e:4d80` | **done and measured** - menu text **0.00%** on pages 1 and 3, whole screen **0.25%**. All seven pages, the transitions, the two-key protocol, the turning stars and the 25-leg letterform walk |
+| Demo playback (`.SCR` replay through the same loop) | **done** - matches end to end, terminates on the original's own last byte |
+| The two splashes `21d5:007b`, `2178:00eb` | absent, small |
+| The stats blackboard `1000:8da5` and Continue `1000:8c38` | absent, medium |
+| High scores, save/load | absent, medium - the menu reaches them and they do nothing |
+| Attract mode | the 720-frame countdown runs but restarts instead of playing `DEMO.SCR` |
+| Instructions slideshow `1b2e:2d63` | absent, large (4,510 bytes) |
+| Blackboard cutscene `1b2e:1651` | absent, large (2,323 bytes) |
 
 Pixel accuracy against the original reads **0.02% to 0.22%** of structural
-pixels differing, over eight paused captures with the backdrop excluded - down
-from 4.42%. The floor is three pixels at (59, 10..12), where the original
-leaves a GAMEFG pixel erased for a reason not yet found.
+pixels differing on the play field, over eight paused captures with the
+backdrop excluded - down from 4.42%. The floor is three pixels at (59, 10..12),
+where the original leaves a GAMEFG pixel erased for a reason not yet found.
+
+### The frame rate was wrong for the whole project until now
+
+`kOriginalFps` was **18.2 Hz**, the PC BIOS tick, assumed early and never
+measured. It is **16.11 Hz**: `21ea:06ba` divides 145 by a per-frame period in
+`DS:0x0d40`, which reads 9 in the session and 6 on the title, menu and
+briefing. A least-squares fit of the original's `DEMO.SCR` byte index against
+wall clock gives 16.18 Hz independently. Nothing in the simulation moved - the
+frame *sequence* is identical - only the real-time speed.
 
 ---
 
@@ -232,7 +245,15 @@ Listed first because building on them wastes work.
 
 ## Next
 
-### 0. START HERE: transliterate `1000:3a67`, measured by the pixel diff
+### 0. START HERE: close the session loop
+
+**The next step is section 4A below**: a game that ends currently just stops.
+Game Over should reach the stats blackboard `1000:8da5` and return to the
+title, which is the last thing standing between this and a program a player can
+sit down with start to finish.
+
+`1000:3a67` itself is **done** - this section's original task - and the method
+below is what did it. Keep it.
 
 The project is in its **transliteration phase**. `CLAUDE.md` carries the prime
 directive: every gameplay rule in `src/` must come from decompiled Pascal, not
@@ -655,23 +676,63 @@ Cheap and high-impact once the mechanic is settled.
   note that is `bank + slot*0x50 + 0x26`, and the familiar `0x206` is merely
   bank 1 slot 0. See `docs/reversing-notes.md`.
 
-### 4. The other screens
+### 4. The other screens - and the order to do them in
 
-All mapped, all mechanical. In player-visible order:
+The title screen and menu are **done**. What remains, ordered by how much it
+closes the loop for a player rather than by size:
 
-| Stage | Function |
-|---|---|
-| Software Creations splash | `21d5:007b` |
-| Absolute Magic splash | `2178:00eb` |
-| title / main menu | `1b2e:52bf` |
-| blackboard cutscene / instructions | `1b2e:1651` |
-| test-tube screen | `1b2e:2d63` |
+**A. Close the session loop.** Nothing else can be tested end to end until a
+game that ends returns somewhere.
 
-### 5. Optional
+1. **Game Over -> the stats blackboard `1000:8da5` -> the title.** Today the
+   session simply stops.
+2. **The Continue screen `1000:8c38`.** `applyBriefing()` already implements
+   the Continue *mechanism*; this is its screen.
 
-Replay `DEMO.SCR` through the game loop as a correctness oracle. The input bit
-layout already matches, so a recorded demo can drive the same update path -
-useful once the mechanics are real.
+**B. The menu items that currently do nothing.** Each is reachable and inert,
+which is worse than absent - it looks broken.
+
+3. **High scores.** The two eleven-record banks the title screen already draws
+   come from here, and `TUBES.SAV` is structurally decoded (see section 3), so
+   this is mostly presentation.
+4. **Save / load.** Same file, same decoded layout. `Menu::setSaveSlotLive`
+   and `MenuChoice::slot` are already wired and waiting.
+5. **Attract mode.** The 720-frame countdown runs and restarts; it should hand
+   off to `DEMO.SCR`, which the port already replays correctly end to end.
+   `1b2e:52bf` returns **9** for exactly this.
+
+**C. The two splashes,** `21d5:007b` and `2178:00eb`. Small, and they make the
+boot sequence real. Deliberately after B: they are the least interactive thing
+on the list.
+
+**D. The slideshow and the cutscene, LAST.** These are two different things and
+were previously conflated in this file:
+
+| | Function | Size | What it is |
+|---|---|---|---|
+| Instructions slideshow | `1b2e:2d63` | 4,510 | prev-slide / next-slide **slides**, `TESTUBE1.CSP`, `TESTUBES.CSP` |
+| Blackboard cutscene | `1b2e:1651` | 2,323 | the teacher sequence, `WRITE0..9.GFX`, `EXPLOD1..4.GFX` |
+
+They are last on purpose. Both are large, neither gates play, and the cutscene
+in particular is an animation system (`WRITE0..9` is a *writing* animation)
+rather than a screen - so it is the one piece most likely to need machinery
+nothing else needs.
+
+### 5. After the port is faithful: enhancements
+
+Explicitly **not** now, and explicitly **not** in place of the original
+behaviour - the point of the port is the original. But once it is faithful,
+optional extras are wanted, and the architecture should not preclude them:
+
+- **higher frame rates**, by interpolating between the 16.11 Hz simulation
+  frames rather than by running the simulation faster. The fixed step is load
+  bearing - every speed is a whole number of pixels per frame - so anything
+  here has to be a *render-side* interpolation with the simulation untouched.
+- small quality-of-life tweaks, each behind a switch that defaults to off.
+
+Keeping `kFrameHz` a real measured constant rather than a fudge factor is what
+makes this possible later, which is a second reason the 16.11 Hz correction was
+worth making.
 
 ---
 
