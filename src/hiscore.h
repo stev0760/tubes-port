@@ -177,6 +177,20 @@ constexpr const char* kHsRule = "_________________________";
 // again by name after sorting - a sentinel, not something a player sees.
 constexpr const char* kHsSentinel = "([C+C GAMES FACTORY])";
 
+// `CLAP.SFX` plays when the high score viewer opens - the player's account,
+// and the only thing about that screen that is settled besides the chalkboard
+// and the cursive font.
+//
+// **It is a sound, not an animation.** `1b2e:0656`'s clap arm - the one gated
+// on `DS:0x20c8`, which draws `CLAP1..3.GFX` at (267, 100) over `BOOKS.GFX` -
+// is a DIFFERENT thing and remains unattributed. It was tempting to join the
+// two because both say "clap", and that would have put an animated professor
+// on a screen the player says does not have one.
+constexpr int kClapY = 100;             // 0x64, vs 121 for the pointer pose
+constexpr int kClapFrames = 3;
+constexpr int kClapRetraces = 10;
+constexpr const char* kClapSound = "CLAP.SFX";
+
 // The typing cursor, `1000:9757`: a 4 x 4 block at
 // `(len * 8 + 18, row + 5)` whose colour ramps 0x91..0x9e and back, one step a
 // frame - so it pulses rather than blinks.

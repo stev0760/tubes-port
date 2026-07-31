@@ -922,6 +922,57 @@ void drawHiScores(tubes::Screen& screen, const tubes::HiScoreBankData& bank,
     }
 }
 
+// The high score VIEWER, opened from the menu: a green chalkboard with the
+// table written in cursive, and `CLAP.SFX` when it opens.
+//
+// NO projector slide and NO professor - the player describes the chalkboard
+// and the sound and nothing else. The clap is a SOUND; `1b2e:0656`'s clap
+// ANIMATION is a different thing and does not belong here.
+void drawHiScoreViewer(tubes::Screen& screen, const tubes::HiScoreBankData& a,
+                       const tubes::HiScoreBankData& b,
+                       const tubes::Image* board, bool haveBoard,
+                       const tubes::Font& heading, bool haveHeading,
+                       const tubes::Font& script, bool haveScript) {
+    screen.clear(0);
+    if (haveBoard) screen.blit(*board, 0, tubes::kBoardY);
+
+    if (haveHeading) {
+        tubes::drawTextCentred(screen, heading, 0, 255, tubes::kHsTitleY,
+                               tubes::kHsTitleColour, tubes::textmode::kPeak,
+                               "High Scores");
+    }
+    if (!haveScript) return;
+
+    // Two banks side by side under the headings the title screen uses for
+    // them. LAYOUT NOT DERIVED - see the header. Chosen to be legible with a
+    // 16-tall cursive font on an 8-pixel advance: 11 characters of name is 88
+    // pixels, which leaves room for a right-aligned score inside a 150-wide
+    // column. Re-derive it from a capture rather than tuning it further.
+    const tubes::HiScoreBankData* banks[2] = {&a, &b};
+    static const char* kHead[2] = {"Chains", "Wave"};
+    static const int kColX[2] = {10, 166};
+    constexpr int kColW = 144;
+    constexpr int kHeadY = 20;
+    constexpr int kRow0 = 34;
+    constexpr int kRowStep = 12;      // ten rows fit inside the board's 152
+    for (int col = 0; col < 2; ++col) {
+        tubes::drawText(screen, script, kColX[col], kHeadY,
+                        tubes::kHsTitleColour, tubes::textmode::kPeak,
+                        kHead[col]);
+        for (int i = 0; i < tubes::kHiScoreShown; ++i) {
+            const tubes::HiScoreEntry& e = banks[col]->rows[i];
+            const int y = kRow0 + i * kRowStep;
+            tubes::drawText(screen, script, kColX[col], y, tubes::kHsRowColour,
+                            tubes::textmode::kPeak, e.name.substr(0, 11));
+            const std::string sc = std::to_string(e.score);
+            const int sx = kColX[col] + kColW -
+                           tubes::textWidth(script, sc);
+            tubes::drawText(screen, script, sx, y, tubes::kHsRowColour,
+                            tubes::textmode::kPeak, sc);
+        }
+    }
+}
+
 // The pause overlay, `1000:3916`. Same two rows as a banner, and the loop is
 // blocked entirely while it is up.
 void drawPaused(tubes::Screen& screen, const tubes::Font& heading,
@@ -1677,6 +1728,13 @@ int main(int argc, char** argv) {
     tubes::Font headingFont;
     const bool haveHeading = loadFont(res, "STARTREK.816", 8, 8, headingFont);
     const bool haveSmall = loadFont(res, "TINY6X8.88", 6, 4, smallFont);
+    // The fourth `.816`, and the last slot to be identified. `1000:aaba` loads
+    // it into `DS:0x2114`, and `1000:96db` selects that slot for the high
+    // score list - so the table is written in CURSIVE, which is what the
+    // player sees on the viewer's chalkboard. Metrics from `23e7:013b`'s
+    // `(ptr, 8, 0x10, 8, 8)`: advance 8, peak 8.
+    tubes::Font scriptFont;
+    const bool haveScript = loadFont(res, "SCRIPT.816", 8, 8, scriptFont);
     const int tubeFrames = static_cast<int>(haveTube[1]) +
                            static_cast<int>(haveTube[2]) +
                            static_cast<int>(haveTube[3]);
@@ -1816,12 +1874,22 @@ int main(int argc, char** argv) {
     // its destructor while the samples are still alive. The other way round is
     // a use-after-free on the audio thread on the way out.
     tubes::Sound sounds[tubes::sfx::kCount];
+    // `CLAP.SFX` is not in the atom-indexed table - that table is keyed by
+    // atom TYPE - so it is loaded on its own for the high score viewer.
+    tubes::Sound clapSound;
+    bool haveClapSound = false;
     tubes::MusicPlayer music;
     if (opt.screenshot.empty()) {
         std::string audioErr;
         if (!music.openSilent(audioErr)) {
             std::fprintf(stderr, "sound disabled: %s\n", audioErr.c_str());
         } else {
+            {
+                tubes::Bytes raw;
+                std::string err;
+                haveClapSound = res.read("CLAP.SFX", raw, err) &&
+                                tubes::decodeSfx(raw, clapSound, err);
+            }
             int loadedSfx = 0, wanted = 0;
             for (int i = 0; i < tubes::sfx::kCount; ++i) {
                 if (!kSoundFiles[i]) continue;
@@ -2046,6 +2114,19 @@ int main(int argc, char** argv) {
     float hsCursorAccum = 0.0f;
     tubes::HiScoreBank hsBank = tubes::HiScoreBank::kWave;
 
+    // The standalone viewer the menu opens. The player's account: a green
+    // chalkboard with the table written in cursive, and applause.
+    //
+    // NOT DECOMPILED. `FindScalarRefs` on the two bank addresses finds only
+    // the loader `1b2e:0243` and the entry screen `1000:96db`, and a scalar
+    // scan cannot see a routine that takes the bank as a parameter - so the
+    // viewer's own layout is unfound, not absent. What IS derived is every
+    // ingredient: the chalkboard scene without the projector slide, the
+    // cursive font in slot `DS:0x2114`, and `1b2e:0656`'s clap arm with
+    // `CLAP.SFX`. The row geometry below is borrowed from the entry screen
+    // and is the one part to re-check against a capture.
+    bool hsViewing = false;
+
     // Every route out of a session goes through here, so the offer cannot be
     // skipped on one path and taken on another.
     auto endSession = [&]() {
@@ -2124,6 +2205,11 @@ int main(int argc, char** argv) {
                 continue;
             }
 
+            if (hsViewing) {
+                hsViewing = false;
+                continue;
+            }
+
             if (stage == Stage::kTitle) {
                 // Every accepted press resets the attract countdown.
                 attractTimer = tubes::kAttractTimeout;
@@ -2184,10 +2270,16 @@ int main(int argc, char** argv) {
                     case tubes::MenuResult::kQuit:
                         running = false;
                         break;
+                    case tubes::MenuResult::kHighScores:
+                        hsViewing = true;
+                        if (soundOn && haveClapSound) {
+                            music.playSound(&clapSound);
+                        }
+                        break;
                     default:
-                        // High Scores, Instructions, View Demo, Credits and
-                        // Load are stages that do not exist yet; the menu
-                        // simply stays up rather than pretending otherwise.
+                        // Instructions, View Demo, Credits and Load are stages
+                        // that do not exist yet; the menu simply stays up
+                        // rather than pretending otherwise.
                         break;
                     }
                 }
@@ -2467,6 +2559,18 @@ int main(int argc, char** argv) {
             }
         }
 
+        // The viewer REPLACES the title screen while it is up, so it has to
+        // come before the title draw - that path ends the frame with its own
+        // `continue`.
+        if (hsViewing) {
+            drawHiScoreViewer(screen, hiScores[tubes::HiScoreBank::kEndurance],
+                              hiScores[tubes::HiScoreBank::kWave], &blackboard,
+                              haveBlackboard, headingFont, haveHeading,
+                              scriptFont, haveScript);
+            presentFrame();
+            continue;
+        }
+
         if (stage == Stage::kTitle) {
             drawTitle(screen, titleBg, titleFgScene, haveTitleBg && haveTitleFg,
                       menu, titleAtom, atoms, haveAtom, titleBall, stars,
@@ -2699,7 +2803,7 @@ int main(int argc, char** argv) {
             drawScene(screen, &blackboard, haveBlackboard, sceneArt,
                       tubes::kSlideX, tubes::kSlideY, 0);
             drawHiScores(screen, hiScores[hsBank], headingFont, haveHeading,
-                         smallFont, haveSmall, hsRow, hsName, hsCursor);
+                         scriptFont, haveScript, hsRow, hsName, hsCursor);
         }
         if (paused) drawPaused(screen, headingFont, haveHeading);
 
