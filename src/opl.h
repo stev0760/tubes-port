@@ -71,6 +71,10 @@ public:
     // the caller owns the decoded sounds.
     void playSound(const Sound* s);
 
+    // `DS:0x230a`, the driver's "is a sound still playing" vector. The high
+    // score viewer polls it to keep the applause looping.
+    bool soundBusy() const { return sfxVoice_.busy(); }
+
     int deviceRate() const { return deviceRate_; }
 
     // Renders a song to a mono/stereo buffer without an audio device, for

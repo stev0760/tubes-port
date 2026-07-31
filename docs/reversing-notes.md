@@ -7335,6 +7335,108 @@ Note the **storage differs from the file**: packed and unpadded in the binary,
 fixed 36-byte records on disk. The scores are not stored at all - both banks
 default to the same 1000..100 ladder, so they are generated.
 
+### The VIEWER is `1b2e:61b6`, and a STRING search is what found it
+
+The menu's High Scores item was written up one session as "unfound, not
+absent": `FindScalarRefs` on the two bank addresses `0x1610` and `0x179c`
+returned only the loader `1b2e:0243` and the entry screen `1000:96db`, and the
+conclusion drawn was that the viewer must take the bank as a parameter, where a
+scalar scan cannot see it.
+
+**The reasoning was sound and the conclusion was wrong.** `1b2e:61b6` names
+both banks with plain literals - it is exactly the kind of function that scan
+finds. What it does *not* do is matter, because the search that finds it is a
+different one:
+
+    awk '/^@FUNC/{f=$0} /@STR/{print f" || "$0}' map.txt | grep -i "high scores"
+
+One line, against a `MapProgram` dump that was already on disk, and it lands on
+the function immediately - by the strings it prints, `Endurance Mode High
+Scores` and `Wave Mode High Scores`. This is `CLAUDE.md`'s standing rule in its
+mildest form: **when a search comes back empty, suspect the search** - and here
+"suspect" means try a *different kind* of search before writing up an absence.
+The tell was available too: a screen the player describes in detail, with two
+titles already quoted in these notes, cannot be code that does not exist.
+
+**One table at a time, on the two video pages.** The function draws Endurance
+onto page 0 and Wave onto page 1 before showing anything, then flips between
+them with `2321:01b5`. So no redraw happens when the player presses a key, and
+a port that redraws produces the same picture.
+
+    SetVisualPage(0); SetActivePage(0)
+    { draw the Endurance table }
+    SetActivePage(1)
+    { draw the Wave table }
+    PlayMusic(CLASS.MUS)                 { [DS:0x22ca] with DS:0x212c }
+    PlaySound(CLAP.SFX)                  { [DS:0x230e] with DS:0x2120 }
+    wait                                 { showing page 0 }
+    if DS:0x1d45 <> 2 then begin         { 2 is ESC - it leaves at once }
+      SetVisualPage(1)
+      wait                               { showing page 1 }
+    end
+
+The wait is the usual one, inline rather than through `1b2e:0e37`:
+
+    n := $1a4
+    repeat
+      if not SoundBusy then PlaySound(CLAP.SFX)
+      Delay(5)
+      DS:0x1d45 := ReadInput
+      Dec(n); if n = 0 then DS:0x1d45 := 3
+    until DS:0x1d45 <> 0
+
+`0x1a4 * 5 = 2100` retraces at Mode X's 70 Hz is **thirty seconds**, the same
+give-up the briefing uses, and a timeout does exactly what a key does. The
+`SoundBusy` poll means **the applause loops** for as long as the screen is up
+rather than playing once.
+
+Each page, in draw order:
+
+    Draw(0, 12, DS:0x2058)               { BLACKBRD.GFX, the classroom's board }
+    FillRect(10, 37, 299, 118, 111)      { the panel }
+    SetFont(SCRIPT.816, 8, 16, 8)
+    for i := 1 to 10 do begin
+      WriteAt(16, i * 12 + 21, 30, 3, name[i])
+      Str(score[i]:10, s)
+      WriteAt(220, i * 12 + 21, 30, 3, s)
+    end
+    DrawMasked(57, 26, DS:0x2060)        { SLIDEBAR.GFX, the roller bar }
+    SetFont(STARTREK.816, 8, 16, 8)
+    WriteCentred(0, 319, 14, 159, 3, title)
+
+Three things fall out of that:
+
+- **The chalkboard carries no writing.** `BLACKBRD.GFX` has equations chalked
+  across it and the `2321:060b(10, 37, 299, 118, 111)` panel covers all but its
+  frame. The port drew the board bare for one revision and the player caught
+  it. It is the entry screen's own panel, so the two high-score screens are the
+  same picture under different headings.
+- **Every row constant is the entry screen's**, including the rows starting at
+  `y` 33, four pixels proud of the panel at 37. Two independent functions
+  reaching the same slightly-odd geometry retires that as "not reconciled": it
+  is what the game does.
+- **The score is `Str(score:10)`** - right-justified in ten characters, so
+  `x` 220 is where the *field* starts. With the 8-pixel advance a 25-character
+  name reaches `x` 216 and the field ends at 300, inside the panel's 309: the
+  layout is exactly tight enough for the longest name the typing loop allows,
+  which is a good sign the reading is right.
+
+`DS:0x2120`, `0x2124`, `0x2128` and `0x212c` are set at `1000:b14c` onward and
+hold `CLAP.SFX`, `SLIDE.SFX`, `SWITCH.SFX` and `CLASS.MUS`. That also names
+`[DS:0x230e]` as **`PlaySound`** and `[DS:0x230a]` as **`SoundBusy`**, which
+retires a lead `PLAN.md` was carrying: `[0x230e]` was written up as taking
+"two palette pointers" and being the obvious candidate for the missing screen
+fade. It takes ONE far pointer, printed as two words. `1b2e:0a11` calls it
+with `SLIDE.SFX` as the projector screen rolls down, and with `SWITCH.SFX`
+when `DS:0x1d6c` is set - **neither of which the port plays yet.**
+
+Not yet corroborated by a capture of the original; every number above is off
+the disassembly. The earlier probe that "captured the same blackboard three
+times while believing it was walking the Start Game path" was almost certainly
+looking at these two pages plus the menu - the pages differ only in the
+heading and the ten rows, so paging through them does look like one screen
+that will not dismiss.
+
 ## Wave 75 is the last wave, and it is the hidden-atom objective
 
 Confirmed by playing it, after warping `TUBES.SAV`'s wave byte at `0x206`:

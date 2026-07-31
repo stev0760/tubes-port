@@ -252,10 +252,15 @@ decompiled, and deliberately not guessed at. Presentation only; none of them
 changes a rule.
 
 1. **Screens cross-fade.** There is a fade between screens. The port cuts.
-   `1b2e:0a11` and the banners call `[0x230e]` with **two palette pointers**,
-   which is the obvious candidate and is not yet resolved; the retrace waits
-   nearby (`23e7:0024`) are holds, not fades, so an earlier reading of "no
-   fade, just a 40-retrace hold" was incomplete rather than wrong.
+   **The `[0x230e]` lead is dead** - it was written up here as taking "two
+   palette pointers", and `1b2e:61b6` settles what it really is: `PlaySound`,
+   taking ONE far pointer, which the decompiler prints as two words. Its
+   argument slots are `DS:0x2120` `CLAP.SFX`, `0x2124` `SLIDE.SFX` and
+   `0x2128` `SWITCH.SFX`, all filled at `1000:b14c` onward, and the companion
+   `[0x230a]` is `SoundBusy` - the viewer polls it to keep the applause
+   looping. `1b2e:0a11` calling it as the slide rolls down is the projector
+   sound, not a fade. The fade is still unfound; the retrace waits nearby
+   (`23e7:0024`) are holds, not fades.
 2. **The Wave Complete banner ends when its music does.** `VICTORY.MUS` plays
    once and the screen moves on. The port loops the song and waits for a key.
    `1000:5e0b`'s wait is `repeat until KeyPressed or <something>` - the
@@ -270,10 +275,11 @@ changes a rule.
 **The next step is section 4B below.** The session loop is closed (4A, done):
 brief, play, banner, stats, Continue, back to the title, with ESC and Pause
 working. What is left before a player can sit down with the whole program are
-the menu items that *look* implemented and are not - High Scores, Save/Load
-and Attract mode. All three are cheaper than they look: `TUBES.SAV` is already
-structurally decoded, `Menu::setSaveSlotLive` and `MenuChoice::slot` are wired
-and waiting, and `DEMO.SCR` already replays correctly end to end.
+the menu items that *look* implemented and are not - Save/Load and Attract
+mode. (High Scores is done, both screens transliterated.) Both are cheaper
+than they look: `TUBES.SAV` is already structurally decoded,
+`Menu::setSaveSlotLive` and `MenuChoice::slot` are wired and waiting, and
+`DEMO.SCR` already replays correctly end to end.
 
 Save/load also un-sticks **F2** in the in-game key handler, which is read but
 inert for exactly the same reason.
@@ -726,9 +732,11 @@ keys are inert. Those belong with B below, since F2 is save/load.
 **B. The menu items that currently do nothing.** Each is reachable and inert,
 which is worse than absent - it looks broken.
 
-3. **High scores.** The two eleven-record banks the title screen already draws
-   come from here, and `TUBES.SAV` is structurally decoded (see section 3), so
-   this is mostly presentation.
+3. **High scores. DONE** - `src/hiscore.{h,cpp}`, the entry screen
+   `1000:96db` and the viewer `1b2e:61b6`. `TUBES.HSC` round-trips byte-exact
+   against a real file, and both screens are transliterated rather than
+   invented. The one thing left is corroboration: no capture of the original's
+   high-score screens exists, so the geometry is off the disassembly only.
 4. **Save / load.** Same file, same decoded layout. `Menu::setSaveSlotLive`
    and `MenuChoice::slot` are already wired and waiting.
 5. **Attract mode.** The 720-frame countdown runs and restarts; it should hand

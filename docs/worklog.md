@@ -2938,3 +2938,55 @@ of the letter balls on capture. It is not a ball and it resolves into nothing:
 it is the sprite a real atom wears while a hidden wave runs. The atom keeps its
 type the whole way and still matches, still counts, still fires its special.
 The play report is superseded and kept only as a record of the wrong turn.
+
+## 2026-07-31 - the high score viewer was findable all along
+
+The player reported two things about the screen the menu opens: the chalkboard
+should not have writing on it, and there are two tables - wave and endurance -
+with a key moving between them. Both are corrections to what shipped in
+`5395e84`, where the viewer was written up as **not decompiled** and its layout
+invented to be legible.
+
+It was decompilable. `1b2e:61b6` references the strings `Endurance Mode High
+Scores` and `Wave Mode High Scores`, and one `awk` over the `MapProgram` dump
+that was already on disk finds it:
+
+    awk '/^@FUNC/{f=$0} /@STR/{print f" || "$0}' map.txt | grep -i "high scores"
+
+The previous session searched for it with `FindScalarRefs` on the two bank
+addresses, found only the loader and the entry screen, and reasoned that a
+scalar scan cannot see a routine that takes the bank as a parameter. The
+reasoning was sound; the conclusion was wrong, because `1b2e:61b6` does name
+the banks with plain literals. What was actually missing was a **different kind
+of search** - by string rather than by scalar. `CLAUDE.md`'s "when a search
+comes back empty, suspect the search" has been about filters that were too
+narrow; this is the same rule one step out, about the *kind* of filter.
+
+There was a second tell that went unread. `docs/reversing-notes.md` has said
+since an early menu probe that the table is headed "Endurance Mode High
+Scores", and that a probe "captured the same blackboard three times while
+believing it was walking the Start Game path". Those are this screen's two
+pages: they differ only in the heading and the ten rows, so paging through them
+looks like one screen that will not dismiss. A quoted title in our own notes is
+a string to grep for.
+
+Both player reports come straight out of the function. The chalkboard is blank
+because `2321:060b(10, 37, 299, 118, 111)` - the entry screen's own panel -
+covers everything but the board's frame. The two tables are one per **video
+page**: Endurance is drawn to page 0, Wave to page 1, and `2321:01b5` flips.
+ESC on the first page leaves at once, any other key advances, and any key on
+the second leaves; a thirty-second timeout does whatever a key would.
+
+Three things the port had wrong and now does not: the equations showed through,
+both banks were crammed side by side in invented columns, and the scores were
+left-aligned where the original writes `Str(score:10)`. That last one is the
+entry screen's bug too, since both screens share the code path.
+
+The layout also self-checks. With the 8-pixel advance, a 25-character name -
+the longest the typing loop allows - ends at x 216, and the ten-character score
+field runs 220..300 inside a panel that ends at 309. Constants read
+independently would not be expected to fit that tightly by accident.
+
+Not corroborated against a capture of the original: every number is off the
+disassembly. That is the right way round for this project, but the rig would
+settle it in a minute and is worth doing before this is called finished.

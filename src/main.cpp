@@ -271,6 +271,7 @@ struct Options {
     double renderSeconds = 0;   // 0 = one pass, songs loop forever
     int wave = 0;               // 0 = Endurance; 1..75 starts Wave mode there
     int titlePage = -1;         // -1 off; 0 the bare title; 1..7 a menu page
+    int hsPage = -1;            // -1 off; 0 Endurance, 1 Wave in the viewer
     // Harness only. `--screenshot` captures the first frame drawn, which can
     // never show a screen that is reached by PLAYING - the banners, the stats
     // screen and the Continue prompt are all past a game over. These two run
@@ -429,6 +430,13 @@ Options parseArgs(int argc, char** argv) {
             o.titlePage = 0;
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 o.titlePage = std::atoi(argv[++i]);
+            }
+        } else if (a == "--hiscores") {
+            // The viewer's two pages, for capturing against the original:
+            // `--hiscores` is Endurance and `--hiscores 1` is Wave.
+            o.hsPage = 0;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                o.hsPage = std::atoi(argv[++i]);
             }
         } else if (a == "--screenshot-after" && i + 1 < argc) {
             o.shotAfter = std::atoi(argv[++i]);
@@ -865,14 +873,10 @@ void drawContinue(tubes::Screen& screen, int ticksLeft,
     }
 }
 
-// The high-score entry screen, `1000:96db`. It draws over the classroom scene
-// the stats screen left up - the original re-blits the held image and the
-// roller bar and then puts a panel over them, so the caller supplies the same
-// background it always does.
-void drawHiScores(tubes::Screen& screen, const tubes::HiScoreBankData& bank,
-                  const tubes::Font& heading, bool haveHeading,
-                  const tubes::Font& body, bool haveBody, int editRow,
-                  const std::string& editName, int cursorPhase) {
+// `2321:060b(10, 37, 299, 118, 111)`, the panel both high-score screens put
+// over the chalkboard. It is what hides the equations chalked into
+// `BLACKBRD.GFX`, so the board reads as blank behind the table.
+void fillHiScorePanel(tubes::Screen& screen) {
     uint8_t* px = screen.pixelsMutable();
     for (int y = tubes::kHsPanelY; y < tubes::kHsPanelY + tubes::kHsPanelH; ++y) {
         if (y < 0 || y >= tubes::kScreenHeight) continue;
@@ -883,6 +887,29 @@ void drawHiScores(tubes::Screen& screen, const tubes::HiScoreBankData& bank,
                 tubes::kHsPanelColour;
         }
     }
+}
+
+// `Str(score:10)`: right-justified in ten characters, which is what puts the
+// digits' right edge in the same column on every row.
+std::string hiScoreScoreText(uint32_t score) {
+    std::string s = std::to_string(score);
+    if (static_cast<int>(s.size()) < tubes::kHsScoreWidth) {
+        s.insert(s.begin(),
+                 tubes::kHsScoreWidth - static_cast<int>(s.size()), ' ');
+    }
+    return s;
+}
+
+// The high-score entry screen, `1000:96db`. It draws over the classroom scene
+// the stats screen left up - the original re-blits the held image and the
+// roller bar and then puts a panel over them, so the caller supplies the same
+// background it always does.
+void drawHiScores(tubes::Screen& screen, const tubes::HiScoreBankData& bank,
+                  const tubes::Font& heading, bool haveHeading,
+                  const tubes::Font& body, bool haveBody, int editRow,
+                  const std::string& editName, int cursorPhase) {
+    uint8_t* px = screen.pixelsMutable();
+    fillHiScorePanel(screen);
 
     if (haveHeading) {
         tubes::drawTextCentred(screen, heading, 0, 319, tubes::kHsTitleY,
@@ -902,7 +929,7 @@ void drawHiScores(tubes::Screen& screen, const tubes::HiScoreBankData& bank,
         tubes::drawText(screen, body, tubes::kHsNameX, y, tubes::kHsRowColour,
                         tubes::textmode::kPeak, name);
         tubes::drawText(screen, body, tubes::kHsScoreX, y, tubes::kHsRowColour,
-                        tubes::textmode::kPeak, std::to_string(e.score));
+                        tubes::textmode::kPeak, hiScoreScoreText(e.score));
 
         // `1000:9757`: a 4 x 4 block just past the last character, its colour
         // walking 0x91..0x9e.
@@ -922,54 +949,49 @@ void drawHiScores(tubes::Screen& screen, const tubes::HiScoreBankData& bank,
     }
 }
 
-// The high score VIEWER, opened from the menu: a green chalkboard with the
-// table written in cursive, and `CLAP.SFX` when it opens.
+// The high score VIEWER, `1b2e:61b6` - the menu item. ONE bank per page, the
+// same panel and rows as the entry screen, and a heading that names the mode.
 //
-// NO projector slide and NO professor - the player describes the chalkboard
-// and the sound and nothing else. The clap is a SOUND; `1b2e:0656`'s clap
+// No professor and no projector slide: the function draws the board, the
+// panel, the ten rows, the roller bar and the title, and nothing else. The
+// clap is a SOUND, played and replayed by the wait loop; `1b2e:0656`'s clap
 // ANIMATION is a different thing and does not belong here.
-void drawHiScoreViewer(tubes::Screen& screen, const tubes::HiScoreBankData& a,
-                       const tubes::HiScoreBankData& b,
-                       const tubes::Image* board, bool haveBoard,
+void drawHiScoreViewer(tubes::Screen& screen, const tubes::HiScoreBankData& bank,
+                       const char* title, const tubes::Image* board,
+                       bool haveBoard, const tubes::Image* bar, bool haveBar,
                        const tubes::Font& heading, bool haveHeading,
                        const tubes::Font& script, bool haveScript) {
     screen.clear(0);
+    // `2321:068d(0, 12, DS:0x2058)` - the classroom's own blackboard, at the
+    // classroom's own offset.
     if (haveBoard) screen.blit(*board, 0, tubes::kBoardY);
+    // ...and then the panel over it, which is why the chalked equations do not
+    // show through.
+    fillHiScorePanel(screen);
 
-    if (haveHeading) {
-        tubes::drawTextCentred(screen, heading, 0, 255, tubes::kHsTitleY,
-                               tubes::kHsTitleColour, tubes::textmode::kPeak,
-                               "High Scores");
-    }
-    if (!haveScript) return;
-
-    // Two banks side by side under the headings the title screen uses for
-    // them. LAYOUT NOT DERIVED - see the header. Chosen to be legible with a
-    // 16-tall cursive font on an 8-pixel advance: 11 characters of name is 88
-    // pixels, which leaves room for a right-aligned score inside a 150-wide
-    // column. Re-derive it from a capture rather than tuning it further.
-    const tubes::HiScoreBankData* banks[2] = {&a, &b};
-    static const char* kHead[2] = {"Chains", "Wave"};
-    static const int kColX[2] = {10, 166};
-    constexpr int kColW = 144;
-    constexpr int kHeadY = 20;
-    constexpr int kRow0 = 34;
-    constexpr int kRowStep = 12;      // ten rows fit inside the board's 152
-    for (int col = 0; col < 2; ++col) {
-        tubes::drawText(screen, script, kColX[col], kHeadY,
-                        tubes::kHsTitleColour, tubes::textmode::kPeak,
-                        kHead[col]);
-        for (int i = 0; i < tubes::kHiScoreShown; ++i) {
-            const tubes::HiScoreEntry& e = banks[col]->rows[i];
-            const int y = kRow0 + i * kRowStep;
-            tubes::drawText(screen, script, kColX[col], y, tubes::kHsRowColour,
-                            tubes::textmode::kPeak, e.name.substr(0, 11));
-            const std::string sc = std::to_string(e.score);
-            const int sx = kColX[col] + kColW -
-                           tubes::textWidth(script, sc);
-            tubes::drawText(screen, script, sx, y, tubes::kHsRowColour,
-                            tubes::textmode::kPeak, sc);
+    if (haveScript) {
+        for (int i = 1; i <= tubes::kHiScoreShown; ++i) {
+            const int y = tubes::hiScoreRowY(i);
+            const tubes::HiScoreEntry& e = bank.rows[i - 1];
+            tubes::drawText(screen, script, tubes::kHsNameX, y,
+                            tubes::kHsRowColour, tubes::textmode::kPeak,
+                            e.name);
+            tubes::drawText(screen, script, tubes::kHsScoreX, y,
+                            tubes::kHsRowColour, tubes::textmode::kPeak,
+                            hiScoreScoreText(e.score));
         }
+    }
+
+    // `2321:0711(57, 26, DS:0x2060)`: the roller bar, masked, at the top of the
+    // panel - the same bar the classroom scene rides down the slide's edge,
+    // parked here at its fully-drawn height.
+    if (haveBar) {
+        screen.blit(*bar, tubes::kHsViewBarX, tubes::kHsViewBarY);
+    }
+    if (haveHeading) {
+        tubes::drawTextCentred(screen, heading, 0, 319, tubes::kHsViewTitleY,
+                               tubes::kHsViewTitleColour,
+                               tubes::textmode::kPeak, title);
     }
 }
 
@@ -2114,18 +2136,13 @@ int main(int argc, char** argv) {
     float hsCursorAccum = 0.0f;
     tubes::HiScoreBank hsBank = tubes::HiScoreBank::kWave;
 
-    // The standalone viewer the menu opens. The player's account: a green
-    // chalkboard with the table written in cursive, and applause.
-    //
-    // NOT DECOMPILED. `FindScalarRefs` on the two bank addresses finds only
-    // the loader `1b2e:0243` and the entry screen `1000:96db`, and a scalar
-    // scan cannot see a routine that takes the bank as a parameter - so the
-    // viewer's own layout is unfound, not absent. What IS derived is every
-    // ingredient: the chalkboard scene without the projector slide, the
-    // cursive font in slot `DS:0x2114`, and `1b2e:0656`'s clap arm with
-    // `CLAP.SFX`. The row geometry below is borrowed from the entry screen
-    // and is the one part to re-check against a capture.
-    bool hsViewing = false;
+    // The standalone viewer the menu opens, `1b2e:61b6` - now decompiled, so
+    // the layout is the original's rather than borrowed. Page 0 is Endurance
+    // and page 1 is Wave; the original pre-renders both onto the two video
+    // pages and flips between them, and redrawing gives the same picture.
+    bool hsViewing = opt.hsPage >= 0;
+    int hsViewPage = opt.hsPage > 0 ? 1 : 0;
+    float hsViewTimer = tubes::kHsViewSeconds;   // the thirty-second give-up
 
     // Every route out of a session goes through here, so the offer cannot be
     // skipped on one path and taken on another.
@@ -2205,8 +2222,17 @@ int main(int argc, char** argv) {
                 continue;
             }
 
+            // `1b2e:6423`. The first page treats ESC specially - it leaves at
+            // once - and any other key advances to the second. On the second
+            // page every key leaves, ESC included.
             if (hsViewing) {
-                hsViewing = false;
+                if (hsViewPage == 0 && k != SDLK_ESCAPE) {
+                    hsViewPage = 1;
+                    hsViewTimer = tubes::kHsViewSeconds;
+                } else {
+                    hsViewing = false;
+                    playSong("TUBES.MUS");
+                }
                 continue;
             }
 
@@ -2271,7 +2297,12 @@ int main(int argc, char** argv) {
                         running = false;
                         break;
                     case tubes::MenuResult::kHighScores:
+                        // `1b2e:63c7`: the music becomes CLASS.MUS and the
+                        // applause starts, on the Endurance page.
                         hsViewing = true;
+                        hsViewPage = 0;
+                        hsViewTimer = tubes::kHsViewSeconds;
+                        playSong(tubes::kHsViewMusic);
                         if (soundOn && haveClapSound) {
                             music.playSound(&clapSound);
                         }
@@ -2563,10 +2594,29 @@ int main(int argc, char** argv) {
         // come before the title draw - that path ends the frame with its own
         // `continue`.
         if (hsViewing) {
-            drawHiScoreViewer(screen, hiScores[tubes::HiScoreBank::kEndurance],
-                              hiScores[tubes::HiScoreBank::kWave], &blackboard,
-                              haveBlackboard, headingFont, haveHeading,
-                              scriptFont, haveScript);
+            // `1b2e:63f2`: whenever the effects voice reports itself idle the
+            // clap starts again, so the applause carries the whole screen.
+            if (soundOn && haveClapSound && !music.soundBusy()) {
+                music.playSound(&clapSound);
+            }
+            // The give-up does exactly what a key does.
+            hsViewTimer -= dt;
+            if (hsViewTimer <= 0.0f) {
+                if (hsViewPage == 0) {
+                    hsViewPage = 1;
+                    hsViewTimer = tubes::kHsViewSeconds;
+                } else {
+                    hsViewing = false;
+                    playSong("TUBES.MUS");
+                }
+            }
+            const tubes::HiScoreBank viewBank =
+                hsViewPage == 0 ? tubes::HiScoreBank::kEndurance
+                                : tubes::HiScoreBank::kWave;
+            drawHiScoreViewer(screen, hiScores[viewBank],
+                              tubes::kHsViewTitle[hsViewPage], &blackboard,
+                              haveBlackboard, &slideBar, haveBar, headingFont,
+                              haveHeading, scriptFont, haveScript);
             presentFrame();
             continue;
         }
