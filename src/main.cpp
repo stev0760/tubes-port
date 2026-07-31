@@ -1595,6 +1595,14 @@ int main(int argc, char** argv) {
                                 stars[i], 0);
     }
 
+    // Every harness entry point - a screenshot, a scripted run, a recorded
+    // demo, a captured state, an explicit wave - must stay deterministic, so
+    // only interactive play gets a clock seed. It also must not WRITE to the
+    // player's game directory; see `saveHiScores`.
+    const bool harness = !opt.screenshot.empty() || opt.autoFrames > 0 ||
+                         opt.demo || opt.playDemo || !opt.renderState.empty() ||
+                         opt.wave > 0;
+
     // `1b2e:0243`: read `TUBES.HSC` if it is there, otherwise fill both banks
     // with the twenty names the binary ships. The file lives beside the game
     // data, which is where the original writes it.
@@ -1614,6 +1622,13 @@ int main(int argc, char** argv) {
         }
     }
     auto saveHiScores = [&]() {
+        // A HARNESS RUN MUST NOT WRITE TO THE GAME DIRECTORY. `--auto-advance`
+        // walks a whole session, so it reaches the end of a wave, qualifies,
+        // and saved a real `TUBES.HSC` into the player's own game files -
+        // which then changed what every later capture compared against. The
+        // unit tests were careful about this from the start; the harness was
+        // not, because nothing in it used to write anything.
+        if (harness) return;
         const std::vector<uint8_t> raw = tubes::encodeHiScores(hiScores);
         std::ofstream hf(hiScorePath, std::ios::binary);
         if (hf) hf.write(reinterpret_cast<const char*>(raw.data()),
@@ -1782,13 +1797,7 @@ int main(int argc, char** argv) {
     // session is entered fresh, with the difficulty the player chose. So the
     // Game is owned rather than a local - starting a second game after a
     // Game Over has to build a new one, not reset the old one in place.
-    // Every harness entry point - a screenshot, a scripted run, a recorded
-    // demo, a captured state, an explicit wave - must stay deterministic, so
-    // only interactive play gets a clock seed.
-    const bool harness = !opt.screenshot.empty() || opt.autoFrames > 0 ||
-                         opt.demo || opt.playDemo || !opt.renderState.empty() ||
-                         opt.wave > 0;
-
+    // `harness` is computed above, where the high score table is loaded.
     std::unique_ptr<tubes::Game> game;
     auto newSession = [&](tubes::Difficulty diff, uint32_t seed) {
         game = std::make_unique<tubes::Game>(kCols, kRows, diff, seed);
@@ -2086,6 +2095,10 @@ int main(int argc, char** argv) {
     tubes::SessionStage sstage =
         briefingUp ? tubes::SessionStage::kBriefing : tubes::SessionStage::kPlay;
     tubes::Banner banner = tubes::Banner::kNone;
+    // The banner's own three-phase sequence - see `BannerPhase`.
+    tubes::BannerPhase bannerPhase = tubes::BannerPhase::kHold;
+    float bannerTimer = 0.0f;
+    bool bannerWaitsForMusic = false;
     std::vector<tubes::StatsRow> statsRows;
     tubes::ContinuePrompt continuePrompt;
     float continueAccum = 0.0f;
@@ -2168,6 +2181,30 @@ int main(int argc, char** argv) {
         stage = Stage::kTitle;
         menu.raise();
         playSong("TUBES.MUS");
+    };
+
+    // `1000:5dbb`'s five steps, entered when the wave loop falls out.
+    auto raiseBanner = [&](tubes::Banner b) {
+        banner = b;
+        sstage = tubes::SessionStage::kBanner;
+        const tubes::BannerText bt = tubes::bannerText(b);
+        if (*bt.music) playSong(bt.music);
+        else music.stop();
+        // `1000:5dfb`: the hold comes first, and input is not read during it.
+        bannerPhase = tubes::BannerPhase::kHold;
+        bannerTimer = tubes::kBannerHoldSeconds;
+        // Only an arm that plays something can end on `[DS:0x22ce]` - and
+        // only when there is a driver to ask. With music off the original has
+        // no song to finish either, so the wait is a key wait.
+        bannerWaitsForMusic = *bt.music != 0 && musicOn && music.isOpen();
+    };
+
+    // `1000:5e23`/`5e90`: the wait ends, the music is stopped, and
+    // `1000:5ef0`'s second Delay runs before anything else is drawn.
+    auto leaveBannerWait = [&]() {
+        music.stop();                                  // [DS:0x22da]
+        bannerPhase = tubes::BannerPhase::kOutro;
+        bannerTimer = tubes::kBannerHoldSeconds;
     };
 
     // Entering the stats screen is what accumulates the running chain total,
@@ -2350,20 +2387,14 @@ int main(int argc, char** argv) {
                 playSong(tubes::playMusicFor(game->dropsRemaining()));
                 continue;
 
-            case tubes::SessionStage::kBanner: {
-                // `1000:5e0b` and `1000:5e78`: a key ends the banner. The
-                // abort banner does not wait at all, but it is the arm that
-                // offers F2, so it is left up until a key here too.
-                const tubes::StageTransition t =
-                    tubes::advanceStage(sstage, flags, gameMode);
-                sstage = t.next;
-                banner = tubes::Banner::kNone;
-                if (sstage == tubes::SessionStage::kStats) enterStats();
-                if (sstage == tubes::SessionStage::kFinished) {
-                    endSession();
-                }
+            case tubes::SessionStage::kBanner:
+                // `1000:5e0b` and `1000:5e78`: a key ends the WAIT, and only
+                // the wait. The 40-retrace hold before it does not look at
+                // input at all, and the outro after it is already committed -
+                // which is what stops the tip keypress that ended the wave
+                // from dismissing the banner it caused.
+                if (bannerPhase == tubes::BannerPhase::kWait) leaveBannerWait();
                 continue;
-            }
 
             case tubes::SessionStage::kStats: {
                 const tubes::StageTransition t =
@@ -2520,11 +2551,35 @@ int main(int argc, char** argv) {
                 if (totals.perfectBonus) {
                     game->setScore(game->score() + tubes::kPerfectBonus);
                 }
-                banner = tubes::bannerFor(flags, game->waveComplete());
-                sstage = tubes::SessionStage::kBanner;
-                const tubes::BannerText bt = tubes::bannerText(banner);
-                if (*bt.music) playSong(bt.music);
-                else music.stop();
+                raiseBanner(tubes::bannerFor(flags, game->waveComplete()));
+            }
+
+            // `1000:5dfb` -> `5e0b` -> `5ef0`. The hold and the outro are
+            // timed and deaf; only the middle phase looks at input, and it
+            // also ends when the song has been round once - `[DS:0x22ce]`.
+            if (sstage == tubes::SessionStage::kBanner) {
+                bannerTimer -= dt;
+                if (bannerPhase == tubes::BannerPhase::kHold) {
+                    if (bannerTimer <= 0.0f) {
+                        bannerPhase = tubes::BannerPhase::kWait;
+                        // `[DS:0x234e]` and `2591:0552`, the flush pair the
+                        // original runs before every key wait. Without it the
+                        // keypress that ended the wave is still queued and
+                        // ends the banner on the frame it opens.
+                        SDL_FlushEvent(SDL_KEYDOWN);
+                    }
+                } else if (bannerPhase == tubes::BannerPhase::kWait) {
+                    if (bannerWaitsForMusic && music.songLooped()) {
+                        leaveBannerWait();
+                    }
+                } else if (bannerTimer <= 0.0f) {
+                    const tubes::StageTransition t =
+                        tubes::advanceStage(sstage, flags, gameMode);
+                    sstage = t.next;
+                    banner = tubes::Banner::kNone;
+                    if (sstage == tubes::SessionStage::kStats) enterStats();
+                    if (sstage == tubes::SessionStage::kFinished) endSession();
+                }
             }
 
             // The professor waves while any of the three screens is up -

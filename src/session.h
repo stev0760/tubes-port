@@ -92,6 +92,47 @@ constexpr const char* kAbortHint = "F2 to Save Game, ESC for Main Menu!";
 // The Perfect Bonus, `1000:5dae`: 0x9c4 added to the score before the banner.
 constexpr int kPerfectBonus = 2500;
 
+// ---------------------------------------------------------------------------
+// A banner is not just "wait for a key", and the difference is visible
+// ---------------------------------------------------------------------------
+//
+// The Wave Complete arm at `1000:5dbb` and the Game Over arm at `1000:5e2a`
+// are the same five steps:
+//
+//     PlayMusic(<the arm's song>)
+//     WriteCentred(<caption>);  WriteCentred(<rule>)
+//     Delay($28)                          { 1000:5dfb / 5e68 }
+//     ClearKeyBuffer                      { [$234e] and 2591:0552 }
+//     repeat key := ReadInput until (MusicFinished = $ff) or (key <> 0)
+//     StopMusic
+//
+// and `1000:5ef0` then runs `Delay($28)` again on the way out, for every arm.
+//
+// **The first Delay is why the banner cannot be missed.** 40 retraces at 70 Hz
+// is 0.571 s in which no input is looked at, and the key buffer is FLUSHED
+// afterwards - so the keypress that ended the wave, which for a survive wave
+// is the player holding the tip button, cannot dismiss the banner it caused.
+// A port that goes straight to "wait for a key" shows the banner for one frame
+// and moves on, which is exactly what a player reported: "the first wave
+// ending did not show wave complete".
+//
+// **`[DS:0x22ce]` is the music's own end.** It returns 0xff once the song has
+// been through once, and the wait ends on that as well as on a key - which is
+// the player's earlier report that the banner ends when its music does,
+// confirmed from the code rather than from watching.
+constexpr int kBannerHoldRetraces = 0x28;      // 40, both ends
+// Mode X's 70 Hz - `kRetraceHz` below, spelled out here because it is declared
+// further down the file.
+constexpr float kBannerHoldSeconds =
+    static_cast<float>(kBannerHoldRetraces) / 70.0f;
+
+// Where a banner is in that sequence.
+enum class BannerPhase {
+    kHold,     // the opening Delay($28); input is not looked at
+    kWait,     // a key or the end of the music
+    kOutro,    // `1000:5ef0`'s Delay($28), on the way to the stats screen
+};
+
 struct BannerText {
     const char* line1;
     const char* rule;     // NOT derived from line1 - see below

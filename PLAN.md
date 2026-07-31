@@ -261,10 +261,13 @@ changes a rule.
    looping. `1b2e:0a11` calling it as the slide rolls down is the projector
    sound, not a fade. The fade is still unfound; the retrace waits nearby
    (`23e7:0024`) are holds, not fades.
-2. **The Wave Complete banner ends when its music does.** `VICTORY.MUS` plays
-   once and the screen moves on. The port loops the song and waits for a key.
-   `1000:5e0b`'s wait is `repeat until KeyPressed or <something>` - the
-   something is what needs reading.
+2. **The Wave Complete banner ends when its music does. DONE** - the something
+   in `1000:5e0b`'s `repeat until KeyPressed or <something>` is
+   `[DS:0x22ce] = $ff`, the driver's "the song has been round once" query, and
+   the sequencer already tracked it as `looped_` (`cs:0x32`). Ported along with
+   the two `Delay($28)` holds either side of the wait, which are what stop the
+   keypress that ended the wave from dismissing the banner it caused - a player
+   reported wave 1's banner never appearing at all.
 3. **`SELECT.SFX` plays on SELECTING a menu item**, not on moving between them.
    Implemented from the player's account; the call sites in `1b2e:4d80` are
    near calls whose targets Ghidra renders with the 0x10000 bias, so the scan

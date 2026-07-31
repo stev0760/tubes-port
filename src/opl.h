@@ -75,6 +75,14 @@ public:
     // score viewer polls it to keep the applause looping.
     bool soundBusy() const { return sfxVoice_.busy(); }
 
+    // `DS:0x22ce`, which returns 0xff once the song has been round once. The
+    // banners at `1000:5e0b` and `1000:5e78` end on it as well as on a key,
+    // which is what "the Wave Complete banner ends when its music does" is.
+    // The sequencer already tracks it - `looped_` is the driver's `cs:0x32`.
+    // Read from the game thread while the audio callback writes it; a plain
+    // bool that only ever goes false-to-true needs nothing more.
+    bool songLooped() const { return seq_ && seq_->looped(); }
+
     int deviceRate() const { return deviceRate_; }
 
     // Renders a song to a mono/stereo buffer without an audio device, for

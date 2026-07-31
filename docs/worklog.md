@@ -3080,3 +3080,62 @@ not the counter bug.
 The lesson is the ordinary one: a statement's POSITION in a frame is part of
 the transliteration. `docs/reversing-notes.md` recorded the tail's statements
 in the right order all along; the port just did not put them there.
+
+### The banner that was never seen - a bug, not user error
+
+Follow-up report on the same session: wave 1 ended without showing Wave
+Complete at all. It is a bug, and reading `1000:5d64`'s three arms says exactly
+why.
+
+A banner is five steps and only the middle one reads input:
+
+    PlayMusic; WriteCentred x2
+    Delay($28)                        { 40 retraces = 0.571 s, DEAF }
+    ClearKeyBuffer
+    repeat key := ReadInput until ([DS:$22ce] = $ff) or (key <> 0)
+    StopMusic
+
+with another `Delay($28)` at `1000:5ef0` on the way out. The port had the
+middle line and nothing else.
+
+That is fatal in precisely the case the player hit. A mode-4 wave now ends when
+the last atom LANDS - which the player caused by holding the tip button - so
+the keypress that ended the wave is still queued when the banner opens, and a
+bare key wait consumes it on the opening frame. The banner was drawn for one
+frame and gone. The opening Delay plus the flush is the original's guard
+against exactly that, and it is not something a black-box reading would ever
+have suggested: from outside it looks like a banner that stays up until you
+press something.
+
+`[DS:0x22ce]` also closes a `PLAN.md` item that has been open since the player
+first described it: the banner ends when its music does. The vector returns
+`$ff` once the song has been round once, and **the port already had the flag** -
+`MusSequencer::looped()`, the driver's `cs:0x32`, decoded with the rest of the
+sequencer and never wired to anything. Nothing needed decoding; it needed a
+caller. Worth remembering next time something looks like new work: check what
+the existing transliteration already knows.
+
+### And the harness wrote to the player's game directory
+
+Caught by the high-score diff, not by looking: page 0 jumped from 0 differing
+pixels to 2,732 between two runs of `diff_hiscores.py` with nothing in between
+that touches that screen.
+
+`--auto-advance` walks a whole session, so it reaches the end of a wave,
+qualifies, and `saveHiScores()` wrote a real `TUBES.HSC` into
+`~/Games/GAMES/tubes/` - the player's own game files. The port then loaded it
+on the next run and the Endurance table no longer held the shipped defaults,
+which is what the diff was reporting. Nothing was corrupted and the file was
+moved to `~/Dev/tubes-tooling/recovered/`; the directory is back to what it
+was, since it had no `TUBES.HSC` before.
+
+`saveHiScores` now returns early under `harness`, which is the same flag that
+already keeps every capture deterministic. The unit tests were careful about
+this from the first commit - "the game directory is not written to by any
+test" - and the harness was not, because until high scores landed nothing in
+it wrote anything at all. A new write path has to be checked against every
+entry point that runs a session, not just the ones that look like tests.
+
+The diff catching it is the argument for keeping a zero-pixel check around: an
+exact comparison that has been zero once will report anything that disturbs it,
+including things that have nothing to do with rendering.

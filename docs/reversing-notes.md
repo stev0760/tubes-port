@@ -5678,6 +5678,43 @@ At `1000:5cff`, the tail of the frame loop:
 screen, which is what sets `-0x1ff` - and that is why a continued wave keeps
 its objective.
 
+### A banner is a five-step sequence, not a key wait
+
+`1000:5dbb` (Wave Complete) and `1000:5e2a` (Game Over) are the same five
+steps, and only the middle one looks at input:
+
+    PlayMusic(<the arm's song>)
+    WriteCentred(<caption>);  WriteCentred(<rule>)
+    Delay($28)                        { 1000:5dfb / 1000:5e68 }
+    ClearKeyBuffer                    { [DS:$234e] then 2591:0552 }
+    repeat key := ReadInput until ([DS:$22ce] = $ff) or (key <> 0)
+    StopMusic                         { [DS:$22da] }
+
+and `1000:5ef0` runs `Delay($28)` again on the way out, for all three arms.
+
+**The opening Delay is why the banner cannot be missed.** 40 retraces at 70 Hz
+is 0.571 s in which no input is read at all, and the key buffer is FLUSHED
+afterwards - so the keypress that ended the wave cannot dismiss the banner it
+caused. That matters most in exactly the case a player hit it: a mode-4 wave
+ends when the last atom lands, which the player caused by holding the tip
+button, and a port that goes straight to a key wait shows the banner for one
+frame. The report was "the first wave ending did not show wave complete", and
+it was not user error.
+
+**`[DS:0x22ce]` settles the other half.** It returns `$ff` once the song has
+been through once, so the wait ends on the music as well as on a key - which is
+the player's earlier report that the banner ends when its music does,
+now read off the code. The driver keeps playing either way: `$f0` REWINDS
+rather than stopping, and the flag is the sequencer's `cs:0x32`, which this
+port already models as `MusSequencer::looped()`. Nothing new had to be
+decoded - the value was sitting in `mus.cpp` waiting for a caller.
+
+The abort arm at `1000:5e97` has no wait: caption, rule, the F2 hint when the
+mode is not attract and saving is enabled, one call into the key handler
+`1000:2dd0` so the offer works, and then straight to the common tail. The port
+leaves that arm waiting for a key, which is a deliberate deviation and is
+marked as one at the call site.
+
 **The decrement is AFTER the test, and one frame of clear animation depends on
 it.** A match sets the timer to 10 at `1000:1c70`, which is early in the frame;
 the tail then tests it at 10 and steps it to 9. The port ran the decrement at
