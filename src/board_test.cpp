@@ -2034,6 +2034,46 @@ void testInformationalItemsReturnTheirNumber() {
     }
 }
 
+
+// The corner curve exists to lead the atom into the next leg. So at the moment
+// a leg hands over, the cross-axis must be displaced TOWARD the way the next
+// leg travels - and that is a property of the path as a whole, so it catches a
+// sign error on any single leg.
+//
+// It was written because one existed: 'U' and 'D' displace the opposite way to
+// 'L' and 'R', and applying one sign to all four made the atom curve outward at
+// every corner entered on a vertical, clipping outside the pipe.
+void testCornersCurveTowardTheNextLeg() {
+    tubes::TitleAtom a;
+    int endX[tubes::kTitleLegs + 1] = {}, endY[tubes::kTitleLegs + 1] = {};
+    bool got[tubes::kTitleLegs + 1] = {};
+    for (int i = 0; i < 4000; ++i) {
+        const int leg = a.leg;
+        a.step();
+        if (a.leg != leg) { endX[leg] = a.x; endY[leg] = a.y; got[leg] = true; }
+    }
+
+    int seen = 0, bad = 0;
+    for (int n = 1; n <= tubes::kTitleLegs; ++n) {
+        // Leg 23 is the T's stem and hands over to another vertical, so there
+        // is no cross-axis to lead with. It is covered by its own test.
+        if (!got[n] || n == 23) continue;
+        const int next = (n % tubes::kTitleLegs) + 1;
+        const char dh = tubes::titleLegDirH(n);
+        const char nd = tubes::titleLegDirH(next);
+        ++seen;
+        if (dh == 'U' || dh == 'D') {
+            const int d = endX[n] - tubes::titleLegLimitX(n);
+            if ((nd == 'R' && d <= 0) || (nd == 'L' && d >= 0)) ++bad;
+        } else {
+            const int d = endY[n] - tubes::titleLegLimitY(n);
+            if ((nd == 'D' && d <= 0) || (nd == 'U' && d >= 0)) ++bad;
+        }
+    }
+    check(seen == tubes::kTitleLegs - 1, "every leg but 23 was measured");
+    check(bad == 0, "every corner curves toward the next leg");
+}
+
 }  // namespace
 
 int main() {
@@ -2122,6 +2162,7 @@ int main() {
     testHiddenAtomsConcealButDoNotChangeAnything();
     testTitlePathClosesAndVisitsEveryLeg();
     testTitleLegTwentyThreeDoesNotCurve();
+    testCornersCurveTowardTheNextLeg();
     testMenuLayoutMatchesTheCaptures();
     testMenuRuleIsTwoShortOfTheTitle();
     testStartAndContinueDivergeAtGameMode();

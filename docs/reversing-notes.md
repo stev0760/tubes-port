@@ -6796,3 +6796,36 @@ way, capped at 8 steps so a stall cannot teleport the atom.
 
 Worth stating generally, since the splashes and the cutscenes are still to
 come: **anything counted in frames is counted in game frames.**
+
+### The corner curve's sign is NOT the same on horizontal and vertical legs
+
+Extracted from the four `dirH` arms of `1b2e:52bf`'s loop:
+
+| `dirH` | `dirV` = 'F' | `dirV` = 'B' |
+|---|---|---|
+| `L` | `y := limY - n` | `y := limY + n` |
+| `R` | `y := limY + n` | `y := limY - n` |
+| `U` | `x := limX + n` | `x := limX - n` |
+| `D` | `x := limX - n` | `x := limX + n` |
+
+`U` and `D` are the opposite way round to `L` and `R`. The first port read
+`'F'` as one sign for all four, which made the atom curve **away** from the
+next leg at every corner entered on a vertical - it visibly clipped outside the
+pipe rounding each bend, which is how the player spotted it.
+
+The invariant that catches this without any pixel measurement: the curve exists
+to *lead into the next leg*, so at the instant a leg hands over, the cross-axis
+must be displaced toward the way the next leg travels. That is now a test, and
+it fails on the old signs and passes on the new. Leg 23 is excluded, being the
+one leg that hands over to another vertical.
+
+**A proxy that did NOT work, recorded so it is not tried again.** The obvious
+check is "is the atom's centre over a transparent pixel of `TUBESFG`", the
+foreground being 23.8% opaque and the transparent part being the pipe hollow.
+It improves with the fix (8.7% of frames to 6.9%) but never reaches zero, and
+the residue is not error: it concentrates on leg 10 - the crossings leg, where
+the atom legitimately passes *behind* a wall - and on the `D` legs, which cross
+the letterforms' horizontal strokes. The network is full of junctions, so
+"centre over an opaque pixel" and "outside the pipe" are simply different
+things. The listing plus the hand-over invariant settle this; the pixel proxy
+cannot.

@@ -77,6 +77,17 @@ void TitleAtom::step() {
     // other; leg 23's byte is neither, so `sign` stays 0 and the cross-axis is
     // left alone - which is exactly what the original's two `if`s do when the
     // byte matches neither.
+    //
+    // The sign is NOT the same for horizontal and vertical legs. Off the
+    // listing, 'F' displaces:
+    //
+    //     L: y = limY - n        R: y = limY + n
+    //     U: x = limX + n        D: x = limX - n
+    //
+    // so U and D are the opposite way round to L and R. Applying one sign to
+    // all four made the atom curve AWAY from the next leg at every corner
+    // entered on a vertical, which showed up as it clipping outside the pipe
+    // rounding each bend.
     const int sign = (dv == 'F') ? -1 : (dv == 'B') ? +1 : 0;
 
     if (dh == 'L') {
@@ -90,11 +101,11 @@ void TitleAtom::step() {
     } else if (dh == 'U') {
         y -= 4;
         if (y < limY) { y = limY; turn = true; }
-        if (sign && y < limY + 10) x = limX + sign * curveOffset(y - limY);
+        if (sign && y < limY + 10) x = limX - sign * curveOffset(y - limY);
     } else if (dh == 'D') {
         y += 4;
         if (y > limY) { y = limY; turn = true; }
-        if (sign && y > limY - 10) x = limX - sign * curveOffset(limY - y);
+        if (sign && y > limY - 10) x = limX + sign * curveOffset(limY - y);
     }
 
     if (turn) {
