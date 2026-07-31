@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <utility>
 #include <string>
 #include <vector>
@@ -15,6 +16,7 @@
 #include "font.h"
 #include "game.h"
 #include "gfx.h"
+#include "menu.h"
 #include "mus.h"
 #include "opl.h"
 #include "res.h"
@@ -1265,21 +1267,28 @@ int main(int argc, char** argv) {
                     demo.input.size());
     }
 
-    tubes::Game game(kCols, kRows,
-                     opt.playDemo ? kDemoDifficulty : tubes::Difficulty::k101,
-                     opt.playDemo ? demo.seed : 0x9E3779B9u);
-    game.setFallHeight(kFallHeight);
+    // `1000:9e53` IS the session: the menu leaves the title screen and the
+    // session is entered fresh, with the difficulty the player chose. So the
+    // Game is owned rather than a local - starting a second game after a
+    // Game Over has to build a new one, not reset the old one in place.
+    std::unique_ptr<tubes::Game> game;
+    auto newSession = [&](tubes::Difficulty diff, uint32_t seed) {
+        game = std::make_unique<tubes::Game>(kCols, kRows, diff, seed);
+        game->setFallHeight(kFallHeight);
+    };
+    newSession(opt.playDemo ? kDemoDifficulty : tubes::Difficulty::k101,
+               opt.playDemo ? demo.seed : 0x9E3779B9u);
     // `1000:9e53`'s new-game arm seeds the wave number from `DS:0x1d50` and
     // then loops brief-play-advance. Only the first half of that exists here:
     // there is no briefing screen and no stats blackboard, so the loop below
     // just steps to the next wave when one is cleared.
     if (opt.wave > 0) {
-        while (game.progress().wave < opt.wave) game.advanceWave();
-        game.startWave();
-        std::printf("Wave %d: mode %d, %d to go\n", game.progress().wave,
-                    static_cast<int>(game.waveMode()), game.objective().counter);
+        while (game->progress().wave < opt.wave) game->advanceWave();
+        game->startWave();
+        std::printf("Wave %d: mode %d, %d to go\n", game->progress().wave,
+                    static_cast<int>(game->waveMode()), game->objective().counter);
     }
-    if (!opt.renderState.empty() && !loadState(opt.renderState, game)) return 1;
+    if (!opt.renderState.empty() && !loadState(opt.renderState, *game)) return 1;
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -1320,23 +1329,23 @@ int main(int argc, char** argv) {
     // a populated beaker rather than the empty opening frame.
     for (int f = 0; f < opt.autoFrames; ++f) {
         (void)f;
-        game.update(scriptedInput(game), 1.0f / 60.0f);
-        if (game.waveComplete()) {
-            game.advanceWave();
-            game.startWave();
-            std::printf("Wave %d: mode %d, %d to go\n", game.progress().wave,
-                        static_cast<int>(game.waveMode()),
-                        game.objective().counter);
+        game->update(scriptedInput(*game), 1.0f / 60.0f);
+        if (game->waveComplete()) {
+            game->advanceWave();
+            game->startWave();
+            std::printf("Wave %d: mode %d, %d to go\n", game->progress().wave,
+                        static_cast<int>(game->waveMode()),
+                        game->objective().counter);
         }
     }
     if (opt.autoFrames) {
         std::printf(
             "simulated %d frames: %d atoms, score %d, chains %d, drops %d/%d%s\n",
-            opt.autoFrames, game.board().count(), game.score(), game.chains(),
-            game.dropsRemaining(), game.startingDrops(),
-            game.gameOver() ? ", GAME OVER" : "");
+            opt.autoFrames, game->board().count(), game->score(), game->chains(),
+            game->dropsRemaining(), game->startingDrops(),
+            game->gameOver() ? ", GAME OVER" : "");
         for (int c = 1; c <= tubes::kAtomSlots; ++c) {
-            const tubes::Falling& fa = game.atom(c);
+            const tubes::Falling& fa = game->atom(c);
             if (!fa.active()) continue;
             const char* stateName =
                 fa.state == tubes::atomstate::kRise      ? "rise"
@@ -1431,7 +1440,7 @@ int main(int argc, char** argv) {
     int8_t briefDecor = 1;
     auto raiseBriefing = [&]() {
         briefingUp = true;
-        briefDecor = static_cast<int8_t>(game.rollForTest(8) + 1);
+        briefDecor = static_cast<int8_t>(game->rollForTest(8) + 1);
     };
     if (briefingUp) raiseBriefing();
     float demoAccum = 0.0f;
@@ -1473,29 +1482,29 @@ int main(int argc, char** argv) {
                 if (steps > 8) steps = 8;
                 for (int k = 0; k < steps; ++k) {
                     if (demoFrame >= demo.input.size()) { running = false; break; }
-                    game.stepOnce(game.acceptsInput() ? demo.input[demoFrame++]
+                    game->stepOnce(game->acceptsInput() ? demo.input[demoFrame++]
                                                       : 0);
                 }
             } else if (!briefingUp) {
-                game.update(opt.demo ? scriptedInput(game) : readKeyboard(), dt);
+                game->update(opt.demo ? scriptedInput(*game) : readKeyboard(), dt);
             }
             // `1000:9e53`'s loop, minus the two screens it goes through: the
             // stats blackboard at `1000:8da5` and the briefing at `1000:86b8`.
             // The progression itself is faithful - `1000:a616` runs only on a
             // wave that was CLEARED.
-            if (game.waveComplete()) {
-                game.advanceWave();
-                game.startWave();
+            if (game->waveComplete()) {
+                game->advanceWave();
+                game->startWave();
                 raiseBriefing();
                 std::printf("Wave %d: mode %d, %d to go\n",
-                            game.progress().wave,
-                            static_cast<int>(game.waveMode()),
-                            game.objective().counter);
+                            game->progress().wave,
+                            static_cast<int>(game->waveMode()),
+                            game->objective().counter);
             }
             // One voice, so one sound a frame: a second event in the same
             // frame has already replaced the first inside Game, which is what
             // calling the driver's PlaySound twice does.
-            const int8_t want = game.takeSound();
+            const int8_t want = game->takeSound();
             if (want >= 0 && want < tubes::sfx::kCount &&
                 sounds[want].valid()) {
                 music.playSound(&sounds[want]);
@@ -1549,7 +1558,7 @@ int main(int argc, char** argv) {
         // test tube, because a Multiplier fills with `Random(8) + 1` and 8 is
         // in that range.
         auto ball = [&](int8_t cell) -> int8_t {
-            return cell == tubes::kFlashium ? game.flashColour() : cell;
+            return cell == tubes::kFlashium ? game->flashColour() : cell;
         };
 
         // `-0x189`, the hidden-atom modifier: "live through N atoms that are
@@ -1563,10 +1572,10 @@ int main(int argc, char** argv) {
         // atom keeps its real type underneath and the concealment ends the
         // moment it is caught, which is exactly what the briefing promises.
         // `MYSTBALL` is therefore a rendering state, not a nineteenth ball.
-        const bool hideAtoms = game.objective().hiddenAtoms;
+        const bool hideAtoms = game->objective().hiddenAtoms;
 
         auto drawAtom = [&](int col) {
-            const tubes::Falling& a = game.atom(col);
+            const tubes::Falling& a = game->atom(col);
             // `state > 2` is the original's own test, made at every one of the
             // six draw sites. States 0..2 are a free or parked slot.
             if (!a.drawn() || a.colour == tubes::kEmpty) return;
@@ -1621,7 +1630,7 @@ int main(int argc, char** argv) {
         // apparent 6 px offset was the capture catching the tube mid-slide, at
         // a different stop from the one the state file named; there was never
         // an offset to sweep for.
-        const int tubeX = game.tubeX();
+        const int tubeX = game->tubeX();
         if (haveFurn[kTestTubeShadow]) {
             screen.draw(furn[kTestTubeShadow], tubeX, kTubeY);
         }
@@ -1630,7 +1639,7 @@ int main(int argc, char** argv) {
         // computed from the index, which was right at rest and impossible
         // during the tip - the animation moves the slots, and a caught atom
         // slides down to its own before that.
-        for (const tubes::Falling& s : game.tubeAtoms()) {
+        for (const tubes::Falling& s : game->tubeAtoms()) {
             if (!haveAtom[ball(s.colour)]) continue;
             screen.draw(atoms[ball(s.colour)], s.x, s.y);
         }
@@ -1638,7 +1647,7 @@ int main(int argc, char** argv) {
         // `1000:5922` draws the tube from a four-entry sprite table indexed by
         // the animation phase. Only three sprites exist because phase 4 resets
         // to 1 before the frame is drawn, so it can never be the one selected.
-        const int phase = game.tubePhase();
+        const int phase = game->tubePhase();
         if (haveTube[phase]) screen.draw(testTube[phase], tubeX, kTubeY);
 
         // Beaker shadow, then its contents, then the glass FRONT last - the
@@ -1650,7 +1659,7 @@ int main(int argc, char** argv) {
         // The cell is used as the sprite index directly - that is the whole
         // point of the `type + 19 * fadeFrame` encoding, and it is why a
         // clearing atom animates with no branch anywhere in the draw.
-        const tubes::Board& b = game.board();
+        const tubes::Board& b = game->board();
         for (int r = 0; r < b.rows(); ++r) {
             const int y = kGridY + r * kPitchY;
             for (int c = 0; c < b.cols(); ++c) {
@@ -1680,21 +1689,21 @@ int main(int argc, char** argv) {
         // overlay and BEFORE `BEAKER.CSP`, so a falling atom passes in front of
         // the settled ones and behind the glass.
         for (int n = tubes::kAtomSlots + 1; n <= tubes::kAtomRecords; ++n) {
-            const tubes::Falling& f = game.atom(n);
+            const tubes::Falling& f = game->atom(n);
             if (!f.drawn() || !haveAtom[ball(f.colour)]) continue;
             screen.draw(atoms[ball(f.colour)], f.x, f.y);
         }
 
         if (haveBeaker) screen.draw(beaker, kGridX - 4, kGridY);
 
-        drawHud(screen, game, bigFont, smallFont, haveBig, haveSmall);
-        drawTaskDisplay(screen, game, bigFont, haveBig, atoms, haveAtom, furn,
+        drawHud(screen, *game, bigFont, smallFont, haveBig, haveSmall);
+        drawTaskDisplay(screen, *game, bigFont, haveBig, atoms, haveAtom, furn,
                         haveFurn, smallBall, haveSmallBall);
 
         // `1000:a5d2` shows the briefing INSTEAD of the play field, before
         // `1000:3a67` ever runs, so it simply replaces everything above.
         if (briefingUp) {
-            drawBriefing(screen, game, &blackboard, haveBlackboard, bigFont,
+            drawBriefing(screen, *game, &blackboard, haveBlackboard, bigFont,
                          smallFont, haveBig, haveSmall, atoms, haveAtom, furn,
                          haveFurn, briefDecor);
         }
