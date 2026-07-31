@@ -6314,6 +6314,54 @@ square. Leg 10 additionally re-stamps foreground at `x` 0xb0 and 0xc8, which is
 a crossing where one stroke passes over another; the exact rect wants the
 listing, since the argument order of `2321:0874` is not settled here.
 
+The four tables are **one contiguous block, `0x30`..`0xc9`**, and the menu page
+table begins immediately after at `0xca`. `0x95`, `0xaf` and `0xc9` are all
+`0x00` - the unused element 0 of each byte table, and the terminator - which
+brackets the block on both sides and confirms the strides.
+
+    leg  dH dV  limX limY      from        to
+      1   D  B    61  127    ( 61, 53) -> ( 61,127)     U  left stroke
+      2   R  B    94  127    ( 61,127) -> ( 94,127)        bottom
+      3   U  F    94   34    ( 94,127) -> ( 94, 34)        right stroke
+      4   R  F   120   34    ( 94, 34) -> (120, 34)     -> B
+      5   D  B   120  127    (120, 34) -> (120,127)     B  spine
+      6   R  B   166  127    (120,127) -> (166,127)
+      7   U  B   166   73    (166,127) -> (166, 73)        lower bowl
+      8   L  B   139   73    (166, 73) -> (139, 73)
+      9   D  B   139  100    (139, 73) -> (139,100)
+     10   R  B   224  100    (139,100) -> (224,100)     -> E, crossings
+     11   U  B   224   73    (224,100) -> (224, 73)
+     12   L  B   190   73    (224, 73) -> (190, 73)
+     13   D  B   190  127    (190, 73) -> (190,127)
+     14   R  B   280  127    (190,127) -> (280,127)     -> S
+     15   U  B   280  100    (280,127) -> (280,100)
+     16   L  F   245  100    (280,100) -> (245,100)
+     17   U  F   245   73    (245,100) -> (245, 73)
+     18   R  F   303   73    (245, 73) -> (303, 73)
+     19   D  F   303  147    (303, 73) -> (303,147)     down to the return run
+     20   L  F     1  147    (303,147) -> (  1,147)     the return run, y 147
+     21   U  F     1   33    (  1,147) -> (  1, 33)
+     22   R  F    31   33    (  1, 33) -> ( 31, 33)     T  left half of the bar
+     23   D  ?    31  127    ( 31, 33) -> ( 31,127)        stem, down
+     24   U  F    31   33    ( 31,127) -> ( 31, 33)        stem, back up
+     25   R  F    61   33    ( 31, 33) -> ( 61, 33)        right half of the bar
+
+Two things fall out of the trace and both are checks on the reading:
+
+- **the loop closes exactly.** Leg 25 ends at `x = 61` and leg 1 immediately
+  descends from `x = 61`. The initial `(61, 53)` is simply a point part-way down
+  leg 1, so the walk is a closed circuit with no seam.
+- **leg 23's `dirV` is `0x3f`, not `'F'` or `'B'`.** The code tests only for
+  those two, so *neither* corner-rounding branch fires on that leg. It is not
+  corrupt data: legs 23 and 24 are the T's stem travelled down and then straight
+  back up, which is a reversal rather than a turn, and rounding it would bulge
+  the stem sideways. The one leg in the table that must not curve is the one
+  leg whose `dirV` byte is neither value.
+
+Legs 20 and 21 run along `y = 147` and `x = 1`, well outside the letters, so the
+network includes a **return run** below and around the word that carries the
+atom back to the T.
+
 ### The menu highlight is two turning stars
 
 In the draw half, guarded on the menu-is-up flag `[0x1d42]`:
