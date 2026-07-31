@@ -7283,3 +7283,93 @@ must be wrong. It was the assumption that was wrong. A derived number
 disagreeing with an undocumented guess is evidence against the guess, not
 against the derivation - and this file said "ASSUMED, not measured" in the same
 breath, which should have settled which one to doubt.
+
+
+## `TUBES.HSC` - the high score table, fully decoded
+
+A format nobody had seen, because **the game does not ship one**. It is created
+the first time a score qualifies, which is why the game directory has only
+`TUBES.SAV`. Recovered in one pass by warping a save to wave 75, clearing it,
+and entering a known string - the player typed `Reverse Engineering!` so the
+record would be unmistakable in the bytes.
+
+**792 bytes = 2 banks x 11 records x 36 bytes**, and every one of those three
+numbers is confirmed by the file rather than assumed:
+
+    record = 36 bytes
+      [0]        name length          (Pascal ShortString)
+      [1..31]    name, NUL padded     31 chars
+      [32..35]   score                u32 little endian
+
+    bank 0 at 0x000     bank 1 at 0x18c
+
+The two banks are the two the title screen draws under the headings ` Chains`
+and ` Wave`. **Bank 1 is Wave mode**: the run that produced this file loaded a
+saved *Wave* game, and the new entry landed at bank 1 slot 1. Bank 0 was left
+untouched, still holding ten defaults and an empty eleventh.
+
+The table is **sorted descending and insert-and-shift**. Before the run both
+banks held ten names scoring 1000, 900 ... 100 with an empty eleventh; the new
+34000 went in at the top of bank 1 and pushed everything down one, filling that
+bank's spare slot. So eleven is the real capacity, not ten.
+
+A name field is 31 bytes and the entry screen accepted at least 20 characters.
+
+### The defaults are in the EXE, packed, and there are exactly twenty
+
+At file offset `0x00d621`, immediately after the `TUBES.HSC` filename literal
+at `0x00d617`, sit **twenty Pascal ShortStrings back to back with no padding** -
+ten for each bank, in the same order the file writes them:
+
+    bank 0   Ken Heckbert, Kelly Rogers, Glenda Moore, Terry Herrin,
+             Rik Pierce, Doug Howell, Joe Siegler, Bob Mandel,
+             Larry Nelson, Adam Pedersen
+    bank 1   Ronald Davis, Jason Blochowiak, Matt Long, Dan Linton,
+             Scott Miller, Evan Heckbert, Grant Heckbert, Casey Rogers,
+             Micheal Moore, Mike Bartelt
+
+The block ends cleanly at `0x00d723`, where code resumes with `ENTER 0x80,0` -
+which brackets it and confirms the walk did not run past the end.
+
+Note the **storage differs from the file**: packed and unpadded in the binary,
+fixed 36-byte records on disk. The scores are not stored at all - both banks
+default to the same 1000..100 ladder, so they are generated.
+
+## Wave 75 is the last wave, and it is the hidden-atom objective
+
+Confirmed by playing it, after warping `TUBES.SAV`'s wave byte at `0x206`:
+
+* **75 really is the end.** Clearing it runs an **end-of-game cutscene** and
+  then the high-score entry screen, `1000:96db` - which is what `1000:a6c1`
+  calls once the wave loop falls out, gated on `not aborted`, `mode <> 0` and
+  `DS:0x1d4b = 0`.
+* **wave 75 and wave 30 share an objective.** The player reported both as
+  "mystery balls", and the decompiled table agrees independently: both are
+  `kSurviveHidden`. That is the **hidden-atom** objective, whose concealed
+  cells render as `MYSTBALL` (type 19, the `?`) - *not* the Mystery Wave,
+  which is the random-objective picker at waves 46, 55 and 71. The two are
+  easy to conflate and are different mechanisms.
+
+This also retires a stale claim in the tooling: `watch_play.py`'s header says
+type 19 "has never been observed". It has now, and the port already models it.
+
+**`1000:9499` itself is still unread.** The breakpoint set for it never fired -
+see below - so what the cutscene actually does is known only from watching it.
+
+### Why the breakpoint missed, and the lesson
+
+Three execution breakpoints were armed at linear addresses computed as
+`0x8240 + offset`, from the rig's anchor `1000:6008 = linear 0xE248`. None
+fired, even though the player demonstrably reached all three screens.
+
+The anchor was measured under `tubes.conf`, where the game is launched **by
+hand after attaching**. This run used `tubes-play.conf`, which launches
+`TUBES.EXE` from `AUTOEXEC` - a different environment block, therefore a
+different PSP, therefore almost certainly a different load segment. The
+computed addresses were very likely not the intended code at all.
+
+`CLAUDE.md` already says a negative result is only as good as the filter that
+produced it. This is that failure exactly: "no breakpoint fired" was reported
+by an instrument that had never been checked against the run it was measuring.
+**Read `CS` at an entry breakpoint for the run in hand; never carry a load
+address across configurations.**
