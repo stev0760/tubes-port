@@ -555,8 +555,25 @@ void drawBriefing(tubes::Screen& screen, const tubes::Game& game,
                   const tubes::Sprite* atoms, const bool* haveAtom,
                   const tubes::Sprite* furn, const bool* haveFurn,
                   int8_t decorBall) {
+    // `BLACKBRD.GFX` is 320x152, the scene; below it the screen stays black,
+    // which is what the original shows. The projector slide is drawn OVER it.
     screen.clear(0);
     if (haveBg) screen.blit(*bg);
+
+    // MEASURED, NOT DECOMPILED. The slide is palette index 17 over
+    // x 74..245, y 31..162, read off a capture of the original's wave 1
+    // briefing. Two routines would settle it properly and neither is read:
+    // `2000:389d`, which `1000:8774` calls with four DGROUP words that are
+    // BSS - so runtime-computed - plus 12 and 0; and `1000:bcf1`, which runs
+    // just before the fonts are set and is almost certainly the projector
+    // screen rolling down, since `SLIDEBAR.GFX` is a 208x11 roller bar.
+    // Marked here rather than passed off as derived.
+    uint8_t* px = screen.pixelsMutable();
+    for (int y = 31; y <= 162; ++y) {
+        for (int x = 74; x <= 245; ++x) {
+            px[static_cast<size_t>(y) * tubes::kScreenWidth + x] = 17;
+        }
+    }
 
     const tubes::WaveObjective& obj = game.objective();
     const int count = obj.counter;
@@ -1137,6 +1154,12 @@ int main(int argc, char** argv) {
     tubes::Image background;
     tubes::Image foreground;
     bool haveBg = loadImage(res, opt.gameBg, background, -1);
+    // The briefing is NOT drawn over the play backdrop. `1000:86b8` loads
+    // GAMEBG for the wave that is about to START - into `[BP-0x86]`, which
+    // `1000:3a67` blits at `1000:3c0b` - and draws its own text over a
+    // blackboard scene instead. Confirmed by capturing the original.
+    tubes::Image blackboard;
+    const bool haveBlackboard = loadImage(res, "BLACKBRD.GFX", blackboard, -1);
     bool haveFg = loadImage(res, "GAMEFG.GFX", foreground, 0);
 
     // ONE table, indexed by a beaker cell's raw value. The original's is at
@@ -1671,9 +1694,9 @@ int main(int argc, char** argv) {
         // `1000:a5d2` shows the briefing INSTEAD of the play field, before
         // `1000:3a67` ever runs, so it simply replaces everything above.
         if (briefingUp) {
-            drawBriefing(screen, game, &background, haveBg, bigFont, smallFont,
-                         haveBig, haveSmall, atoms, haveAtom, furn, haveFurn,
-                         briefDecor);
+            drawBriefing(screen, game, &blackboard, haveBlackboard, bigFont,
+                         smallFont, haveBig, haveSmall, atoms, haveAtom, furn,
+                         haveFurn, briefDecor);
         }
 
         screen.toRgba(pal, rgba);

@@ -6197,34 +6197,61 @@ image at roughly `0x5f00`..`0x8700`, as Pascal ShortStrings, and the shipped
 `TUBES.EXE` is LZEXE-packed, so reaching them at runtime means unpacking the
 user's own executable the way `tools/unpack.sh` does offline.
 
-### Ported, with one thing unverified
+### RESOLVED by capture: it is a blackboard, not the game backdrop
 
-`src/wave_text.cpp` carries the layout and the prose; `drawBriefing` in
-`main.cpp` draws it. Wave 20 comes out as
+The open question - whether colour 155 was right, or whether each `GAMEBG`
+carried its own palette - was the wrong question, and one cheap check killed it
+before the capture: **the archive holds exactly three palettes**, `INTRO.PAL`,
+`SOFT.PAL` and `TUBES.PAL`, against 73 `.GFX`. Images do not carry palettes
+here, so the gameplay palette is the only candidate and 155 is what it says:
+`#000071`, a dark blue.
 
-    Wave 20
-    ____________
-    Form chains to remove marked
-    atoms from the beaker.
-             (ball)(MARKER)
-       Marked Atoms:  3
-    You are allowed 9 drops.
+Capturing the original's wave 1 briefing through the rig settles the rest, and
+the answer was in the *background*. The briefing is drawn on **`BLACKBRD.GFX`**
+- a 320x152 classroom scene - with a **projector slide** over it and the
+professor beside it. Dark blue on a near-white slide, entirely legible. The
+port was drawing it over the play backdrop, which is what made it look wrong.
 
-which is the right structure, text and geometry.
+**`1000:86b8` does not blit `GAMEBG` at all.** It loads it into `[BP-0x86]`,
+and `1000:3a67` blits that at `1000:3c0b` - so the briefing is loading the
+backdrop for the wave that is *about to start*, which is also why `DS:0x2056`
+remembers the last one: no two consecutive waves share a backdrop.
 
-**What is NOT verified is the colour.** The port has one palette, `TUBES.PAL`,
-and against it the objective's colour 155 renders dark blue on the GAMEBG
-swirl - barely legible - while the modifier's 169 reads clearly. Two readings
-fit and nothing here separates them: either the original looks like that too,
-or `21ea:03c4` loads each `GAMEBG<n>.GFX` **with its own palette** and the
-briefing is not drawn against `TUBES.PAL` at all.
+Reference capture kept at `capture/ref-briefing-wave1.png` in the tooling
+directory.
 
-The play field matches the original at 0.02%..0.22% on `TUBES.PAL`, so that
-palette is right for *gameplay*; it says nothing about this screen. Settling it
-needs a capture: warp a save to a wave, photograph the briefing through the
-rig, and diff. Until then this screen is drawn from correct geometry and
-possibly wrong colours, and should not be treated as matching.
+### Measured against that capture
 
-Also not ported: the background is whatever `--gamebg` loaded rather than
-`Random(10)+1` re-rolled against `DS:0x2056`, and the key wait is "any key"
-rather than `1b2e:0cd1`'s two-key protocol.
+Over the slide, `x 74..245`, `y 31..162`:
+
+| band | differing |
+|---|---|
+| body text, `y 62..163` | **0.09%** |
+| title band, `y 45..62` | **19.9%** |
+| whole slide | 2.70% |
+
+So the transliterated prose, its positions and its two colours are right to
+within sixteen pixels, and the text is confirmed verbatim - wave 1 reads "Form
+2 chains using any atom to advance to the next wave." over "You are allowed 9
+drops.", with `chainTargetColour` 2 and Tubes 101's 9 drops.
+
+**Still wrong: the title band.** `Wave 1` starts at the same x and the same y
+as the original's, so the centring and the font are right, but the glyphs come
+out **two rows taller** and the rule under them thicker and brighter. Changing
+the mode from 3 to 1 makes no difference, so it is not the mode byte. The
+likely place to look is the font metrics: `1000:87ac` sets the big font with
+`2000:3fab(8, 8, 0x10, 8, ...)` and the port loads `FUTURE.816` with an advance
+of 8 and a peak of 7, and a peak that is one row out would do exactly this.
+
+### Still not drawn
+
+The projector slide is a **measured** rectangle - palette index 17 over
+`x 74..245, y 31..162`, read off the capture rather than decompiled, and marked
+as such in `main.cpp`. `2000:389d` at `1000:8774` and `1000:bcf1` are the two
+routines that would settle it; `SLIDEBAR.GFX` is a 208x11 roller bar, so
+`bcf1` is almost certainly the screen rolling down.
+
+Also absent: the professor - `1000:86b8` calls `1000:b7f0` on wave one and
+`1000:b936` otherwise - and `POINTER0..3`, `POINTERT`, `BOOKS.GFX`, `TALK1..5`
+are his sprites. And the background is not yet re-rolled `Random(10)+1` against
+`DS:0x2056`, nor is the key wait `1b2e:0cd1`'s two-key protocol.

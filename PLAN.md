@@ -141,7 +141,7 @@ Absent entirely:
 
 | Missing | Size |
 |---|---|
-| The briefing screen `1000:86b8` | **done** - layout, all 25 templates, the illustrations and the drops line. **UNVERIFIED: the body colour 155 reads dark-blue-on-blue against `TUBES.PAL`.** Capture an original briefing through the rig and diff it before believing this screen |
+| The briefing screen `1000:86b8` | **done and measured** - body text diffs at **0.09%** against a capture of the original. Open: the title band is 19.9% (glyphs two rows tall, rule too thick - suspect the font's peak row), the projector slide is a measured rectangle rather than `1000:bcf1`, and the professor is absent |
 | The stats blackboard `1000:8da5` and the Continue screen `1000:8c38` | medium |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |
