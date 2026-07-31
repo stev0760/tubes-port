@@ -2134,6 +2134,8 @@ int main(int argc, char** argv) {
     int hsCursor = tubes::kHsCursorMin;
     int hsCursorDir = 1;
     float hsCursorAccum = 0.0f;
+    // Counts out the applause between finishing the name and committing it.
+    float hsHold = 0.0f;
     tubes::HiScoreBank hsBank = tubes::HiScoreBank::kWave;
 
     // The standalone viewer the menu opens, `1b2e:61b6` - now decompiled, so
@@ -2158,6 +2160,7 @@ int main(int argc, char** argv) {
             hsName.clear();
             hsCursor = tubes::kHsCursorMin;
             hsCursorDir = 1;
+            hsHold = 0.0f;
             hsActive = true;
             music.stop();
             return;
@@ -2200,13 +2203,15 @@ int main(int argc, char** argv) {
             // it is up: printable characters append, backspace removes, and
             // ESC or RETURN finish - nothing else is looked at.
             if (hsActive) {
+                if (hsHold > 0.0f) continue;   // the applause owns the screen
                 if (k == SDLK_RETURN || k == SDLK_ESCAPE) {
-                    hiScores[hsBank].rows[hsRow - 1].setName(hsName);
-                    saveHiScores();
-                    hsActive = false;
-                    stage = Stage::kTitle;
-                    menu.raise();
-                    playSong("TUBES.MUS");
+                    // `1000:96db`'s tail: the row is redrawn in the settled
+                    // colour with no cursor, the applause plays, and the
+                    // screen HOLDS for `23e7:0024(0x78)` - 120 retraces,
+                    // 1.71 s - before the record is committed and the file
+                    // written. The port committed and left in the same frame.
+                    if (soundOn && haveClapSound) music.playSound(&clapSound);
+                    hsHold = tubes::kHsCommitSeconds;
                 } else if (k == SDLK_BACKSPACE) {
                     if (!hsName.empty()) hsName.pop_back();
                 } else if (k >= 0x20 && k <= 0x7e &&
@@ -2537,14 +2542,28 @@ int main(int argc, char** argv) {
             }
 
             // `1000:9750`: the cursor colour walks 1..14 and back, one step a
-            // frame, so it pulses rather than blinks.
-            if (hsActive) {
+            // frame, so it pulses rather than blinks. The hold after the name
+            // is finished has no cursor at all.
+            if (hsActive && hsHold <= 0.0f) {
                 hsCursorAccum += dt * tubes::kRetraceHz;
                 while (hsCursorAccum >= 1.0f) {
                     hsCursorAccum -= 1.0f;
                     hsCursor += hsCursorDir;
                     if (hsCursor >= tubes::kHsCursorMax) hsCursorDir = -1;
                     if (hsCursor <= tubes::kHsCursorMin) hsCursorDir = 1;
+                }
+            } else if (hsActive) {
+                // The applause plays out, and only then is the record
+                // committed and the file written.
+                hsHold -= dt;
+                if (hsHold <= 0.0f) {
+                    hsHold = 0.0f;
+                    hiScores[hsBank].rows[hsRow - 1].setName(hsName);
+                    saveHiScores();
+                    hsActive = false;
+                    stage = Stage::kTitle;
+                    menu.raise();
+                    playSong("TUBES.MUS");
                 }
             }
 
@@ -2853,7 +2872,8 @@ int main(int argc, char** argv) {
             drawScene(screen, &blackboard, haveBlackboard, sceneArt,
                       tubes::kSlideX, tubes::kSlideY, 0);
             drawHiScores(screen, hiScores[hsBank], headingFont, haveHeading,
-                         scriptFont, haveScript, hsRow, hsName, hsCursor);
+                         scriptFont, haveScript, hsRow, hsName,
+                         hsHold > 0.0f ? 0 : hsCursor);
         }
         if (paused) drawPaused(screen, headingFont, haveHeading);
 

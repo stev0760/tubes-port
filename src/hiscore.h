@@ -174,6 +174,15 @@ constexpr int kHsScoreWidth = 10;
 // literals over the same panel, so the original genuinely puts the top row
 // slightly proud of the panel. Do not nudge either constant.
 
+// `1000:96db`'s tail. When the typing loop ends the row is redrawn in the
+// settled colour with no cursor, `CLAP.SFX` plays, and only THEN - after
+// `23e7:0024(0x78)`, 120 retraces - is the record copied into the bank and the
+// file written. So the applause belongs to the entry screen as well as the
+// viewer, and the screen holds while it plays.
+constexpr int kHsCommitRetraces = 0x78;
+constexpr float kHsCommitSeconds =
+    static_cast<float>(kHsCommitRetraces) / 70.0f;
+
 constexpr const char* kHsTitle = "Congratulations! High Score!";
 constexpr const char* kHsRule = "_________________________";
 

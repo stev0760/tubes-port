@@ -2990,3 +2990,11 @@ independently would not be expected to fit that tightly by accident.
 Not corroborated against a capture of the original: every number is off the
 disassembly. That is the right way round for this project, but the rig would
 settle it in a minute and is worth doing before this is called finished.
+
+The same `[0x230e]` reading then paid out on the screen next door. `1000:96db`'s
+tail plays `CLAP.SFX` when the typing loop ends, waits `23e7:0024(0x78)` - 120
+retraces, 1.71 s - and only then copies the record into the bank and writes the
+file. So the applause is not the viewer's alone, and the entry screen holds
+while it plays instead of vanishing on the keypress, which is what the port did.
+Reading a function's tail properly needs the *vector* identified first; with
+`[0x230e]` unnamed, that call was just an indirect jump into the unknown.
