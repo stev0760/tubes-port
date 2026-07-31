@@ -19,6 +19,7 @@
 #include "screen.h"
 #include "scr.h"
 #include "sfx.h"
+#include "menu.h"
 #include "wave.h"
 
 namespace {
@@ -1811,6 +1812,228 @@ void testHiddenAtomsConcealButDoNotChangeAnything() {
     check(!plain.objective().hiddenAtoms, "wave 2 hides nothing");
 }
 
+
+// ---------------------------------------------------------------------------
+// The title screen and the menu, 1b2e:52bf / 1b2e:4d80
+// ---------------------------------------------------------------------------
+
+// The circuit has to close: leg 25 ends where leg 1 begins. A path table read
+// at the wrong stride would not, which is what makes this a real check on the
+// data rather than a restatement of it.
+void testTitlePathClosesAndVisitsEveryLeg() {
+    tubes::TitleAtom a;
+    bool seen[tubes::kTitleLegs + 1] = {};
+    int guard = 0;
+    // Walk until leg 1 comes round again having passed through all 25.
+    while (guard++ < 20000) {
+        seen[a.leg] = true;
+        a.step();
+        if (a.leg == 1 && seen[tubes::kTitleLegs]) break;
+    }
+    check(guard < 20000, "title path completes a circuit");
+    int missed = 0;
+    for (int i = 1; i <= tubes::kTitleLegs; ++i) if (!seen[i]) ++missed;
+    check(missed == 0, "title path walks all 25 legs");
+    // Leg 1 descends from x = 61, and leg 25 leaves the atom there.
+    check(a.x == 61, "title path closes on x = 61");
+}
+
+// Leg 23's dirV byte is neither 'F' nor 'B', so that leg must not round its
+// corner - it is the T's stem walked down and straight back up.
+void testTitleLegTwentyThreeDoesNotCurve() {
+    check(tubes::titleLegDirV(23) == '?', "leg 23 has neither F nor B");
+    tubes::TitleAtom a;
+    a.leg = 23;
+    a.x = tubes::titleLegLimitX(23);
+    a.y = tubes::titleLegLimitY(23) - 8;   // inside the 10 px curve window
+    const int x0 = a.x;
+    a.step();
+    check(a.x == x0, "leg 23 leaves the cross-axis alone");
+
+    // ...where an ordinary leg in the same position does move it.
+    tubes::TitleAtom b;
+    b.leg = 13;                            // 'D', 'B'
+    b.x = tubes::titleLegLimitX(13);
+    b.y = tubes::titleLegLimitY(13) - 8;
+    const int bx0 = b.x;
+    b.step();
+    check(b.x != bx0, "an ordinary leg does curve");
+}
+
+// The layout numbers, checked against captures of the original. The +1 on the
+// count and the +2 on the star row were both wrong until a capture caught
+// them, so they are pinned here.
+void testMenuLayoutMatchesTheCaptures() {
+    using tubes::Page;
+    // Main menu, 8 items: yBase 18, "Start Game" starred at 100/203, y 36.
+    check(tubes::menuYBase(Page::kMain) == 18, "main menu yBase is 18");
+    tubes::StarPlacement s = tubes::placeStars(Page::kMain, 1);
+    check(s.xLeft == 100 && s.xRight == 203, "Start Game stars at 100/203");
+    check(s.y == 36, "Start Game star row is 36");
+
+    // Game Mode, 3 items: "Endurace Mode" is 13 long.
+    s = tubes::placeStars(Page::kGameMode, 1);
+    check(s.xLeft == 88 && s.xRight == 215, "Endurace Mode stars at 88/215");
+    check(s.y == 76, "Endurace Mode star row is 76");
+
+    // Difficulty, 4 items, three selections down the page.
+    check(tubes::menuYBase(Page::kDifficulty) == 50, "difficulty yBase is 50");
+    check(tubes::placeStars(Page::kDifficulty, 1).y == 68, "Tubes 101 row");
+    check(tubes::placeStars(Page::kDifficulty, 2).y == 84, "Tubes 201 row");
+    check(tubes::placeStars(Page::kDifficulty, 3).y == 100, "Tubes 301 row");
+
+    // The text row is two above the star row.
+    check(tubes::menuItemY(Page::kDifficulty, 1) == 66, "text row is star - 2");
+
+    // Game Options is the one page on a 26 px pitch.
+    check(tubes::menuItemY(Page::kOptions, 2) -
+          tubes::menuItemY(Page::kOptions, 1) == 26, "options pitch is 26");
+}
+
+// The rule under a page title is length(title) - 2 underscores.
+void testMenuRuleIsTwoShortOfTheTitle() {
+    check(tubes::menuRule(tubes::Page::kDifficulty) == "________",
+          "Difficulty rules with 8 underscores");
+    check(tubes::menuRule(tubes::Page::kMain).empty(),
+          "the main menu has no title and no rule");
+}
+
+// Start Game and Continue Saved Game both land on Game Mode, and the flag they
+// set is what decides whether Game Mode then goes to Difficulty or to a slot
+// list. That flag is DS:0x1d4c.
+void testStartAndContinueDivergeAtGameMode() {
+    tubes::Menu m;
+    m.raise();
+    check(m.page() == tubes::Page::kMain, "menu opens on the main page");
+    check(m.select() == tubes::MenuResult::kNone, "Start Game does not leave");
+    check(m.page() == tubes::Page::kGameMode, "Start Game -> Game Mode");
+    check(m.choice().newGame, "Start Game sets newGame");
+    m.select();                                    // Endurace Mode
+    check(m.page() == tubes::Page::kDifficulty, "new game -> Difficulty");
+
+    tubes::Menu c;
+    c.raise();
+    c.moveDown();                                  // Continue Saved Game
+    c.select();
+    check(!c.choice().newGame, "Continue clears newGame");
+    c.select();                                    // Endurace Mode
+    check(c.page() == tubes::Page::kSavesEndurance, "load -> endurance slots");
+}
+
+// Difficulty is the only place DS:0x1d4f is set, and it leaves the title
+// screen. Tubes 101/201/301 are 0/1/2.
+void testDifficultyLeavesWithTheChoice() {
+    for (int i = 0; i < 3; ++i) {
+        tubes::Menu m;
+        m.raise();
+        m.select();                     // Start Game
+        m.select();                     // Endurace Mode
+        for (int k = 0; k < i; ++k) m.moveDown();
+        check(m.select() == tubes::MenuResult::kPlay, "difficulty starts play");
+        check(m.choice().difficulty == i, "difficulty index");
+        check(m.choice().mode == 1, "mode is endurance");
+    }
+}
+
+// Wave Mode is DS:0x1d4e = 2.
+void testWaveModeSetsModeTwo() {
+    tubes::Menu m;
+    m.raise();
+    m.select();                         // Start Game
+    m.moveDown();                       // Wave Mode
+    m.select();
+    m.select();                         // Tubes 101
+    check(m.choice().mode == 2, "Wave Mode sets mode 2");
+}
+
+// An empty save slot is ignored rather than accepted - the original re-tests
+// the record's first byte after copying it.
+void testEmptySaveSlotDoesNotLeaveTheMenu() {
+    tubes::Menu m;
+    m.raise();
+    m.moveDown();                       // Continue Saved Game
+    m.select();
+    m.select();                         // Endurace Mode -> slot list
+    check(m.page() == tubes::Page::kSavesEndurance, "on the slot list");
+    check(m.select() == tubes::MenuResult::kNone, "empty slot is ignored");
+    m.setSaveSlotLive(1, 1, true);
+    check(m.select() == tubes::MenuResult::kLoad, "a live slot loads");
+    check(m.choice().slot == 1, "the slot is recorded");
+}
+
+// Arriving back at the main menu restores the row you left from - DS:0x1d43 -
+// while every other page starts at its first item.
+void testMainMenuRemembersItsRow() {
+    tubes::Menu m;
+    m.raise();
+    m.moveDown();
+    m.moveDown();                       // Game Options
+    check(m.item() == 3, "moved to Game Options");
+    m.select();
+    check(m.page() == tubes::Page::kOptions, "on Game Options");
+    check(m.item() == 1, "a submenu starts at item 1");
+    for (int i = 0; i < 3; ++i) m.moveDown();
+    m.select();                         // Exit
+    check(m.page() == tubes::Page::kMain, "back on the main menu");
+    check(m.item() == 3, "and back on the row we left from");
+}
+
+// The selection wraps, which the rig notes rely on for navigation.
+void testMenuSelectionWraps() {
+    tubes::Menu m;
+    m.raise();
+    m.moveUp();
+    check(m.item() == 8, "up from the first item wraps to the last");
+    m.moveDown();
+    check(m.item() == 1, "and down again wraps back");
+}
+
+// Four frames on a three-frame divider: a 12-frame cycle.
+void testStarTurnsEveryThreeFrames() {
+    tubes::Menu m;
+    check(m.starFrame() == 1, "star starts on frame 1");
+    for (int i = 0; i < 3; ++i) m.tick();
+    check(m.starFrame() == 2, "advances after three frames");
+    for (int i = 0; i < 9; ++i) m.tick();
+    check(m.starFrame() == 1, "and wraps after twelve");
+}
+
+// Exit Tubes is a confirm page, and No returns rather than quitting.
+void testQuitNeedsConfirming() {
+    tubes::Menu m;
+    m.raise();
+    for (int i = 0; i < 7; ++i) m.moveDown();
+    check(m.item() == 8, "on Exit Tubes");
+    check(m.select() == tubes::MenuResult::kNone, "Exit Tubes asks first");
+    check(m.page() == tubes::Page::kQuit, "on the confirm page");
+    m.moveDown();
+    check(m.select() == tubes::MenuResult::kNone, "No does not quit");
+    check(m.page() == tubes::Page::kMain, "and returns to the main menu");
+
+    tubes::Menu y;
+    y.raise();
+    for (int i = 0; i < 7; ++i) y.moveDown();
+    y.select();
+    check(y.select() == tubes::MenuResult::kQuit, "Yes quits");
+}
+
+// The four items that leave the title screen return their own item number,
+// which is how 1b2e:52bf reports them to its caller.
+void testInformationalItemsReturnTheirNumber() {
+    const int items[] = {4, 5, 6, 7};
+    const tubes::MenuResult want[] = {
+        tubes::MenuResult::kHighScores, tubes::MenuResult::kInstructions,
+        tubes::MenuResult::kCredits, tubes::MenuResult::kCredits};
+    for (int k = 0; k < 4; ++k) {
+        tubes::Menu m;
+        m.raise();
+        for (int i = 1; i < items[k]; ++i) m.moveDown();
+        tubes::MenuResult r = m.select();
+        check(static_cast<int>(r) == items[k], "item leaves with its number");
+        (void)want;
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -1897,6 +2120,19 @@ int main() {
     testCrystalRecordFollowsItsCellDown();
     testTaskDisplayCyclesWhenNothingIsRequired();
     testHiddenAtomsConcealButDoNotChangeAnything();
+    testTitlePathClosesAndVisitsEveryLeg();
+    testTitleLegTwentyThreeDoesNotCurve();
+    testMenuLayoutMatchesTheCaptures();
+    testMenuRuleIsTwoShortOfTheTitle();
+    testStartAndContinueDivergeAtGameMode();
+    testDifficultyLeavesWithTheChoice();
+    testWaveModeSetsModeTwo();
+    testEmptySaveSlotDoesNotLeaveTheMenu();
+    testMainMenuRemembersItsRow();
+    testMenuSelectionWraps();
+    testStarTurnsEveryThreeFrames();
+    testQuitNeedsConfirming();
+    testInformationalItemsReturnTheirNumber();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
