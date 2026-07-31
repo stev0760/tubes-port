@@ -5669,7 +5669,7 @@ At `1000:5cff`, the tail of the frame loop:
 
     if drops = $ff then gameOver := true;           { the underflow, already ported }
     if waveMode not in [0,1] then
-      if (counter = 0) and (clearTimer = 0) and (taskDisplayCount = 0) then
+      if (counter = 0) and (clearTimer = 0) and (inPlay = 0) then
         waveComplete := true;
     if clearTimer > 0 then Dec(clearTimer);
     if not waveComplete and not gameOver and not quit then <next frame>
@@ -5677,6 +5677,73 @@ At `1000:5cff`, the tail of the frame loop:
 `1000:8da5` then shows the stats screen and `1000:8c38` the Continue
 screen, which is what sets `-0x1ff` - and that is why a continued wave keeps
 its objective.
+
+**The decrement is AFTER the test, and one frame of clear animation depends on
+it.** A match sets the timer to 10 at `1000:1c70`, which is early in the frame;
+the tail then tests it at 10 and steps it to 9. The port ran the decrement at
+the end of its beaker update instead, so the same frame tested 9 and every
+clear animation was judged one frame short. Cheap to get wrong, and invisible
+except as a wave that ends slightly too soon.
+
+### `-0x1be` is the IN-PLAY count, and it is why a wave does not end at the dispenser
+
+The third term above was carried for several sessions as a Task Display field
+called `count`, on the strength of being seeded from the objective right beside
+the colour and the chain. It is nothing of the sort - **it is never drawn**, and
+the number the Task Display shows is the objective counter `-0x1f4` itself.
+
+Two counters run in a mode-4 ("survive N atoms") wave, and they come down at
+different moments:
+
+| | seeded | decremented | by |
+|---|---|---|---|
+| `-0x1f4` objective | 30, by the briefing | when an atom is **dispensed** | `1000:4b3b` |
+| `-0x1be` in play | 30, at `1000:3af0` | when an atom **leaves play** | `1000:158d`, `1000:17b4`, `1000:0c6b` |
+
+`1000:3af0` seeds the second one from the first **only in mode 4** and zeroes it
+in every other mode, which is how the extra term vanishes for the modes that do
+not count atoms.
+
+An atom leaves play three ways, and every site is the same three lines gated on
+`DS:0x1d4e = 4`:
+
+    if inPlay > 0 then begin
+        Dec(inPlay);
+        if inPlay = 0 then Inc(clearTimer, 2)
+    end
+
+* `1000:158d` - the end of the **descend** arm (state 7), inside the `y > $bb`
+  branch: the atom fell past the tube and is lost. It sits *after* the Bonus
+  exemption's join, so a missed Bonus costs no drop but still counts.
+* `1000:17b4` - the end of the **tipped** arm (state 9), where both landing
+  branches join: settled into the beaker, or destroyed against a full column.
+* `1000:0c6b` - the **Filler**, which shifts the tube up and pushes the top
+  slot out of the stack.
+
+and it goes UP at `1000:0a13` and `1000:0b41`, **inside the fill loops** of the
+Multiplier and the Evil Multiplier - one per ball, because those balls have to
+leave play too. Without that a filled tube would strand the count above zero.
+
+So the gap between the two counters is a whole atom lifetime: a descent, a stay
+in the test tube for as long as the player leaves it there, and a fall into the
+beaker. **A wave ends when the last atom has landed, not when the last atom has
+been sent out** - and a tube left full holds the wave open indefinitely, which
+is the original's behaviour and now the port's.
+
+The dispenser's own arm is worth reading too, because it is not a bail-out:
+
+    if mode = 4 then
+      if counter > 0 then Dec(counter)
+                     else record.state := 0        { 1000:4b4a }
+
+`+0x08` is the state field, and this runs at the very END of the dispenser -
+after the record is built and its colour rolled. So a wave past its quota still
+spends a random number and then throws the atom away. Bailing out early would
+give the same picture and a different random sequence.
+
+The `Inc(clearTimer, 2)` is why the last atom of a wave still gets two frames of
+screen after it settles - or ten, if landing formed a chain and rearmed the
+timer, which is what usually happens.
 
 ## Closing the session loop: the three flags, the banners, the two screens
 

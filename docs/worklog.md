@@ -3026,3 +3026,57 @@ machine that may have a game running on it - `grab_hiscores.py` subclasses it
 and neuters that, then uses `tubes-sweep.conf`'s own ports. And the drive it
 runs on has no `TUBES.HSC`, which is the only reason the two sides are
 comparable at all: both show the twenty shipped defaults, neither seeded.
+
+## 2026-07-31 - a wave that ended at the dispenser, not at the beaker
+
+The player: wave 2's levels "end abruptly", and a mode that asks you to make as
+many chains as you can out of 30 atoms "should end when the last atom is placed
+in the beaker, not when the atoms count to zero".
+
+That is the code, exactly. Two counters run in a mode-4 wave and the port had
+them locked together:
+
+    -0x1f4   the OBJECTIVE, seeded 30, decremented in the DISPENSER (1000:4b3b)
+    -0x1be   the IN-PLAY count, seeded 30 too, decremented when an atom LEAVES
+             play (1000:158d, 1000:17b4, 1000:0c6b)
+
+and `1000:5d30` requires both to be zero. The port wrote `task_.count =
+objective_.counter` on every dispense, so they emptied on the same frame and the
+wave ended with six atoms still in the air.
+
+`-0x1be` had been carried as a Task Display field called `count` since the wave
+work, because `1000:3af0` seeds it from the objective right beside the colour
+and the chain. **It is never drawn.** The number beside the balls is the
+objective counter itself. The tell was available: `FindScalarRefs` on `0xfe42`
+returns five sites in `1000:3a67` and not one of them is in the drawing code -
+two of the five are not even the variable, they are `[BP + DI + 0xfe42]`, which
+is the atom record's `+0x08` state field reached through the array's biased
+base. A field that is only ever seeded and tested is not a display field.
+
+Reading the three decrement sites settled the shape of it. Every one is the
+same three lines gated on the mode, and every one sits where an atom stops
+existing: the descend arm's `y > $bb` branch (lost at the bottom), the tipped
+arm's landing join (settled, or destroyed against a full column), and the
+Filler pushing the top slot out of the tube. The two fill routines INCREMENT it
+inside their loops, one per ball, because those balls have to leave play too.
+
+Which means a tube left full holds the wave open indefinitely - the atoms in it
+have not left play. That is now a test, and it is the sort of behaviour that
+would never have been guessed from watching.
+
+### The clear timer was one frame short, everywhere
+
+Found while writing the test rather than looked for. `1000:5d29` tests the
+clear timer and `1000:5d3c` decrements it - in that order. The port decremented
+at the end of `updateBeaker()`, which is early in the frame, so a timer set to
+10 by a match was already 9 when the same frame tested it.
+
+One frame, and it applies to every wave in the game, not just mode 4. With the
+order corrected a chain-mode wave now clears its nine cells at frame 7 and
+raises the banner at frame 10 - three frames of settled board rather than two.
+That is the whole of the "chains should finish animating" complaint that was
+not the counter bug.
+
+The lesson is the ordinary one: a statement's POSITION in a frame is part of
+the transliteration. `docs/reversing-notes.md` recorded the tail's statements
+in the right order all along; the port just did not put them there.

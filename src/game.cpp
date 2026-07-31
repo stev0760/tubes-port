@@ -72,6 +72,11 @@ constexpr int kScoreRampSteps = 6;
 // judged empty.
 constexpr int kClearFrames = 10;
 
+// `1000:159a`, `17c1` and `0c78`: the frame the in-play count of a "survive N
+// atoms" wave empties, TWO are added to the clear timer rather than the wave
+// being declared over on the spot.
+constexpr int kInPlayDrainFrames = 2;
+
 // The lanes an atom travels between. y = 187 is where atoms enter at the
 // bottom of a feed tube and y = 68 is the top lane where the test tube can
 // catch; both measured.
@@ -255,7 +260,11 @@ void Game::startWave(bool replay) {
     scoreMultiplier_ = 0;               // 1000:3a85
     rampSteps_ = 0;
     rampIncrement_ = 0;
-    clearTimer_ = 0;
+    clearTimer_ = 0;                    // 1000:3abd
+    // `1000:3af0`: seeded from the objective counter in mode 4 and zero in
+    // every other mode, which is what makes the extra term in the
+    // wave-complete test vanish for the modes that do not count atoms.
+    inPlay_ = (objective_.mode == WaveMode::kSurvive) ? objective_.counter : 0;
     bonusAward_ = 0;                    // 1000:3a8d - per WAVE, not per session
     flashTick_ = 1;                     // 1000:3ab3
     flashColour_ = kRedium;             // 1000:3ab8
@@ -539,8 +548,6 @@ void Game::updateBeaker() {
         score_ += rampIncrement_;
     }
 
-    if (clearTimer_ > 0) --clearTimer_;
-
     // NO overflow loss. The port used to end the game the moment a column
     // reached the top, which froze it solid with no message - `update()`
     // returns immediately once gameOver_ is set, so the window stayed up and
@@ -581,6 +588,49 @@ void Game::stepScoreRamp() {
         scorePending_ = 0;
         scoreMultiplier_ = 0;
     }
+}
+
+// `-0x1be`, the in-play count, and the reason a "survive N atoms" wave does not
+// end when the atom counter does.
+//
+// TWO counters run in a mode-4 wave and they come down at different moments:
+//
+//     -0x1f4  the OBJECTIVE counter, seeded 30. `1000:4b3b` decrements it in
+//             the DISPENSER, so it is spent when the last atom is sent out.
+//             This is the number the Task Display draws.
+//     -0x1be  the IN-PLAY count, seeded from the same 30 at `1000:3af0`.
+//             It comes down when an atom LEAVES play, and the wave-complete
+//             test at `1000:5d30` requires it to be zero as well.
+//
+// So the wave ends when the last atom has landed, not when the last atom has
+// been dispensed - the gap between the two is a full descent, a stay in the
+// tube and a fall into the beaker. The port kept the second equal to the first
+// and ended the wave on the dispense, which is exactly the abruptness a player
+// reported.
+//
+// Every site is the same three lines, gated on the mode - `1000:158d`,
+// `1000:17b4` and `1000:0c6b`:
+//
+//     if inPlay > 0 then begin
+//         Dec(inPlay);
+//         if inPlay = 0 then Inc(clearTimer, 2)
+//     end
+//
+// and the `+2` is why the last atom of a wave still gets two frames of screen
+// after it settles.
+void Game::atomLeftPlay() {
+    if (objective_.mode != WaveMode::kSurvive) return;
+    if (inPlay_ <= 0) return;
+    if (--inPlay_ == 0) clearTimer_ += kInPlayDrainFrames;
+}
+
+// `1000:0a13` and `1000:0b41`, both INSIDE the fill loop, so it is one per BALL
+// the Multiplier or the Evil Multiplier puts in the tube. Those balls have to
+// leave play too, and without this a filled tube would strand the count above
+// zero and the wave would never end.
+void Game::atomEnteredPlay() {
+    if (objective_.mode != WaveMode::kSurvive) return;
+    ++inPlay_;
 }
 
 // The other half of the specials. The beaker-side four are in `board.cpp`,
@@ -659,6 +709,7 @@ void Game::catchSpecial() {
         tube_.back().colour = static_cast<int8_t>(random(8) + 1);
         while (static_cast<int>(tube_.size()) < kTubeSlots) {
             pushTubeSlot(static_cast<int8_t>(random(8) + 1));
+            atomEnteredPlay();          // 1000:0a13, inside the loop
         }
     }
 
@@ -669,6 +720,7 @@ void Game::catchSpecial() {
         tube_.back().colour = kXenon;
         while (static_cast<int>(tube_.size()) < kTubeSlots) {
             pushTubeSlot(kXenon);
+            atomEnteredPlay();          // 1000:0b41, likewise
         }
     }
 
@@ -699,13 +751,10 @@ void Game::catchSpecial() {
             tube_[i].slotDy = kSlotDy[i + 1];
             tube_[i].y = kTubeY + tube_[i].slotDy;
         }
+        // 1000:0c59, the routine's tail: the shift pushed the top slot out of
+        // the stack, so one atom has left play.
+        atomLeftPlay();
     }
-
-    // Not ported: all three gated routines carry a tail guarded by
-    // `DS:0x1d4e = 4`, a wave mode, which keeps a running count of what is in
-    // the tube - the fills increment it per ball, the Filler and the router's
-    // release path decrement it, and reaching zero adds 2 to the clear timer.
-    // The port has no wave modes, so there is nothing for it to count.
 }
 
 // Dispense one atom, transliterated from `1000:4918`. The column is rolled,
@@ -736,15 +785,6 @@ void Game::spawn() {
     spawnTimer_ = spawnInterval_;
     if (atoms_[col].state != atomstate::kFree) return;
 
-    // `1000:4b31`, in the dispense path: a "live through N atoms" wave counts
-    // atoms SENT OUT, not caught. Once the count is spent the original clears
-    // the new record's `+8` instead; that field is not identified yet, and the
-    // wave ends on the same frame anyway.
-    if (objective_.mode == WaveMode::kSurvive && objective_.counter > 0) {
-        --objective_.counter;
-        task_.count = objective_.counter;
-    }
-
     Falling& a = atoms_[col];
     a = Falling{};
     a.column = col;
@@ -755,6 +795,21 @@ void Game::spawn() {
     a.state = atomstate::kRise;
     a.velocity = networkVel_;
     a.colour = nextColour();
+
+    // `1000:4b31`, and it is the LAST thing the dispenser does - after the
+    // record is fully built, colour roll included. A "survive N atoms" wave
+    // spends its OBJECTIVE counter here, on the atom being SENT OUT, and that
+    // is the number the Task Display draws. The count that ends the wave is a
+    // different byte and comes down when the atom lands - `atomLeftPlay`.
+    //
+    // Once the quota is spent `1000:4b4a` zeroes the record's `+0x08`, the
+    // state field, so the atom just built is cancelled and the wave stops
+    // producing. Doing it in this order rather than bailing out early matters:
+    // the colour roll is spent either way, so the random sequence is the same.
+    if (objective_.mode == WaveMode::kSurvive) {
+        if (objective_.counter > 0) --objective_.counter;
+        else a.state = atomstate::kFree;
+    }
 }
 
 // The test tube: one input read and one step of its state machine, from
@@ -1002,9 +1057,16 @@ void Game::stepFrame(uint8_t buttons) {
     // `1000:5cff`, the frame tail. Endurance never reaches it - the test is
     // `mode <> 0 and mode <> 1` there too.
     if (isWaveMode(objective_.mode) && objective_.counter == 0 &&
-        clearTimer_ == 0 && task_.count == 0) {
+        clearTimer_ == 0 && inPlay_ == 0) {
         waveComplete_ = true;
     }
+
+    // `1000:5d3c`, and the ORDER matters: the clear timer is stepped down
+    // AFTER the test above, not before it. The port ran the decrement at the
+    // end of `updateBeaker()`, which is early in the frame, so a timer set to
+    // 10 by a match was already 9 by the time the same frame tested it and
+    // every clear animation was judged one frame short.
+    if (clearTimer_ > 0) --clearTimer_;
 }
 
 // One frame of one atom: `FUN_1000_0f80`, transliterated, plus the catch and
@@ -1137,13 +1199,16 @@ void Game::stepAtom(Falling& a) {
                 // costs a drop. It does NOT sit on top or bounce.
                 if (a.colour != kBonus && dropsRemaining_ > 0) --dropsRemaining_;
                 pendingSound_ = sfx::kDrop;      // 1000:172a
-                break;
+            } else {
+                board_.set(col, row - 1, a.colour);
+                // 1000:1765. Reaching the floor rings the glass; landing on a
+                // stack knocks. Same pair as the in-tube slide above.
+                pendingSound_ = (row == board_.rows()) ? sfx::kHitGlass
+                                                       : sfx::kHitAtom;
             }
-            board_.set(col, row - 1, a.colour);
-            // 1000:1765. Reaching the floor rings the glass; landing on a
-            // stack knocks. Same pair as the in-tube slide above.
-            pendingSound_ = (row == board_.rows()) ? sfx::kHitGlass
-                                                   : sfx::kHitAtom;
+            // 1000:17a2, where the two branches join. Settled or destroyed,
+            // the atom is out of play - and THIS is what ends a mode-4 wave.
+            atomLeftPlay();
             break;
         }
 
@@ -1233,6 +1298,10 @@ void Game::stepAtom(Falling& a) {
         a.y = kLostY;
         a.state = atomstate::kLanded;
         pendingSound_ = sfx::kDrop;         // 1000:15a0, whatever was missed
+        // 1000:157b. An atom lost at the bottom is out of play too, and the
+        // count comes down BEFORE the Bonus exemption below - `1000:1543`
+        // jumps past the drops block straight to it.
+        atomLeftPlay();
         // 1000:153e. A missed BONUS costs nothing. It is the same exemption the
         // full-column loss in state 9 makes, and the port had it in one place
         // and not the other.

@@ -456,7 +456,6 @@ TaskDisplay seedTaskDisplay(const WaveObjective& obj) {
     TaskDisplay t;
     t.colour = obj.reqColour == 0 ? static_cast<int8_t>(kFlashium) : obj.reqColour;
     t.chain = obj.reqChain;
-    t.count = (obj.mode == WaveMode::kSurvive) ? obj.counter : 0;
     return t;
 }
 

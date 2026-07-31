@@ -166,10 +166,15 @@ struct WaveObjective {
 // The three half-size balls and the number beside them, drawn by `1000:2a4a`.
 // They live in `1000:3a67`'s own frame and are seeded from the objective at
 // `1000:3ac7`, so they track the required colour and chain as those rotate.
+// `-0x1be` is NOT one of these, though it was carried here as `count` for
+// several sessions on the strength of being seeded from the objective next to
+// the other three. It is never drawn - the number beside the balls is the
+// objective counter itself, `SS:[DI-0x1f4]` - and it is a live count of atoms
+// still in play. It now lives in `Game` as `inPlay_`, beside the clear timer
+// it belongs with. See `Game::atomLeftPlay`.
 struct TaskDisplay {
     int8_t colour = 8;   // -0x1bf; `1000:3ad0` shows Flashium when none is set
     uint8_t chain = 0;   // -0x1c0
-    int count = 0;       // -0x1be, non-zero only in mode 4
     // -0x1c1. The diagonal illustration alternates direction every flash
     // tick, because both diagonals count - `1000:48d8`.
     bool diagonalFlip = false;

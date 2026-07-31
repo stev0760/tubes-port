@@ -380,6 +380,8 @@ public:
 
     // Non-zero while a clear animation is running.
     int clearTimer() const { return clearTimer_; }
+    // Atoms a "survive N atoms" wave is still waiting to see out of play.
+    int atomsInPlay() const { return inPlay_; }
     // The sound to play, consumed by the caller. See `namespace sfx` - it is an
     // atom type for the fade families and DROP, or one of the three ids above
     // it. `sfx::kNone` means nothing happened.
@@ -495,6 +497,10 @@ private:
     void stepScoreRamp();
     // The four specials that fire when the TUBE catches one - `1000:180c`.
     void catchSpecial();
+    // The two halves of `-0x1be`, the in-play count. Every site is the same
+    // three lines and every one is gated on mode 4 - see `atomLeftPlay`.
+    void atomEnteredPlay();
+    void atomLeftPlay();
     int random(int n);
     int8_t nextColour();
     // `1000:192f`, wired to Board's per-seed hook.
@@ -543,6 +549,10 @@ private:
     // 1000:1c70 sets this to 10 on a match; the frame loop counts it down and
     // will not declare a wave complete while it is running.
     int clearTimer_ = 0;
+    // `-0x1be`, the byte right beside it, and the reason a "survive N atoms"
+    // wave does not end the instant the last atom is DISPENSED. See
+    // `atomLeftPlay`.
+    int inPlay_ = 0;
     int8_t pendingSound_ = sfx::kNone;
     int chains_ = 0;
     bool gameOver_ = false;

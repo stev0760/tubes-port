@@ -1480,13 +1480,88 @@ void testSurviveWaveCountsAtomsDispensed() {
     g.startWave();
     check(g.waveMode() == WaveMode::kSurvive, "wave 2 is mode 4");
     check(g.objective().counter == 30, "and asks for 30 atoms");
-    check(g.taskDisplay().count == 30, "which the Task Display shows");
+    check(g.atomsInPlay() == 30, "and owes thirty atoms out of play");
 
     const int before = g.objective().counter;
     // The first dispense is on frame zero, so one step is one atom.
     g.stepOnce(0);
     check(g.objective().counter == before - 1, "an atom dispensed ticks it down");
-    check(g.taskDisplay().count == g.objective().counter, "the display follows");
+    // The two counters are seeded alike and MOVE APART, which is the whole
+    // point: `1000:4b3b` spends one at the dispenser and `1000:17b4` spends
+    // the other when the atom lands.
+    check(g.atomsInPlay() == 30, "but the in-play count does not follow it");
+}
+
+// The bug a player reported: a "survive 30 atoms" wave ended the moment the
+// thirtieth atom was DISPENSED, with atoms still in the air.
+void testSurviveWaveWaitsForTheLastAtomToLand() {
+    using namespace tubes;
+    Game g(6, 5, Difficulty::k101, 7u);
+    while (g.progress().wave < 2) g.advanceWave();
+    g.startWave();
+    // Nothing is caught here, so every atom is missed. Nine drops would end
+    // the game long before the thirtieth; the allowance is not what is under
+    // test, so it is put out of reach.
+    g.setDropsRemaining(100);
+
+    // Run until the dispenser has spent the objective. No buttons, so nothing
+    // is tipped; atoms are either missed or caught and left in the tube.
+    int frames = 0;
+    while (g.objective().counter > 0 && frames < 6000) {
+        g.stepOnce(0);
+        ++frames;
+    }
+    check(g.objective().counter == 0, "the dispenser spends the objective");
+    check(g.atomsInPlay() > 0, "with atoms still in play");
+    check(!g.waveComplete(), "and the wave is NOT over yet");
+
+    // Let everything still in the air resolve, and what is left is what the
+    // tube caught. Those have not left play, and nothing but the player
+    // tipping them will get them out - so the wave stays open indefinitely.
+    for (int i = 0; i < 300; ++i) g.stepOnce(0);
+    const int stalled = g.atomsInPlay();
+    check(stalled > 0 && !g.waveComplete(),
+          "atoms sitting in the test tube have not left play");
+    for (int i = 0; i < 300; ++i) g.stepOnce(0);
+    check(g.atomsInPlay() == stalled && !g.waveComplete(),
+          "and idling does not move the count or end the wave");
+
+    // Hold A. Each tip drops one into the beaker, and the count follows them
+    // down - `1000:17b4`.
+    while (g.atomsInPlay() > 0 && frames < 6000) {
+        g.stepOnce(button::kA);
+        ++frames;
+    }
+    check(!g.waveComplete(), "the frame the count empties still holds it open");
+    // `1000:159a` puts TWO on the clear timer as the count empties, and
+    // `1000:5d3c` steps one off in the same frame's tail - so one is left.
+    // Asserting the residue rather than "two frames later" is deliberate: the
+    // atoms that land at the end of a wave often form a chain, and that
+    // rearms the timer to ten. This seed does exactly that.
+    check(g.clearTimer() == 1, "and leaves one frame of clear timer behind");
+
+    int held = 0;
+    while (!g.waveComplete() && held < 60) {
+        g.stepOnce(0);
+        ++held;
+    }
+    check(g.waveComplete() && g.clearTimer() == 0,
+          "and the wave completes when the clear timer finally runs out");
+}
+
+// The Multiplier fills the tube, and those balls have to leave play too.
+void testAFilledTubeAddsToTheInPlayCount() {
+    using namespace tubes;
+    Game g(6, 5, Difficulty::k101, 11u);
+    while (g.progress().wave < 2) g.advanceWave();
+    g.startWave();
+    const int before = g.atomsInPlay();
+    // One Multiplier sitting in the mouth. The router fires it on the next
+    // frame, and it fills the other four slots.
+    g.setTubeAtoms({kMultiplier});
+    g.stepOnce(0);
+    check(g.atomsInPlay() == before + 4,
+          "a Multiplier filling four slots owes four more atoms");
 }
 
 void testWaveCompletesOnlyOnceNothingIsClearing() {
@@ -2417,6 +2492,8 @@ int main() {
     testAWaveCountsDownThroughTheGame();
     testRunOfFourTicksTheObjectiveTwice();
     testSurviveWaveCountsAtomsDispensed();
+    testSurviveWaveWaitsForTheLastAtomToLand();
+    testAFilledTubeAddsToTheInPlayCount();
     testWaveCompletesOnlyOnceNothingIsClearing();
     testEnduranceIgnoresAllOfIt();
     testPreFilledBeakerIsEightRoundRobin();
