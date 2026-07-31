@@ -24,6 +24,8 @@ holds copyrighted game data, so it sits outside:
       exp4b_slowmo_sampler.py   per-frame motion, via a slowed guest
       exp_sprite_tables2.py     the 19-type ball and fade tables
       grab_instructions.py      capture the in-game Instructions slides
+      grab_hiscores.py          capture both High Scores pages, both key paths
+      diff_hiscores.py          whole-screen diff of those two against the port
       load_save.py              load a saved game and capture the HUD
       diag_frameclock.py        find which candidate sites execute per frame
       build.log                 the fork's build transcript
@@ -223,6 +225,38 @@ at the entry breakpoint every session; the script does.
 Mode 13h is what the BIOS reports even though the game runs Mode X - Mode X is
 reached by reprogramming the CRTC out of mode 13h, which does not change the
 BIOS mode byte. So `0x449 == 0x13` is the right "game is up" signal.
+
+### A static screen diffs at ZERO, and that is worth knowing
+
+`diff_frame.py` compares only **structural** pixels and masks the atoms,
+because a gameplay frame has a random backdrop, animated stars and atoms that
+move while the capture is taken. None of that applies to a menu-side screen, so
+`diff_hiscores.py` compares **all 64,000 pixels with no mask at all** - and
+both High Scores pages come back at **0 differing pixels**.
+
+That is a much sharper instrument than the gameplay diff and should be the
+first thing reached for on any other static screen. It also means the only
+calibration that carries over is the DAC expansion (`v<<2` against `v*255/63`,
+tolerance 6); everything else in `diff_frame.py` is there for the noise a
+static screen does not have.
+
+The capture side needs one habit: **run the screen twice, once per key path.**
+`grab_hiscores.py` pages through with RET and then ESCs out of the first page,
+which is what proved the flip-and-exit model rather than assuming it. Two
+passes also caught that the first page is byte-identical between runs, so the
+screen is deterministic and a single capture is enough to diff against.
+
+### Never let a helper kill instances it did not start
+
+`DOSBoxInstance.start()` runs `pkill -9 -f dosbox-x`. A capture script has no
+business doing that to a machine that may have a game running on it, so
+`grab_hiscores.py` subclasses it and neuters `_kill_existing`, then launches on
+`tubes-sweep.conf`'s own ports (2160/4445, `sweepdrive/`). Copy that pattern.
+
+`sweepdrive/` has no `TUBES.HSC`, and neither does the real game directory - so
+both sides show the twenty shipped default names and are comparable without
+either being seeded. Check that before diffing a screen that reads a file the
+game writes.
 
 ### Screenshot quirks
 

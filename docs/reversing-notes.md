@@ -7430,12 +7430,30 @@ fade. It takes ONE far pointer, printed as two words. `1b2e:0a11` calls it
 with `SLIDE.SFX` as the projector screen rolls down, and with `SWITCH.SFX`
 when `DS:0x1d6c` is set - **neither of which the port plays yet.**
 
-Not yet corroborated by a capture of the original; every number above is off
-the disassembly. The earlier probe that "captured the same blackboard three
-times while believing it was walking the Start Game path" was almost certainly
-looking at these two pages plus the menu - the pages differ only in the
-heading and the ten rows, so paging through them does look like one screen
-that will not dismiss.
+**Corroborated against the original: both pages diff at ZERO pixels.**
+`grab_hiscores.py` captures them and `diff_hiscores.py` compares all 64,000
+pixels with no mask - this screen has no random backdrop, no animated stars and
+no atoms in flight, so the whole frame is comparable, which the gameplay diff
+never is. Every constant above is therefore confirmed from both ends: read off
+the disassembly, and rendered pixel for pixel.
+
+The key model was tested rather than assumed, by running the screen twice:
+
+| pass | keys | result |
+|---|---|---|
+| 1 | RET, RET, RET | Endurance, then Wave, then the menu |
+| 2 | RET, ESC | Endurance, then the menu **at once** |
+
+The ESC frame is 0.2% different from the other menu capture - the title atom
+and stars have moved - and 77.6% different from the Wave page, so it is
+unambiguous. The two page-0 captures are byte-identical, so the screen is
+deterministic.
+
+That also explains an old note in this file: a probe once "captured the same
+blackboard three times while believing it was walking the Start Game path". It
+was looking at these two pages plus the menu. The pages differ only in the
+heading and the ten rows, so paging through them does look like one screen that
+will not dismiss.
 
 ## Wave 75 is the last wave, and it is the hidden-atom objective
 

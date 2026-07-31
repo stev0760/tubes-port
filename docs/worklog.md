@@ -2998,3 +2998,31 @@ file. So the applause is not the viewer's alone, and the entry screen holds
 while it plays instead of vanishing on the keypress, which is what the port did.
 Reading a function's tail properly needs the *vector* identified first; with
 `[0x230e]` unnamed, that call was just an indirect jump into the unknown.
+
+### And then the rig said zero
+
+Both viewer pages captured from the original and diffed whole - all 64,000
+pixels, no mask, no structural-pixel filter - come back at **0 differing
+pixels**. `grab_hiscores.py` and `diff_hiscores.py`, both in the tooling
+directory.
+
+The sharpness is the point. `diff_frame.py` has to compare only grey structural
+pixels and mask every atom, because a gameplay frame has a random backdrop,
+stars animating over it and atoms that move during the capture; its floor is
+0.02%-0.22% and three known pixels at (59, 10..12) that nobody can explain. A
+menu-side screen has none of that noise, so an exact whole-frame comparison is
+available, and an exact comparison that passes says something a filtered one
+cannot. Reach for it on every static screen from here.
+
+The key model was tested rather than assumed, by running the screen twice: RET,
+RET, RET gives Endurance, Wave, menu; RET, ESC gives Endurance, menu. The ESC
+frame is 0.2% off the other menu capture (the title atom moved) and 77.6% off
+the Wave page, so there is nothing to interpret. The two page-0 captures are
+byte-identical, which also says the screen is deterministic.
+
+Two habits worth keeping from the capture side. `DOSBoxInstance.start()` runs
+`pkill -9 -f dosbox-x`, which a capture script has no business doing to a
+machine that may have a game running on it - `grab_hiscores.py` subclasses it
+and neuters that, then uses `tubes-sweep.conf`'s own ports. And the drive it
+runs on has no `TUBES.HSC`, which is the only reason the two sides are
+comparable at all: both show the twenty shipped defaults, neither seeded.

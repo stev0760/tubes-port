@@ -732,11 +732,12 @@ keys are inert. Those belong with B below, since F2 is save/load.
 **B. The menu items that currently do nothing.** Each is reachable and inert,
 which is worse than absent - it looks broken.
 
-3. **High scores. DONE** - `src/hiscore.{h,cpp}`, the entry screen
+3. **High scores. DONE and verified** - `src/hiscore.{h,cpp}`, the entry screen
    `1000:96db` and the viewer `1b2e:61b6`. `TUBES.HSC` round-trips byte-exact
-   against a real file, and both screens are transliterated rather than
-   invented. The one thing left is corroboration: no capture of the original's
-   high-score screens exists, so the geometry is off the disassembly only.
+   against a real file, and both viewer pages diff against the original at
+   **0 pixels of 64,000**, unmasked (`grab_hiscores.py`, `diff_hiscores.py`).
+   The entry screen has no capture yet - it needs a qualifying score - and is
+   the only part still on the disassembly alone.
 4. **Save / load.** Same file, same decoded layout. `Menu::setSaveSlotLive`
    and `MenuChoice::slot` are already wired and waiting.
 5. **Attract mode.** The 720-frame countdown runs and restarts; it should hand
