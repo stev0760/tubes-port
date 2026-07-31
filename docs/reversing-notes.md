@@ -1946,6 +1946,78 @@ values. Drops is confirmed separately and more strongly below. The atom target
 at `+0x2d` is a strong correspondence across two saves that happen to share the
 value 30, so it remains the weakest of the five.
 
+### FULLY DECODED, from the three routines rather than from samples
+
+The three consumers, found with `FindScalarRefs` on the bank addresses - the
+method this file ranks first:
+
+| | | |
+|---|---|---|
+| `1b2e:000a` | reader | `FillChar`s both banks with zero, then `BlockRead`s |
+| `1b2e:00ac` | writer | two `BlockWrite`s of `$1e0`, nothing else |
+| `1000:2dd0` | the F2 save screen | fills the record field by field |
+| `1b2e:4d80` | the menu | reads a slot when the player picks one |
+
+`1b2e:00ac` is the whole file:
+
+    DS:0x1ae3 := Random(254) + 1;  DS:0x1cc3 := Random(254) + 1
+    Assign(f, 'TUBES.SAV');  Rewrite(f, 1)
+    BlockWrite(f, DGROUP:0x1928, $1e0)      { bank 0, Endurance }
+    BlockWrite(f, DGROUP:0x1b08, $1e0)      { bank 1, Wave }
+    Close(f)
+
+**Six records per bank, five of them slots** - `$1e0 = 6 * $50` - which is the
+same shape as `TUBES.HSC`'s eleven-for-ten. And the reader zero-fills before
+reading, so a missing file leaves every length byte at zero and "empty" needs
+no separate flag: `1b2e:5427` is literally `CMP byte ptr [0x1928],0`.
+
+**The record is sixteen stores at `1000:3660`**, filling a scratch record at
+`DGROUP:0x1ce8` from the session frame before `Move`ing all `$50` bytes into
+the slot:
+
+| `+off` | width | session | what |
+|---|---|---|---|
+| `0x00` | 31 | - | the typed description, `string[30]` |
+| `0x1f` | u32 | `-0x153`/`-0x151` | score, two stores |
+| `0x23` | byte | `-0x14f` | continues left |
+| `0x24` | u16 | `-0x14e` | total chains |
+| `0x26` | byte | `-0x170` | wave |
+| `0x27` | byte | `-0x17e` | drops remaining |
+| `0x28` | byte | `-0x17c` | chains this wave |
+| `0x29` | u16 | `-0x180` | velocity |
+| `0x2b` | byte | `-0x181` | dispense interval |
+| `0x2c` | byte | `-0x183` | chain target |
+| `0x2d` | byte | `-0x182` | atom target |
+| `0x2e` | byte | `-0x184` | colour target |
+| `0x2f` | byte | `-0x185` | crystals |
+| `0x30` | byte | `-0x186` | marked |
+| `0x31` | byte | `-0x17b` | pre-fill |
+
+The last six are `WaveProgress` - the counters `1000:a4cd` seeds and
+`1000:a616` steps - so **a save restores the progression, not just the wave
+number.** That is what makes a loaded wave 40 harder than a warped one, and it
+explains a loose end from the level-warp work: the sweep saw wave-6 counters on
+a wave-75 save because it edited `+0x26` and nothing else.
+
+**The mystery byte at `+0x2b` of the trailer is a nonce.** `1b2e:00ac` writes
+`Random(254) + 1` into both banks at `bank + 0x1bb` on every save, which is
+record 5 field `+0x2b` - the sixth record's interval byte. The reader loads it
+into a local and never looks at it again. So the earlier reading, that it
+"differs between samples including in the bank that stayed empty, so it is not
+a checksum", was right, and this is why: it has no consumer at all.
+
+Verified against three real files with `--dump-save`, which decodes, prints and
+re-encodes: **0 of 960 bytes differ** on each, including the player's live save.
+`tools/sav_decode.py` prints the same fields and the two agree line for line.
+
+Two arithmetic checks fall out of that and are worth keeping, because they
+confirm two fields at once from a file nobody wrote for the purpose:
+
+* the warped save reads **wave 75** at `+0x26`, the byte the level-warp sweep
+  edited at file offset `0x206` - which is bank 1, slot 0, `+0x26`;
+* an unwarped slot reads **wave 4, interval 67**, and `70 - (4 - 1) = 67` is
+  exactly `1000:a616`'s `Dec(interval)` once per wave cleared.
+
 ## Menu structure, and Wave mode
 
     Main menu                                    (8 items, selection WRAPS)

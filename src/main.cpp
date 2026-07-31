@@ -21,6 +21,7 @@
 #include "game.h"
 #include "gfx.h"
 #include "hiscore.h"
+#include "save.h"
 #include "menu.h"
 #include "mus.h"
 #include "opl.h"
@@ -263,6 +264,9 @@ struct Options {
     std::string dumpRegs;       // print the OPL register stream and exit
     std::string renderState;    // load a captured state, render it, exit
     bool dumpSfx = false;       // print every .SFX header and exit
+    // Decode a TUBES.SAV and print every field, so the C++ decoder can be
+    // diffed against `tools/sav_decode.py` rather than trusted.
+    std::string dumpSave;
     bool playDemo = false;      // replay DEMO.SCR through the live loop
     bool demoTrace = false;     // run DEMO.SCR headless and print the spawns
     int randomTrace = 0;        // with --demo-trace: print the first N rolls
@@ -417,6 +421,8 @@ Options parseArgs(int argc, char** argv) {
             o.playDemo = true;
         } else if (a == "--dump-sfx") {
             o.dumpSfx = true;
+        } else if (a == "--dump-save" && i + 1 < argc) {
+            o.dumpSave = argv[++i];
         } else if (a == "--render-state" && i + 1 < argc) {
             o.renderState = argv[++i];
         } else if (a == "--gamebg" && i + 1 < argc) {
@@ -1345,6 +1351,56 @@ int main(int argc, char** argv) {
     if (opt.help) {
         usage();
         return 0;
+    }
+
+    // Reads the file the same way `1b2e:000a` does and prints what
+    // `tools/sav_decode.py` prints, so the two decoders can be diffed. The
+    // .SAV is the player's, so this never writes.
+    if (!opt.dumpSave.empty()) {
+        std::ifstream sf(opt.dumpSave, std::ios::binary);
+        if (!sf) {
+            std::fprintf(stderr, "cannot open %s\n", opt.dumpSave.c_str());
+            return 1;
+        }
+        std::vector<uint8_t> raw((std::istreambuf_iterator<char>(sf)),
+                                  std::istreambuf_iterator<char>());
+        tubes::SaveFile saves;
+        if (!tubes::decodeSaves(raw, saves)) {
+            std::fprintf(stderr, "%s is not %d bytes (%zu)\n",
+                         opt.dumpSave.c_str(), tubes::kSaveFileBytes,
+                         raw.size());
+            return 1;
+        }
+        static const char* kBankName[2] = {"Endurance", "Wave"};
+        for (int b = 0; b < 2; ++b) {
+            std::printf("=== bank %d: %s ===\n", b, kBankName[b]);
+            std::printf("    nonce at +0x%03x: %#04x\n", tubes::kSaveNonceOffset,
+                        saves.bank[b].slots[tubes::kSaveNonceSlot].interval);
+            for (int i = 0; i < tubes::kSaveSlotsShown; ++i) {
+                const tubes::SaveSlot& s = saves.bank[b].slots[i];
+                if (!s.live()) {
+                    std::printf("  slot %d: %s\n", i + 1, tubes::kSaveAvailable);
+                    continue;
+                }
+                std::printf("  slot %d: '%s'\n", i + 1, s.description.c_str());
+                std::printf("           score %u  continues left %d  total "
+                            "chains %d  wave %d  drops remaining %d  chains "
+                            "this wave %d  velocity %d  interval %d  chain "
+                            "target %d  atom target %d  colour target %d  "
+                            "crystals %d  marked %d  pre-fill %d\n",
+                            s.score, s.continuesLeft, s.totalChains, s.wave,
+                            s.drops, s.chainsThisWave, s.velocity, s.interval,
+                            s.chainTarget, s.atomTarget, s.colourTarget,
+                            s.crystals, s.marked, s.preFill);
+            }
+        }
+        // The round trip is the real check: re-encoding what was read has to
+        // give the file back byte for byte, tail residue included.
+        const std::vector<uint8_t> back = tubes::encodeSaves(saves);
+        size_t diff = 0;
+        for (size_t i = 0; i < raw.size(); ++i) diff += back[i] != raw[i];
+        std::printf("re-encoded: %zu of %zu bytes differ\n", diff, raw.size());
+        return diff == 0 ? 0 : 1;
     }
 
     const std::string resPath = opt.gameDir + "/TUBES.RES";

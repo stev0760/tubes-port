@@ -20,6 +20,7 @@
 #include "scr.h"
 #include "sfx.h"
 #include "hiscore.h"
+#include "save.h"
 #include "menu.h"
 #include "session.h"
 #include "wave.h"
@@ -2117,6 +2118,106 @@ void testInformationalItemsReturnTheirNumber() {
 // The format was read off ONE captured file, so the strongest check available
 // is that encoding the shipped defaults reproduces the layout that file has -
 // and that a decode/encode round trip is byte-identical.
+// `TUBES.SAV`. The record is sixteen stores in `1000:2dd0`'s save arm, so this
+// checks the BYTES at the documented offsets rather than restating the struct.
+// The real oracle is outside the tests, where it belongs: `--dump-save` decodes
+// the player's own file, re-encodes it and reports 0 of 960 bytes differing.
+void testSaveFileLayout() {
+    tubes::SaveFile f;
+    std::vector<uint8_t> raw = tubes::encodeSaves(f);
+    check(raw.size() == 960, "the file is 960 bytes");
+    check(tubes::kSaveBankBytes * 2 == 960, "two banks of 0x1e0");
+    // `1b2e:000a` zero-fills before reading, so an untouched file is all
+    // zeroes and every slot reads as empty. A fresh install ships exactly that.
+    bool allZero = true;
+    for (uint8_t b : raw) allZero = allZero && b == 0;
+    check(allZero, "an untouched file is all zeroes");
+    tubes::SaveFile blank;
+    check(tubes::decodeSaves(raw, blank), "which decodes");
+    check(!blank[tubes::SaveBank::kWave].slots[0].live(),
+          "and reads as five empty slots");
+
+    tubes::SaveSlot& s = f[tubes::SaveBank::kWave].slots[1];
+    s.setDescription("Stephen Hax");
+    s.score = 81250;
+    s.continuesLeft = 1;
+    s.totalChains = 98;
+    s.wave = 54;
+    s.drops = 11;
+    s.chainsThisWave = 0;
+    s.velocity = 256;
+    s.interval = 61;
+    s.chainTarget = 3;
+    s.atomTarget = 30;
+    s.colourTarget = 2;
+    s.crystals = 1;
+    s.marked = 3;
+    s.preFill = 8;
+    raw = tubes::encodeSaves(f);
+
+    // Bank 1 at 0x1e0, slot 2 at +0x50 - the same arithmetic the writer's two
+    // BlockWrites and the menu's `IMUL DI,AX,0x50` describe.
+    const uint8_t* r = &raw[0x1e0 + 0x50];
+    check(r[0] == 11, "the description is a Pascal string[30]");
+    check(std::string(reinterpret_cast<const char*>(r + 1), 11) ==
+              "Stephen Hax", "with the characters after the length");
+    // 81250 = 0x00013d62.
+    check(r[0x1f] == 0x62 && r[0x20] == 0x3d && r[0x21] == 1 && r[0x22] == 0,
+          "score u32 LE at +0x1f is 81250");
+    check(r[0x23] == 1, "continues left at +0x23");
+    check(r[0x24] == 98 && r[0x25] == 0, "total chains u16 at +0x24");
+    check(r[0x26] == 54, "wave at +0x26");
+    check(r[0x27] == 11, "drops at +0x27");
+    check(r[0x29] == 0 && r[0x2a] == 1, "velocity u16 at +0x29 is 256");
+    check(r[0x2b] == 61, "interval at +0x2b");
+    check(r[0x2c] == 3 && r[0x2d] == 30 && r[0x2e] == 2 && r[0x2f] == 1 &&
+              r[0x30] == 3 && r[0x31] == 8,
+          "the six WaveProgress counters at +0x2c..+0x31");
+
+    tubes::SaveFile back;
+    check(tubes::decodeSaves(raw, back), "it decodes");
+    check(tubes::encodeSaves(back) == raw, "and round trips byte for byte");
+    check(back[tubes::SaveBank::kWave].slots[1].description == "Stephen Hax" &&
+              back[tubes::SaveBank::kWave].slots[1].wave == 54,
+          "with the fields read back");
+}
+
+// The nonce is not a checksum and not spare space: `1b2e:00ac` writes
+// Random(254)+1 into each bank at +0x1bb on every save, which is the SIXTH
+// record's interval byte.
+void testTheSaveNonceIsTheSixthRecordsIntervalByte() {
+    tubes::SaveFile f;
+    tubes::stampSaveNonces(f, 0x22, 0x29);
+    const std::vector<uint8_t> raw = tubes::encodeSaves(f);
+    check(raw[tubes::kSaveNonceOffset] == 0x22, "bank 0's nonce lands at 0x1bb");
+    check(raw[tubes::kSaveBankBytes + tubes::kSaveNonceOffset] == 0x29,
+          "and bank 1's at 0x1e0 + 0x1bb");
+    check(tubes::kSaveNonceSlot * tubes::kSaveSlotBytes + 0x2b ==
+              tubes::kSaveNonceOffset,
+          "which is record 5, field +0x2b - the interval byte");
+    // The five listed slots are untouched by it.
+    for (int i = 0; i < tubes::kSaveSlotsShown; ++i) {
+        check(!f[tubes::SaveBank::kEndurance].slots[i].live(),
+              "and no listed slot is disturbed");
+    }
+}
+
+// Pascal string assignment writes the length and the characters and nothing
+// else, so a longer description typed over a shorter one leaves residue - the
+// same rule that put `)` in a captured TUBES.HSC.
+void testASaveDescriptionLeavesResidueLikePascalDoes() {
+    tubes::SaveSlot s;
+    s.setDescription("Stephen Hax");
+    s.setDescription("Steve");
+    check(s.description == "Steve", "the string is the new one");
+    check(s.descField[0] == 5, "the length byte follows it");
+    check(s.descField[6] == 'e' && s.descField[7] == 'n',
+          "but the tail of the longer one survives in the field");
+    // 30 characters is the bound `2000:727a` is called with.
+    s.setDescription(std::string(40, 'x'));
+    check(s.description.size() == 30, "and a description is capped at 30");
+}
+
 void testHiScoreRoundTripsByteForByte() {
     tubes::HiScoreFile f = tubes::defaultHiScores();
     std::vector<uint8_t> raw = tubes::encodeHiScores(f);
@@ -2529,6 +2630,9 @@ int main() {
     testTheContinueCountdownExpiringDeclines();
     testEnduranceSkipsBothWaveScreens();
     testTheFastSongIsAboutDropsNotDifficulty();
+    testSaveFileLayout();
+    testTheSaveNonceIsTheSixthRecordsIntervalByte();
+    testASaveDescriptionLeavesResidueLikePascalDoes();
     testHiScoreRoundTripsByteForByte();
     testTheEleventhSlotIsOverflowNotATableRow();
     testQualifyingTestsTheTenthNotTheEleventh();
