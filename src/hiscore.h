@@ -20,9 +20,15 @@ namespace tubes {
 // ---------------------------------------------------------------------------
 //
 //     record = 36 bytes
-//       [0]      name length      (Pascal ShortString)
-//       [1..31]  name             31 bytes, NUL padded
-//       [32..35] score            u32 little endian
+//       [0]      name length      Pascal `string[30]`
+//       [1..30]  name             30 characters
+//       [31]     padding          the record is word aligned
+//       [32..35] score            u32, written as two words lo then hi
+//
+// `1b2e:0243` settles all of it independently of the file: it fills the banks
+// longhand, and the addresses it writes give the stride (0x1634 - 0x1610 =
+// 0x24), the score offset (0x1630 - 0x1610 = 0x20) and the 30-character string
+// bound it passes to the copy.
 //
 // A bank is 0x18c = 396 bytes = 11 records, and the file is two banks back to
 // back. `1000:96db`'s tail writes them in this order:
@@ -47,7 +53,7 @@ constexpr int kHiScoreSlots = 11;
 constexpr int kHiScoreShown = 10;
 
 // `1000:9718`: the typing loop rejects a character once the name reaches 25,
-// even though the field on disk is 31 bytes.
+// even though the field holds 30.
 constexpr int kHiScoreNameMax = 25;
 
 enum class HiScoreBank { kEndurance = 0, kWave = 1 };
@@ -104,8 +110,13 @@ struct HiScoreFile {
 
 // The twenty names the binary ships, packed as Pascal ShortStrings at file
 // offset 0x00d621 right after the `TUBES.HSC` literal - ten per bank, in the
-// order the file writes them. The scores are NOT stored: both banks default to
-// the same 1000, 900 ... 100 ladder, so they are generated.
+// order the file writes them.
+//
+// `1b2e:0243` writes the 1000, 900 ... 100 ladder **longhand**, one literal
+// store per record, rather than looping - so the ladder is a coincidence of
+// twenty hand-written constants, not a generated series. Reproducing it with
+// a loop gives the same bytes and is what this port does, but the note matters
+// if a later edition ever ships a different ladder.
 extern const char* const kHiScoreDefaults[2][kHiScoreShown];
 constexpr uint32_t kHiScoreTopDefault = 1000;
 constexpr uint32_t kHiScoreStep = 100;
@@ -151,6 +162,13 @@ constexpr uint8_t kHsRowColour = 30;        // 0x1e
 inline int hiScoreRowY(int row) {           // row is 1-based, as the loop is
     return row * kHsRowPitch + kHsRowY0;
 }
+
+// NOT RECONCILED. Row 1 lands at y 33, four pixels ABOVE the panel at y 37,
+// which looks wrong on screen but is what the two literals say - the panel is
+// `2321:060b(10, 37, ...)` and the rows are `i * 12 + 21` with `i` from 1.
+// Either the panel is drawn before something that shifts it, or the glyph
+// origin is not the cell top for this font. It wants a capture of the
+// original's high-score screen; do not "fix" it by nudging a constant.
 
 constexpr const char* kHsTitle = "Congratulations! High Score!";
 constexpr const char* kHsRule = "_________________________";

@@ -10,6 +10,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <utility>
 #include <string>
@@ -18,6 +20,7 @@
 #include "font.h"
 #include "game.h"
 #include "gfx.h"
+#include "hiscore.h"
 #include "menu.h"
 #include "mus.h"
 #include "opl.h"
@@ -862,6 +865,63 @@ void drawContinue(tubes::Screen& screen, int ticksLeft,
     }
 }
 
+// The high-score entry screen, `1000:96db`. It draws over the classroom scene
+// the stats screen left up - the original re-blits the held image and the
+// roller bar and then puts a panel over them, so the caller supplies the same
+// background it always does.
+void drawHiScores(tubes::Screen& screen, const tubes::HiScoreBankData& bank,
+                  const tubes::Font& heading, bool haveHeading,
+                  const tubes::Font& body, bool haveBody, int editRow,
+                  const std::string& editName, int cursorPhase) {
+    uint8_t* px = screen.pixelsMutable();
+    for (int y = tubes::kHsPanelY; y < tubes::kHsPanelY + tubes::kHsPanelH; ++y) {
+        if (y < 0 || y >= tubes::kScreenHeight) continue;
+        for (int x = tubes::kHsPanelX;
+             x < tubes::kHsPanelX + tubes::kHsPanelW; ++x) {
+            if (x < 0 || x >= tubes::kScreenWidth) continue;
+            px[static_cast<size_t>(y) * tubes::kScreenWidth + x] =
+                tubes::kHsPanelColour;
+        }
+    }
+
+    if (haveHeading) {
+        tubes::drawTextCentred(screen, heading, 0, 319, tubes::kHsTitleY,
+                               tubes::kHsTitleColour, tubes::textmode::kPeak,
+                               tubes::kHsTitle);
+        tubes::drawTextCentred(screen, heading, 0, 319, tubes::kHsRuleY,
+                               tubes::kHsTitleColour, tubes::textmode::kPeak,
+                               tubes::kHsRule);
+    }
+    if (!haveBody) return;
+
+    for (int i = 1; i <= tubes::kHiScoreShown; ++i) {
+        const int y = tubes::hiScoreRowY(i);
+        const tubes::HiScoreEntry& e = bank.rows[i - 1];
+        // The row being typed shows the live text, not what is in the table.
+        const std::string name = (i == editRow) ? editName : e.name;
+        tubes::drawText(screen, body, tubes::kHsNameX, y, tubes::kHsRowColour,
+                        tubes::textmode::kPeak, name);
+        tubes::drawText(screen, body, tubes::kHsScoreX, y, tubes::kHsRowColour,
+                        tubes::textmode::kPeak, std::to_string(e.score));
+
+        // `1000:9757`: a 4 x 4 block just past the last character, its colour
+        // walking 0x91..0x9e.
+        if (i == editRow && cursorPhase > 0) {
+            const int cx = static_cast<int>(name.size()) * 8 + tubes::kHsCursorDX;
+            const int cy = y + tubes::kHsCursorDY;
+            const uint8_t col =
+                static_cast<uint8_t>(tubes::kHsCursorBase + cursorPhase);
+            for (int yy = cy; yy < cy + tubes::kHsCursorSize; ++yy) {
+                if (yy < 0 || yy >= tubes::kScreenHeight) continue;
+                for (int xx = cx; xx < cx + tubes::kHsCursorSize; ++xx) {
+                    if (xx < 0 || xx >= tubes::kScreenWidth) continue;
+                    px[static_cast<size_t>(yy) * tubes::kScreenWidth + xx] = col;
+                }
+            }
+        }
+    }
+}
+
 // The pause overlay, `1000:3916`. Same two rows as a banner, and the loop is
 // blocked entirely while it is up.
 void drawPaused(tubes::Screen& screen, const tubes::Font& heading,
@@ -1462,6 +1522,31 @@ int main(int argc, char** argv) {
                                 stars[i], 0);
     }
 
+    // `1b2e:0243`: read `TUBES.HSC` if it is there, otherwise fill both banks
+    // with the twenty names the binary ships. The file lives beside the game
+    // data, which is where the original writes it.
+    const std::string hiScorePath = opt.gameDir + "/TUBES.HSC";
+    tubes::HiScoreFile hiScores = tubes::defaultHiScores();
+    {
+        std::ifstream hf(hiScorePath, std::ios::binary);
+        if (hf) {
+            std::vector<uint8_t> raw((std::istreambuf_iterator<char>(hf)),
+                                      std::istreambuf_iterator<char>());
+            if (!tubes::decodeHiScores(raw, hiScores)) {
+                std::fprintf(stderr,
+                             "TUBES.HSC is malformed (%zu bytes); using the "
+                             "shipped table\n", raw.size());
+                hiScores = tubes::defaultHiScores();
+            }
+        }
+    }
+    auto saveHiScores = [&]() {
+        const std::vector<uint8_t> raw = tubes::encodeHiScores(hiScores);
+        std::ofstream hf(hiScorePath, std::ios::binary);
+        if (hf) hf.write(reinterpret_cast<const char*>(raw.data()),
+                         static_cast<std::streamsize>(raw.size()));
+    };
+
     tubes::Image blackboard;
     const bool haveBlackboard = loadImage(res, "BLACKBRD.GFX", blackboard, -1);
 
@@ -1948,6 +2033,42 @@ int main(int argc, char** argv) {
         if (res.read(name, data, err)) music.play(data, err);
     };
 
+    // ---- the high-score entry screen, `1000:96db` -------------------------
+    //
+    // `1000:a6c1` runs it when the wave loop falls out and the session was NOT
+    // aborted, the mode is not attract, and `DS:0x1d4b` is clear. The score is
+    // then offered to the bank for the mode just played.
+    bool hsActive = false;
+    std::string hsName;
+    int hsRow = 0;             // 1-based, as the original's display loop is
+    int hsCursor = tubes::kHsCursorMin;
+    int hsCursorDir = 1;
+    float hsCursorAccum = 0.0f;
+    tubes::HiScoreBank hsBank = tubes::HiScoreBank::kWave;
+
+    // Every route out of a session goes through here, so the offer cannot be
+    // skipped on one path and taken on another.
+    auto endSession = [&]() {
+        hsBank = (gameMode == 1) ? tubes::HiScoreBank::kEndurance
+                                 : tubes::HiScoreBank::kWave;
+        const uint32_t sc = static_cast<uint32_t>(game->score());
+        if (!flags.aborted && gameMode != 0 &&
+            tubes::qualifies(hiScores[hsBank], sc)) {
+            // Seeded with the sentinel and typed over, exactly as the original
+            // does - which is why the sentinel's tail survives in the file.
+            hsRow = tubes::insertHiScore(hiScores[hsBank], "", sc) + 1;
+            hsName.clear();
+            hsCursor = tubes::kHsCursorMin;
+            hsCursorDir = 1;
+            hsActive = true;
+            music.stop();
+            return;
+        }
+        stage = Stage::kTitle;
+        menu.raise();
+        playSong("TUBES.MUS");
+    };
+
     // Entering the stats screen is what accumulates the running chain total,
     // so it happens exactly once per visit - never in the draw path.
     auto enterStats = [&]() {
@@ -1976,6 +2097,32 @@ int main(int argc, char** argv) {
             if (ev.type == SDL_QUIT) { running = false; continue; }
             if (ev.type != SDL_KEYDOWN) continue;
             const SDL_Keycode k = ev.key.keysym.sym;
+
+            // `1000:9744`'s typing loop. It owns the keyboard entirely while
+            // it is up: printable characters append, backspace removes, and
+            // ESC or RETURN finish - nothing else is looked at.
+            if (hsActive) {
+                if (k == SDLK_RETURN || k == SDLK_ESCAPE) {
+                    hiScores[hsBank].rows[hsRow - 1].setName(hsName);
+                    saveHiScores();
+                    hsActive = false;
+                    stage = Stage::kTitle;
+                    menu.raise();
+                    playSong("TUBES.MUS");
+                } else if (k == SDLK_BACKSPACE) {
+                    if (!hsName.empty()) hsName.pop_back();
+                } else if (k >= 0x20 && k <= 0x7e &&
+                           static_cast<int>(hsName.size()) <
+                               tubes::kHiScoreNameMax) {
+                    // `1000:9718` gates on 0x20..0x7e and a length under 25.
+                    const bool shift =
+                        (SDL_GetModState() & KMOD_SHIFT) != 0;
+                    char c = static_cast<char>(k);
+                    if (shift && c >= 'a' && c <= 'z') c = c - 'a' + 'A';
+                    hsName.push_back(c);
+                }
+                continue;
+            }
 
             if (stage == Stage::kTitle) {
                 // Every accepted press resets the attract countdown.
@@ -2085,9 +2232,7 @@ int main(int argc, char** argv) {
                 banner = tubes::Banner::kNone;
                 if (sstage == tubes::SessionStage::kStats) enterStats();
                 if (sstage == tubes::SessionStage::kFinished) {
-                    stage = Stage::kTitle;
-                    menu.raise();
-                    playSong("TUBES.MUS");
+                    endSession();
                 }
                 continue;
             }
@@ -2102,9 +2247,7 @@ int main(int argc, char** argv) {
                         // `1000:8c3f`: with no continues left the screen does
                         // not appear, and the loop ends.
                         sstage = tubes::SessionStage::kFinished;
-                        stage = Stage::kTitle;
-                        menu.raise();
-                        playSong("TUBES.MUS");
+                        endSession();
                     } else {
                         continueAccum = 0.0f;
                         playSong(tubes::kContinueMusic);
@@ -2140,9 +2283,7 @@ int main(int argc, char** argv) {
                         raiseBriefing();
                         playSong(tubes::kBriefingMusic);
                     } else {
-                        stage = Stage::kTitle;
-                        menu.raise();
-                        playSong("TUBES.MUS");
+                        endSession();
                     }
                 }
                 continue;
@@ -2272,6 +2413,18 @@ int main(int argc, char** argv) {
                 profWave = 0;
             }
 
+            // `1000:9750`: the cursor colour walks 1..14 and back, one step a
+            // frame, so it pulses rather than blinks.
+            if (hsActive) {
+                hsCursorAccum += dt * tubes::kRetraceHz;
+                while (hsCursorAccum >= 1.0f) {
+                    hsCursorAccum -= 1.0f;
+                    hsCursor += hsCursorDir;
+                    if (hsCursor >= tubes::kHsCursorMax) hsCursorDir = -1;
+                    if (hsCursor <= tubes::kHsCursorMin) hsCursorDir = 1;
+                }
+            }
+
             // `1b2e:0a11`'s slide drop: six frames, each held for ten
             // vertical retraces, and then it is done for the whole run.
             if (briefingUp && !slideDropped) {
@@ -2297,9 +2450,7 @@ int main(int argc, char** argv) {
                         // Running out declines, and `1000:a69b` then leaves
                         // the loop with `gameOver` still set.
                         sstage = tubes::SessionStage::kFinished;
-                        stage = Stage::kTitle;
-                        menu.raise();
-                        playSong("TUBES.MUS");
+                        endSession();
                     }
                 }
             }
@@ -2543,6 +2694,12 @@ int main(int argc, char** argv) {
         if (sstage == tubes::SessionStage::kContinue) {
             drawContinue(screen, continuePrompt.ticksLeft(), headingFont,
                          haveHeading, bigFont, haveBig);
+        }
+        if (hsActive) {
+            drawScene(screen, &blackboard, haveBlackboard, sceneArt,
+                      tubes::kSlideX, tubes::kSlideY, 0);
+            drawHiScores(screen, hiScores[hsBank], headingFont, haveHeading,
+                         smallFont, haveSmall, hsRow, hsName, hsCursor);
         }
         if (paused) drawPaused(screen, headingFont, haveHeading);
 
