@@ -237,15 +237,12 @@ constexpr int kFurnTotal = static_cast<int>(sizeof(kFurniture) /
 // there yet - which is exactly the symptom the oracle reported.
 constexpr tubes::Difficulty kDemoDifficulty = tubes::Difficulty::k301;
 
-// NOT DERIVED. How long one tick of the Continue countdown lasts.
-//
-// The structure is settled - `1000:8c38` counts five, and `1b2e:0e37(2)` runs
-// `2 * 7` iterations of `23e7:0024(10)` - but `23e7:0024`'s unit is unread, so
-// the wall-clock length of an iteration is unknown. If it is milliseconds the
-// whole prompt lasts under a second, which is too short to read; if it is the
-// game's own 145 Hz tick it is about a second a count, which is what this
-// assumes. Measure it on the rig before treating it as settled.
-constexpr float kContinueTickSeconds = 1.0f;
+// DERIVED. `23e7:0024` is a vertical-retrace wait - it polls port 0x3da bit 3
+// low-then-high `n` times - so `1b2e:0e37(param)`, which runs `param * 7`
+// iterations of `23e7:0024(10)`, waits `param * 70` retraces. At Mode X's
+// 70 Hz that is `param` SECONDS exactly, and the round number is what
+// confirms the reading. The Continue screen passes 2.
+const float kContinueTickSeconds = tubes::waitKeySeconds(2);
 
 // The program's stages, in the order `1000:aaba` calls them. `kPlay` is the
 // whole of `1000:9e53` - its own wave loop is a second, nested state machine
@@ -596,32 +593,63 @@ std::string padLeft(const std::string& s, size_t w) {
     return s.size() >= w ? s : std::string(w - s.size(), ' ') + s;
 }
 
+// `1b2e:0a11`, the classroom scene. Called by the briefing `1000:86b8`, the
+// stats screen `1000:8da5` AND the Continue screen `1000:8c38` - one routine
+// behind all three, which is why they share a look.
+//
+// `2321:060b(x, y, w, h, colour)` is a filled rect; the argument order comes
+// off `1b2e:097a`, which passes its own two parameters into the same slots the
+// fixed call fills with 0x4a and 0x1f. The blackboard is blitted at
+// `(0, 12)`, which `2321:068d`'s `[BP+0xe]` (multiplied by 80, the Mode X
+// plane pitch) settles - and `BLACKBRD.GFX` is 48644 bytes, exactly
+// 320 x 152 plus a header, so it lands on rows 12..163.
+void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
+               const tubes::Image* corners, const bool* haveCorner,
+               int slideX, int slideY) {
+    screen.clear(0);
+    // `1000:8db4` / the briefing: the held image goes to (0, 12), NOT to the
+    // origin. The port drew it at (0, 0) for several sessions and the pixel
+    // diff never caught it, because every region ever measured was INSIDE the
+    // white slide - where the two agree by construction.
+    if (haveBoard) screen.blit(*board, 0, tubes::kBoardY);
+
+    uint8_t* px = screen.pixelsMutable();
+    auto fillRect = [&](int x, int y, int w, int h, uint8_t colour) {
+        for (int yy = y; yy < y + h; ++yy) {
+            if (yy < 0 || yy >= tubes::kScreenHeight) continue;
+            for (int xx = x; xx < x + w; ++xx) {
+                if (xx < 0 || xx >= tubes::kScreenWidth) continue;
+                px[static_cast<size_t>(yy) * tubes::kScreenWidth + xx] = colour;
+            }
+        }
+    };
+
+    // The frame behind the slide, constant in every call.
+    fillRect(tubes::kFrameX, tubes::kFrameY, tubes::kFrameW, tubes::kFrameH, tubes::kFrameColour);
+    // The slide itself. Its resting place, (74, 31, 172, 132, 17), is exactly
+    // the rectangle this file used to carry as "MEASURED, NOT DECOMPILED" -
+    // the measurement was right, and it is now derived.
+    fillRect(slideX, slideY, tubes::kSlideW, tubes::kSlideH, tubes::kSlideColour);
+
+    // Four 4x4 corner clips, `ULCORNER`/`URCORNER`/`LLCORNER`/`LRCORNER.GFX`,
+    // each 20 bytes = a 4-byte header plus 4 x 4. `1b2e:097a` places them at
+    // the slide's origin plus (0,0), (168,0), (0,128) and (168,128).
+    const int cx[4] = {slideX, slideX + tubes::kCornerDX, slideX, slideX + tubes::kCornerDX};
+    const int cy[4] = {slideY, slideY, slideY + tubes::kCornerDY, slideY + tubes::kCornerDY};
+    for (int i = 0; i < 4; ++i) {
+        if (haveCorner[i]) screen.blit(corners[i], cx[i], cy[i]);
+    }
+}
+
 void drawBriefing(tubes::Screen& screen, const tubes::Game& game,
                   const tubes::Image* bg, bool haveBg,
                   const tubes::Font& big, const tubes::Font& small,
                   bool haveBigF, bool haveSmallF,
                   const tubes::Sprite* atoms, const bool* haveAtom,
                   const tubes::Sprite* furn, const bool* haveFurn,
-                  int8_t decorBall) {
-    // `BLACKBRD.GFX` is 320x152, the scene; below it the screen stays black,
-    // which is what the original shows. The projector slide is drawn OVER it.
-    screen.clear(0);
-    if (haveBg) screen.blit(*bg);
-
-    // MEASURED, NOT DECOMPILED. The slide is palette index 17 over
-    // x 74..245, y 31..162, read off a capture of the original's wave 1
-    // briefing. Two routines would settle it properly and neither is read:
-    // `2000:389d`, which `1000:8774` calls with four DGROUP words that are
-    // BSS - so runtime-computed - plus 12 and 0; and `1000:bcf1`, which runs
-    // just before the fonts are set and is almost certainly the projector
-    // screen rolling down, since `SLIDEBAR.GFX` is a 208x11 roller bar.
-    // Marked here rather than passed off as derived.
-    uint8_t* px = screen.pixelsMutable();
-    for (int y = 31; y <= 162; ++y) {
-        for (int x = 74; x <= 245; ++x) {
-            px[static_cast<size_t>(y) * tubes::kScreenWidth + x] = 17;
-        }
-    }
+                  int8_t decorBall, const tubes::Image* corners,
+                  const bool* haveCorner, int slideX, int slideY) {
+    drawScene(screen, bg, haveBg, corners, haveCorner, slideX, slideY);
 
     const tubes::WaveObjective& obj = game.objective();
     const int count = obj.counter;
@@ -746,21 +774,21 @@ void drawBanner(tubes::Screen& screen, tubes::Banner banner,
 // entered, because building them is what accumulates the running chain total -
 // see `buildStatsScreen`. This function only draws what it is given.
 void drawStats(tubes::Screen& screen, const std::vector<tubes::StatsRow>& rows,
-               const tubes::Image* bg, bool haveBg, const tubes::Font& heading,
-               const tubes::Font& label, const tubes::Font& number,
-               bool haveHeading, bool haveLabel, bool haveNumber) {
-    // `1000:8db4`: it re-blits the HELD image rather than loading art of its
-    // own. There is no blackboard here, whatever the name in `PLAN.md` said -
-    // the blackboard is the cutscene at `1b2e:1651`.
+               const tubes::Image* board, bool haveBoard,
+               const tubes::Image* corners, const bool* haveCorner,
+               const tubes::Font& heading, const tubes::Font& label,
+               const tubes::Font& number, bool haveHeading, bool haveLabel,
+               bool haveNumber) {
+    // `1000:8db4` blits the HELD image through `2321:068d` at (0, 12) and then
+    // calls `1b2e:0a11`, the same classroom scene the briefing uses - so the
+    // stats land on the blackboard's white slide, not on the play backdrop.
+    // The held image is `BLACKBRD.GFX`: 48644 bytes is exactly 320 x 152 plus
+    // a header, and 12 + 152 = 164 is the only placement that fits.
     //
-    // NOT FULLY SETTLED. The original's `2321:068d` blits to (0, **12**), not
-    // to the origin, and takes its size from `DS:0x205c`/`0x205e` - so what it
-    // puts up is a held image below the HUD row, not the 320x200 GAMEBG. What
-    // fills `DS:0x2058` is not decompiled. Drawing the backdrop at the origin
-    // is a stand-in that shows the right text on a plausible background; the
-    // placement wants a capture of the original's stats screen to settle.
-    screen.clear(0);
-    if (haveBg) screen.blit(*bg);
+    // The slide is always at rest here - the drop animation belongs to the
+    // first briefing and `DS:0x210e` has long since been set by this point.
+    drawScene(screen, board, haveBoard, corners, haveCorner, tubes::kSlideX,
+              tubes::kSlideY);
 
     for (const tubes::StatsRow& r : rows) {
         const tubes::Font* f = nullptr;
@@ -1398,6 +1426,20 @@ int main(int argc, char** argv) {
 
     tubes::Image blackboard;
     const bool haveBlackboard = loadImage(res, "BLACKBRD.GFX", blackboard, -1);
+
+    // The slide's four corner clips, in the order `1b2e:097a` places them:
+    // upper-left, upper-right, lower-left, lower-right. Each is 20 bytes - a
+    // header plus 4 x 4 - which is what pins them to the `2321:0711(4, 4, ...)`
+    // calls. Index 0 is transparent, since `2321:0711` is a masked blit.
+    tubes::Image slideCorner[4];
+    bool haveCorner[4] = {false, false, false, false};
+    {
+        static const char* kCornerNames[4] = {"ULCORNER.GFX", "URCORNER.GFX",
+                                              "LLCORNER.GFX", "LRCORNER.GFX"};
+        for (int i = 0; i < 4; ++i) {
+            haveCorner[i] = loadImage(res, kCornerNames[i], slideCorner[i], 0);
+        }
+    }
     bool haveFg = loadImage(res, "GAMEFG.GFX", foreground, 0);
 
     // ONE table, indexed by a beaker cell's raw value. The original's is at
@@ -1773,9 +1815,29 @@ int main(int argc, char** argv) {
     // belongs to the screen rather than to the wave.
     bool briefingUp = opt.wave > 0;
     int8_t briefDecor = 1;
+    // `1000:86b8`: `repeat n := Random(10) + 1 until n <> DS:0x2056`. The
+    // backdrop is re-rolled until it differs from the last one, so no two
+    // consecutive waves share a backdrop - and the wave it is loaded for is
+    // the one ABOUT TO START, not the briefing being shown, which never blits
+    // it. `--gamebg` pins it so a capture can be matched.
+    int lastBackdrop = 0;                 // DS:0x2056
+    const bool backdropPinned = opt.gameBg != "GAMEBG1.GFX";
+    auto rollBackdrop = [&]() {
+        if (backdropPinned) return;
+        int n = lastBackdrop;
+        while (n == lastBackdrop) n = game->rollForTest(10) + 1;
+        lastBackdrop = n;
+        tubes::Image next;
+        if (loadImage(res, "GAMEBG" + std::to_string(n) + ".GFX", next, -1)) {
+            background = std::move(next);
+            haveBg = true;
+        }
+    };
+
     auto raiseBriefing = [&]() {
         briefingUp = true;
         briefDecor = static_cast<int8_t>(game->rollForTest(8) + 1);
+        rollBackdrop();
     };
     if (briefingUp) raiseBriefing();
 
@@ -1798,6 +1860,19 @@ int main(int argc, char** argv) {
     // F3 and F4, `DS:0x215f` and `DS:0x215e`.
     bool musicOn = !opt.music.empty();
     bool soundOn = true;
+
+    // `1b2e:0a11`'s slide drop, gated on `DS:0x210e` - it runs the FIRST time
+    // the scene is shown and never again, so this is a program-lifetime flag
+    // and not a per-briefing one.
+    bool slideDropped = false;
+    int slideFrame = 0;          // index into kSlideDrop while dropping
+    float slideAccum = 0.0f;
+    auto slidePos = [&]() {
+        if (slideDropped || slideFrame >= tubes::kSlideDropFrames) {
+            return tubes::SlideFrame{tubes::kSlideX, tubes::kSlideY};
+        }
+        return tubes::kSlideDrop[slideFrame];
+    };
 
     // Swapping the song for a stage. The seven names live in `1000:9e53`'s own
     // frame as far pointers four bytes apart - see reversing-notes.
@@ -2106,6 +2181,19 @@ int main(int argc, char** argv) {
                 else music.stop();
             }
 
+            // `1b2e:0a11`'s slide drop: six frames, each held for ten
+            // vertical retraces, and then it is done for the whole run.
+            if (briefingUp && !slideDropped) {
+                slideAccum += dt * tubes::kRetraceHz;
+                while (slideAccum >= tubes::kSlideDropRetraces) {
+                    slideAccum -= tubes::kSlideDropRetraces;
+                    if (++slideFrame >= tubes::kSlideDropFrames) {
+                        slideDropped = true;
+                        break;
+                    }
+                }
+            }
+
             // `1000:8c38`'s countdown ticks on its own, so the prompt expires
             // whether or not the player touches anything.
             if (sstage == tubes::SessionStage::kContinue &&
@@ -2338,9 +2426,11 @@ int main(int argc, char** argv) {
         // `1000:a5d2` shows the briefing INSTEAD of the play field, before
         // `1000:3a67` ever runs, so it simply replaces everything above.
         if (briefingUp) {
+            const tubes::SlideFrame sp = slidePos();
             drawBriefing(screen, *game, &blackboard, haveBlackboard, headingFont,
                          smallFont, haveBig, haveSmall, atoms, haveAtom, furn,
-                         haveFurn, briefDecor);
+                         haveFurn, briefDecor, slideCorner, haveCorner,
+                         sp.x, sp.y);
         }
 
         // The stats screen replaces the field; the banner, the Continue prompt
@@ -2348,8 +2438,9 @@ int main(int argc, char** argv) {
         // that is what the original does - none of the three clears first.
         if (sstage == tubes::SessionStage::kStats ||
             sstage == tubes::SessionStage::kContinue) {
-            drawStats(screen, statsRows, &background, haveBg, headingFont,
-                      smallFont, bigFont, haveHeading, haveSmall, haveBig);
+            drawStats(screen, statsRows, &blackboard, haveBlackboard,
+                      slideCorner, haveCorner, headingFont, smallFont, bigFont,
+                      haveHeading, haveSmall, haveBig);
         }
         if (sstage == tubes::SessionStage::kBanner) {
             // `1000:5ec9`: the F2 hint appears only on the abort arm, and only
@@ -2363,6 +2454,7 @@ int main(int argc, char** argv) {
                          haveHeading, bigFont, haveBig);
         }
         if (paused) drawPaused(screen, headingFont, haveHeading);
+
 
         presentFrame();
     }

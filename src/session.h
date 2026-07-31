@@ -157,6 +157,63 @@ inline const char* playMusicFor(int dropsLeft) {
 }
 
 // ---------------------------------------------------------------------------
+// The classroom scene, `1b2e:0a11`
+// ---------------------------------------------------------------------------
+//
+// One routine draws the backdrop for the briefing, the stats screen and the
+// Continue screen. `2321:060b(x, y, w, h, colour)` is a filled rect - the
+// order is settled by `1b2e:097a`, which threads its own two parameters into
+// the slots the fixed call fills with `0x4a` and `0x1f`.
+constexpr int kBoardY = 12;           // `2321:068d`'s [BP+0xe], x is 0
+
+constexpr int kFrameX = 62;           // 0x3e - the frame behind the slide
+constexpr int kFrameY = 26;           // 0x1a
+constexpr int kFrameW = 196;          // 0xc4
+constexpr int kFrameH = 145;          // 0x91
+constexpr uint8_t kFrameColour = 19;  // 0x13
+
+constexpr int kSlideX = 74;           // 0x4a - the slide at rest
+constexpr int kSlideY = 31;           // 0x1f
+constexpr int kSlideW = 172;          // 0xac
+constexpr int kSlideH = 132;          // 0x84
+constexpr uint8_t kSlideColour = 17;  // 0x11
+
+// `1b2e:097a` places the four 4x4 corner clips at the slide's origin plus
+// these; note they are 168 and 128, i.e. the slide's size less the clip.
+constexpr int kCornerDX = 168;        // 0xa8
+constexpr int kCornerDY = 128;        // 0x80
+
+// The slide DROPS into place the first time the scene is shown, and only then
+// - `1b2e:0a11` gates the whole sequence on `DS:0x210e`, which it sets. Six
+// frames, each held for 10 vertical retraces, wobbling around the resting
+// place before settling on it.
+struct SlideFrame { int x, y; };
+constexpr SlideFrame kSlideDrop[] = {
+    {62, 30}, {66, 32}, {72, 30}, {79, 29}, {75, 37}, {71, 33},
+};
+constexpr int kSlideDropFrames =
+    static_cast<int>(sizeof(kSlideDrop) / sizeof(kSlideDrop[0]));
+
+// ---------------------------------------------------------------------------
+// Timing: `23e7:0024` is a VERTICAL RETRACE wait
+// ---------------------------------------------------------------------------
+//
+// It polls port 0x3da bit 3 low-then-high `n` times, so `n` is `n` VGA frames
+// at the Mode X refresh rate of 70 Hz - NOT milliseconds, and not the game's
+// own 16.11 Hz simulation tick.
+//
+// That settles `1b2e:0e37(param)`, which runs `param * 7` iterations of
+// `23e7:0024(10)`: `param * 70` retraces, so **`param` seconds exactly**. The
+// round number is the confirmation. The Continue screen passes 2 and the
+// briefing 0x1e, so a Continue tick is two seconds and the briefing gives up
+// after thirty.
+constexpr float kRetraceHz = 70.0f;
+constexpr int kSlideDropRetraces = 10;   // per drop frame
+inline float waitKeySeconds(int param) {
+    return static_cast<float>(param * 7 * 10) / kRetraceHz;
+}
+
+// ---------------------------------------------------------------------------
 // The Continue screen, `1000:8c38`
 // ---------------------------------------------------------------------------
 //

@@ -5801,16 +5801,108 @@ does not have.
 Music is `STAT.MUS`, started after the drawing and before the flip. The tail is
 the briefing's: `WaitKey(10)`, then `1b2e:0e37(0x1e)` unless the key was 1 or 2.
 
-**Its background is NOT settled.** `2321:068d` is a Mode X `REP MOVSW` blit
-whose arguments, taken off the listing rather than the decompiler's reversed
-list, are `(x, y, srcPtr, w, h)` with `[BP+0xe]` the `y` (it is multiplied by
-80, the Mode X plane pitch) and `[BP+0x10]` the `x`. The stats screen passes
-**`x = 0`, `y = 12`** with the size in `DS:0x205c`/`0x205e` and the pointer in
-`DS:0x2058`/`0x205a`. So it puts a **held image below the HUD row**, not the
-320x200 `GAMEBG` at the origin - `GAMEBG1.GFX` is 64004 bytes, exactly
-320x200 plus a header, and cannot fit at `y = 12`. Nothing decompiled so far
-writes `DS:0x2058`, so what the held image actually is remains open. The port
-draws the backdrop at the origin as a stand-in and says so in `drawStats`.
+**Its background is the classroom, and that is now settled.** `2321:068d` is a
+Mode X `REP MOVSW` blit whose arguments, taken off the listing rather than the
+decompiler's reversed list, are `(x, y, srcPtr, w, h)` - `[BP+0xe]` is the `y`,
+because it is multiplied by 80, the Mode X plane pitch, and `[BP+0x10]` is the
+`x`. The stats screen passes **`x = 0`, `y = 12`**, and then calls
+`1b2e:0a11`, the same scene routine the briefing uses. The held image is
+`BLACKBRD.GFX`: 48644 bytes is exactly 320 x 152 plus a header, so it lands on
+rows 12..163 and the slide at `y` 31..162 sits inside it. `GAMEBG` cannot be
+the held image - it is 320x200 and does not fit at `y = 12`.
+
+## The classroom scene is `1b2e:0a11`, and three screens share it
+
+The briefing `1000:86b8`, the stats screen `1000:8da5` and the Continue screen
+`1000:8c38` all call it, which is why they look alike. It draws:
+
+    FillRect(62, 26, 196, 145, 19)        { the frame behind the slide }
+    FillRect(74, 31, 172, 132, 17)        { the slide }
+    Draw(74,  31, ULCORNER)  Draw(242,  31, URCORNER)
+    Draw(74, 159, LLCORNER)  Draw(242, 159, LRCORNER)
+
+`2321:060b` is a filled rect and its argument order is
+**`(x, y, w, h, colour)`**, settled by `1b2e:097a`: that procedure threads its
+own two parameters into the same two slots the fixed call fills with `0x4a`
+and `0x1f`. The four corner clips are `ULCORNER`/`URCORNER`/`LLCORNER`/
+`LRCORNER.GFX`, each **20 bytes** - a header plus 4 x 4 - which is exactly the
+`2321:0711(4, 4, ...)` the calls pass.
+
+**`(74, 31, 172, 132, 17)` is the rectangle `main.cpp` carried for several
+sessions as "MEASURED, NOT DECOMPILED".** The measurement was exactly right in
+all five numbers. It is now derived, and the marking is gone.
+
+### The slide DROPS, once per program run
+
+`1b2e:0a11` gates a six-frame animation on `DS:0x210e`, which it then sets - so
+this plays the first time any of the three screens is shown and never again.
+`1b2e:097a(y, x)` redraws frame, slide and corners at a moving origin, each
+frame held for **10 vertical retraces**:
+
+    (62,30) (66,32) (72,30) (79,29) (75,37) (71,33)  ->  rest at (74,31)
+
+It wobbles around the resting place rather than easing into it - the projector
+screen being pulled down and bouncing.
+
+`1b2e:084e`, also called from `0a11`, is gated on `DS:0x210f` **and**
+`Random(100) < 5`: a one-in-twenty easter egg that happens at most once a run.
+Not ported.
+
+### `23e7:0024` is a VERTICAL RETRACE wait - which settles every timeout
+
+    repeat
+      repeat until (in(0x3da) and 8) = 0;
+      repeat until (in(0x3da) and 8) <> 0;
+      Dec(n)
+    until n = 0;
+
+So `n` is `n` VGA frames at Mode X's **70 Hz** - not milliseconds, and not the
+game's 16.11 Hz simulation tick. That in turn settles `1b2e:0e37(param)`, which
+runs `param * 7` iterations of `23e7:0024(10)`: `param * 70` retraces, so
+**`param` seconds exactly**. The round number is the confirmation.
+
+| call site | argument | wall clock |
+|---|---|---|
+| Continue screen, per tick | 2 | **2 s** (10 s for the whole five-count) |
+| briefing, give up and continue | 0x1e | **30 s** |
+
+### Still missing from the scene: the professor and the roller bar
+
+A full-screen diff against `capture/ref-briefing-wave1.png` shows two things
+the port does not draw, both below `y` 163:
+
+- **the professor** - white lab coat, holding a pointer, standing on a stack of
+  books to the right of the slide. His art is `TALK1..5`, `CLAP1..3`,
+  `JUMP1..3`, `POINTER0..3` and `POINTERT.GFX`, with `BOOKS.GFX` under him;
+- **the slide's roller bar and its pull handle**, `SLIDEBAR.GFX`, 2292 bytes =
+  a header plus 208 x 11.
+
+Neither is drawn by `1b2e:0a11`. `1b2e:0656` is the place to look next: it
+calls `2321:060b(0x13, [0xbba], 0xc4, 0x1a, 0x3e)` - the frame rect with a
+**variable height** in `DS:0xbba` - and then `2321:0711` at `y = [0xbba]+0x1a`,
+which is the bar travelling with the rolling slide. It also selects between
+three sprite banks on `DS:0x20e3` and `DS:0x20c8`, which is very likely the
+professor's pose. **The note above that annotates `1b2e:0656` as `{ music }`
+in the briefing's frame is wrong** - it draws.
+
+### A measurement that was measuring nothing
+
+The briefing has been reported at "title band 0.00%, body 0.09%, whole slide
+0.14%" for several sessions. Every one of those regions is **inside the white
+slide**, where the port and the original agree by construction - a flat colour
+17 rectangle with text on it. The scene *around* the slide was never in any
+measured region.
+
+Measured properly, the whole screen was **29.64%** differing, and the top 31
+rows were **80%**, because the port blitted `BLACKBRD` at the origin instead of
+at `y = 12`. Moving it to `(0, 12)` and adding the frame and corners takes the
+whole screen to **3.73%**, rows 0..30 to **0.00%** and the left margin from
+38.14% to **0.46%**. The residue is almost entirely rows 163..199 - the
+professor and the roller bar.
+
+The lesson is the one this file already states about searches, applied to a
+metric: a number is only as good as the region it covers. Quote the region with
+the percentage, and make sure the region includes the thing being claimed.
 
 ### `1b2e:0e37` is the shared key wait, and its return codes matter
 
