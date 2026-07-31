@@ -603,9 +603,21 @@ std::string padLeft(const std::string& s, size_t w) {
 // `(0, 12)`, which `2321:068d`'s `[BP+0xe]` (multiplied by 80, the Mode X
 // plane pitch) settles - and `BLACKBRD.GFX` is 48644 bytes, exactly
 // 320 x 152 plus a header, so it lands on rows 12..163.
+struct SceneArt {
+    const tubes::Image* corners = nullptr;   // UL, UR, DL, DR
+    const bool* haveCorner = nullptr;
+    const tubes::Image* pointer = nullptr;   // POINTER0..3
+    const bool* havePointer = nullptr;
+    const tubes::Image* books = nullptr;
+    bool haveBooks = false;
+    const tubes::Image* bar = nullptr;
+    bool haveBar = false;
+};
+
 void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
-               const tubes::Image* corners, const bool* haveCorner,
-               int slideX, int slideY) {
+               const SceneArt& art, int slideX, int slideY, int profFrame) {
+    const tubes::Image* corners = art.corners;
+    const bool* haveCorner = art.haveCorner;
     screen.clear(0);
     // `1000:8db4` / the briefing: the held image goes to (0, 12), NOT to the
     // origin. The port drew it at (0, 0) for several sessions and the pixel
@@ -624,16 +636,43 @@ void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
         }
     };
 
+    // `1b2e:0656` runs BEFORE the frame and slide, so the professor, his books
+    // and the roller bar go down first - and the frame paints over none of
+    // them, because it spans x 62..257 and he stands at 267.
+    // The professor is TWO draws, and the sprite sizes are what say so:
+    // POINTER0 is 44 x 79 - the whole figure, legs and book stack - while
+    // POINTER1..3 are 44 x 39, his upper body only. `1b2e:0656` lays down
+    // POINTER0 masked (`2321:0711`), and then `1b2e:0e37` stamps the wave
+    // frame OPAQUELY (`2321:068d`) over his top half once every ten retraces.
+    // Drawing only the wave frame erases him from the waist down; drawing it
+    // masked leaves the base pose's arm showing through it.
+    //
+    // No separate BOOKS.GFX draw: the normal arm never reaches one. `BOOKS` is
+    // used by the clap and jump arms, where he stands at a different height.
+    if (art.havePointer && art.havePointer[0]) {
+        screen.blit(art.pointer[0], tubes::kProfX, tubes::kProfY);
+    }
+    if (art.havePointer && profFrame > 0 && profFrame < 4 &&
+        art.havePointer[profFrame]) {
+        screen.blit(art.pointer[profFrame], tubes::kProfX, tubes::kProfY);
+    }
+
     // The frame behind the slide, constant in every call.
-    fillRect(tubes::kFrameX, tubes::kFrameY, tubes::kFrameW, tubes::kFrameH, tubes::kFrameColour);
+    fillRect(tubes::kFrameX, tubes::kFrameY, tubes::kFrameW, tubes::kFrameH,
+             tubes::kFrameColour);
+    // The roller bar rides the frame's bottom edge - `Draw(57, DS:0xbba + 26)`
+    // in `1b2e:0656`, where `DS:0xbba` is the frame height as it rolls down.
+    if (art.haveBar) {
+        screen.blit(*art.bar, tubes::kBarX, tubes::kFrameH + tubes::kBarDY);
+    }
     // The slide itself. Its resting place, (74, 31, 172, 132, 17), is exactly
     // the rectangle this file used to carry as "MEASURED, NOT DECOMPILED" -
     // the measurement was right, and it is now derived.
     fillRect(slideX, slideY, tubes::kSlideW, tubes::kSlideH, tubes::kSlideColour);
 
-    // Four 4x4 corner clips, `ULCORNER`/`URCORNER`/`LLCORNER`/`LRCORNER.GFX`,
-    // each 20 bytes = a 4-byte header plus 4 x 4. `1b2e:097a` places them at
-    // the slide's origin plus (0,0), (168,0), (0,128) and (168,128).
+    // Four 4x4 corner clips, `UL`/`UR`/`DL`/`DRCORNER.GFX`, each 20 bytes = a
+    // 4-byte header plus 4 x 4. `1b2e:097a` places them at the slide's origin
+    // plus (0,0), (168,0), (0,128) and (168,128).
     const int cx[4] = {slideX, slideX + tubes::kCornerDX, slideX, slideX + tubes::kCornerDX};
     const int cy[4] = {slideY, slideY, slideY + tubes::kCornerDY, slideY + tubes::kCornerDY};
     for (int i = 0; i < 4; ++i) {
@@ -647,9 +686,9 @@ void drawBriefing(tubes::Screen& screen, const tubes::Game& game,
                   bool haveBigF, bool haveSmallF,
                   const tubes::Sprite* atoms, const bool* haveAtom,
                   const tubes::Sprite* furn, const bool* haveFurn,
-                  int8_t decorBall, const tubes::Image* corners,
-                  const bool* haveCorner, int slideX, int slideY) {
-    drawScene(screen, bg, haveBg, corners, haveCorner, slideX, slideY);
+                  int8_t decorBall, const SceneArt& art, int slideX,
+                  int slideY, int profFrame) {
+    drawScene(screen, bg, haveBg, art, slideX, slideY, profFrame);
 
     const tubes::WaveObjective& obj = game.objective();
     const int count = obj.counter;
@@ -774,11 +813,10 @@ void drawBanner(tubes::Screen& screen, tubes::Banner banner,
 // entered, because building them is what accumulates the running chain total -
 // see `buildStatsScreen`. This function only draws what it is given.
 void drawStats(tubes::Screen& screen, const std::vector<tubes::StatsRow>& rows,
-               const tubes::Image* board, bool haveBoard,
-               const tubes::Image* corners, const bool* haveCorner,
+               const tubes::Image* board, bool haveBoard, const SceneArt& art,
                const tubes::Font& heading, const tubes::Font& label,
                const tubes::Font& number, bool haveHeading, bool haveLabel,
-               bool haveNumber) {
+               bool haveNumber, int profFrame) {
     // `1000:8db4` blits the HELD image through `2321:068d` at (0, 12) and then
     // calls `1b2e:0a11`, the same classroom scene the briefing uses - so the
     // stats land on the blackboard's white slide, not on the play backdrop.
@@ -787,8 +825,8 @@ void drawStats(tubes::Screen& screen, const std::vector<tubes::StatsRow>& rows,
     //
     // The slide is always at rest here - the drop animation belongs to the
     // first briefing and `DS:0x210e` has long since been set by this point.
-    drawScene(screen, board, haveBoard, corners, haveCorner, tubes::kSlideX,
-              tubes::kSlideY);
+    drawScene(screen, board, haveBoard, art, tubes::kSlideX, tubes::kSlideY,
+              profFrame);
 
     for (const tubes::StatsRow& r : rows) {
         const tubes::Font* f = nullptr;
@@ -1433,13 +1471,35 @@ int main(int argc, char** argv) {
     // calls. Index 0 is transparent, since `2321:0711` is a masked blit.
     tubes::Image slideCorner[4];
     bool haveCorner[4] = {false, false, false, false};
-    {
-        static const char* kCornerNames[4] = {"ULCORNER.GFX", "URCORNER.GFX",
-                                              "LLCORNER.GFX", "LRCORNER.GFX"};
-        for (int i = 0; i < 4; ++i) {
-            haveCorner[i] = loadImage(res, kCornerNames[i], slideCorner[i], 0);
-        }
+    for (int i = 0; i < 4; ++i) {
+        haveCorner[i] = loadImage(res, tubes::kCornerNames[i], slideCorner[i], 0);
     }
+
+    // The professor and his furniture, `1b2e:0656`. Index 0 is transparent -
+    // `2321:0711` is the masked blit, and the original reaches these through
+    // `DS:0x207c`, `0x2068` and `0x2060`.
+    tubes::Image pointerFrame[4];
+    bool havePointer[4] = {false, false, false, false};
+    for (int i = 0; i < 4; ++i) {
+        // Frame 0 is masked - it goes over the blackboard. The wave frames are
+        // opaque, because the original stamps them with `2321:068d`, which is
+        // the opaque member of the blit family.
+        havePointer[i] =
+            loadImage(res, tubes::kPointerNames[i], pointerFrame[i], i ? -1 : 0);
+    }
+    tubes::Image booksArt, slideBar;
+    const bool haveBooks = loadImage(res, "BOOKS.GFX", booksArt, 0);
+    const bool haveBar = loadImage(res, "SLIDEBAR.GFX", slideBar, 0);
+
+    SceneArt sceneArt;
+    sceneArt.corners = slideCorner;
+    sceneArt.haveCorner = haveCorner;
+    sceneArt.pointer = pointerFrame;
+    sceneArt.havePointer = havePointer;
+    sceneArt.books = &booksArt;
+    sceneArt.haveBooks = haveBooks;
+    sceneArt.bar = &slideBar;
+    sceneArt.haveBar = haveBar;
     bool haveFg = loadImage(res, "GAMEFG.GFX", foreground, 0);
 
     // ONE table, indexed by a beaker cell's raw value. The original's is at
@@ -1867,6 +1927,11 @@ int main(int argc, char** argv) {
     bool slideDropped = false;
     int slideFrame = 0;          // index into kSlideDrop while dropping
     float slideAccum = 0.0f;
+    // `DS:0x20b0`, the professor's pointer frame. `1b2e:0656` parks it at the
+    // standing pose and `1b2e:0e37` advances it once every ten retraces while
+    // a screen waits for a key.
+    int profWave = 0;
+    float profAccum = 0.0f;
     auto slidePos = [&]() {
         if (slideDropped || slideFrame >= tubes::kSlideDropFrames) {
             return tubes::SlideFrame{tubes::kSlideX, tubes::kSlideY};
@@ -2181,6 +2246,20 @@ int main(int argc, char** argv) {
                 else music.stop();
             }
 
+            // The professor waves while any of the three screens is up -
+            // `1b2e:0e37` steps `DS:0x20b0` every ten retraces, 1..5.
+            if (sstage == tubes::SessionStage::kBriefing ||
+                sstage == tubes::SessionStage::kStats ||
+                sstage == tubes::SessionStage::kContinue) {
+                profAccum += dt * tubes::kRetraceHz;
+                while (profAccum >= tubes::kProfWaveRetraces) {
+                    profAccum -= tubes::kProfWaveRetraces;
+                    if (++profWave > tubes::kProfWaveFrames) profWave = 1;
+                }
+            } else {
+                profWave = 0;
+            }
+
             // `1b2e:0a11`'s slide drop: six frames, each held for ten
             // vertical retraces, and then it is done for the whole run.
             if (briefingUp && !slideDropped) {
@@ -2429,8 +2508,8 @@ int main(int argc, char** argv) {
             const tubes::SlideFrame sp = slidePos();
             drawBriefing(screen, *game, &blackboard, haveBlackboard, headingFont,
                          smallFont, haveBig, haveSmall, atoms, haveAtom, furn,
-                         haveFurn, briefDecor, slideCorner, haveCorner,
-                         sp.x, sp.y);
+                         haveFurn, briefDecor, sceneArt, sp.x, sp.y,
+                         tubes::pointerFrameFor(profWave));
         }
 
         // The stats screen replaces the field; the banner, the Continue prompt
@@ -2438,9 +2517,9 @@ int main(int argc, char** argv) {
         // that is what the original does - none of the three clears first.
         if (sstage == tubes::SessionStage::kStats ||
             sstage == tubes::SessionStage::kContinue) {
-            drawStats(screen, statsRows, &blackboard, haveBlackboard,
-                      slideCorner, haveCorner, headingFont, smallFont, bigFont,
-                      haveHeading, haveSmall, haveBig);
+            drawStats(screen, statsRows, &blackboard, haveBlackboard, sceneArt,
+                      headingFont, smallFont, bigFont, haveHeading, haveSmall,
+                      haveBig, tubes::pointerFrameFor(profWave));
         }
         if (sstage == tubes::SessionStage::kBanner) {
             // `1000:5ec9`: the F2 hint appears only on the abort arm, and only

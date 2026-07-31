@@ -5866,24 +5866,84 @@ runs `param * 7` iterations of `23e7:0024(10)`: `param * 70` retraces, so
 | Continue screen, per tick | 2 | **2 s** (10 s for the whole five-count) |
 | briefing, give up and continue | 0x1e | **30 s** |
 
-### Still missing from the scene: the professor and the roller bar
+### The professor is `1b2e:0656`, and he is TWO draws
 
-A full-screen diff against `capture/ref-briefing-wave1.png` shows two things
-the port does not draw, both below `y` 163:
+**The note that annotates `1b2e:0656` as `{ music }` in the briefing's frame is
+wrong** - it draws. It runs *before* `1b2e:0a11`, which is why the frame and
+slide never paint over him: the frame spans `x` 62..257 and he stands at 267.
 
-- **the professor** - white lab coat, holding a pointer, standing on a stack of
-  books to the right of the slide. His art is `TALK1..5`, `CLAP1..3`,
-  `JUMP1..3`, `POINTER0..3` and `POINTERT.GFX`, with `BOOKS.GFX` under him;
-- **the slide's roller bar and its pull handle**, `SLIDEBAR.GFX`, 2292 bytes =
-  a header plus 208 x 11.
+    if DS:0x20e3 = 0 then
+      if DS:0x20c8 = 0 then begin
+        DS:0x20b0 := 1;                      { reset the wave }
+        Draw(267, 121, POINTER0)             { 2321:0711, masked }
+      end else begin
+        Draw(267, 165, BOOKS);  Draw(267, 100, CLAP[n])
+      end
+    else begin
+      Draw(276, 165, BOOKS);  Draw(267, 94, JUMP[n])
+    end;
+    FillRect(62, 26, 196, DS:0xbba, 19);     { the frame, rolling }
+    Draw(57, DS:0xbba + 26, SLIDEBAR)        { the bar rides its edge }
 
-Neither is drawn by `1b2e:0a11`. `1b2e:0656` is the place to look next: it
-calls `2321:060b(0x13, [0xbba], 0xc4, 0x1a, 0x3e)` - the frame rect with a
-**variable height** in `DS:0xbba` - and then `2321:0711` at `y = [0xbba]+0x1a`,
-which is the bar travelling with the rolling slide. It also selects between
-three sprite banks on `DS:0x20e3` and `DS:0x20c8`, which is very likely the
-professor's pose. **The note above that annotates `1b2e:0656` as `{ music }`
-in the briefing's frame is wrong** - it draws.
+**The normal arm never draws `BOOKS.GFX`.** It is reached only from the clap
+and jump arms, where he stands at a different height. Drawing it as well puts a
+second stack 21 px too high, over his legs - which is what a row profile
+against the capture showed.
+
+The **sprite sizes settle the rest**, and they are the whole trick:
+
+| resource | bytes | pixels | shape |
+|---|---|---|---|
+| `POINTER0.GFX` | 3480 | 3476 | **44 x 79** - the whole figure, legs and books |
+| `POINTER1..3.GFX` | 1720 | 1716 | **44 x 39** - his upper body only |
+| `POINTERT.GFX` | 592 | 588 | 28 x 21 |
+| `BOOKS.GFX` | 1124 | 1120 | 40 x 28 |
+| `SLIDEBAR.GFX` | 2292 | 2288 | 208 x 11 |
+
+So the professor is **two draws stacked**: `1b2e:0656` lays down the full
+`POINTER0` masked, and `1b2e:0e37` - the key wait - stamps a 44 x 39 wave frame
+**opaquely** (`2321:068d`) over his top half. Drawing only the wave frame
+erases him from the waist down; drawing it *masked* leaves the base pose's arm
+showing through it. Both were tried and both are visible in a capture.
+
+### The wave is a ping-pong, and it is why the key wait will not exit early
+
+`1b2e:0e37` advances `DS:0x20b0` once per iteration - every ten retraces - so
+**the professor waves while the game waits for a key**. The counter runs 1..5
+and indexes a stride-8 bank at `DS:0x2078`, but entries 4 and 5 are not loaded
+resources: `1000:af23` and `1000:af34` call `2000:7133`, a struct copy, to
+alias them onto POINTER2 and POINTER1. The sequence is therefore
+
+    1 -> POINTER1   2 -> POINTER2   3 -> POINTER3   4 -> POINTER2   5 -> POINTER1
+
+a ping-pong, not a loop - he raises the pointer and lowers it. That also
+explains the loop's exit condition, `until (answer <> 0) and (frame = 1)`: it
+finishes the gesture before letting the screen change.
+
+### The corners are UL / UR / DL / DR
+
+`1000:aaba` loads `ULCORNER`, `URCORNER`, **`DLCORNER`**, **`DRCORNER`** into
+`DS:0x20fe`, `0x2102`, `0x2106`, `0x210a`. `LLCORNER.GFX` and `LRCORNER.GFX`
+also exist in the archive and are *not* these - a plausible guess that the load
+table disproves. The loader is `2000:2264(name, ptrSlot, wSlot, hSlot)`; the
+corners pass `DS:0x1d70` for both size slots, discarding them, because they are
+known 4 x 4.
+
+### Measured: the briefing is now pixel-exact
+
+Against `capture/ref-briefing-wave1.png`, **whole screen**, not just the slide:
+
+| stage | whole screen |
+|---|---|
+| blackboard at the origin, no scene | 29.64% |
+| blackboard at (0, 12), frame + slide + corners | 3.73% |
+| professor and roller bar added | 1.35% |
+| the spurious `BOOKS` draw removed | 1.14% |
+| `POINTER0` base + the wave frame over it | **0.00%** |
+
+0.00% is at the animation phase the capture caught; sampling six phases gives
+0.00%, 0.19% and 0.22%, and the residue is his arm moving. That is the same
+band as the play field's 0.02..0.22%.
 
 ### A measurement that was measuring nothing
 

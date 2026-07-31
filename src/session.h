@@ -183,6 +183,51 @@ constexpr uint8_t kSlideColour = 17;  // 0x11
 constexpr int kCornerDX = 168;        // 0xa8
 constexpr int kCornerDY = 128;        // 0x80
 
+// The corners are UL / UR / **DL** / **DR**, in the order `1000:aaba` loads
+// them into `DS:0x20fe`, `0x2102`, `0x2106` and `0x210a`. `LLCORNER.GFX` and
+// `LRCORNER.GFX` also exist in the archive and are NOT these - a plausible
+// guess that the load table disproves.
+constexpr const char* kCornerNames[4] = {"ULCORNER.GFX", "URCORNER.GFX",
+                                         "DLCORNER.GFX", "DRCORNER.GFX"};
+
+// ---------------------------------------------------------------------------
+// The professor, `1b2e:0656`
+// ---------------------------------------------------------------------------
+//
+// He is drawn BEFORE `1b2e:0a11`, which is why the frame and slide do not
+// paint over him: the frame spans x 62..257 and he stands at x 267.
+//
+//     Draw(267, 121, POINTER0)     { the standing pose }
+//     Draw(267, 165, BOOKS)        { the stack he stands on }
+//     FillRect(62, 26, 196, h, 19) { h is DS:0xbba, the rolling height }
+//     Draw(57, h + 26, SLIDEBAR)   { the roller bar rides the frame's edge }
+constexpr int kProfX = 267;           // 0x10b
+constexpr int kProfY = 121;           // 0x79
+constexpr int kBooksY = 165;          // 0xa5
+constexpr int kBarX = 57;             // 0x39
+constexpr int kBarDY = 26;            // 0x1a, added to the frame height
+
+// `1b2e:0e37`, the key wait, advances `DS:0x20b0` once per iteration - so the
+// professor waves his pointer WHILE the game waits for a key, one frame every
+// ten retraces. The counter runs 1..5, and `1000:af23`/`1000:af34` alias
+// entries 4 and 5 onto POINTER2 and POINTER1 with a struct copy
+// (`2000:7133`), so the sequence PING-PONGS rather than looping:
+//
+//     1 -> POINTER1   2 -> POINTER2   3 -> POINTER3   4 -> POINTER2   5 -> POINTER1
+//
+// That is also why the wait will not exit until the frame is back at 1: it
+// finishes the gesture before letting the screen change.
+constexpr const char* kPointerNames[4] = {"POINTER0.GFX", "POINTER1.GFX",
+                                          "POINTER2.GFX", "POINTER3.GFX"};
+constexpr int kProfWaveFrames = 5;
+constexpr int kProfWaveRetraces = 10;
+// Index into kPointerNames for wave frame 1..5; 0 is the standing pose.
+inline int pointerFrameFor(int wave) {
+    static const int kSeq[kProfWaveFrames] = {1, 2, 3, 2, 1};
+    if (wave < 1 || wave > kProfWaveFrames) return 0;
+    return kSeq[wave - 1];
+}
+
 // The slide DROPS into place the first time the scene is shown, and only then
 // - `1b2e:0a11` gates the whole sequence on `DS:0x210e`, which it sets. Six
 // frames, each held for 10 vertical retraces, wobbling around the resting
