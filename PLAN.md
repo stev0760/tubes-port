@@ -725,14 +725,67 @@ the full list.
 
 ---
 
+## Supporting both editions
+
+Right now the port is built against **one** copy of the game. Both the
+shareware and the registered editions are on archive.org, and running against
+either is a goal - it is what makes this a preservation project rather than a
+port of one person's disc.
+
+What would have to become version-aware, in rough order of likely pain:
+
+1. **The wave table.** `1000:86b8`'s dispatch has **75 arms** in the image
+   analysed here. Published notes say the registered version "adds 50 waves".
+   **Hypothesis, untested:** shareware is **25** waves and registered **75**,
+   which is what "adds 50" would mean - a much better fit than the 50/100 that
+   was assumed earlier. The test is cheap and decisive: unpack a shareware
+   `TUBES.EXE` and count the arms.
+2. **Which edition is in `..`.** Unknown, and worth settling first. The image
+   references `PRIZE.GFX` behind a "RegisteredEnding" resource error string,
+   and `1000:9499` - reached on clearing wave 75 - is the obvious place it is
+   shown. That points at this being the **registered** image, but a string is
+   not proof; find the gate that reads it.
+3. **The resource sets.** The registered edition is documented as adding five
+   backgrounds and the AntiMatter and Bonus atoms. The port already loads by
+   name and tolerates a missing sprite, so this may cost nothing - but the
+   spawn distribution rolls types 9 and 10 unconditionally, and a shareware
+   `.RES` without them would need that checked rather than assumed.
+4. **`tools/vercheck.py`** already exists to decide whether two MZ images came
+   off the same toolchain; point it at the two editions before anything else.
+5. **`TUBES.SAV`.** Two banks by game mode, decoded. Whether the layout is the
+   same across editions is unknown.
+
+The engine should end up **detecting** the edition rather than being told,
+since a user with either copy should be able to run `--gamedir` and have it
+work. What identifies it is not yet known.
+
+---
+
 ## Before publishing to GitHub
 
 The repository has never contained game data and `.gitignore` is aggressive
 about keeping it that way, so publishing is mostly a matter of paperwork:
 
-- **Choose a licence.** There is none yet. Note that `third_party/nuked-opl3`
-  is **LGPL 2.1**, which constrains the options for the whole distribution -
-  decide deliberately rather than dropping in an MIT file out of habit.
+- **Choose a licence.** There is none yet. `third_party/nuked-opl3` is
+  **LGPL-2.1-or-later** - checked in the file, not from memory: `opl3.c` says
+  "either version 2.1 of the License, or (at your option) any later version".
+  That is **weak** copyleft and does **not** relicense this project. Any of
+  MIT, BSD-3, MPL-2.0 or GPL-2.0-or-later works for our own code, provided the
+  emulator keeps its notices, modifications to *it* stay LGPL, and the user can
+  relink - which shipping source satisfies outright.
+  Two things to watch. **Apache-2.0 is the awkward one** (its patent-termination
+  clause is the known one-way incompatibility with GPLv2/LGPLv2.1), so pick it
+  only after deciding deliberately. And **static linking is fine** under
+  LGPL-2.1 §6 as long as the pieces needed to relink are available; that
+  matters for a PSP build, where dynamic linking is not really on the table.
+  Also note the emulator is `RegisterSink`-swappable, so a target that cannot
+  take LGPL at all can drop in a different core without touching anything
+  reversed.
+- **The briefing prose.** `src/wave_text.cpp` holds the game's own text, by a
+  deliberate decision recorded in its commit message rather than by accident.
+  If that ever needs to go, the replacement is to read the Pascal ShortStrings
+  out of the user's `TUBES.EXE` at runtime; that file is the only thing that
+  changes.
 - `README.md` already leads with "you need your own copy" and explains why.
   Keep that first; it is the thing that makes the project defensible.
 - Re-read `.gitignore` before the first push, and check `git log --stat` for
