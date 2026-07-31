@@ -6282,18 +6282,59 @@ Each is a name at `+0` (padded to 20 with `2591:008a`) and a number at `+0x28`.
 That is the same `bank + slot*0x50` shape the save slots use, so the two banks
 here are the two high-score tables - one per game mode.
 
-Then it runs a frame loop with an atom **bouncing along a scripted path**:
+### The title screen is a tube network spelling TUBES
+
+The four filenames it loads are at `1b2e:5238`:
+
+    TUBESBG.GFX   TUBESFG.GFX   TUBES.MUS   SELECT.SFX
+
+A **background/foreground pair**, which is the `GAMEBG`/`GAMEFG` arrangement
+from the play field, and in the frame loop the foreground is re-stamped over
+the atom's box after the atom is drawn. So the title screen is not a logo with
+a sprite bouncing over it: it is a **tube network in the shape of the word
+TUBES**, in blocky connected letters, with an atom travelling *inside* the
+pipes and clipped by the foreground exactly the way a falling atom is clipped
+in `1000:3a67`. This was first described by the player and the file pair
+confirms it - the earlier "bouncing along a scripted path" reading here was
+wrong, and wrong in a way that would have produced a plausible, entirely
+inauthentic title screen.
+
+The path is a scripted walk of that network:
 
     dirV := [0x95 + step]        'F' | 'B'      { forward / back }
     dirH := [0xaf + step]        'L' | 'R' | 'U' | 'D'
     limX := [0x30 + step*2]
     limY := [0x62 + step*2] + 0x20
 
-`step` runs 1..0x19 and wraps to 1, so the path is **25 legs**. Each leg moves
-4 px a frame along `dirH` until it passes its limit, and within 10 px of the
-limit it *curves*: the cross-axis is displaced by 7, 6, 3, 2, 1 as the corner
-is approached, which is what rounds the turns. Leg 10 is special-cased - the
-atom passes behind two pieces of foreground at `x` 0xb0 and 0xc8.
+`step` runs 1..0x19 and wraps to 1, so the walk is **25 legs** - the strokes of
+the five letters. Each leg moves 4 px a frame along `dirH` until it passes its
+limit, and within 10 px of the limit the cross-axis is displaced by 7, 6, 3, 2,
+1, which is what rounds the **corners of the letterforms** rather than turning
+square. Leg 10 additionally re-stamps foreground at `x` 0xb0 and 0xc8, which is
+a crossing where one stroke passes over another; the exact rect wants the
+listing, since the argument order of `2321:0874` is not settled here.
+
+### The menu highlight is two turning stars
+
+In the draw half, guarded on the menu-is-up flag `[0x1d42]`:
+
+    [0x1d78] := [0x1d78] + 1;                 { 1..3, the divider }
+    if [0x1d78] = 4 then begin
+      [0x1d78] := 1;
+      [0x1d79] := [0x1d79] + 1;               { 1..4, the frame }
+      if [0x1d79] = 5 then [0x1d79] := 1
+    end
+
+so the star turns through four frames every three frames, a 12-frame cycle. It
+is blitted **twice** per frame at one shared `y` (`0x1da2`) and two `x`
+(`0x1d9a`, `0x1d9e`) - one star either side of the selected item. All three are
+recomputed from `0x1d72`/`0x1d74`/`0x1d76` by `func_0x0002f8e7`, which is
+therefore "place the stars against item N" and is called both at entry and on
+every selection change inside `4d80`.
+
+**Not settled:** Ghidra renders the sprite lookup as `[0x1d79*8 + 0x1d76]`,
+which collides with `0x1d76` used as the y. One of the two readings is a
+decompiler artifact; the stride wants the listing, not the decompiler.
 
 The loop ends one of two ways, and returns the reason in `AL`:
 
