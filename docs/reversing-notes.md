@@ -6255,3 +6255,147 @@ Also absent: the professor - `1000:86b8` calls `1000:b7f0` on wave one and
 `1000:b936` otherwise - and `POINTER0..3`, `POINTERT`, `BOOKS.GFX`, `TALK1..5`
 are his sprites. And the background is not yet re-rolled `Random(10)+1` against
 `DS:0x2056`, nor is the key wait `1b2e:0cd1`'s two-key protocol.
+
+---
+
+## The title screen is `1b2e:52bf`, and the menu is nested inside it
+
+`MapProgram.java` labelled `1b2e:52bf` "title / main menu" from the strings it
+references. That is half right, and the half it gets wrong matters: `52bf` is
+the **title/attract screen**, and the menu is a *nested Pascal procedure*
+inside it at `1b2e:4d80`, sharing its frame through the static link at `[BP+4]`
+- the same arrangement as `1000:3a67` inside `1000:9e53`.
+
+So they decompile as a pair, and neither reads correctly alone. `4d80` takes no
+arguments and addresses everything through `in_stack_00000002`, which is the
+parent's `BP`.
+
+### What `52bf` actually does
+
+Before the loop it draws the credits block: **eleven** records, tested for a
+non-empty first byte and drawn only if present.
+
+    0x1928  0x1978  0x19c8  0x1a18  0x1a68        (bank 1, stride 0x50)
+    0x1b08  0x1b58  0x1ba8  0x1bf8  0x1c48        (bank 2, stride 0x50)
+
+Each is a name at `+0` (padded to 20 with `2591:008a`) and a number at `+0x28`.
+That is the same `bank + slot*0x50` shape the save slots use, so the two banks
+here are the two high-score tables - one per game mode.
+
+Then it runs a frame loop with an atom **bouncing along a scripted path**:
+
+    dirV := [0x95 + step]        'F' | 'B'      { forward / back }
+    dirH := [0xaf + step]        'L' | 'R' | 'U' | 'D'
+    limX := [0x30 + step*2]
+    limY := [0x62 + step*2] + 0x20
+
+`step` runs 1..0x19 and wraps to 1, so the path is **25 legs**. Each leg moves
+4 px a frame along `dirH` until it passes its limit, and within 10 px of the
+limit it *curves*: the cross-axis is displaced by 7, 6, 3, 2, 1 as the corner
+is approached, which is what rounds the turns. Leg 10 is special-cased - the
+atom passes behind two pieces of foreground at `x` 0xb0 and 0xc8.
+
+The loop ends one of two ways, and returns the reason in `AL`:
+
+- **timeout.** `local_1c6` seeds at `0x2d0` = **720 frames**, is reset to 720 on
+  every keypress, and on reaching zero returns **9**. Nine is not a menu item;
+  it is the attract-mode arm, which is how `DEMO.SCR` gets played without a
+  keypress.
+- **a menu choice**, returned as the item number that `4d80` stored.
+
+### The two-key protocol, `DS:0x1d42`
+
+`52bf` reads both the joystick and the keyboard, and both go through the same
+gate:
+
+    if [0x1d42] = 0 then begin                  { menu not up yet }
+      if key in [ESC, SPACE, RETURN] then begin  { or joy button 1 or 2 }
+        [0x1d42] := 1;                           { raise the menu }
+        key := 0                                 { and SWALLOW the key }
+      end
+    end
+    else Menu(...)                               { 1b2e:4d80 }
+
+So the first press only raises the menu, and is deliberately discarded so it
+cannot also select an item. `[0x1d42]` is the menu-is-up flag, and everything
+in the draw half is guarded on it. Every accepted press also sets a 4-frame
+repeat lockout in `local_1c9`.
+
+### The menu is one table of seven pages
+
+`4d80` switches on the current page in `[BP-3]` and the highlighted item in
+`DS:0x1d44`, and changes page by calling `func_0x0002f95a(count, ptr)`. The
+seven pointers it passes are
+
+    0x00ca  0x0256  0x03e2  0x056e  0x06fa  0x0886  0x0a12
+
+which are **evenly spaced by 0x18c**, so this is not seven tables but one:
+
+    MenuPages: array[1..7] of array[0..10] of string[35];   { at DGROUP 0x00ca }
+
+with stride 0x24 per entry and 0x18c per page, entry 0 the page **title** and
+1..10 the items. Page number is therefore `(ptr - 0xca) div 0x18c + 1`, which
+is what makes the `[BP-3]` values line up with the pointers. Read out:
+
+| # | Title | Items |
+|---|---|---|
+| 1 | *(none)* | Start Game / Continue Saved Game / Game Options / High Scores / Instructions / View Demo / Credits / Exit Tubes |
+| 2 | `Game Mode` | Endurace Mode / Wave Mode / Exit |
+| 3 | `Difficulty` | Tubes 101 / Tubes 201 / Tubes 301 / Exit |
+| 4 | `Saved Games Available` | five slots / Exit |
+| 5 | `Saved Games Available` | five slots / Exit |
+| 6 | `Game Options` | Toggle Music / Toggle Sound FX / Redefine Input Device / Exit |
+| 7 | `Exit Tubes?` | Yes / No |
+
+`Endurace Mode` is the game's own spelling and is reproduced as such. Pages 4
+and 5 hold `(Unavailable)` in the image; the live text is copied over each slot
+from the save records at `0x18d8` (endurance) and `0x1ab8` (wave), `slot*0x50`,
+by the `2685:08e3` block move of 0x50 bytes into `0x1ce8`.
+
+### The transitions, and the three globals they set
+
+    page 1  Start Game            -> [0x1d4c] := 1; page 2
+            Continue Saved Game   -> [0x1d4c] := 0; page 2
+            Game Options          -> page 6
+            Exit Tubes            -> page 7
+            anything else         -> leave, returning the item number
+
+    page 2  Endurace Mode         -> [0x1d4e] := 1; page 3 if [0x1d4c]=1
+                                                    else page 4
+            Wave Mode             -> [0x1d4e] := 2; page 3 if [0x1d4c]=1
+                                                    else page 5
+            Exit                  -> page 1
+
+    page 3  Tubes 101/201/301     -> [0x1d4f] := 0/1/2; leave, returning 1
+            Exit                  -> page 2
+
+    page 4  slot 1..5             -> [0x1d4d] := slot; copy the record;
+    page 5                           leave returning 2 if the record is live
+            anything else         -> page 2
+
+    page 6  Toggle Music          -> stop or restart the song
+            Toggle Sound FX       -> [0x215e] toggled
+            Redefine Input Device -> a sub-procedure
+            Exit                  -> page 1, and 227b:007a
+
+So the three globals the game session already reads are all set here, and
+nothing else sets them:
+
+| Global | Meaning | Set by |
+|---|---|---|
+| `DS:0x1d4c` | new game (1) vs load (0) | page 1 |
+| `DS:0x1d4d` | save slot 1..5 | pages 4, 5 |
+| `DS:0x1d4e` | game mode: 1 endurance, 2 wave | page 2 |
+| `DS:0x1d4f` | difficulty 0..2 = Tubes 101/201/301 | page 3 |
+
+That closes the loop on `DS:0x1d4f`, which was already known to seed the 9/6/3
+drops and to be forced to 2 by the View Demo arm at `1000:b272`.
+
+### `1b2e:0cd1` is a press-any-key prompt, not the menu's key wait
+
+It is 358 bytes and does its own thing: it flips the draw page (`[0x2376] xor
+1`), seeds `[0x20c6]` with `Random(12)+1` and `[0x20c7]` with `Random(4)+4`,
+then spins an atom through frames 1..12 out of the table at `DS:0xbbb` at
+`(0x85, 0x114)` until a key arrives. It returns 5, 4, 1 or 2 for four different
+keys rather than a single flag, so callers can distinguish them - which is why
+the briefing needs it rather than a bare `ReadKey`.
