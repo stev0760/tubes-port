@@ -5674,16 +5674,189 @@ At `1000:5cff`, the tail of the frame loop:
     if clearTimer > 0 then Dec(clearTimer);
     if not waveComplete and not gameOver and not quit then <next frame>
 
-`1000:8da5` then shows the stats blackboard and `1000:8c38` the Continue
+`1000:8da5` then shows the stats screen and `1000:8c38` the Continue
 screen, which is what sets `-0x1ff` - and that is why a continued wave keeps
 its objective.
+
+## Closing the session loop: the three flags, the banners, the two screens
+
+### The three flags, read off the listing and NOT the decompiler
+
+Ghidra names `1000:9e53`'s own locals **two bytes low** - its `local_1ff` is
+really `BP-0x1fd`. The listing at `1000:a5e8`..`1000:a6a9` is unambiguous, and
+the three bytes are three different things that all look alike in C:
+
+| offset | in `3a67` / `2dd0` | meaning |
+|---|---|---|
+| `BP-0x1fd` | `SS:[DI+0xfe03]` | **aborted** - leave the wave loop at once, no stats, no high-score entry |
+| `BP-0x1fe` | `SS:[DI+0xfe02]` | **game over** - show the Continue screen |
+| `BP-0x1ff` | `SS:[DI+0xfe01]` | **replay this wave** - skip the progression |
+
+The loop is `repeat ... until aborted or gameOver`, so a Continue that clears
+`gameOver` re-enters it, and `replay` is what stops `1000:a616` from stepping
+the wave on the way round. Only `-0x1fe` is written inside `3a67`
+(`1000:47f8` and `1000:5d0a`); **`-0x1fd` is written only by the key handler**
+`1000:2dd0`, which is why searching `3a67` for it finds nothing.
+
+### `1000:2dd0` is the in-game key handler
+
+Called from `1000:5cf7`, once per frame and only when `KeyPressed`
+(`2000:5e52`) is true, right after the flip. Extended keys arrive as
+`0x80 + scancode`, so `0xbb`..`0xbf` are F1..F5:
+
+    k := ReadKey;
+    if mode = 0 then k := $1b;                  { attract: ANY key aborts }
+    if [0x1d4b] <> 0 and k = $bc then k := 0;   { F2 disabled in this build }
+    case k of
+      $1b: parent.parent.aborted := 1           { two static links - 2dd0 is
+                                                  nested in 3a67 in 9e53 }
+      $bb: <Help, 'Press Any Key...'>
+      $bc: <Save Game, with a slot picker>
+      $bd: <music toggle, [0x215f]>
+      $be: <sound toggle, [0x215e]>
+      $bf: <pause>
+    end
+
+**Pause blocks the whole loop.** It draws `Game Paused` / `_________` centred
+at `y` 92 and 95, colour 47, mode 3, stops music and sound, then
+
+    repeat k := ReadKey until k = $bf
+
+so **only F5 releases it** - every other key is swallowed. That is exactly why
+the rig can freeze a frame with Pause and still answer a `screendump`, and it
+means the port must not treat any-key as unpause.
+
+The two toggles are symmetrical: flip `[0x215f]` (music) or `[0x215e]` (sound),
+call the driver, then flash `Music On` / `Music Off` / `Sound On` / `Sound Off`
+centred at `y` 92, colour 47, mode 3. The music arm restarts the *current* song
+from `parent[-0xa]` when switching on, and calls the stop vector when off.
+
+### The end-of-session banners, `1000:5d64`
+
+Still inside `3a67`, after the loop falls out. All three are centred over
+`0..319`, colour `0x2f` = 47, mode `0x83` = `kShadow | kPeak`:
+
+| condition | line 1, `y` 92 | line 2, `y` 95 | music |
+|---|---|---|---|
+| wave complete | `Wave Complete` | `___________` | `VICTORY.MUS` |
+| game over | `Game Over` | `_______` | `DEATH.MUS` |
+| aborted | `Game Aborted` | `___________` | - |
+
+The underline literal is a different length in each case and is **not** derived
+from the word - `Game Over` is 9 characters over 7 underscores. They are three
+separate string constants at `1000:3a12`, `1000:3a20`, `1000:39f8`, `1000:3a2c`
+and `1000:3a36`.
+
+The first two then wait on `repeat until KeyPressed or timeout`. The abort
+banner does not wait; instead, when `mode <> 0` and `[0x1d4b] = 0` it adds
+
+    F2 to Save Game, ESC for Main Menu!
+
+centred at `y` 115, colour 47, mode `0x81`, and **calls `1000:2dd0` again** -
+so the abort screen reuses the same key handler to offer the save.
+
+A **Perfect Bonus of 2500** (`0x9c4`) is added to the score at `1000:5dae`,
+before any of the banners, when `parent[-0x17d]` is set.
+
+### `1000:8da5`, the stats screen - and it is NOT a blackboard
+
+`PLAN.md` and `MapProgram` both called this "the stats blackboard". It loads no
+blackboard art: it re-blits the **held `GAMEBG`** through `2321:068d` and puts
+text over it, exactly as the briefing does. The blackboard is the *cutscene*,
+`1b2e:1651`. Renamed here to stop the two being conflated again.
+
+Layout, with the argument order the briefing settled -
+`OutTextCentred(x0, x1, y, colour, mode, s)`:
+
+| y | font | colour | mode | text |
+|---|---|---|---|---|
+| 38 | big | 159 | 3 | `Wave ` + N + ` Stats` |
+| 41 | big | 159 | 3 | `___________` |
+| 60 | label | 155 | 1 | `Molecule Chains` |
+| 68 | small | 175 | 1 | chains **this wave**, `-0x17c` |
+| 82 | label | 155 | 1 | `Total Molecule Chains` |
+| 90 | small | 175 | 1 | running total, `-0x14e` |
+| 104 | label | 155 | 1 | `Score` |
+| 112 | small | 175 | 1 | the score longint at `-0x153` |
+| 126 | label | 155 | 1 | `Perfect Bonus!` - only if `-0x17d` |
+| 134 | small | 175 | 1 | `2500` - only if `-0x17d` |
+| 135 **or 151** | label | 38 | 2 | `High Score!` - see below |
+
+Two things are easy to miss and both change what is drawn:
+
+- **the running total is accumulated here, in the draw code.** Between the two
+  lines it does `-0x14e := -0x14e + -0x17c; -0x17c := 0`. The per-wave counter
+  is zeroed by the screen that displays it, so the stats screen is not a pure
+  view - re-rendering it would double-count.
+- **`High Score!`'s `y` moves.** It is 135 normally and **151** when the
+  Perfect Bonus lines are present, because those occupy the row it would use.
+
+The high-score comparison reads `[0x1774]`/`[0x1776]` when `[0x1d4e] = 1` and
+`[0x1900]`/`[0x1902]` otherwise - the two banks the title screen draws. **The
+`mode = 1` arm is dead code**: `1000:a5f2` only calls `8da5` when the mode is
+neither 0 nor 1, so the endurance bank can never be selected here. Recorded as
+dead rather than ported, because porting it would invent a path the original
+does not have.
+
+Music is `STAT.MUS`, started after the drawing and before the flip. The tail is
+the briefing's: `WaitKey(10)`, then `1b2e:0e37(0x1e)` unless the key was 1 or 2.
+
+### `1000:8c38`, the Continue screen
+
+    if parent.continuesLeft < 1 then exit;        { -0x14f, unsigned }
+    PlayMusic('CONTINUE.MUS');                    { parent[-0x1e] }
+    n := 5;
+    repeat
+      SetFont(big);
+      OutTextCentred(0, 319, 70, 159, 3, 'Continue');
+      OutTextCentred(0, 319, 73, 159, 3, '______');
+      SetFont(small);
+      OutTextCentred(0, 319, 90,  15, 2, Str(n));
+      Flip;  [0x2376] := [0x2376] xor 1;  SetVisualPage([0x2376]);
+      k := WaitKey(2);
+      if k = 2 then exit;                         { declined - really over }
+      if k = 1 then begin                         { accepted }
+        Dec(parent.continuesLeft);
+        parent.score := 0;                        { the longint at -0x153 }
+        parent[-0x17e] := [0x1d51];               { drops back to the seed }
+        parent.replay := 1;  parent.gameOver := 0;
+        exit
+      end;
+      Dec(n)
+    until n = 0;
+
+So it is a **five-tick countdown**, the number on screen *is* the counter, and
+letting it run out declines. This answers the open question above - it writes
+drops, `-0x1fe` and `-0x1ff`, and zeroes the score but **not** the chain
+totals.
+
+### The session's seven songs are one array in `9e53`'s frame
+
+`1000:a3cd`..`1000:a436` builds them with `2000:2451`, four bytes apart:
+
+| slot | resource | used by |
+|---|---|---|
+| `-0x6` | `BRIEF.MUS` | the briefing |
+| `-0xe` | `GAME.MUS` | play |
+| `-0x12` | `FASTGAME.MUS` | play, the faster difficulties |
+| `-0x16` | `VICTORY.MUS` | the Wave Complete banner |
+| `-0x1a` | `DEATH.MUS` | the Game Over banner |
+| `-0x1e` | `CONTINUE.MUS` | the Continue screen |
+| `-0x22` | `STAT.MUS` | the stats screen |
+
+`-0xa` is assigned elsewhere and is the *current* song, which is what the F3
+toggle restarts. All seven names are present in `TUBES.RES`. This is the
+"external standard in the decoded output" check: each screen's music matches
+its purpose **by name**, which a wrong frame-offset reading could not produce.
 
 ### What this leaves open
 
 * `1000:0000` (place N marked atoms), `1000:0236` (place N crystals) and
   `1000:035e` (pre-fill the beaker with N) are named but not read.
 * `1000:9499`, reached on clearing wave 75.
-* `1000:8c38`'s exact reset - which of drops, `-0x1fe` and `-0x1ff` it writes.
+* `1000:2dd0`'s F1 Help body and its F2 Save slot picker - the dispatch is
+  read, the two screens are not.
+* Where `-0x14f`, the number of Continues, is seeded.
 * The beaker morph body at `1000:4bf6`.
 * Whether the shareware really carries all 75 arms or the later ones are dead;
   the dispatch has them, and published notes claim the registered version
