@@ -1347,11 +1347,12 @@ int main(int argc, char** argv) {
     const bool haveBig = loadFont(res, "FUTURE.816", 8, 7, bigFont);
     // The "big font" is a SLOT, `DS:0x2110`, not one font: each stage loads
     // what it wants into it. The HUD's is FUTURE.816, proven byte for byte
-    // against a captured digit; the title screen's is STARTREK.816, matched
-    // the same way against a capture of the menu - 344 lit pixels hit and 7
-    // missed at advance 8, where FUTURE.816 does not come close.
-    tubes::Font titleFont;
-    const bool haveTitleFont = loadFont(res, "STARTREK.816", 8, 7, titleFont);
+    // against a captured digit. The MENU's and the BRIEFING TITLE's is
+    // STARTREK.816, matched the same way against captures of each - 344 lit
+    // pixels hit / 7 missed for `Start Game`, and 187 / 187 with 27 missed for
+    // `Wave 1` at exactly the y the port already used.
+    tubes::Font headingFont;
+    const bool haveHeading = loadFont(res, "STARTREK.816", 8, 8, headingFont);
     const bool haveSmall = loadFont(res, "TINY6X8.88", 6, 4, smallFont);
     const int tubeFrames = static_cast<int>(haveTube[1]) +
                            static_cast<int>(haveTube[2]) +
@@ -1557,6 +1558,7 @@ int main(int argc, char** argv) {
     // `1b2e:5312`: one of the seven ordinary colours, rolled once on entry.
     int titleBall = game->rollForTest(7) + 1;
     int attractTimer = tubes::kAttractTimeout;
+    float titleAccum = 0.0f;
     if (opt.titlePage > 0) {
         // Navigate there the way a player would, rather than setting the page
         // directly - so a capture can only show a page the menu really reaches.
@@ -1695,11 +1697,21 @@ int main(int argc, char** argv) {
         // a crash that needs both a full beaker and a live render is invisible
         // to --auto, which simulates first and draws once at the end.
         if (stage == Stage::kTitle) {
-            // `1b2e:52bf`'s loop body: walk the atom, turn the star, and count
-            // the 720 frames down to attract mode.
-            titleAtom.step();
-            if (menu.up()) menu.tick();
-            if (--attractTimer <= 0) {
+            // `1b2e:52bf`'s loop body, run at the GAME frame rate rather than
+            // the render rate. Everything in it is counted in frames - 4 px a
+            // frame along a leg, a star frame every three, 720 frames to
+            // attract - so stepping it once per presented frame ran the whole
+            // screen at whatever the host managed, about three times too fast.
+            titleAccum += dt * tubes::kFrameHz;
+            int steps = static_cast<int>(titleAccum);
+            titleAccum -= static_cast<float>(steps);
+            if (steps > 8) steps = 8;      // a stall must not teleport the atom
+            for (int k = 0; k < steps; ++k) {
+                titleAtom.step();
+                if (menu.up()) menu.tick();
+                --attractTimer;
+            }
+            if (attractTimer <= 0) {
                 // The attract arm returns 9. DEMO.SCR replay through the live
                 // loop exists (`--play-demo`) but is not wired to this yet, so
                 // for now the countdown simply restarts rather than silently
@@ -1712,7 +1724,7 @@ int main(int argc, char** argv) {
                 // through `update`'s real-time conversion - same accumulator,
                 // driving an index instead. One byte per frame the tube was
                 // IDLE, not per frame: see Game::acceptsInput.
-                demoAccum += dt * 18.2f;
+                demoAccum += dt * tubes::kFrameHz;
                 int steps = static_cast<int>(demoAccum);
                 demoAccum -= static_cast<float>(steps);
                 if (steps > 8) steps = 8;
@@ -1750,7 +1762,7 @@ int main(int argc, char** argv) {
         if (stage == Stage::kTitle) {
             drawTitle(screen, titleBg, titleFgScene, haveTitleBg && haveTitleFg,
                       menu, titleAtom, atoms, haveAtom, titleBall, stars,
-                      haveStar, titleFont, haveTitleFont, titleFg, smallFont,
+                      haveStar, headingFont, haveHeading, titleFg, smallFont,
                       haveSmall);
             presentFrame();
             continue;
@@ -1948,7 +1960,7 @@ int main(int argc, char** argv) {
         // `1000:a5d2` shows the briefing INSTEAD of the play field, before
         // `1000:3a67` ever runs, so it simply replaces everything above.
         if (briefingUp) {
-            drawBriefing(screen, *game, &blackboard, haveBlackboard, bigFont,
+            drawBriefing(screen, *game, &blackboard, haveBlackboard, headingFont,
                          smallFont, haveBig, haveSmall, atoms, haveAtom, furn,
                          haveFurn, briefDecor);
         }

@@ -6235,23 +6235,43 @@ within sixteen pixels, and the text is confirmed verbatim - wave 1 reads "Form
 2 chains using any atom to advance to the next wave." over "You are allowed 9
 drops.", with `chainTargetColour` 2 and Tubes 101's 9 drops.
 
-**Still wrong: the title band.** `Wave 1` starts at the same x and the same y
-as the original's, so the centring and the font are right, but the glyphs come
-out **two rows taller** and the rule under them thicker and brighter. Changing
-the mode from 3 to 1 makes no difference, so it is not the mode byte.
+**The title band: SOLVED, at 0.00%.** It was the font after all, and it took
+two wrong turns to get there. Both are recorded because each was a bad *method*,
+not just a bad answer.
 
-~~The likely place to look is the font metrics.~~ **Refuted.** That guess was
-that `1000:87ac`'s `2000:3fab(8, 8, 0x10, 8, ...)` disagreed with the port's
-`FUTURE.816` at advance 8, peak 7. Reading the title screen settled it from the
-other side: `1b2e:4761` and `1b2e:57bb` set the big font with
+The band read as glyphs "two rows taller" with a thick bright rule. Two causes,
+compounding:
 
-    PUSH [0x2112] / PUSH [0x2110] / PUSH 0x8 / PUSH 0x10 / PUSH 0x8 / PUSH 0x8
+1. **The wrong font file.** It is `STARTREK.816`, not `FUTURE.816` - see "the
+   big font is a SLOT" below. The port was drawing `Wave 1` in the HUD's font.
+2. **The wrong peak row.** `2000:3fab`'s last argument is **8**, and
+   `decodeFont` adds one, so `peakRow` is 9 and the port was passing 7.
 
-which in push order is `(fontPtr, 8, 0x10, 8, 8)` - **identical** to
-`1000:87ac`'s call. Since `decodeFont` adds one to the peak argument, the
-port's 7 already produces the 8 the original stores. The font metrics are
-right, and the title band's cause is somewhere else. Do not spend a session
-here.
+Fixed, the ramp matches row for row - 65, 89, 113, 138, 166, 190, 215, 239,
+then back down - and the band goes **19.9% -> 0.00%**, the whole slide
+**2.70% -> 0.14%**.
+
+**Wrong turn one: "changing the mode from 3 to 1 makes no difference, so it is
+not the mode byte."** True, and useless: the mode was never wrong. Ruling out
+one suspect is not evidence about the others.
+
+**Wrong turn two, and the bad one.** A session "refuted" the font theory by
+scoring each `.816` font's glyph bitmap against the capture - the same method
+that had just worked on the title screen - and reported that `FUTURE.816` fit
+best and nothing was decisive. **The test was broken.** Its "is this pixel lit"
+predicate was `r+g+b > 200`, written for the title screen, which is *bright text
+on black*. The briefing slide is **dark blue text on light grey**, so the
+predicate selected the background. Every font scored badly because every font
+was being compared against the wrong pixels.
+
+Run with `b > r + 60`, the same test returns `STARTREK.816`, advance 8, `y 45` -
+**187 of 187** lit pixels accounted for, at exactly the `y` the port already
+used. Decisive, and it had been decisive all along.
+
+The tell was there in the numbers: *no* font fitting well is not a finding when
+the text is plainly rendered from one of them. That is this file's own rule -
+when a search comes back empty, suspect the search - applied to a search that
+came back uniformly mediocre.
 
 ### Still not drawn
 
@@ -6700,12 +6720,18 @@ the four `.816` fonts and scoring lit pixels against the menu capture:
 and `y = 34` is exactly `yBase + 1*16` = `18 + 16`, computed independently. So
 the match pins the font, the advance and the row at once.
 
-Two things follow. The general one: **do not assume one font per size.** The
-specific one: this was tried on the briefing's title band as well, since a
-wrong font there would explain glyphs "two rows taller" - and it does **not**
-fit. `FUTURE.816` remains the best of the four for `Wave 1` (209 hit, 40 miss)
-but no font and no row is decisive, so the briefing title band is still open
-and the font-slot theory does not close it either.
+The **briefing title band uses the same font**, and that is what had been wrong
+with it: `STARTREK.816`, advance 8, `y 45`, 187 of 187 lit pixels accounted for.
+Together with `peakRow` 9 that takes the band from 19.9% to **0.00%**.
+
+An earlier run of this same test on the briefing reported the opposite, because
+its lit-pixel predicate was written for bright-text-on-black and the briefing is
+dark-text-on-light. See the title band section above; the correction matters
+more than the result.
+
+The general lesson: **do not assume one font per size**, and when reusing a
+pixel-matching test on a new screen, check the predicate against that screen
+first.
 
 ### The title screen draws the foreground over the WHOLE screen
 
@@ -6730,6 +6756,7 @@ With both blits, and with `STARTREK.816`:
 | Region | differing |
 |---|---|
 | the eight menu text rows | **0.00%** |
+| a page title, `Difficulty`, plus its items | **0.00%** |
 | lower artwork, `y 150..199` | 0.43% |
 | whole screen | **0.25%** |
 
@@ -6752,3 +6779,20 @@ highlighted") - observation and code agreeing after the fact.
 
 `SetMenuPage` does still save the outgoing page at `[BP-4]`, and the escape arm
 does not read it. What that copy is for is not yet known.
+
+### Every stage runs on the 18.2 Hz tick, not on the render rate
+
+The title screen's atom walks 4 px a leg *per frame*, its star turns every
+three *frames*, and attract mode is 720 *frames*. Those are game frames - the
+DOS timer tick at 18.2 Hz - not presented frames. The first port of the title
+loop stepped it once per `SDL_RenderPresent`, so on a 60 Hz host the whole
+screen ran about **3.3x too fast** and the attract countdown expired in twelve
+seconds instead of forty.
+
+The play session never had this bug because `Game::update` converts elapsed
+real time into a whole number of 18.2 Hz steps. `tubes::kFrameHz` is now a
+named constant in `game.h` and the title screen accumulates against it the same
+way, capped at 8 steps so a stall cannot teleport the atom.
+
+Worth stating generally, since the splashes and the cutscenes are still to
+come: **anything counted in frames is counted in game frames.**

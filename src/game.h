@@ -30,6 +30,12 @@ constexpr uint8_t kA = 0x10;
 constexpr uint8_t kB = 0x20;
 }  // namespace button
 
+// The DOS timer tick the whole game is paced by. Every stage runs on it, not
+// just the session: the title screen's atom walk, its turning star and its
+// 720-frame attract countdown are all per-GAME-frame, so driving them from the
+// render loop instead runs them at whatever the host presents at.
+constexpr float kFrameHz = 18.2f;
+
 enum class Difficulty {
     k101,   // 9 drops
     k201,   // 6 drops

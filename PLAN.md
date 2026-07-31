@@ -141,7 +141,7 @@ Absent entirely:
 
 | Missing | Size |
 |---|---|
-| The briefing screen `1000:86b8` | **done and measured** - body text diffs at **0.09%** against a capture of the original. Open: the title band is 19.9% (glyphs two rows tall, rule too thick; the font-metrics theory is REFUTED - `1b2e:4761` sets the big font identically to `1000:87ac`, so the port's metrics already match), the projector slide is a measured rectangle rather than `1000:bcf1`, and the professor is absent |
+| The briefing screen `1000:86b8` | **done and measured** - body text diffs at **0.09%** against a capture of the original. Open: the title band is now **0.00%** - it was STARTREK.816 rather than FUTURE.816, plus a peak row of 9, the projector slide is a measured rectangle rather than `1000:bcf1`, and the professor is absent |
 | The stats blackboard `1000:8da5` and the Continue screen `1000:8c38` | medium |
 | Menus, difficulty select, high scores, save/load | large |
 | Blackboard stats and cutscenes | medium |
