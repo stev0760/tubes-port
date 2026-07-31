@@ -6238,10 +6238,20 @@ drops.", with `chainTargetColour` 2 and Tubes 101's 9 drops.
 **Still wrong: the title band.** `Wave 1` starts at the same x and the same y
 as the original's, so the centring and the font are right, but the glyphs come
 out **two rows taller** and the rule under them thicker and brighter. Changing
-the mode from 3 to 1 makes no difference, so it is not the mode byte. The
-likely place to look is the font metrics: `1000:87ac` sets the big font with
-`2000:3fab(8, 8, 0x10, 8, ...)` and the port loads `FUTURE.816` with an advance
-of 8 and a peak of 7, and a peak that is one row out would do exactly this.
+the mode from 3 to 1 makes no difference, so it is not the mode byte.
+
+~~The likely place to look is the font metrics.~~ **Refuted.** That guess was
+that `1000:87ac`'s `2000:3fab(8, 8, 0x10, 8, ...)` disagreed with the port's
+`FUTURE.816` at advance 8, peak 7. Reading the title screen settled it from the
+other side: `1b2e:4761` and `1b2e:57bb` set the big font with
+
+    PUSH [0x2112] / PUSH [0x2110] / PUSH 0x8 / PUSH 0x10 / PUSH 0x8 / PUSH 0x8
+
+which in push order is `(fontPtr, 8, 0x10, 8, 8)` - **identical** to
+`1000:87ac`'s call. Since `decodeFont` adds one to the peak argument, the
+port's 7 already produces the 8 the original stores. The font metrics are
+right, and the title band's cause is somewhere else. Do not spend a session
+here.
 
 ### Still not drawn
 
