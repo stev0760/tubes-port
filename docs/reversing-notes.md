@@ -6829,3 +6829,48 @@ the letterforms' horizontal strokes. The network is full of junctions, so
 "centre over an opaque pixel" and "outside the pipe" are simply different
 things. The listing plus the hand-over invariant settle this; the pixel proxy
 cannot.
+
+### Stages do NOT all run at the play session's frame rate
+
+The game installs its own timer: `226c:00c6` reprograms the PIT and hooks
+`INT 8`, and `226c:00b0` returns the counter that ISR maintains. `21ea:06ba`
+then waits out a per-frame period held in `DS:0x0d40`, and the title screen
+additionally page-flips through `2321:014f`, which polls `0x3da` for vertical
+retrace. **The play session calls neither** - it is paced some other way, which
+is why the two stages can differ at all.
+
+Read live through the debugger (`probe_frameperiod.py`, in the rig):
+
+| Stage | `DS:0x0d40` |
+|---|---|
+| title screen, menu down | 6 |
+| title screen, menu up | 6 |
+| menu page 2 | 6 |
+| briefing | 6 |
+| **play session** | **9** |
+
+So the title screen, the menu and the briefing run **exactly 1.5x faster** than
+the session. The first port ran the title at the session's rate and the player
+spotted it immediately.
+
+**The absolute rate is NOT settled.** The divisor the game writes is `16384`,
+i.e. `1193182/16384` = 72.83 Hz, exactly four times the BIOS tick - the usual
+reprogram-and-chain arrangement. But `72.83/9` is 8.09 Hz, nowhere near the
+session's established 18.2 Hz, so `[0x0d40]` is not simply ticks-per-frame and
+`21ea:06ba`'s `145 div elapsed` estimate is not simply fps. The **ratio** is
+what was measured and it does not depend on resolving that; the port carries
+`kTitleHz = kFrameHz * 1.5` and says so.
+
+Worth noting for later: 18.2 Hz for the session has never actually been
+*measured* either. It is the BIOS tick, assumed early, and the `DEMO.SCR`
+oracle cannot confirm it - the replay consumes one input byte per game frame,
+so it pins the frame **sequence** and says nothing about the frame **rate**.
+
+### The title screen's atom colour is `Random(7) + 1`
+
+`1b2e:5312` rolls one of the seven ordinary colours on entry and indexes the
+ball table at `0x1da6 + (r+1)*4`. The port seeded its generator with a fixed
+constant, so the atom was always the same blue. It now seeds from the clock for
+interactive play - the original's `Randomize` - while every harness entry point
+keeps the fixed seed so captures and traces stay reproducible. `--seed N`
+forces a specific one.

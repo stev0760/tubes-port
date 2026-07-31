@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <memory>
 #include <utility>
 #include <string>
@@ -259,6 +260,7 @@ struct Options {
     double renderSeconds = 0;   // 0 = one pass, songs loop forever
     int wave = 0;               // 0 = Endurance; 1..75 starts Wave mode there
     int titlePage = -1;         // -1 off; 0 the bare title; 1..7 a menu page
+    uint32_t seed = 0;          // 0 = clock for play, fixed for the harnesses
     bool help = false;
 };
 
@@ -400,6 +402,8 @@ Options parseArgs(int argc, char** argv) {
             o.renderState = argv[++i];
         } else if (a == "--gamebg" && i + 1 < argc) {
             o.gameBg = argv[++i];
+        } else if (a == "--seed" && i + 1 < argc) {
+            o.seed = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 0));
         } else if (a == "--title") {
             // Optional page: `--title` alone is the bare title screen, and
             // `--title N` raises the menu on page N. For capturing against
@@ -1379,13 +1383,29 @@ int main(int argc, char** argv) {
     // session is entered fresh, with the difficulty the player chose. So the
     // Game is owned rather than a local - starting a second game after a
     // Game Over has to build a new one, not reset the old one in place.
+    // Every harness entry point - a screenshot, a scripted run, a recorded
+    // demo, a captured state, an explicit wave - must stay deterministic, so
+    // only interactive play gets a clock seed.
+    const bool harness = !opt.screenshot.empty() || opt.autoFrames > 0 ||
+                         opt.demo || opt.playDemo || !opt.renderState.empty() ||
+                         opt.wave > 0;
+
     std::unique_ptr<tubes::Game> game;
     auto newSession = [&](tubes::Difficulty diff, uint32_t seed) {
         game = std::make_unique<tubes::Game>(kCols, kRows, diff, seed);
         game->setFallHeight(kFallHeight);
     };
+    // The original's `Randomize` at startup. Without it the title screen's
+    // `Random(7)` returns the same colour every run - the atom in the
+    // letterforms was always the same blue.
+    const uint32_t kFixedSeed = 0x9E3779B9u;
+    uint32_t bootSeed = kFixedSeed;
+    if (!harness && !opt.playDemo) {
+        bootSeed = static_cast<uint32_t>(std::time(nullptr)) * 2654435761u + 1u;
+    }
+    if (opt.seed) bootSeed = opt.seed;   // reproduce a specific run
     newSession(opt.playDemo ? kDemoDifficulty : tubes::Difficulty::k101,
-               opt.playDemo ? demo.seed : 0x9E3779B9u);
+               opt.playDemo ? demo.seed : bootSeed);
     // `1000:9e53`'s new-game arm seeds the wave number from `DS:0x1d50` and
     // then loops brief-play-advance. Only the first half of that exists here:
     // there is no briefing screen and no stats blackboard, so the loop below
@@ -1546,12 +1566,8 @@ int main(int argc, char** argv) {
     titleFgScene.clear(0);
     if (haveTitleFg) titleFgScene.blit(titleFg);
 
-    // `1b2e:52bf`. Every harness entry point - a screenshot, a scripted run, a
-    // recorded demo, a captured state, an explicit wave - goes straight to the
-    // session, so the flags keep working exactly as they did.
-    const bool harness = !opt.screenshot.empty() || opt.autoFrames > 0 ||
-                         opt.demo || opt.playDemo || !opt.renderState.empty() ||
-                         opt.wave > 0;
+    // `1b2e:52bf`. Every harness entry point goes straight to the session, so
+    // the flags keep working exactly as they did.
     Stage stage = (harness && opt.titlePage < 0) ? Stage::kPlay : Stage::kTitle;
     tubes::Menu menu;
     tubes::TitleAtom titleAtom;
@@ -1658,7 +1674,7 @@ int main(int argc, char** argv) {
                             tubes::Difficulty::k101, tubes::Difficulty::k201,
                             tubes::Difficulty::k301};
                         const tubes::MenuChoice& c = menu.choice();
-                        newSession(kDiff[c.difficulty], 0x9E3779B9u);
+                        newSession(kDiff[c.difficulty], bootSeed ^ 0x5bf03635u);
                         // `DS:0x1d4e`: 2 is Wave mode, which starts at wave 1
                         // and briefs before playing. Endurance has no wave
                         // structure and no briefing.
@@ -1697,12 +1713,10 @@ int main(int argc, char** argv) {
         // a crash that needs both a full beaker and a live render is invisible
         // to --auto, which simulates first and draws once at the end.
         if (stage == Stage::kTitle) {
-            // `1b2e:52bf`'s loop body, run at the GAME frame rate rather than
-            // the render rate. Everything in it is counted in frames - 4 px a
-            // frame along a leg, a star frame every three, 720 frames to
-            // attract - so stepping it once per presented frame ran the whole
-            // screen at whatever the host managed, about three times too fast.
-            titleAccum += dt * tubes::kFrameHz;
+            // `1b2e:52bf`'s loop body, at the TITLE screen's own rate - see
+            // kTitleHz. Everything in it is counted in frames: 4 px a frame
+            // along a leg, a star frame every three, 720 frames to attract.
+            titleAccum += dt * tubes::kTitleHz;
             int steps = static_cast<int>(titleAccum);
             titleAccum -= static_cast<float>(steps);
             if (steps > 8) steps = 8;      // a stall must not teleport the atom

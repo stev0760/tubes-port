@@ -30,11 +30,25 @@ constexpr uint8_t kA = 0x10;
 constexpr uint8_t kB = 0x20;
 }  // namespace button
 
-// The DOS timer tick the whole game is paced by. Every stage runs on it, not
-// just the session: the title screen's atom walk, its turning star and its
-// 720-frame attract countdown are all per-GAME-frame, so driving them from the
-// render loop instead runs them at whatever the host presents at.
+// The play session's frame rate. Everything in the session is counted in
+// these frames, so driving them from the render loop instead runs the game at
+// whatever the host presents at.
 constexpr float kFrameHz = 18.2f;
+
+// ...but NOT every stage runs at the session's rate, which the first port of
+// the title screen assumed. The game installs its own PIT handler (`226c:00c6`
+// reprograms the chip and hooks INT 8) and `21ea:06ba` waits out a per-frame
+// period held in `DS:0x0d40`. Read live through the debugger, that word is
+//
+//     9  in the play session
+//     6  on the title screen, the menu and the briefing
+//
+// so those stages run exactly **1.5x** faster. That ratio is the measurement;
+// the absolute rate is not settled here - the divisor the game writes is
+// 16384, i.e. 72.83 Hz or four times the BIOS tick, but 72.83/9 does not come
+// out at the session's established 18.2 Hz, so the unit of `[0x0d40]` is not
+// simply ticks-per-frame. The ratio does not depend on resolving that.
+constexpr float kTitleHz = kFrameHz * 1.5f;   // DS:0x0d40 = 6 against 9
 
 enum class Difficulty {
     k101,   // 9 drops
