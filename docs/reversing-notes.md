@@ -6423,8 +6423,10 @@ which are **evenly spaced by 0x18c**, so this is not seven tables but one:
     MenuPages: array[1..7] of array[0..10] of string[35];   { at DGROUP 0x00ca }
 
 with stride 0x24 per entry and 0x18c per page, entry 0 the page **title** and
-1..10 the items. Page number is therefore `(ptr - 0xca) div 0x18c + 1`, which
-is what makes the `[BP-3]` values line up with the pointers. Read out:
+1..10 the items. The page number satisfies `(ptr - 0xca) div 0x18c + 1` at every
+call site - but see *SetMenuPage* below: it is **passed as a parameter**, not
+computed, so that formula is a check on this reading rather than the mechanism.
+Read out:
 
 | # | Title | Items |
 |---|---|---|
@@ -6488,3 +6490,163 @@ then spins an atom through frames 1..12 out of the table at `DS:0xbbb` at
 `(0x85, 0x114)` until a key arrives. It returns 5, 4, 1 or 2 for four different
 keys rather than a single flag, so callers can distinguish them - which is why
 the briefing needs it rather than a bare `ReadKey`.
+
+### The blit family, and its argument order - settled
+
+Four routines in `2321` do all the drawing, and they share a calling shape.
+Pascal pushes left to right, so with `RETF n` the **first** source argument sits
+at the **highest** `BP` offset. Ghidra prints call arguments in reverse push
+order, so its rendering of these calls reads backwards.
+
+| Routine | `RETF` | Source args | Inner loop | Source shape |
+|---|---|---|---|---|
+| `2321:07e4` | 8 | `(x, y, w, h)` | `REP MOVSW/MOVSB` | screen-shaped |
+| `2321:0874` | 8 | `(x, y, w, h)` | `LODSB; OR AL,AL; JZ` | screen-shaped |
+| `2321:0711` | 0xc | `(x, y, src, w, h)` | `LODSB; OR AL,AL; JZ` | **packed** |
+| `2321:0905` | 8 | `(x, y, ?, proc)` | `CALLF [BP+6]` | indirect |
+
+In all of them `[BP+0xc]`-or-`[BP+0x10]` is `x` (`SHR DI,2` - Mode X plane
+column), the next word down is `y` (`MUL 0x50`), then `w` (`SHR 2; INC`) and
+`h` (the outer `DEC BX; JNZ` counter).
+
+Two distinctions that matter:
+
+- **`07e4` is opaque, `0874` and `0711` are masked** - the latter two skip
+  palette index 0, which is what makes a sprite transparent.
+- **`07e4` and `0874` add the row stride to *both* `DI` and `SI`**, so their
+  source is a full 320-wide screen-shaped buffer and they blit a *rect out of
+  it*. `0711` advances only `DI`, so its source is a **packed** sprite, `w`
+  bytes per row, passed as an explicit far pointer rather than taken from the
+  global at `DS:0x238e`.
+
+So `TUBESBG`/`TUBESFG` are screen-shaped and go through `07e4`/`0874`, and the
+stars are packed sprites and go through `0711`.
+
+Re-reading the title loop with the order fixed:
+
+    Blit(x, y, 16, 13)          { the atom's foreground stamp }
+
+**16 wide by 13 tall - the game's own cell size**, which is a check on the
+reading rather than a coincidence. And leg 10's two extra calls are
+
+    Blit(0xb0, y, 1, 0xd)       { 1 px wide, 13 tall, at x = 176 }
+    Blit(0xc8, y, 1, 0xd)       {                        x = 200 }
+
+with `DS:0x238e` pointed at **TUBESBG** for the duration and restored to
+TUBESFG afterwards, so those two columns get *background* where every other
+column gets foreground. Reading that as "the atom shows through at the two
+crossings" is inference; the exact visual wants a render.
+
+### The star sprite, and `0x1d76`'s double duty - settled
+
+From the listing at `1b2e:60cf`, which is authoritative here because the
+decompiler's rendering looked self-contradictory:
+
+    PUSH [0x1d72]           { x - the LEFT star }
+    PUSH [0x1d76]           { y }
+    DI := [0x1d79] * 8
+    PUSH [DI + 0x1d78]      { source segment }
+    PUSH [DI + 0x1d76]      { source offset  }
+    PUSH 0xc                { w = 12 }
+    PUSH 0xa                { h = 10 }
+    CALLF 2321:0711
+    ... and again identically with [0x1d74], the RIGHT star
+
+So the frame-`f` sprite pointer lives at `DGROUP:0x1d76 + f*8`, `f` in 1..4,
+and the star is **12 x 10**, packed and masked.
+
+`0x1d76` really is used two ways - as a bare scalar it is the stars' `y`, and
+as `[DI + 0x1d76]` it is the base of a stride-8 pointer array whose element 0
+would land on that same `y`. Ghidra was not confused; the code is genuinely
+written that way, and since `f` is never 0 the overlap is harmless. This is the
+third table in this screen with an unused element 0 - the menu pages and the
+path tables are the others.
+
+The rest of the block, read off the same listing:
+
+| Address | Holds |
+|---|---|
+| `0x1d72` | live x of the left star |
+| `0x1d74` | live x of the right star |
+| `0x1d76` | live y of both |
+| `0x1d78` | frame divider, 1..3 |
+| `0x1d79` | frame number, 1..4 |
+| `0x1d7e + (f-1)*8` | far pointer to star frame `f` |
+| `0x1d9a`, `0x1d9c` | left-star x **as last drawn on page 0 / page 1** |
+| `0x1d9e`, `0x1da0` | right-star x, per page |
+| `0x1da2`, `0x1da4` | y, per page |
+
+The per-page copies exist because the screen is double buffered (`[0x2376]` is
+the draw page and is flipped with `xor 1`): each page has to restore background
+over wherever *it* last drew, not wherever the other page did.
+
+### `1b2e:4607` - PlaceStars
+
+    procedure PlaceStars(var y, xRight, xLeft: word);   { RET 0xe, near }
+
+Called at entry and after every selection change. With `i = [0x1d44]`, the
+highlighted item, and `L` the **length byte** of menu entry `i` - read at
+`parent[-0x190] + i*36`, the 36-byte stride confirming the page-table layout
+from the other side:
+
+    xLeft  := 140 - 4*L
+    xRight := 163 + 4*L
+    y      := yBase + i*16          { or i*26 on page 6, Game Options }
+
+So the stars bracket the centred item text and move outward as it lengthens,
+four pixels a character - half an 8-wide glyph on each side.
+
+### `1b2e:467a` - SetMenuPage
+
+    procedure SetMenuPage(pageId: byte; page: pointer; count: byte);
+    { RET 0xa, near - 5 words including the static link }
+
+Call site, `1b2e:5332`:
+
+    PUSH 0x1 / PUSH DS / PUSH 0xca / PUSH 0x8 / PUSH BP / CALL
+
+What it does:
+
+- `REP MOVSB` **0x18c bytes** - one whole page, 11 entries of 36 - from the
+  argument into the parent's `[BP-0x190]`, via `2000:7133`;
+- `parent[-4] := parent[-3]` then `parent[-3] := pageId`, so `[-4]` is the
+  **page to go back to** and `[-3]` the current one;
+- `[0x1d44] := 1`, *except* that arriving at page 1 restores the remembered
+  main-menu item from `[0x1d43]`;
+- `parent[-0x191] := count`;
+- `parent[-0x194] := (180 - 16*count) div 2`, the y origin - the block is
+  **vertically centred in 180 rows at 16 px a row**, or 26 px a row on page 6.
+
+**The page id is an explicit parameter, not derived from the pointer.** The
+earlier note here inferred `pageId = (ptr - 0xca) div 0x18c + 1`; that formula
+does hold at **all 21 call sites**, which is good evidence the seven pages are
+one array, but it is a check on the reading rather than what the code computes.
+
+### Ghidra gotcha: `func_0x000XXXXX` names carry a 0x10000 bias
+
+Ghidra did not resolve the nested procedures of `1b2e:52bf` into functions. It
+named them from near-call targets as `func_0x0002f8e7`, `func_0x0002f95a`,
+`func_0x0002fa23` - and those linear addresses are **0x10000 too high**. The
+true addresses come from the `CALL rel16` bytes:
+
+    1b2e:533c  e8 3b f3   ->  0x533f - 0xcc5 = 1b2e:467a
+    1b2e:53f6  e8 0e f2   ->  0x53f9 - 0xdf2 = 1b2e:4607
+    1b2e:57c9  e8 77 ef   ->  0x57cc - 0x1089 = 1b2e:4743
+
+so for this segment `offset = XXXXX - 0x2b2e0`. The pairwise gaps match
+exactly (0x73 and 0xc9 in both), which is what confirms the constant.
+
+Worse, Ghidra left those bytes **undefined**, so `DisasmRange.java` came back
+with an empty listing for an address that plainly holds code - `ENTER 0x18c` is
+the first instruction at `467a`. That is the failure mode this file warns about
+twice already, so `DisasmRange.java` now takes **`+disasm`**, which converts
+undefined bytes in the range to instructions before listing them and prints how
+many runs it created.
+
+| Ghidra's name | Real address | What it is |
+|---|---|---|
+| `func_0x0002f8e7` | `1b2e:4607` | PlaceStars |
+| `func_0x0002f95a` | `1b2e:467a` | SetMenuPage |
+| `func_0x0002fa23` | `1b2e:4743` | page flip / present |
+| `func_0x0002fc16` | `1b2e:4936` | (options, unread) |
+| `func_0x0002fd55` | `1b2e:4a75` | (redefine input, unread) |

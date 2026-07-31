@@ -19,6 +19,8 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.InstructionIterator;
 
+import java.util.ArrayList;
+
 public class DisasmRange extends GhidraScript {
 
     @Override
@@ -26,6 +28,25 @@ public class DisasmRange extends GhidraScript {
         String[] args = getScriptArgs();
         if (args.length == 0) {
             println("usage: DisasmRange.java <start> [<end>]");
+            return;
+        }
+
+        // `+disasm` first: turn undefined bytes in the range into code before
+        // listing them. Ghidra's auto-analysis misses Turbo Pascal's NESTED
+        // procedures, because the only reference to one is a near CALL whose
+        // target Ghidra renders with a 0x10000 bias (see reversing-notes) and
+        // so never follows. Without this the listing comes back EMPTY for an
+        // address that plainly holds code, which reads as "there is nothing
+        // there" rather than "Ghidra did not look".
+        boolean doDisasm = false;
+        java.util.List<String> rest = new ArrayList<>();
+        for (String a : args) {
+            if (a.equals("+disasm")) doDisasm = true;
+            else rest.add(a);
+        }
+        args = rest.toArray(new String[0]);
+        if (args.length == 0) {
+            println("usage: DisasmRange.java [+disasm] <start> [<end>]");
             return;
         }
 
@@ -50,6 +71,20 @@ public class DisasmRange extends GhidraScript {
         if (end == null) {
             println("cannot parse end address: " + args[1]);
             return;
+        }
+
+        if (doDisasm) {
+            int made = 0;
+            Address a = start;
+            while (a != null && a.compareTo(end) <= 0) {
+                if (getInstructionAt(a) == null) {
+                    if (disassemble(a)) made++;
+                }
+                Instruction ins = getInstructionAt(a);
+                if (ins == null) break;          // still undefined: real data
+                a = ins.getMaxAddress().next();
+            }
+            println("// +disasm: created " + made + " instruction runs");
         }
 
         println("//=================================================");
