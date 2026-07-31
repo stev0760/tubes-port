@@ -1990,10 +1990,22 @@ int main(int argc, char** argv) {
                     }
                     continue;
                 }
+                // `SELECT.SFX` is one of the four resources the title stage
+                // loads for itself - `TUBESBG.GFX`, `TUBESFG.GFX`,
+                // `TUBES.MUS`, `SELECT.SFX` at `1b2e:5238` - so the sound
+                // belongs to this screen. It plays on SELECTING an item, not
+                // on moving between them; that is the player's account, since
+                // the menu's own call sites are near calls whose targets
+                // Ghidra renders with the 0x10000 bias and a scan for the play
+                // vector cannot see them. Marked as reported rather than
+                // decompiled, and it may be used elsewhere too.
                 if (k == SDLK_UP) menu.moveUp();
                 else if (k == SDLK_DOWN) menu.moveDown();
                 else if (k == SDLK_ESCAPE) menu.back();
                 else if (k == SDLK_RETURN || k == SDLK_SPACE) {
+                    if (soundOn && sounds[tubes::sfx::kSelect].valid()) {
+                        music.playSound(&sounds[tubes::sfx::kSelect]);
+                    }
                     switch (menu.select()) {
                     case tubes::MenuResult::kPlay: {
                         static const tubes::Difficulty kDiff[3] = {

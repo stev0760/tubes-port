@@ -245,6 +245,26 @@ Listed first because building on them wastes work.
 
 ## Next
 
+### Player-reported differences, still open
+
+Observed by the player against the original, so **real** - but not yet
+decompiled, and deliberately not guessed at. Presentation only; none of them
+changes a rule.
+
+1. **Screens cross-fade.** There is a fade between screens. The port cuts.
+   `1b2e:0a11` and the banners call `[0x230e]` with **two palette pointers**,
+   which is the obvious candidate and is not yet resolved; the retrace waits
+   nearby (`23e7:0024`) are holds, not fades, so an earlier reading of "no
+   fade, just a 40-retrace hold" was incomplete rather than wrong.
+2. **The Wave Complete banner ends when its music does.** `VICTORY.MUS` plays
+   once and the screen moves on. The port loops the song and waits for a key.
+   `1000:5e0b`'s wait is `repeat until KeyPressed or <something>` - the
+   something is what needs reading.
+3. **`SELECT.SFX` plays on SELECTING a menu item**, not on moving between them.
+   Implemented from the player's account; the call sites in `1b2e:4d80` are
+   near calls whose targets Ghidra renders with the 0x10000 bias, so the scan
+   for a play vector cannot see them. It may be used elsewhere too.
+
 ### 0. START HERE: the menu items that are reachable and inert
 
 **The next step is section 4B below.** The session loop is closed (4A, done):
