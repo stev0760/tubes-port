@@ -5801,6 +5801,38 @@ does not have.
 Music is `STAT.MUS`, started after the drawing and before the flip. The tail is
 the briefing's: `WaitKey(10)`, then `1b2e:0e37(0x1e)` unless the key was 1 or 2.
 
+**Its background is NOT settled.** `2321:068d` is a Mode X `REP MOVSW` blit
+whose arguments, taken off the listing rather than the decompiler's reversed
+list, are `(x, y, srcPtr, w, h)` with `[BP+0xe]` the `y` (it is multiplied by
+80, the Mode X plane pitch) and `[BP+0x10]` the `x`. The stats screen passes
+**`x = 0`, `y = 12`** with the size in `DS:0x205c`/`0x205e` and the pointer in
+`DS:0x2058`/`0x205a`. So it puts a **held image below the HUD row**, not the
+320x200 `GAMEBG` at the origin - `GAMEBG1.GFX` is 64004 bytes, exactly
+320x200 plus a header, and cannot fit at `y = 12`. Nothing decompiled so far
+writes `DS:0x2058`, so what the held image actually is remains open. The port
+draws the backdrop at the origin as a stand-in and says so in `drawStats`.
+
+### `1b2e:0e37` is the shared key wait, and its return codes matter
+
+Reached as `1000:c117` from `8c38` - the same linear address, `0x1c117`, under
+a different segment:offset, which is worth knowing before concluding there are
+two routines. It waits out `param * 7` iterations of `23e7:0024(10)` while
+cycling a five-frame animation, and exits only when it has an answer **and**
+the animation is back on frame 1:
+
+| returns | on |
+|---|---|
+| 1 | Enter or Space |
+| 2 | ESC |
+| 3 | the timer expiring |
+| 4 / 5 | Down / Up |
+
+The Continue screen acts on 1 and 2 only; 3, 4 and 5 fall through to its own
+countdown. **The wall-clock length of an iteration is unknown** because
+`23e7:0024`'s unit is unread - milliseconds would make the whole five-count
+prompt last under a second, the game's own 145 Hz tick would make it about a
+second a count. The port assumes the latter and marks it.
+
 ### `1000:8c38`, the Continue screen
 
     if parent.continuesLeft < 1 then exit;        { -0x14f, unsigned }

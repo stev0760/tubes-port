@@ -20,6 +20,7 @@
 #include "scr.h"
 #include "sfx.h"
 #include "menu.h"
+#include "session.h"
 #include "wave.h"
 
 namespace {
@@ -2035,6 +2036,171 @@ void testInformationalItemsReturnTheirNumber() {
 }
 
 
+// ---- The session loop, `1000:9e53` ---------------------------------------
+
+// `1000:8da5` accumulates the running chain total IN its draw code and zeroes
+// the per-wave counter. So building the screen is a MUTATION, and building it
+// twice for one wave would count that wave twice. This is the shape of bug the
+// original's structure invites, so it gets a test rather than a comment.
+void testStatsScreenAccumulatesExactlyOnce() {
+    tubes::SessionTotals t;
+    t.totalChains = 12;
+    t.chainsThisWave = 5;
+
+    tubes::buildStatsScreen(t, 3, 1000, false);
+    check(t.totalChains == 17, "stats screen adds the wave to the total");
+    check(t.chainsThisWave == 0, "stats screen zeroes the per-wave counter");
+
+    // A second visit with nothing scored must not move the total.
+    tubes::buildStatsScreen(t, 3, 1000, false);
+    check(t.totalChains == 17, "re-rendering the stats screen cannot re-count");
+}
+
+// `1000:8dfc`: the High Score line sits at y 135, and moves to 151 only when
+// the Perfect Bonus lines are drawn, because they take the row it would use.
+void testHighScoreRowMovesForThePerfectBonus() {
+    auto rowY = [](const std::vector<tubes::StatsRow>& rows,
+                   const std::string& text) {
+        for (const tubes::StatsRow& r : rows) if (r.text == text) return r.y;
+        return -1;
+    };
+
+    tubes::SessionTotals plain;
+    std::vector<tubes::StatsRow> a = tubes::buildStatsScreen(plain, 1, 500, true);
+    check(rowY(a, "High Score!") == 135, "High Score sits at 135 normally");
+    check(rowY(a, "Perfect Bonus!") == -1, "no bonus line without the flag");
+
+    tubes::SessionTotals bonus;
+    bonus.perfectBonus = true;
+    std::vector<tubes::StatsRow> b = tubes::buildStatsScreen(bonus, 1, 500, true);
+    check(rowY(b, "High Score!") == 151, "High Score moves to 151 for the bonus");
+    check(rowY(b, "Perfect Bonus!") == 126, "the bonus caption is at 126");
+    check(rowY(b, "2500") == 134, "the bonus is 2500 at 134");
+}
+
+// The rule under each banner is its own string constant, a different length in
+// each case. Deriving it from the caption - the obvious tidy-up - would be
+// wrong for two of the three, so the lengths are pinned.
+void testBannerRulesAreNotDerivedFromTheCaption() {
+    const tubes::BannerText over = tubes::bannerText(tubes::Banner::kGameOver);
+    check(std::string(over.line1).size() == 9, "Game Over is 9 characters");
+    check(std::string(over.rule).size() == 7, "and its rule is SEVEN");
+
+    const tubes::BannerText done =
+        tubes::bannerText(tubes::Banner::kWaveComplete);
+    check(std::string(done.line1).size() == 13, "Wave Complete is 13");
+    check(std::string(done.rule).size() == 11, "and its rule is 11");
+
+    // The abort banner is the only one of the three that plays nothing.
+    check(std::string(tubes::bannerText(tubes::Banner::kAborted).music).empty(),
+          "the abort banner has no music");
+    check(std::string(done.music) == "VICTORY.MUS", "a cleared wave is VICTORY");
+    check(std::string(over.music) == "DEATH.MUS", "a game over is DEATH");
+}
+
+// `1000:2de2` rewrites the key to ESC in attract mode BEFORE the case, so any
+// key at all leaves the demo - it is not a separate branch.
+void testAttractModeTurnsEveryKeyIntoAnAbort() {
+    const uint8_t keys[] = {tubes::gamekey::kF1, tubes::gamekey::kF5, 'a', 0};
+    for (uint8_t k : keys) {
+        check(tubes::classifyGameKey(k, /*attract=*/true, false) ==
+                  tubes::GameAction::kAbort,
+              "any key aborts the demo");
+    }
+    // Outside attract the same keys do their own jobs.
+    check(tubes::classifyGameKey(tubes::gamekey::kF5, false, false) ==
+              tubes::GameAction::kPause, "F5 pauses in a real game");
+    check(tubes::classifyGameKey(tubes::gamekey::kF2, false, true) ==
+              tubes::GameAction::kIgnored, "F2 is dead when saving is off");
+    check(tubes::classifyGameKey(tubes::gamekey::kF2, false, false) ==
+              tubes::GameAction::kSave, "and alive when it is not");
+}
+
+// `1000:a5e8`: an abort jumps clear of the stats screen and the Continue
+// offer, so a player who quits is never asked to continue.
+void testAbortSkipsTheStatsScreenAndTheContinue() {
+    tubes::SessionFlags f;
+    f.aborted = true;
+    const tubes::StageTransition t =
+        tubes::advanceStage(tubes::SessionStage::kBanner, f, 2);
+    check(t.next == tubes::SessionStage::kFinished, "an abort ends the loop");
+    check(!t.advanceWave, "and steps no progression");
+}
+
+// The whole point of `-0x1ff`: a Continue must NOT make the next wave harder.
+// `1000:a60f` skips the progression when it is set.
+void testAnAcceptedContinueReplaysWithoutAdvancing() {
+    tubes::SessionFlags f;
+    tubes::SessionTotals t;
+    t.continuesLeft = 2;
+    f.gameOver = true;
+
+    tubes::ContinuePrompt p;
+    check(p.begin(t), "the prompt appears with continues left");
+    check(p.tick(/*accept=*/true, false) == tubes::ContinueResult::kAccepted,
+          "Enter accepts");
+    tubes::applyContinue(f, t);
+    check(t.continuesLeft == 1, "a continue is spent");
+    check(!f.gameOver, "the game over is cleared");
+    check(f.replay, "and the wave is marked for replay");
+
+    const tubes::StageTransition s =
+        tubes::advanceStage(tubes::SessionStage::kContinue, f, 2);
+    check(s.next == tubes::SessionStage::kBriefing, "the loop re-enters");
+    check(!s.advanceWave, "and the wave does NOT advance");
+}
+
+// Letting the count run out is a DECLINE, not an acceptance - the number on
+// screen is the counter itself and there is no separate No to press.
+void testTheContinueCountdownExpiringDeclines() {
+    tubes::SessionTotals t;
+    t.continuesLeft = 1;
+    tubes::ContinuePrompt p;
+    p.begin(t);
+
+    int ticks = 0;
+    tubes::ContinueResult r = tubes::ContinueResult::kWaiting;
+    while (r == tubes::ContinueResult::kWaiting && ticks < 20) {
+        r = p.tick(false, false);
+        ++ticks;
+    }
+    check(r == tubes::ContinueResult::kDeclined, "running out declines");
+    check(ticks == tubes::kContinueTicks, "after exactly five ticks");
+
+    // And with no continues left the screen never appears at all.
+    tubes::SessionTotals none;
+    tubes::ContinuePrompt q;
+    check(!q.begin(none), "no continues means no prompt");
+}
+
+// Endurance is mode 1 and wave mode is anything else, so neither the briefing
+// nor the stats screen may appear in it.
+void testEnduranceSkipsBothWaveScreens() {
+    check(tubes::firstStage(1) == tubes::SessionStage::kPlay,
+          "endurance starts straight in play");
+    check(tubes::firstStage(2) == tubes::SessionStage::kBriefing,
+          "wave mode briefs first");
+
+    tubes::SessionFlags f;
+    f.gameOver = true;
+    check(tubes::advanceStage(tubes::SessionStage::kBanner, f, 1).next ==
+              tubes::SessionStage::kFinished,
+          "endurance goes straight from the banner to the end");
+    check(tubes::advanceStage(tubes::SessionStage::kBanner, f, 2).next ==
+              tubes::SessionStage::kStats,
+          "wave mode shows its stats first");
+}
+
+// `1000:4494`. The play song comes off the DROP COUNT, not the difficulty -
+// which is what it looks like it ought to be.
+void testTheFastSongIsAboutDropsNotDifficulty() {
+    check(std::string(tubes::playMusicFor(3)) == "GAME.MUS",
+          "with drops in hand it is GAME.MUS");
+    check(std::string(tubes::playMusicFor(0)) == "FASTGAME.MUS",
+          "on the last drop it is FASTGAME.MUS");
+}
+
+
 // The corner curve exists to lead the atom into the next leg. So at the moment
 // a leg hands over, the cross-axis must be displaced TOWARD the way the next
 // leg travels - and that is a property of the path as a whole, so it catches a
@@ -2174,6 +2340,15 @@ int main() {
     testStarTurnsEveryThreeFrames();
     testQuitNeedsConfirming();
     testInformationalItemsReturnTheirNumber();
+    testStatsScreenAccumulatesExactlyOnce();
+    testHighScoreRowMovesForThePerfectBonus();
+    testBannerRulesAreNotDerivedFromTheCaption();
+    testAttractModeTurnsEveryKeyIntoAnAbort();
+    testAbortSkipsTheStatsScreenAndTheContinue();
+    testAnAcceptedContinueReplaysWithoutAdvancing();
+    testTheContinueCountdownExpiringDeclines();
+    testEnduranceSkipsBothWaveScreens();
+    testTheFastSongIsAboutDropsNotDifficulty();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

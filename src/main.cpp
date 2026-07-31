@@ -23,6 +23,7 @@
 #include "opl.h"
 #include "res.h"
 #include "screen.h"
+#include "session.h"
 #include "wave_text.h"
 #include "scr.h"
 #include "sfx.h"
@@ -236,9 +237,19 @@ constexpr int kFurnTotal = static_cast<int>(sizeof(kFurniture) /
 // there yet - which is exactly the symptom the oracle reported.
 constexpr tubes::Difficulty kDemoDifficulty = tubes::Difficulty::k301;
 
-// The program's stages, in the order `1000:aaba` calls them. Only the title
-// and the session exist so far; the splashes, the instructions slideshow and
-// the stats blackboard are the gaps.
+// NOT DERIVED. How long one tick of the Continue countdown lasts.
+//
+// The structure is settled - `1000:8c38` counts five, and `1b2e:0e37(2)` runs
+// `2 * 7` iterations of `23e7:0024(10)` - but `23e7:0024`'s unit is unread, so
+// the wall-clock length of an iteration is unknown. If it is milliseconds the
+// whole prompt lasts under a second, which is too short to read; if it is the
+// game's own 145 Hz tick it is about a second a count, which is what this
+// assumes. Measure it on the rig before treating it as settled.
+constexpr float kContinueTickSeconds = 1.0f;
+
+// The program's stages, in the order `1000:aaba` calls them. `kPlay` is the
+// whole of `1000:9e53` - its own wave loop is a second, nested state machine
+// in `session.h`. The splashes and the instructions slideshow are the gaps.
 enum class Stage { kTitle, kPlay };
 
 struct Options {
@@ -260,6 +271,13 @@ struct Options {
     double renderSeconds = 0;   // 0 = one pass, songs loop forever
     int wave = 0;               // 0 = Endurance; 1..75 starts Wave mode there
     int titlePage = -1;         // -1 off; 0 the bare title; 1..7 a menu page
+    // Harness only. `--screenshot` captures the first frame drawn, which can
+    // never show a screen that is reached by PLAYING - the banners, the stats
+    // screen and the Continue prompt are all past a game over. These two run
+    // the real loop to get there instead of adding entry points that the
+    // original does not have.
+    int shotAfter = 0;          // present the screenshot after N live frames
+    bool autoAdvance = false;   // synthesise RETURN whenever a stage waits
     uint32_t seed = 0;          // 0 = clock for play, fixed for the harnesses
     bool help = false;
 };
@@ -412,6 +430,10 @@ Options parseArgs(int argc, char** argv) {
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 o.titlePage = std::atoi(argv[++i]);
             }
+        } else if (a == "--screenshot-after" && i + 1 < argc) {
+            o.shotAfter = std::atoi(argv[++i]);
+        } else if (a == "--auto-advance") {
+            o.autoAdvance = true;
         } else if (a == "--wave" && i + 1 < argc) {
             o.wave = std::atoi(argv[++i]);
         } else if (a == "--help" || a == "-h") {
@@ -431,6 +453,11 @@ void usage() {
         "  --gamedir DIR     directory holding your TUBES.RES (default: .)\n"
         "  --scale N         integer scale factor (default: fit the display)\n"
         "  --screenshot FILE render one frame to a BMP and exit\n"
+        "  --screenshot-after N  with it, capture after N frames of the LIVE\n"
+        "                    loop at a fixed step - the only way to reach a\n"
+        "                    screen that is past a game over\n"
+        "  --auto-advance    press RETURN periodically, so a headless run\n"
+        "                    walks through the screens that hold for a key\n"
         "  --auto N          simulate N scripted frames first (for testing)\n"
         "  --demo            let the scripted player drive the live loop\n"
         "  --music NAME      song to play (default: TUBES.MUS)\n"
@@ -694,6 +721,94 @@ void drawBriefing(tubes::Screen& screen, const tubes::Game& game,
 // `1000:2894`, the modes 2 and 3 arm, is not decompiled: it draws the chain
 // illustration that shows which orientation is wanted. Left undrawn rather
 // than invented, so those waves show their count and nothing else.
+
+// The end-of-session banner, `1000:5d64`. It is drawn by `1000:3a67` itself,
+// over whatever the play field was left showing, rather than on a fresh
+// screen - so the caller must NOT clear first.
+void drawBanner(tubes::Screen& screen, tubes::Banner banner,
+                const tubes::Font& heading, bool haveHeading,
+                const tubes::Font& small, bool haveSmall, bool showHint) {
+    if (banner == tubes::Banner::kNone || !haveHeading) return;
+    const tubes::BannerText t = tubes::bannerText(banner);
+    tubes::drawTextCentred(screen, heading, 0, 319, tubes::kBannerY,
+                           tubes::kBannerColour, tubes::kBannerMode, t.line1);
+    tubes::drawTextCentred(screen, heading, 0, 319, tubes::kBannerRuleY,
+                           tubes::kBannerColour, tubes::kBannerMode, t.rule);
+    // `1000:5ed7`, only on the abort arm and only when saving is enabled.
+    if (showHint && haveSmall) {
+        tubes::drawTextCentred(screen, small, 0, 319, tubes::kAbortHintY,
+                               tubes::kBannerColour, tubes::kAbortHintMode,
+                               tubes::kAbortHint);
+    }
+}
+
+// The stats screen, `1000:8da5`. The rows are built once, when the screen is
+// entered, because building them is what accumulates the running chain total -
+// see `buildStatsScreen`. This function only draws what it is given.
+void drawStats(tubes::Screen& screen, const std::vector<tubes::StatsRow>& rows,
+               const tubes::Image* bg, bool haveBg, const tubes::Font& heading,
+               const tubes::Font& label, const tubes::Font& number,
+               bool haveHeading, bool haveLabel, bool haveNumber) {
+    // `1000:8db4`: it re-blits the HELD image rather than loading art of its
+    // own. There is no blackboard here, whatever the name in `PLAN.md` said -
+    // the blackboard is the cutscene at `1b2e:1651`.
+    //
+    // NOT FULLY SETTLED. The original's `2321:068d` blits to (0, **12**), not
+    // to the origin, and takes its size from `DS:0x205c`/`0x205e` - so what it
+    // puts up is a held image below the HUD row, not the 320x200 GAMEBG. What
+    // fills `DS:0x2058` is not decompiled. Drawing the backdrop at the origin
+    // is a stand-in that shows the right text on a plausible background; the
+    // placement wants a capture of the original's stats screen to settle.
+    screen.clear(0);
+    if (haveBg) screen.blit(*bg);
+
+    for (const tubes::StatsRow& r : rows) {
+        const tubes::Font* f = nullptr;
+        switch (r.font) {
+        case tubes::StatsFont::kHeading: if (haveHeading) f = &heading; break;
+        case tubes::StatsFont::kLabel:   if (haveLabel)   f = &label;   break;
+        case tubes::StatsFont::kNumber:  if (haveNumber)  f = &number;  break;
+        }
+        if (!f) continue;
+        tubes::drawTextCentred(screen, *f, 0, 319, r.y, r.colour, r.mode,
+                               r.text);
+    }
+}
+
+// The Continue screen, `1000:8c38`. Drawn over whatever is already there - the
+// original never clears, which is why the stats screen stays behind it.
+void drawContinue(tubes::Screen& screen, int ticksLeft,
+                  const tubes::Font& heading, bool haveHeading,
+                  const tubes::Font& number, bool haveNumber) {
+    if (haveHeading) {
+        tubes::drawTextCentred(screen, heading, 0, 319, tubes::kContinueTitleY,
+                               tubes::kContinueTitleColour, tubes::textmode::kPeak,
+                               "Continue");
+        tubes::drawTextCentred(screen, heading, 0, 319, tubes::kContinueRuleY,
+                               tubes::kContinueTitleColour, tubes::textmode::kPeak,
+                               "______");
+    }
+    if (haveNumber) {
+        tubes::drawTextCentred(screen, number, 0, 319, tubes::kContinueCountY,
+                               tubes::kContinueCountColour,
+                               tubes::textmode::kFadeUp,
+                               std::to_string(ticksLeft));
+    }
+}
+
+// The pause overlay, `1000:3916`. Same two rows as a banner, and the loop is
+// blocked entirely while it is up.
+void drawPaused(tubes::Screen& screen, const tubes::Font& heading,
+                bool haveHeading) {
+    if (!haveHeading) return;
+    tubes::drawTextCentred(screen, heading, 0, 319, tubes::kBannerY,
+                           tubes::kBannerColour, tubes::textmode::kPeak,
+                           "Game Paused");
+    tubes::drawTextCentred(screen, heading, 0, 319, tubes::kBannerRuleY,
+                           tubes::kBannerColour, tubes::textmode::kPeak,
+                           "_________");
+}
+
 // The title screen, `1b2e:52bf`, and its menu, `1b2e:4d80`.
 //
 // `TUBESBG.GFX` and `TUBESFG.GFX` are a background/foreground pair - the word
@@ -857,6 +972,23 @@ uint8_t readKeyboard() {
     }
     if (k[SDL_SCANCODE_LALT] || k[SDL_SCANCODE_RALT]) b |= tubes::button::kB;
     return b;
+}
+
+// An SDL keycode as the original's `ReadKey` would have reported it, so
+// `classifyGameKey` can be the game's own dispatch rather than an SDL one.
+// Turbo Pascal returns #0 then the scancode for an extended key and
+// `2000:7823` folds that pair into `0x80 + scancode`, which is why F1..F5 are
+// 0xbb..0xbf and not 0x3b..0x3f.
+uint8_t originalKeyCode(SDL_Keycode k) {
+    switch (k) {
+    case SDLK_ESCAPE: return tubes::gamekey::kEsc;
+    case SDLK_F1: return tubes::gamekey::kF1;
+    case SDLK_F2: return tubes::gamekey::kF2;
+    case SDLK_F3: return tubes::gamekey::kF3;
+    case SDLK_F4: return tubes::gamekey::kF4;
+    case SDLK_F5: return tubes::gamekey::kF5;
+    default: return 0;
+    }
 }
 
 // A scripted player, used by --auto so the game loop can be exercised
@@ -1593,6 +1725,10 @@ int main(int argc, char** argv) {
     }
 
     bool running = true;
+    // Counts down to zero on presented frames, so `--screenshot-after N`
+    // captures the (N+1)th frame the loop actually draws.
+    int shotCountdown = opt.shotAfter;
+    int autoAdvanceTick = 0;
 
     // The present tail, shared. This is a lambda rather than repeated code
     // because a previous version duplicated it for an overlay and `continue`d
@@ -1615,7 +1751,7 @@ int main(int argc, char** argv) {
         SDL_RenderCopy(ren, tex, nullptr, &dst);
         SDL_RenderPresent(ren);
 
-        if (!opt.screenshot.empty()) {
+        if (!opt.screenshot.empty() && shotCountdown-- <= 0) {
             SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormatFrom(
                 rgba.data(), tubes::kScreenWidth, tubes::kScreenHeight, 32,
                 tubes::kScreenWidth * 4, SDL_PIXELFORMAT_RGBA32);
@@ -1627,7 +1763,9 @@ int main(int argc, char** argv) {
             running = false;
         }
 
-        SDL_Delay(16);
+        // `--screenshot-after` runs the loop as fast as it can, since it may
+        // need thousands of frames to reach a screen that is past a game over.
+        if (opt.shotAfter <= 0) SDL_Delay(16);
     };
 
     // `1000:a5d2`: the briefing runs once per wave, before `1000:3a67`, and
@@ -1640,11 +1778,59 @@ int main(int argc, char** argv) {
         briefDecor = static_cast<int8_t>(game->rollForTest(8) + 1);
     };
     if (briefingUp) raiseBriefing();
+
+    // ---- `1000:9e53`'s wave loop -------------------------------------------
+    //
+    // `DS:0x1d4e`: 0 attract, 1 endurance, anything else wave mode. Every
+    // wave test in the original is `mode <> 0 and mode <> 1`.
+    int gameMode = opt.playDemo ? 0 : (opt.wave > 0 ? 2 : 1);
+    tubes::SessionFlags flags;
+    tubes::SessionTotals totals;
+    tubes::SessionStage sstage =
+        briefingUp ? tubes::SessionStage::kBriefing : tubes::SessionStage::kPlay;
+    tubes::Banner banner = tubes::Banner::kNone;
+    std::vector<tubes::StatsRow> statsRows;
+    tubes::ContinuePrompt continuePrompt;
+    float continueAccum = 0.0f;
+    // F5, `1000:3916`. The original blocks in `repeat until ReadKey = $bf`, so
+    // the simulation does not advance and ONLY F5 releases it.
+    bool paused = false;
+    // F3 and F4, `DS:0x215f` and `DS:0x215e`.
+    bool musicOn = !opt.music.empty();
+    bool soundOn = true;
+
+    // Swapping the song for a stage. The seven names live in `1000:9e53`'s own
+    // frame as far pointers four bytes apart - see reversing-notes.
+    auto playSong = [&](const char* name) {
+        if (!name || !*name || !musicOn || !music.isOpen()) return;
+        tubes::Bytes data;
+        std::string err;
+        if (res.read(name, data, err)) music.play(data, err);
+    };
+
+    // Entering the stats screen is what accumulates the running chain total,
+    // so it happens exactly once per visit - never in the draw path.
+    auto enterStats = [&]() {
+        totals.chainsThisWave = game->chains();
+        statsRows = tubes::buildStatsScreen(totals, game->progress().wave,
+                                            game->score(), false);
+        playSong(tubes::kStatsMusic);
+    };
     float demoAccum = 0.0f;
     size_t demoFrame = 0;
     Uint32 last = SDL_GetTicks();
 
     while (running) {
+        // Harness only: press RETURN periodically so a headless run walks
+        // through the screens that hold for a key. Periodic rather than every
+        // frame, so each screen is on display long enough to be captured.
+        if (opt.autoAdvance && ++autoAdvanceTick % 40 == 0) {
+            SDL_Event fake{};
+            fake.type = SDL_KEYDOWN;
+            fake.key.keysym.sym = SDLK_RETURN;
+            SDL_PushEvent(&fake);
+        }
+
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             if (ev.type == SDL_QUIT) { running = false; continue; }
@@ -1678,10 +1864,21 @@ int main(int argc, char** argv) {
                         // `DS:0x1d4e`: 2 is Wave mode, which starts at wave 1
                         // and briefs before playing. Endurance has no wave
                         // structure and no briefing.
+                        gameMode = c.mode;
+                        flags = tubes::SessionFlags{};
+                        totals = tubes::SessionTotals{};
+                        banner = tubes::Banner::kNone;
+                        paused = false;
+                        briefingUp = false;
                         if (c.mode == 2) {
                             game->startWave();
                             raiseBriefing();
                         }
+                        sstage = tubes::firstStage(gameMode);
+                        playSong(sstage == tubes::SessionStage::kBriefing
+                                     ? tubes::kBriefingMusic
+                                     : tubes::playMusicFor(
+                                           game->dropsRemaining()));
                         stage = Stage::kPlay;
                         break;
                     }
@@ -1698,14 +1895,150 @@ int main(int argc, char** argv) {
                 continue;
             }
 
-            if (k == SDLK_ESCAPE || k == SDLK_q) running = false;
-            else if (briefingUp) briefingUp = false;
+            // ---- inside the session, `1000:9e53` -------------------------
+            //
+            // `1000:2dd0` runs once a frame and only when `KeyPressed`, so the
+            // whole of it belongs here rather than in the per-frame update.
+            // The keys it recognises are ESC and F1..F5; everything else falls
+            // through to the tube, which reads the keyboard separately.
+            const uint8_t code = originalKeyCode(k);
+
+            // F5 first: while paused the original is blocked inside
+            // `repeat until ReadKey = $bf`, so NOTHING else is looked at and
+            // only F5 gets out.
+            if (paused) {
+                if (code == tubes::gamekey::kF5) {
+                    paused = false;
+                    music.setPaused(false);
+                }
+                continue;
+            }
+
+            switch (sstage) {
+            case tubes::SessionStage::kBriefing:
+                // `1b2e:0e37` accepts any of its keys here; the briefing has
+                // nothing to choose, so any key advances it.
+                briefingUp = false;
+                sstage = tubes::SessionStage::kPlay;
+                playSong(tubes::playMusicFor(game->dropsRemaining()));
+                continue;
+
+            case tubes::SessionStage::kBanner: {
+                // `1000:5e0b` and `1000:5e78`: a key ends the banner. The
+                // abort banner does not wait at all, but it is the arm that
+                // offers F2, so it is left up until a key here too.
+                const tubes::StageTransition t =
+                    tubes::advanceStage(sstage, flags, gameMode);
+                sstage = t.next;
+                banner = tubes::Banner::kNone;
+                if (sstage == tubes::SessionStage::kStats) enterStats();
+                if (sstage == tubes::SessionStage::kFinished) {
+                    stage = Stage::kTitle;
+                    menu.raise();
+                    playSong("TUBES.MUS");
+                }
+                continue;
+            }
+
+            case tubes::SessionStage::kStats: {
+                const tubes::StageTransition t =
+                    tubes::advanceStage(sstage, flags, gameMode);
+                if (t.advanceWave) game->advanceWave();
+                sstage = t.next;
+                if (sstage == tubes::SessionStage::kContinue) {
+                    if (!continuePrompt.begin(totals)) {
+                        // `1000:8c3f`: with no continues left the screen does
+                        // not appear, and the loop ends.
+                        sstage = tubes::SessionStage::kFinished;
+                        stage = Stage::kTitle;
+                        menu.raise();
+                        playSong("TUBES.MUS");
+                    } else {
+                        continueAccum = 0.0f;
+                        playSong(tubes::kContinueMusic);
+                    }
+                } else if (sstage == tubes::SessionStage::kBriefing) {
+                    game->startWave(flags.replay);
+                    flags.replay = false;   // `1000:86b8`'s tail clears it
+                    raiseBriefing();
+                    playSong(tubes::kBriefingMusic);
+                }
+                continue;
+            }
+
+            case tubes::SessionStage::kContinue: {
+                // `1b2e:0e37` returns 1 for Enter/Space and 2 for ESC; the
+                // Continue screen acts on exactly those two.
+                const bool accept = (k == SDLK_RETURN || k == SDLK_SPACE);
+                const bool decline = (k == SDLK_ESCAPE);
+                if (!accept && !decline) continue;
+                const tubes::ContinueResult r =
+                    continuePrompt.tick(accept, decline);
+                if (r == tubes::ContinueResult::kAccepted) {
+                    tubes::applyContinue(flags, totals);
+                    game->continueSession();
+                }
+                if (r != tubes::ContinueResult::kWaiting) {
+                    const tubes::StageTransition t =
+                        tubes::advanceStage(sstage, flags, gameMode);
+                    sstage = t.next;
+                    if (sstage == tubes::SessionStage::kBriefing) {
+                        game->startWave(flags.replay);
+                        flags.replay = false;
+                        raiseBriefing();
+                        playSong(tubes::kBriefingMusic);
+                    } else {
+                        stage = Stage::kTitle;
+                        menu.raise();
+                        playSong("TUBES.MUS");
+                    }
+                }
+                continue;
+            }
+
+            default:
+                break;
+            }
+
+            // Still playing: `1000:2dd0`'s dispatch proper.
+            switch (tubes::classifyGameKey(code, gameMode == 0,
+                                           /*saveDisabled=*/true)) {
+            case tubes::GameAction::kAbort:
+                flags.aborted = true;
+                break;
+            case tubes::GameAction::kPause:
+                paused = true;
+                music.setPaused(true);
+                break;
+            case tubes::GameAction::kMusicToggle:
+                musicOn = !musicOn;
+                // `1000:377a`: switching on restarts the CURRENT song, which
+                // is the one chosen at the top of the wave.
+                if (musicOn) playSong(tubes::playMusicFor(
+                                 game->dropsRemaining()));
+                else music.stop();
+                break;
+            case tubes::GameAction::kSoundToggle:
+                soundOn = !soundOn;
+                break;
+            case tubes::GameAction::kHelp:
+            case tubes::GameAction::kSave:
+                // `1b2e:2d63`'s help body and the F2 slot picker are read as
+                // a dispatch but their screens are not decompiled. Left inert
+                // rather than invented.
+                break;
+            default:
+                break;
+            }
         }
 
         Uint32 now = SDL_GetTicks();
         float dt = static_cast<float>(now - last) / 1000.0f;
         last = now;
         if (dt > 0.1f) dt = 0.1f;    // a stall must not teleport atoms
+        // Under `--screenshot-after` the step is fixed, so one presented frame
+        // is one simulation frame and the capture point is reproducible.
+        if (opt.shotAfter > 0) dt = 1.0f / tubes::kFrameHz;
 
         // --demo drives the REAL loop with the scripted player, so the render
         // path gets exercised on every frame of a whole session rather than
@@ -1732,7 +2065,10 @@ int main(int argc, char** argv) {
                 // doing nothing.
                 attractTimer = tubes::kAttractTimeout;
             }
-        } else if (opt.screenshot.empty()) {
+        } else if (opt.screenshot.empty() || opt.shotAfter > 0) {
+            // `--screenshot` alone captures the opening frame and exits, so it
+            // deliberately does not simulate. `--screenshot-after N` does, or
+            // it could never reach a screen that is past a game over.
             if (opt.playDemo) {
                 // The recording is consumed at the fixed game step rather than
                 // through `update`'s real-time conversion - same accumulator,
@@ -1747,27 +2083,55 @@ int main(int argc, char** argv) {
                     game->stepOnce(game->acceptsInput() ? demo.input[demoFrame++]
                                                       : 0);
                 }
-            } else if (!briefingUp) {
+            } else if (sstage == tubes::SessionStage::kPlay && !paused) {
                 game->update(opt.demo ? scriptedInput(*game) : readKeyboard(), dt);
             }
-            // `1000:9e53`'s loop, minus the two screens it goes through: the
-            // stats blackboard at `1000:8da5` and the briefing at `1000:86b8`.
-            // The progression itself is faithful - `1000:a616` runs only on a
-            // wave that was CLEARED.
-            if (game->waveComplete()) {
-                game->advanceWave();
-                game->startWave();
-                raiseBriefing();
-                std::printf("Wave %d: mode %d, %d to go\n",
-                            game->progress().wave,
-                            static_cast<int>(game->waveMode()),
-                            game->objective().counter);
+
+            // `1000:5cff`, the tail of `3a67`'s frame loop: the wave ends on a
+            // completed objective, a drop underflow, or the key handler having
+            // set the abort. All three then fall through to the banner at
+            // `1000:5d64`, which `3a67` draws itself before returning.
+            if (sstage == tubes::SessionStage::kPlay &&
+                (game->waveComplete() || game->gameOver() || flags.aborted)) {
+                flags.gameOver = game->gameOver();
+                // `1000:5dae`: the Perfect Bonus is added to the score before
+                // the banner, not by the stats screen that reports it.
+                if (totals.perfectBonus) {
+                    game->setScore(game->score() + tubes::kPerfectBonus);
+                }
+                banner = tubes::bannerFor(flags, game->waveComplete());
+                sstage = tubes::SessionStage::kBanner;
+                const tubes::BannerText bt = tubes::bannerText(banner);
+                if (*bt.music) playSong(bt.music);
+                else music.stop();
+            }
+
+            // `1000:8c38`'s countdown ticks on its own, so the prompt expires
+            // whether or not the player touches anything.
+            if (sstage == tubes::SessionStage::kContinue &&
+                continuePrompt.active()) {
+                continueAccum += dt;
+                if (continueAccum >= kContinueTickSeconds) {
+                    continueAccum -= kContinueTickSeconds;
+                    if (continuePrompt.tick(false, false) ==
+                        tubes::ContinueResult::kDeclined) {
+                        // Running out declines, and `1000:a69b` then leaves
+                        // the loop with `gameOver` still set.
+                        sstage = tubes::SessionStage::kFinished;
+                        stage = Stage::kTitle;
+                        menu.raise();
+                        playSong("TUBES.MUS");
+                    }
+                }
             }
             // One voice, so one sound a frame: a second event in the same
             // frame has already replaced the first inside Game, which is what
             // calling the driver's PlaySound twice does.
             const int8_t want = game->takeSound();
-            if (want >= 0 && want < tubes::sfx::kCount &&
+            // The sound is TAKEN either way, so F4 mutes without desyncing
+            // anything - `1000:3859` toggles the driver, it does not stop the
+            // game asking for sounds.
+            if (soundOn && want >= 0 && want < tubes::sfx::kCount &&
                 sounds[want].valid()) {
                 music.playSound(&sounds[want]);
             }
@@ -1978,6 +2342,27 @@ int main(int argc, char** argv) {
                          smallFont, haveBig, haveSmall, atoms, haveAtom, furn,
                          haveFurn, briefDecor);
         }
+
+        // The stats screen replaces the field; the banner, the Continue prompt
+        // and the pause overlay go OVER whatever is already drawn, because
+        // that is what the original does - none of the three clears first.
+        if (sstage == tubes::SessionStage::kStats ||
+            sstage == tubes::SessionStage::kContinue) {
+            drawStats(screen, statsRows, &background, haveBg, headingFont,
+                      smallFont, bigFont, haveHeading, haveSmall, haveBig);
+        }
+        if (sstage == tubes::SessionStage::kBanner) {
+            // `1000:5ec9`: the F2 hint appears only on the abort arm, and only
+            // when the mode is not attract and saving is enabled.
+            drawBanner(screen, banner, headingFont, haveHeading, smallFont,
+                       haveSmall,
+                       banner == tubes::Banner::kAborted && gameMode != 0);
+        }
+        if (sstage == tubes::SessionStage::kContinue) {
+            drawContinue(screen, continuePrompt.ticksLeft(), headingFont,
+                         haveHeading, bigFont, haveBig);
+        }
+        if (paused) drawPaused(screen, headingFont, haveHeading);
 
         presentFrame();
     }

@@ -396,6 +396,19 @@ public:
     int chains() const { return chains_; }
     bool gameOver() const { return gameOver_; }
 
+    // `1000:8d0b`, the arm an accepted Continue takes. It zeroes the score,
+    // restores the drop count from the seed `DS:0x1d51`, and clears the game
+    // over. It does NOT touch either chain total - those live in the outer
+    // frame and a continued game keeps the chains it has made, which is why
+    // the stats screen's running total survives a Continue.
+    void continueSession() {
+        score_ = 0;
+        scorePending_ = 0;
+        scoreMultiplier_ = 0;
+        dropsRemaining_ = startingDrops_;
+        gameOver_ = false;
+    }
+
     // ---- Wave mode -------------------------------------------------------
     //
     // A Game is one WAVE, not one session. `1000:9e53` owns the loop around
