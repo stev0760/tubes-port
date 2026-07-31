@@ -6591,10 +6591,26 @@ from the other side:
 
     xLeft  := 140 - 4*L
     xRight := 163 + 4*L
-    y      := yBase + i*16          { or i*26 on page 6, Game Options }
+    y      := yBase + i*16 + 2      { or i*26 + 2 on page 6, Game Options }
 
 So the stars bracket the centred item text and move outward as it lengthens,
 four pixels a character - half an 8-wide glyph on each side.
+
+**Measured against the original** - `capture_title.py`, five captures across
+three pages and three different selections - the `y` is exact in every one, and
+the `x` is exact once you account for the star's own frame: the blit is 12 wide
+but the lit artwork inside it starts one to three pixels in depending on which
+of the four frames is up, and the *same* inset appears on both stars in every
+capture, which is what confirms it is the sprite content rather than the
+placement.
+
+| capture | measured xL, xR, y | formula |
+|---|---|---|
+| main menu, `Start Game` | 102, 205, 36 | 100, 203, **36** |
+| Game Mode, `Endurace Mode` | 91, 218, 76 | 88, 215, **76** |
+| Difficulty, `Tubes 101` | 106, 201, 68 | 104, 199, **68** |
+| Difficulty, `Tubes 201` | 105, 200, 84 | 104, 199, **84** |
+| Difficulty, `Tubes 301` | 107, 202, 100 | 104, 199, **100** |
 
 ### `1b2e:467a` - SetMenuPage
 
@@ -6614,8 +6630,12 @@ What it does:
 - `[0x1d44] := 1`, *except* that arriving at page 1 restores the remembered
   main-menu item from `[0x1d43]`;
 - `parent[-0x191] := count`;
-- `parent[-0x194] := (180 - 16*count) div 2`, the y origin - the block is
+- then **`INC byte ptr [BP+6]`** - the count is bumped *before* the next step,
+  which is easy to miss and changes the answer by six pixels;
+- `parent[-0x194] := (180 - 16*(count+1)) div 2`, the y origin - the block is
   **vertically centred in 180 rows at 16 px a row**, or 26 px a row on page 6.
+  The `+1` is the page **title**, entry 0, which occupies a row of its own, so
+  a page of `n` items is laid out as `n+1` rows.
 
 **The page id is an explicit parameter, not derived from the pointer.** The
 earlier note here inferred `pageId = (ptr - 0xca) div 0x18c + 1`; that formula
