@@ -2758,8 +2758,16 @@ int main(int argc, char** argv) {
             }
 
             // Still playing: `1000:2dd0`'s dispatch proper.
+            //
+            // `DS:0x1d4b` is the save-disabled flag, and it is written in
+            // exactly one place - `1000:b1e4`, which sets it to ZERO - and
+            // read in three: this F2 gate, the abort banner's F2 hint, and the
+            // high-score offer. So **saving is always enabled** in the shipped
+            // build; the flag looks like a switch for an edition that never
+            // came. The port hard-coded `true` here while the save screen did
+            // not exist, which quietly made F2 dead once it did.
             switch (tubes::classifyGameKey(code, gameMode == 0,
-                                           /*saveDisabled=*/true)) {
+                                           tubes::kSaveDisabled)) {
             case tubes::GameAction::kAbort:
                 flags.aborted = true;
                 break;
@@ -3242,7 +3250,8 @@ int main(int argc, char** argv) {
             // when the mode is not attract and saving is enabled.
             drawBanner(screen, banner, headingFont, haveHeading, smallFont,
                        haveSmall,
-                       banner == tubes::Banner::kAborted && gameMode != 0);
+                       banner == tubes::Banner::kAborted && gameMode != 0 &&
+                           !tubes::kSaveDisabled);
         }
         if (sstage == tubes::SessionStage::kContinue) {
             drawContinue(screen, continuePrompt.ticksLeft(), headingFont,

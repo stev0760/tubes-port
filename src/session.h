@@ -69,6 +69,14 @@ enum class GameAction {
 //   flag that disables saving.
 GameAction classifyGameKey(uint8_t code, bool attractMode, bool saveDisabled);
 
+// `DS:0x1d4b`. Written in ONE place - `1000:b1e4`, which sets it to zero - and
+// read in three: `1000:2ded`'s F2 gate, `1000:5ed0`'s F2 hint on the abort
+// banner, and `1000:a6ba`'s high-score offer. Nothing ever sets it, so saving
+// is always enabled in the shipped build and this is a constant rather than a
+// variable. Kept as a named one because all three sites read it and a later
+// edition might not.
+constexpr bool kSaveDisabled = false;
+
 // ---------------------------------------------------------------------------
 // The end-of-session banners, `1000:5d64`
 // ---------------------------------------------------------------------------

@@ -275,12 +275,15 @@ changes a rule.
 
 ### 0. START HERE: the menu items that are reachable and inert
 
-**The next step is section 4B below.** The session loop is closed (4A, done):
-brief, play, banner, stats, Continue, back to the title, with ESC and Pause
-working. What is left before a player can sit down with the whole program is **attract
-mode** - the 720-frame countdown runs and restarts where it should hand off to
-`DEMO.SCR`, which the port already replays correctly end to end. High Scores
-and Save/Load are both done, screens and all, and F2 works.
+**The next step is section 4B below.** The session loop is closed (4A, done)
+and so are High Scores and Save/Load, screens and all - F2 saves and Continue
+Saved Game loads a real DOS save.
+
+**The menu is still not finished**, and it is what stands between here and a
+player sitting down with the whole program. Four of the eight items go
+nowhere: **Game Options** (both toggles AND Redefine Input Device - the player
+has flagged key/gamepad binding as important), **Instructions**, **View Demo**
+and **Credits**. 4B lists each with its address and what it needs.
 
 `1000:3a67` itself is **done** - this section's original task - and the method
 below is what did it. Keep it.
@@ -728,26 +731,50 @@ picker are read as a dispatch but their screens are not decompiled, so both
 keys are inert. Those belong with B below, since F2 is save/load.
 
 **B. The menu items that currently do nothing.** Each is reachable and inert,
-which is worse than absent - it looks broken.
+which is worse than absent - it looks broken. **The menu is NOT finished**; four
+of the eight items still go nowhere.
 
-3. **High scores. DONE and verified** - `src/hiscore.{h,cpp}`, the entry screen
-   `1000:96db` and the viewer `1b2e:61b6`. `TUBES.HSC` round-trips byte-exact
-   against a real file, and both viewer pages diff against the original at
-   **0 pixels of 64,000**, unmasked (`grab_hiscores.py`, `diff_hiscores.py`).
-   The entry screen has no capture yet - it needs a qualifying score - and is
-   the only part still on the disassembly alone.
-4. **Save / load. DONE, both halves.** `TUBES.SAV` is fully decoded
-   (`src/save.{h,cpp}`), Continue Saved Game works end to end, and F2 saves.
-   The captured slot list diffs at 252 of 64,000 pixels, all of them the
-   turning star's rotation phase; the F2 screen carries 99% of the original's
-   own ink at the same coordinates, which is as exact as a screen drawn over a
-   live play field can be compared.
+DONE:
 
-   Still inert: **F1 help**, whose body is in `1b2e:2d63` and is not
-   decompiled.
-5. **Attract mode.** The 720-frame countdown runs and restarts; it should hand
-   off to `DEMO.SCR`, which the port already replays correctly end to end.
-   `1b2e:52bf` returns **9** for exactly this.
+- **High scores** - `src/hiscore.{h,cpp}`, the entry screen `1000:96db` and the
+  viewer `1b2e:61b6`. `TUBES.HSC` round-trips byte-exact against a real file,
+  and both viewer pages diff against the original at **0 pixels of 64,000**,
+  unmasked. The entry screen has no capture yet; it needs a qualifying score.
+- **Save / load**, both halves - `src/save.{h,cpp}`, Continue Saved Game, and
+  F2. `TUBES.SAV` is fully decoded and re-encodes byte-exact; the slot list
+  diffs at 252 of 64,000 pixels (all star-rotation phase) and the F2 screen
+  carries 99% of the original's ink at the same coordinates.
+
+STILL INERT, in the order they matter to a player:
+
+1. **Game Options.** The page is `Toggle Music <yes/no>` / `Toggle Sound FX
+   <yes/no>` / `Redefine Input Device` / `Exit`, and **none of it does
+   anything**. The two toggles are the easy half - F3 and F4 already flip
+   `musicOn` and `soundOn` in the session, so the page needs to show and edit
+   the same two flags, and the `<yes/no>` suffix has to be built at runtime
+   the way the save-slot rows are.
+
+   **Redefine Input Device is the important one, and it is two jobs.** The
+   original picks a DRIVER - `KEYBOARD.DRV`, `JOYSTK1/2.DRV`, `MOUSE.DRV` are
+   all in `DRIVERS.RES` - so porting the screen faithfully means porting a
+   device chooser. What a player on SDL actually needs is **key and gamepad
+   binding**, which the original has no concept of. Do the original's screen
+   first so the menu is faithful, then treat bindings as the first entry in
+   section 5's enhancements - but note that the player has called them
+   important, so do not defer them far. The port currently hard-codes arrows,
+   Ctrl/Space and Escape in `readKeyboard()`.
+2. **Instructions.** `1b2e:2d63`, 4,510 bytes - a prev/next slideshow. Every
+   slide's text is already captured in `capture/instr/` from an earlier session,
+   and the game's own Instructions have twice settled a rule this project was
+   deriving the hard way, so the text is worth having in the repo regardless.
+3. **View Demo / attract mode.** The 720-frame countdown runs and restarts
+   where it should hand off to `DEMO.SCR`, which the port already replays
+   correctly end to end - and `1b2e:52bf` returns **9** for exactly this. The
+   menu item and the timeout are the same path. Cheapest of the four.
+4. **Credits.** Unread. Small, and it is the one screen nothing else depends on.
+
+Also inert: **F1 help** in-game, whose body is in `1b2e:2d63` alongside the
+slideshow.
 
 **C. The two splashes,** `21d5:007b` and `2178:00eb`. Small, and they make the
 boot sequence real. Deliberately after B: they are the least interactive thing
