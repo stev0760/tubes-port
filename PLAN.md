@@ -1127,11 +1127,34 @@ about keeping it that way, so publishing is mostly a matter of paperwork:
   Also note the emulator is `RegisterSink`-swappable, so a target that cannot
   take LGPL at all can drop in a different core without touching anything
   reversed.
-- **The briefing prose.** `src/wave_text.cpp` holds the game's own text, by a
-  deliberate decision recorded in its commit message rather than by accident.
-  If that ever needs to go, the replacement is to read the Pascal ShortStrings
-  out of the user's `TUBES.EXE` at runtime; that file is the only thing that
-  changes.
+- **The game's own text in `src/`** - `wave_text.cpp`, `instructions.cpp`,
+  `credits.cpp`, `cutscene.cpp`. **Decided: it stays**, and the reasoning is
+  the player's.
+
+  Tubes was released as SHAREWARE, and the shareware package's own
+  `TUBES.DOC` carries the cutscene's story in plain text, near enough verbatim
+  - "In a lab far far away in the Great White North... Dr. Lanny B. Brilliant
+  was completing his work on the creation of 8 new elements not yet included
+  on the periodic table." So the story is not something this project lifted
+  out of a binary that was never meant to be read; the publisher shipped it in
+  a text file meant to travel with the game.
+
+  Two things to be straight about, because this file's job is to separate
+  proven from assumed. "Abandonware" is not a legal category - the copyright
+  did not lapse because the company stopped selling it - so the argument that
+  carries weight is the shareware one, not that one. And neither `TUBES.DOC`
+  nor `CATALOG.TXT` in this copy contains an explicit distribution notice, so
+  there is no licence text to point at; the terms are inferred from the
+  release model.
+
+  The **assets** rule is untouched and is the one that matters: no `.RES`, no
+  `.EXE`, no extracted sprites, no rendered output. Text tables generated from
+  the binary are the exception, taken knowingly.
+
+  The fallback still exists if it is ever wanted - read the Pascal
+  ShortStrings out of the user's own `TUBES.EXE` at runtime - and the
+  generators make it cheap, since the table layout would not change. It is an
+  option, not a plan.
 - `README.md` already leads with "you need your own copy" and explains why.
   Keep that first; it is the thing that makes the project defensible.
 - Re-read `.gitignore` before the first push, and check `git log --stat` for
