@@ -183,6 +183,12 @@ entry point that runs a session, not just the ones that look like tests.
 This project has been unusually rigorous about proof, and it has repeatedly
 paid off. Keep it up.
 
+- **Diff the COLOURS, not just the count.** The cutscene's last 144 pixels sat
+  open for two sessions, written up as "the original still holds the
+  difference" and blamed on unread page bookkeeping. One `Counter` over the
+  differing pixels said `(0,0,0) x 144` - the original was BLACK there and the
+  port was showing something, the opposite way round from the write-up - and
+  the cause fell out in minutes. A pixel count says where; the values say what.
 - **A size check is not a correctness check.** Every `.CSP` decoded to the
   right pixel count while having completely wrong geometry, because C++
   integer division truncates toward zero where Python floors. It rendered as
