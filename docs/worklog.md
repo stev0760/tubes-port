@@ -3377,3 +3377,44 @@ playing the answer to "has it finished" is yes - so the wait now ends, and
 attract mode turns over on its own: demo, game over, title, thirty seconds,
 demo again. Verified by running 5,200 frames from a cold title screen and
 finding a SECOND demo already in progress.
+
+## 2026-07-31 - Instructions, extracted rather than transcribed
+
+`1b2e:2d63` is 4,510 bytes, 152 strings and 22 illustrations across 21 slides.
+That is data, and the interesting decision was not to type it.
+
+`tools/gen_instructions.py` reads the disassembly and emits
+`src/instructions.cpp`. Every text call is a fixed push sequence, so the x, y,
+colour, mode and string offset come out mechanically, and the offsets resolve
+against a byte dump of the same segment. 152 strings typed by hand would be 152
+chances to mistype a line of the game's own documentation and never notice -
+and this project has twice found an answer in these slides that it was deriving
+the hard way, so the text being exactly right matters.
+
+The structure is a straight run, not a dispatch: each slide draws, then waits at
+`1b2e:0e37(30)` - the professor's key-wait with a thirty-second give-up - and
+branches on the code:
+
+    2   leave          { ESC }
+    5   previous slide { Up }
+    _   the next one
+
+**Slide 1's "previous" arm jumps to its own wait.** There is no slide before it,
+so the original clamps rather than wrapping, and it does so by jumping back into
+the wait it is already in. Reading the jump targets is what proved the model:
+slide 2's arm goes to slide 1's draw, slide 3's to slide 2's, and slide 1's
+to itself.
+
+The illustrations turned out to be free. They index the ball table at
+`DS:0x1da6 + 4 * type`, so they are atom TYPES and the port already has every
+sprite; only two are the slideshow's own, `TESTUBE1.CSP` and `TESTUBES.CSP`,
+and the port already loads both.
+
+The background is the CLASSROOM - `1b2e:0a11`, projector slide and all, the
+same scene the briefing uses. That is why every x in the table sits between 76
+and 244: the sheet spans 74..246. The two navigation lines are the exception,
+centred over the whole screen below the sheet.
+
+**8 pixels of 64,000** against a captured original slide, and they are the
+professor's pointer mid-wave. The text is a 100% ink match - 10,734 pixels, the
+same set.

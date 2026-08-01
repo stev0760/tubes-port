@@ -23,6 +23,7 @@
 #include "gfx.h"
 #include "hiscore.h"
 #include "input.h"
+#include "instructions.h"
 #include "save.h"
 #include "menu.h"
 #include "mus.h"
@@ -280,6 +281,7 @@ struct Options {
     int hsPage = -1;            // -1 off; 0 Endurance, 1 Wave in the viewer
     bool f2 = false;            // open the F2 save screen, for capture
     bool rebind = false;        // open the rebinding screen, for capture
+    int instr = -1;             // open the Instructions on slide N, for capture
     // Harness only. `--screenshot` captures the first frame drawn, which can
     // never show a screen that is reached by PLAYING - the banners, the stats
     // screen and the Continue prompt are all past a game over. These two run
@@ -445,6 +447,11 @@ Options parseArgs(int argc, char** argv) {
             o.f2 = true;
         } else if (a == "--rebind") {
             o.rebind = true;
+        } else if (a == "--instructions") {
+            o.instr = 0;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                o.instr = std::atoi(argv[++i]);
+            }
         } else if (a == "--hiscores") {
             // The viewer's two pages, for capturing against the original:
             // `--hiscores` is Endurance and `--hiscores 1` is Wave.
@@ -1108,6 +1115,63 @@ std::string bindingLabel(const tubes::Binding& x) {
         }
     }
     return s.empty() ? std::string("(unbound)") : s;
+}
+
+// One Instructions slide, `1b2e:2d63`. The background is the CLASSROOM -
+// `1b2e:0a11`, the same scene the briefing uses, projector slide and all - and
+// the slide's text goes on the white sheet. That is why every x in the table
+// is between 76 and 244: the sheet is 74..246.
+//
+// The two navigation lines are the exception. They are centred over the whole
+// screen at y 184 and 192, which is BELOW the sheet, on the black.
+void drawInstructionSlide(tubes::Screen& screen, int slide,
+                          const tubes::Image* board, bool haveBoard,
+                          const SceneArt& art, int profFrame,
+                          const tubes::Font& small, bool haveSmall,
+                          const tubes::Sprite* atoms, const bool* haveAtom,
+                          const tubes::Sprite* tube, const bool* haveTube,
+                          const tubes::Sprite* furn, const bool* haveFurn) {
+    drawScene(screen, board, haveBoard, art, tubes::kSlideX, tubes::kSlideY,
+              profFrame);
+    if (slide < 0 || slide >= tubes::kInstructionSlideCount) return;
+    const tubes::InstructionSlide& s = tubes::kInstructionSlides[slide];
+    for (int i = 0; i < s.count; ++i) {
+        const tubes::InstructionItem& it = s.items[i];
+        switch (it.kind) {
+        case tubes::InstructionItem::kText:
+            if (haveSmall) {
+                tubes::drawText(screen, small, it.x, it.y,
+                                static_cast<uint8_t>(it.colour), it.mode,
+                                it.text);
+            }
+            break;
+        case tubes::InstructionItem::kCentred:
+            if (haveSmall) {
+                tubes::drawTextCentred(screen, small, it.x, 319, it.y,
+                                       static_cast<uint8_t>(it.colour),
+                                       it.mode, it.text);
+            }
+            break;
+        case tubes::InstructionItem::kAtom:
+            // The two negatives are the slideshow's own sprites; everything
+            // else is an atom type out of the game's ball table.
+            if (it.colour == tubes::kInstrTestTube1) {
+                if (haveTube[tubes::tubephase::kUpright]) {
+                    screen.draw(tube[tubes::tubephase::kUpright], it.x, it.y);
+                }
+            } else if (it.colour == tubes::kInstrTestTubeS) {
+                // TESTUBES.CSP - the tube's shadow, which the play field
+                // already loads as furniture.
+                if (haveFurn[kTestTubeShadow]) {
+                    screen.draw(furn[kTestTubeShadow], it.x, it.y);
+                }
+            } else if (it.colour > 0 && it.colour < kCellStates &&
+                       haveAtom[it.colour]) {
+                screen.draw(atoms[it.colour], it.x, it.y);
+            }
+            break;
+        }
+    }
 }
 
 // Rebinding the six controls. THE PORT'S OWN SCREEN - the original's third
@@ -2523,6 +2587,11 @@ int main(int argc, char** argv) {
     // rather than a `Menu::Page` - the page machine is the original's and
     // there is no page 8 in it.
     bool rebindOpen = opt.rebind;
+
+    // The Instructions slideshow, `1b2e:2d63` - a straight run of 21 slides
+    // rather than a dispatch, so the state is just which one is up.
+    bool instrOpen = opt.instr >= 0;
+    int instrSlide = opt.instr > 0 ? opt.instr : 0;
     int rebindRow = 0;                 // 0..5, the control being pointed at
     bool rebindWaiting = false;        // armed, waiting for the press
 
@@ -2752,10 +2821,34 @@ int main(int argc, char** argv) {
                 continue;
             }
 
+            // `1b2e:2f27`: ESC leaves, Up goes back a slide - clamped at the
+            // first, whose own arm jumps to its own wait - and anything else
+            // goes forward. Running off the end leaves too.
+            if (instrOpen) {
+                if (k == SDLK_ESCAPE) {
+                    instrOpen = false;
+                } else if (k == SDLK_UP) {
+                    if (instrSlide > 0) --instrSlide;
+                } else if (++instrSlide >= tubes::kInstructionSlideCount) {
+                    instrOpen = false;
+                }
+                continue;
+            }
+
             // The rebinding screen owns the keyboard while it is up. When it
             // is ARMED the next press is the binding, ESC included - there is
             // no other way to bind Escape, and no reason to forbid it.
-            if (rebindOpen) {
+            if (instrOpen) {
+            drawInstructionSlide(screen, instrSlide, &blackboard,
+                                 haveBlackboard, sceneArt,
+                                 tubes::pointerFrameFor(profWave), smallFont,
+                                 haveSmall, atoms, haveAtom, testTube,
+                                 haveTube, furn, haveFurn);
+            presentFrame();
+            continue;
+        }
+
+        if (rebindOpen) {
                 const auto g = static_cast<tubes::GameButton>(rebindRow);
                 if (rebindWaiting) {
                     settings.bindings.bindKey(g, ev.key.keysym.scancode);
@@ -2883,6 +2976,10 @@ int main(int argc, char** argv) {
                         stage = Stage::kPlay;
                         break;
                     }
+                    case tubes::MenuResult::kInstructions:
+                        instrOpen = true;
+                        instrSlide = 0;
+                        break;
                     case tubes::MenuResult::kViewDemo:
                         startDemo();
                         break;
@@ -3160,7 +3257,17 @@ int main(int argc, char** argv) {
             // The rebinding screen borrows the classroom, so it borrows the
             // professor's clock too - `1b2e:0e37` steps him every ten
             // retraces, and he waves his pointer while any screen waits.
-            if (rebindOpen) {
+            if (instrOpen) {
+            drawInstructionSlide(screen, instrSlide, &blackboard,
+                                 haveBlackboard, sceneArt,
+                                 tubes::pointerFrameFor(profWave), smallFont,
+                                 haveSmall, atoms, haveAtom, testTube,
+                                 haveTube, furn, haveFurn);
+            presentFrame();
+            continue;
+        }
+
+        if (rebindOpen) {
                 profAccum += dt * tubes::kRetraceHz;
                 while (profAccum >= tubes::kProfWaveRetraces) {
                     profAccum -= tubes::kProfWaveRetraces;
@@ -3365,6 +3472,16 @@ int main(int argc, char** argv) {
         // is up. It borrows the menu's own furniture - the title band, the
         // rule, the row pitch - so a screen the original never had still looks
         // like it belongs to this game.
+        if (instrOpen) {
+            drawInstructionSlide(screen, instrSlide, &blackboard,
+                                 haveBlackboard, sceneArt,
+                                 tubes::pointerFrameFor(profWave), smallFont,
+                                 haveSmall, atoms, haveAtom, testTube,
+                                 haveTube, furn, haveFurn);
+            presentFrame();
+            continue;
+        }
+
         if (rebindOpen) {
             drawRebindScreen(screen, settings.bindings, rebindRow,
                              rebindWaiting, &blackboard, haveBlackboard,

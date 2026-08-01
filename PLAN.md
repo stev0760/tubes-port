@@ -736,6 +736,12 @@ of the eight items still go nowhere.
 
 DONE:
 
+- **Instructions** - `1b2e:2d63`, all 21 slides. The slide data is EXTRACTED,
+  not transcribed: `tools/gen_instructions.py` reads the disassembly and emits
+  `src/instructions.cpp`, because 152 strings typed by hand would be 152
+  chances to mistype a line of the game's own documentation. A captured slide
+  diffs against the original at **8 pixels of 64,000**, all of them the
+  professor's pointer mid-wave.
 - **View Demo / attract mode** - `1000:b264` and `1000:b287` do the same three
   stores, so the menu item and the 720-frame timeout are one path: mode 0, new
   game, difficulty 2, replaying `DEMO.SCR`. Both work, and the loop turns over
@@ -762,11 +768,7 @@ DONE:
 
 STILL INERT, in the order they matter to a player:
 
-1. **Instructions.** `1b2e:2d63`, 4,510 bytes - a prev/next slideshow. Every
-   slide's text is already captured in `capture/instr/` from an earlier session,
-   and the game's own Instructions have twice settled a rule this project was
-   deriving the hard way, so the text is worth having in the repo regardless.
-2. **Credits.** `1b2e:411b`, named by `1000:b280`'s dispatch. Unread, small,
+1. **Credits.** `1b2e:411b`, named by `1000:b280`'s dispatch. Unread, small,
    and the one screen nothing else depends on.
 
 Also inert: **F1 help** in-game, whose body is in `1b2e:2d63` alongside the
