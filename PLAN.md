@@ -736,6 +736,13 @@ of the eight items still go nowhere.
 
 DONE:
 
+- **View Demo / attract mode** - `1000:b264` and `1000:b287` do the same three
+  stores, so the menu item and the 720-frame timeout are one path: mode 0, new
+  game, difficulty 2, replaying `DEMO.SCR`. Both work, and the loop turns over
+  on its own. TWO PIECES ARE MISSING and are marked at the call site rather
+  than faked: the timeout runs the blackboard cutscene `1b2e:1651` FIRST and
+  skips the demo if it returns 2, and `1000:a690` calls `1000:9338` at the end
+  of an attract session - a routine that runs in NO other mode and is unread.
 - **Game Options** - `src/input.{h,cpp}`. The two toggles are the game's own
   flags (`DS:0x215f`, `DS:0x215e`) and now persist. Redefine Input Device is
   **deliberately re-implemented rather than transliterated**: the original
@@ -759,11 +766,8 @@ STILL INERT, in the order they matter to a player:
    slide's text is already captured in `capture/instr/` from an earlier session,
    and the game's own Instructions have twice settled a rule this project was
    deriving the hard way, so the text is worth having in the repo regardless.
-2. **View Demo / attract mode.** The 720-frame countdown runs and restarts
-   where it should hand off to `DEMO.SCR`, which the port already replays
-   correctly end to end - and `1b2e:52bf` returns **9** for exactly this. The
-   menu item and the timeout are the same path. Cheapest of the four.
-3. **Credits.** Unread. Small, and it is the one screen nothing else depends on.
+2. **Credits.** `1b2e:411b`, named by `1000:b280`'s dispatch. Unread, small,
+   and the one screen nothing else depends on.
 
 Also inert: **F1 help** in-game, whose body is in `1b2e:2d63` alongside the
 slideshow.

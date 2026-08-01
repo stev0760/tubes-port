@@ -2143,17 +2143,27 @@ int main(int argc, char** argv) {
 
     // The demo carries the generator state its recording was made against, so
     // the session has to be seeded from it before anything rolls a die.
+    //
+    // Loaded whether or not `--play-demo` asked for it, because View Demo and
+    // the attract timeout both need it - `1000:5f4b` reads it inside the
+    // session, and its two error strings ("Demo ResourceError", "Installing
+    // Demo Error") say the original treats a missing one as fatal there. Here
+    // a failure only costs the demo.
     tubes::Demo demo;
-    if (opt.playDemo) {
+    bool haveDemo = false;
+    {
         tubes::Bytes raw;
         std::string demoErr;
-        if (!res.read("DEMO.SCR", raw, demoErr) ||
-            !tubes::decodeScr(raw, demo, demoErr)) {
+        haveDemo = res.read("DEMO.SCR", raw, demoErr) &&
+                   tubes::decodeScr(raw, demo, demoErr);
+        if (!haveDemo && opt.playDemo) {
             std::fprintf(stderr, "error: %s\n", demoErr.c_str());
             return 1;
         }
-        std::printf("DEMO.SCR: seed 0x%08x, %zu frames\n", demo.seed,
-                    demo.input.size());
+        if (opt.playDemo) {
+            std::printf("DEMO.SCR: seed 0x%08x, %zu frames\n", demo.seed,
+                        demo.input.size());
+        }
     }
 
     // `1000:9e53` IS the session: the menu leaves the title screen and the
@@ -2571,6 +2581,11 @@ int main(int argc, char** argv) {
     // the layout is the original's rather than borrowed. Page 0 is Endurance
     // and page 1 is Wave; the original pre-renders both onto the two video
     // pages and flips between them, and redrawing gives the same picture.
+    // `1000:b268`: View Demo and the attract timeout run the SAME thing - a
+    // session in mode 0 at difficulty 2, replaying DEMO.SCR. This flag is what
+    // tells the frame loop to feed it the recording instead of the keyboard.
+    bool attractDemo = false;
+
     bool hsViewing = opt.hsPage >= 0;
     int hsViewPage = opt.hsPage > 0 ? 1 : 0;
     float hsViewTimer = tubes::kHsViewSeconds;   // the thirty-second give-up
@@ -2595,7 +2610,12 @@ int main(int argc, char** argv) {
             return;
         }
         stage = Stage::kTitle;
-        menu.raise();
+        // `1000:b2ac`: the ATTRACT arm clears `DS:0x1d42` on the way back, so
+        // the demo returns to a bare title screen with the menu down. Every
+        // other route leaves the menu up, which is what `1b2e:52bf`'s own
+        // flag does when it is not cleared.
+        if (gameMode == 0) attractDemo = false;
+        else menu.raise();
         playSong("TUBES.MUS");
     };
 
@@ -2609,10 +2629,8 @@ int main(int argc, char** argv) {
         // `1000:5dfb`: the hold comes first, and input is not read during it.
         bannerPhase = tubes::BannerPhase::kHold;
         bannerTimer = tubes::kBannerHoldSeconds;
-        // Only an arm that plays something can end on `[DS:0x22ce]` - and
-        // only when there is a driver to ask. With music off the original has
-        // no song to finish either, so the wait is a key wait.
-        bannerWaitsForMusic = *bt.music != 0 && musicOn && music.isOpen();
+        // Only an arm that plays something can end on `[DS:0x22ce]`.
+        bannerWaitsForMusic = *bt.music != 0;
     };
 
     // `1000:5e23`/`5e90`: the wait ends, the music is stopped, and
@@ -2623,6 +2641,34 @@ int main(int argc, char** argv) {
         bannerTimer = tubes::kBannerHoldSeconds;
     };
 
+    // Where the recording is up to. Declared here because `startDemo` below
+    // rewinds them and the frame loop consumes them.
+    float demoAccum = 0.0f;
+    size_t demoFrame = 0;
+
+    // `1000:b268`, and `1000:b29a` is the same three stores again for the
+    // timeout. Mode 0, a new game, difficulty 2 - and the session then loads
+    // DEMO.SCR itself at `1000:5f4b`. The difficulty is not decoration: it
+    // sets the dispense interval the recording was made against, and playing
+    // the demo at 101 desynchronises it within a few spawns.
+    auto startDemo = [&]() {
+        if (!haveDemo) return false;
+        newSession(kDemoDifficulty, demo.seed);   // DS:0x1d4f := 2
+        gameMode = 0;                             // DS:0x1d4e := 0
+        flags = tubes::SessionFlags{};
+        totals = tubes::SessionTotals{};
+        banner = tubes::Banner::kNone;
+        paused = false;
+        briefingUp = false;
+        sstage = tubes::SessionStage::kPlay;
+        demoFrame = 0;
+        demoAccum = 0.0f;
+        attractDemo = true;
+        stage = Stage::kPlay;
+        playSong(tubes::playMusicFor(game->dropsRemaining()));
+        return true;
+    };
+
     // Entering the stats screen is what accumulates the running chain total,
     // so it happens exactly once per visit - never in the draw path.
     auto enterStats = [&]() {
@@ -2631,8 +2677,6 @@ int main(int argc, char** argv) {
                                             game->score(), false);
         playSong(tubes::kStatsMusic);
     };
-    float demoAccum = 0.0f;
-    size_t demoFrame = 0;
     Uint32 last = SDL_GetTicks();
 
     while (running) {
@@ -2839,6 +2883,9 @@ int main(int argc, char** argv) {
                         stage = Stage::kPlay;
                         break;
                     }
+                    case tubes::MenuResult::kViewDemo:
+                        startDemo();
+                        break;
                     case tubes::MenuResult::kToggleMusic:
                         musicOn = !musicOn;
                         if (musicOn) playSong("TUBES.MUS");
@@ -3133,17 +3180,19 @@ int main(int argc, char** argv) {
                 --attractTimer;
             }
             if (attractTimer <= 0) {
-                // The attract arm returns 9. DEMO.SCR replay through the live
-                // loop exists (`--play-demo`) but is not wired to this yet, so
-                // for now the countdown simply restarts rather than silently
-                // doing nothing.
                 attractTimer = tubes::kAttractTimeout;
+                // `1000:b287`: the arm returns 9, and the original runs the
+                // blackboard cutscene `1b2e:1651` FIRST - skipping the demo
+                // entirely if that returns 2. The cutscene is not ported, so
+                // this goes straight to the demo and the cutscene is noted as
+                // the missing half rather than pretended away.
+                startDemo();
             }
         } else if (opt.screenshot.empty() || opt.shotAfter > 0) {
             // `--screenshot` alone captures the opening frame and exits, so it
             // deliberately does not simulate. `--screenshot-after N` does, or
             // it could never reach a screen that is past a game over.
-            if (opt.playDemo) {
+            if (opt.playDemo || attractDemo) {
                 // The recording is consumed at the fixed game step rather than
                 // through `update`'s real-time conversion - same accumulator,
                 // driving an index instead. One byte per frame the tube was
@@ -3153,7 +3202,14 @@ int main(int argc, char** argv) {
                 demoAccum -= static_cast<float>(steps);
                 if (steps > 8) steps = 8;
                 for (int k = 0; k < steps; ++k) {
-                    if (demoFrame >= demo.input.size()) { running = false; break; }
+                    if (demoFrame >= demo.input.size()) {
+                        // `--play-demo` is the oracle and stops the program
+                        // when the tape runs out. Attract mode just goes back
+                        // to the title, the way running out of drops would.
+                        if (opt.playDemo) running = false;
+                        else flags.aborted = true;
+                        break;
+                    }
                     game->stepOnce(game->acceptsInput() ? demo.input[demoFrame++]
                                                       : 0);
                 }
@@ -3194,9 +3250,13 @@ int main(int argc, char** argv) {
                         SDL_FlushEvent(SDL_KEYDOWN);
                     }
                 } else if (bannerPhase == tubes::BannerPhase::kWait) {
-                    if (bannerWaitsForMusic && music.songLooped()) {
-                        leaveBannerWait();
-                    }
+                    // `[DS:0x22ce]` asks the driver whether the song has been
+                    // round once. With music switched off there is no song, so
+                    // it has - which is also what keeps attract mode turning
+                    // over with the music off: nobody is there to press a key.
+                    const bool musicDone = !musicOn || !music.isOpen() ||
+                                           music.songLooped();
+                    if (bannerWaitsForMusic && musicDone) leaveBannerWait();
                 } else if (bannerTimer <= 0.0f) {
                     const tubes::StageTransition t =
                         tubes::advanceStage(sstage, flags, gameMode);

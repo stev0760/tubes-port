@@ -2102,15 +2102,21 @@ void testInformationalItemsReturnTheirNumber() {
     const int items[] = {4, 5, 6, 7};
     const tubes::MenuResult want[] = {
         tubes::MenuResult::kHighScores, tubes::MenuResult::kInstructions,
-        tubes::MenuResult::kCredits, tubes::MenuResult::kCredits};
+        tubes::MenuResult::kViewDemo, tubes::MenuResult::kCredits};
     for (int k = 0; k < 4; ++k) {
         tubes::Menu m;
         m.raise();
         for (int i = 1; i < items[k]; ++i) m.moveDown();
         tubes::MenuResult r = m.select();
         check(static_cast<int>(r) == items[k], "item leaves with its number");
-        (void)want;
+        check(r == want[k], "and it is the arm 1000:b23e dispatches on");
     }
+    // View Demo and the attract timeout are one path in `1000:b264`/`b287`,
+    // but they are NOT the same value - 6 comes from the menu and 9 from the
+    // timeout, and only 9 runs the cutscene first.
+    check(static_cast<int>(tubes::MenuResult::kViewDemo) !=
+              static_cast<int>(tubes::MenuResult::kAttract),
+          "the menu item and the timeout report differently");
 }
 
 

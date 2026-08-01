@@ -122,6 +122,11 @@ enum class MenuResult : uint8_t {
     kLoad = 2,             // a saved game, from `slot`
     kHighScores = 4,
     kInstructions = 5,
+    // `1000:b264` and `1000:b287` do the SAME three stores - mode 0, new game,
+    // difficulty 2 - so View Demo and the attract timeout are one path. The
+    // timeout runs the blackboard cutscene `1b2e:1651` first and skips the
+    // demo if that returns 2.
+    kViewDemo = 6,
     kCredits = 7,
     kQuit = 8,
     kAttract = 9,          // the timeout - this is how DEMO.SCR gets played

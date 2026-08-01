@@ -3327,3 +3327,53 @@ The roller bar moved to the top of the board and the title came inside the
 panel. The viewer draws its title across the bar and gets away with it in blue;
 in red on grey it is a struggle, and there is no room to clear a 16-tall font
 between the board's top edge at 12 and the panel below.
+
+## 2026-07-31 - View Demo, and the dispatch that named two more screens
+
+`1000:b23e` is the whole of the title screen's caller, and reading it settled
+View Demo in one pass:
+
+    case result of
+      1, 2:  Session                          { play, or load }
+      4:     1b2e:61b6                        { the high score viewer }
+      5:     1b2e:2d63                        { Instructions }
+      6:     DS:0x1d4e := 0; DS:0x1d4c := 1; DS:0x1d4f := 2; Session
+      7:     1b2e:411b                        { Credits }
+      9:     k := 1b2e:1651                   { the blackboard cutscene }
+             if k <> 2 then begin
+               DS:0x1d4e := 0; DS:0x1d4c := 1; DS:0x1d4f := 2; Session
+               DS:0x1d42 := 0                 { the menu comes back DOWN }
+             end
+
+So **View Demo and the attract timeout are the same three stores** - mode 0, a
+new game, difficulty 2 - and the session loads `DEMO.SCR` itself at
+`1000:5f4b`. The port already replayed the recording end to end under
+`--play-demo`; all that was missing was the two ways in.
+
+Difficulty 2 is not decoration. It sets the dispense interval the recording was
+made against, and the port learned that the hard way months ago - playing the
+demo at 101 desynchronises it within a few spawns. Seeing `DS:0x1d4f := 2` in
+the dispatch confirms a constant that had been derived from the oracle
+diverging.
+
+Two free finds in the same fifteen lines: **Credits is `1b2e:411b`** and
+**Instructions is `1b2e:2d63`**, both of which were guesses in PLAN.md.
+
+### What is deliberately missing, and marked
+
+- the timeout runs the **cutscene first** and skips the demo if it returns 2;
+- `1000:a690` calls **`1000:9338`** at the end of an attract session - guarded
+  on mode 0, so it runs in no other mode, and nothing else calls it. Unread.
+
+Both are noted at the call site rather than papered over.
+
+### One fix the demo forced
+
+The banner's wait ends on a key or on `[DS:0x22ce]`, the driver's "has the song
+been round once". The port only consulted it when music was ON, so with music
+off the Game Over banner at the end of the demo waited for a keypress that
+attract mode has nobody to supply, and the loop stopped there. With no song
+playing the answer to "has it finished" is yes - so the wait now ends, and
+attract mode turns over on its own: demo, game over, title, thirty seconds,
+demo again. Verified by running 5,200 frames from a cold title screen and
+finding a SECOND demo already in progress.
