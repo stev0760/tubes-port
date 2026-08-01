@@ -294,6 +294,8 @@ struct Options {
     // the half second between screens may be sped up or turned off. So the
     // knob exists and its DEFAULT is the original's number; 0 cuts instead.
     int fadeSteps = tubes::kFadeSteps;
+    bool noSplash = false;      // skip the boot splashes outright
+    int splashFrame = -1;       // capture this .ANM frame of the first splash
     int shotAfter = 0;          // present the screenshot after N live frames
     bool autoAdvance = false;   // synthesise RETURN whenever a stage waits
     uint32_t seed = 0;          // 0 = clock for play, fixed for the harnesses
@@ -478,6 +480,10 @@ Options parseArgs(int argc, char** argv) {
             o.autoAdvance = true;
         } else if (a == "--wave" && i + 1 < argc) {
             o.wave = std::atoi(argv[++i]);
+        } else if (a == "--splash" && i + 1 < argc) {
+            o.splashFrame = std::atoi(argv[++i]);
+        } else if (a == "--no-splash") {
+            o.noSplash = true;
         } else if (a == "--fade-steps" && i + 1 < argc) {
             o.fadeSteps = std::atoi(argv[++i]);
         } else if (a == "--help" || a == "-h") {
@@ -507,6 +513,9 @@ void usage() {
         "                    tools/anm_decode.py RUNS\n"
         "  --dump-spr NAME   print a .SPR strip's frames\n"
         "                    tools/anm_decode.py RUNS\n"
+        "  --no-splash       go straight to the title screen\n"
+        "  --splash N        run the first splash and, with --screenshot,\n"
+        "                    capture its Nth animation frame\n"
         "  --fade-steps N    length of the screen fade, in 70 Hz frames\n"
         "                    (default 40, the original's; 0 cuts instead)\n"
         "  --demo            let the scripted player drive the live loop\n"
@@ -1318,6 +1327,191 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
 
 // The pause overlay, `1000:3916`. Same two rows as a banner, and the loop is
 // blocked entirely while it is up.
+// Upload the indexed framebuffer and put it on the window, letterboxed at an
+// integer scale. A free function because the blocking screens - the splashes
+// and the fades - present without going round the frame loop.
+void presentScreen(SDL_Renderer* ren, SDL_Texture* tex,
+                   const tubes::Screen& screen, const tubes::Palette& pal,
+                   std::vector<uint8_t>& rgba) {
+    screen.toRgba(pal, rgba);
+    SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kScreenWidth * 4);
+
+    int winW = 0, winH = 0;
+    SDL_GetRendererOutputSize(ren, &winW, &winH);
+    const int s = std::max(1, std::min(winW / tubes::kScreenWidth,
+                                       winH / tubes::kScreenHeight));
+    SDL_Rect dst{(winW - tubes::kScreenWidth * s) / 2,
+                 (winH - tubes::kScreenHeight * s) / 2,
+                 tubes::kScreenWidth * s, tubes::kScreenHeight * s};
+
+    SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+    SDL_RenderClear(ren);
+    SDL_RenderCopy(ren, tex, nullptr, &dst);
+    SDL_RenderPresent(ren);
+}
+
+void saveBmp(std::vector<uint8_t>& rgba, const std::string& path) {
+    SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormatFrom(
+        rgba.data(), tubes::kScreenWidth, tubes::kScreenHeight, 32,
+        tubes::kScreenWidth * 4, SDL_PIXELFORMAT_RGBA32);
+    if (!surf) return;
+    SDL_SaveBMP(surf, path.c_str());
+    SDL_FreeSurface(surf);
+    std::printf("wrote %s\n", path.c_str());
+}
+
+// ---- The boot splashes -----------------------------------------------------
+//
+// `1b2e:11b0` is the whole sequence and it is five lines:
+//
+//     SetMode13h;                                { 23df:0000 }
+//     k := SoftwareCreations;                    { 21d5:007b }
+//     if (k <> 1) and (k <> 2) then AbsoluteMagic;   { 2178:00eb }
+//
+// so a skip during the FIRST splash takes the second one with it. The codes
+// are the input driver's: 1 is Enter or Space, 2 is ESC.
+//
+// `23e7:0024` is `Delay(n)` and its unit is the vertical retrace - the body is
+// `23e7:0016` (wait for the end of one vblank, then for the start of the next)
+// with `LOOP` around it. So every hold in these screens is n/70 s.
+
+// One retrace, near enough. The blocking screens are the only place the port
+// paces on the 70 Hz retrace rather than the 16.11 Hz game frame; everything
+// else runs off the simulation clock.
+void waitRetraces(int n) {
+    if (n > 0) SDL_Delay(static_cast<Uint32>(n * 1000 / 70));
+}
+
+// The player's skip, buffered. The original reads its input driver only in
+// the tail loop of each splash, but the driver reads a BUFFERED key, and
+// `[DS:0x234e]` (ClearKeyBuffer) is called immediately after the wait - which
+// is what makes a press during the animation still count. So a press is
+// remembered here and consumed at the point the original tests for one.
+struct SkipWatch {
+    int key = 0;                        // 1 Enter/Space, 2 ESC, 0 nothing yet
+
+    void pump() {
+        SDL_Event ev;
+        while (SDL_PollEvent(&ev)) {
+            if (ev.type == SDL_QUIT) { key = 2; continue; }
+            if (ev.type != SDL_KEYDOWN) continue;
+            const SDL_Keycode k = ev.key.keysym.sym;
+            if (k == SDLK_ESCAPE) key = 2;
+            else if (k == SDLK_RETURN || k == SDLK_SPACE) key = 1;
+        }
+    }
+    int take() {
+        const int k = key;
+        key = 0;
+        return k;
+    }
+};
+
+// The palette ramp both splashes fade with. They have their own .PAL, so this
+// takes the raw bytes rather than reaching for the game's.
+void runSplashFade(SDL_Renderer* ren, SDL_Texture* tex,
+                   const tubes::Screen& screen, const tubes::Bytes& palRaw,
+                   std::vector<uint8_t>& rgba, int steps, bool in,
+                   SkipWatch& skip) {
+    if (steps <= 0) {
+        // The fade is off. Cut to the screen, or to black on the way out.
+        tubes::Palette pal;
+        std::string err;
+        if (in) tubes::loadPalette(palRaw, pal, err);
+        presentScreen(ren, tex, screen, pal, rgba);
+        skip.pump();
+        return;
+    }
+    for (int i = 0; i <= steps; ++i) {
+        const int n = in ? i : steps - i;
+        presentScreen(ren, tex, screen, tubes::fadePalette(palRaw, n, steps),
+                      rgba);
+        skip.pump();
+        waitRetraces(1);
+    }
+}
+
+// `21d5:007b`, the Software Creations splash. Returns the key that ended it.
+//
+//     Clear;                                     { 23df:0012 }
+//     SetPalette(SOFT.PAL);                      { blanks the DAC as it stores }
+//     Draw(0, 0, SOFT.GFX);                      { 23df:0022 }
+//     FadeIn;                                    { 23e7:0097 }
+//     Delay(10);
+//     PlayAnm(SOFT.ANM);                         { 21d5:0000, nested }
+//     n := 7;
+//     repeat Delay(10); Dec(n); k := ReadInput until (k in [1,2]) or (n = 0);
+//     FadeOut;  ClearKeyBuffer;
+//
+// The whole body sits under `if [DS:0x2a04] = 0`, a flag every screen function
+// in the game tests and none of them writes - so it is set elsewhere, most
+// likely when a resource fails to load. The port's equivalent is simply that
+// the resources are there: if any of the three is missing the splash is
+// skipped rather than half drawn.
+int runSoftwareCreationsSplash(const tubes::Archive& res, SDL_Renderer* ren,
+                               SDL_Texture* tex, tubes::Screen& screen,
+                               std::vector<uint8_t>& rgba, int fadeSteps,
+                               SkipWatch& skip, int shotFrame,
+                               const std::string& shotPath) {
+    tubes::Bytes palRaw, gfxRaw, anmRaw;
+    tubes::Image still;
+    std::vector<tubes::AnimFrame> anim;
+    std::string err;
+    if (!res.read("SOFT.PAL", palRaw, err) || palRaw.size() != 768 ||
+        !res.read("SOFT.GFX", gfxRaw, err) ||
+        !tubes::decodeGfx(gfxRaw, still, err) ||
+        !res.read("SOFT.ANM", anmRaw, err) ||
+        !tubes::decodeAnm(anmRaw, anim, err)) {
+        return 0;
+    }
+
+    screen.clear(0);
+    screen.blit(still, 0, 0);
+    runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, true, skip);
+
+    tubes::Palette pal;
+    tubes::loadPalette(palRaw, pal, err);
+    waitRetraces(10);
+    skip.pump();
+
+    // `21d5:0000`: three retraces a frame, and each frame paints only what it
+    // changes over the still image already on screen.
+    for (const tubes::AnimFrame& frame : anim) {
+        waitRetraces(3);
+        skip.pump();
+        uint8_t* px = screen.pixelsMutable();
+        for (const tubes::AnimFrame::Run& r : frame.runs) {
+            for (size_t i = 0; i < r.pixels.size(); ++i) {
+                const int d = r.offset + static_cast<int>(i);
+                if (d >= 0 && d < tubes::kScreenWidth * tubes::kScreenHeight) {
+                    px[d] = r.pixels[i];
+                }
+            }
+        }
+        presentScreen(ren, tex, screen, pal, rgba);
+        // `--splash N --screenshot FILE`: capture the animation's Nth frame,
+        // which is how this screen gets diffed against the original.
+        if (shotFrame >= 0 &&
+            shotFrame == static_cast<int>(&frame - anim.data())) {
+            saveBmp(rgba, shotPath);
+            return 2;
+        }
+    }
+
+    // Seven holds of ten retraces - one second - and the only place the
+    // original looks at the keyboard.
+    int k = 0;
+    for (int n = 7; n > 0; --n) {
+        waitRetraces(10);
+        skip.pump();
+        k = skip.take();
+        if (k == 1 || k == 2) break;
+    }
+
+    runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, false, skip);
+    return k;
+}
+
 void drawPaused(tubes::Screen& screen, const tubes::Font& heading,
                 bool haveHeading) {
     if (!haveHeading) return;
@@ -2474,6 +2668,35 @@ int main(int argc, char** argv) {
     tubes::Screen screen;
     std::vector<uint8_t> rgba;
 
+    // `1b2e:11b0`, the boot sequence. It runs before anything else the program
+    // shows, and a skip in the first splash cancels the second - which is the
+    // original's own behaviour, not a concession: `if k <> 1 and k <> 2`.
+    //
+    // Skipped under `harness` with every other timed screen, so no capture
+    // waits three seconds to reach the frame it wants.
+    if ((!harness || opt.splashFrame >= 0) && !opt.noSplash) {
+        SkipWatch skip;
+        const int k = runSoftwareCreationsSplash(
+            res, ren, tex, screen, rgba,
+            opt.splashFrame >= 0 ? 0 : opt.fadeSteps, skip, opt.splashFrame,
+            opt.screenshot);
+        (void)k;
+        // The second splash, `2178:00eb`, is not ported yet. When it is, it
+        // goes here under `if (k != 1 && k != 2)`.
+
+        // The capture flag is an exit, like every other one: without this the
+        // frame loop runs on and overwrites the BMP with the game.
+        if (opt.splashFrame >= 0 && !opt.screenshot.empty()) {
+            music.stop();
+            SDL_DestroyTexture(tex);
+            SDL_DestroyRenderer(ren);
+            SDL_DestroyWindow(win);
+            SDL_Quit();
+            return 0;
+        }
+    }
+
+
     // GAMEFG on its own, kept as a buffer to stamp back over moving sprites.
     //
     // This is the game's own arrangement, from three routines in the graphics
@@ -2560,21 +2783,7 @@ int main(int argc, char** argv) {
     tubes::Palette shownPal = pal;
 
     auto blitAndPresent = [&]() {
-        screen.toRgba(shownPal, rgba);
-        SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kScreenWidth * 4);
-
-        int winW = 0, winH = 0;
-        SDL_GetRendererOutputSize(ren, &winW, &winH);
-        int s = std::max(1, std::min(winW / tubes::kScreenWidth,
-                                     winH / tubes::kScreenHeight));
-        SDL_Rect dst{(winW - tubes::kScreenWidth * s) / 2,
-                     (winH - tubes::kScreenHeight * s) / 2,
-                     tubes::kScreenWidth * s, tubes::kScreenHeight * s};
-
-        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
-        SDL_RenderClear(ren);
-        SDL_RenderCopy(ren, tex, nullptr, &dst);
-        SDL_RenderPresent(ren);
+        presentScreen(ren, tex, screen, shownPal, rgba);
     };
 
     // `23e7:0097` and `23e7:00ce`, transliterated: 41 palette uploads, each
@@ -2628,14 +2837,7 @@ int main(int argc, char** argv) {
         }
 
         if (!opt.screenshot.empty() && shotCountdown-- <= 0) {
-            SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormatFrom(
-                rgba.data(), tubes::kScreenWidth, tubes::kScreenHeight, 32,
-                tubes::kScreenWidth * 4, SDL_PIXELFORMAT_RGBA32);
-            if (surf) {
-                SDL_SaveBMP(surf, opt.screenshot.c_str());
-                SDL_FreeSurface(surf);
-                std::printf("wrote %s\n", opt.screenshot.c_str());
-            }
+            saveBmp(rgba, opt.screenshot);
             running = false;
         }
 

@@ -144,7 +144,8 @@ The surrounding screens, and where each stands:
 | The briefing `1000:86b8` | **done and measured** - title band **0.00%**, body **0.09%**, whole slide **0.14%**. Open: the projector slide is a measured rectangle rather than `1000:bcf1`, and the professor is absent |
 | The title screen and menu `1b2e:52bf` / `1b2e:4d80` | **done and measured** - menu text **0.00%** on pages 1 and 3, whole screen **0.25%**. All seven pages, the transitions, the two-key protocol, the turning stars and the 25-leg letterform walk |
 | Demo playback (`.SCR` replay through the same loop) | **done** - matches end to end, terminates on the original's own last byte |
-| The two splashes `21d5:007b`, `2178:00eb` | absent, small |
+| The Software Creations splash `21d5:007b` | **done** - 0 pixels of 64,000 against the reference render |
+| The Absolute Magic splash `2178:00eb` | absent, medium - both its formats are now decoded |
 | The stats blackboard `1000:8da5` and Continue `1000:8c38` | absent, medium |
 | High scores, save/load | absent, medium - the menu reaches them and they do nothing |
 | Attract mode | the 720-frame countdown runs but restarts instead of playing `DEMO.SCR` |
@@ -778,16 +779,33 @@ Also inert: **F1 help** in-game, whose body is in `1b2e:2d63` alongside the
 slideshow.
 
 **C. The two splashes,** `21d5:007b` and `2178:00eb` - Software Creations and
-Absolute Magic. Small, and they make the boot sequence real.
+Absolute Magic. `1b2e:11b0` runs both, and a skip in the first cancels the
+second: `if k <> 1 and k <> 2 then AbsoluteMagic`, where 1 is Enter/Space and
+2 is ESC.
 
-**They must be SKIPPABLE**, which the player has asked for explicitly. The
-original already is: `1b2e:52bf`'s notes and every capture script in the
-tooling directory start with an ESC to get past them, so find the key test in
-each and port it rather than adding one. Their sounds are already identified -
-`WOOSH.SFX`, `LIGHTN.SFX`, `ABSMAGIC.SFX` (see the sound inventory above).
+**Software Creations is DONE.** `SOFT.PAL`, `SOFT.GFX` and the 23-frame
+`SOFT.ANM`, at the original's own pacing - fade in, `Delay(10)`, the animation
+at three retraces a frame, seven holds of ten retraces, fade out. Its capture
+diffs against the Python reference at **0 pixels of 64,000**. `--splash N`
+captures the Nth animation frame, `--no-splash` skips both.
 
-Now the FIRST thing left rather than the last, since everything below it in
-this section is done.
+**Absolute Magic is next.** `2178:00eb`, 1173 bytes, and much the bigger of
+the two: `INTRO.PAL`, `CLOUD.GFX`, `AMWRITE.GFX`, `AMLOGO.SPR` (six frames of
+one logo at 20x20 up to 172x127 - a zoom), `LIGHTN.SPR` (five bolts),
+`AMTHEME.MUS`, and `WOOSH.SFX`, `LIGHTN.SFX`, `ABSMAGIC.SFX`. It allocates two
+64,000-byte buffers and a 768-byte palette buffer and fills the latter with
+63s, so it does its own palette work on top of the standard fade - a white
+flash for the lightning is the obvious reading and is NOT yet confirmed. Both
+formats it needs are decoded.
+
+**On skipping.** The original reads the keyboard only in the tail loop of each
+splash, but through a BUFFERED read - `ClearKeyBuffer` is called immediately
+after the wait, which is the tell - so a press during the animation still
+counts. The port reproduces that: `SkipWatch` remembers the press and the
+splash consumes it where the original tests for one. The consequence is that
+ESC does not cut the fade or the animation short, it ends the screen at the
+next test. If that reads as unresponsive, making it immediate is a one-line
+change - but it would no longer be what the original does.
 
 **D. The slideshow and the cutscene, LAST.** These are two different things and
 were previously conflated in this file:

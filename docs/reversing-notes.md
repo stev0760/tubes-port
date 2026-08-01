@@ -6296,10 +6296,13 @@ the animation is back on frame 1:
 | 4 / 5 | Down / Up |
 
 The Continue screen acts on 1 and 2 only; 3, 4 and 5 fall through to its own
-countdown. **The wall-clock length of an iteration is unknown** because
-`23e7:0024`'s unit is unread - milliseconds would make the whole five-count
-prompt last under a second, the game's own 145 Hz tick would make it about a
-second a count. The port assumes the latter and marks it.
+countdown. **The length of an iteration is now settled, and the port's
+assumption was right.** `23e7:0024` is `Delay(n)` and its unit is the
+VERTICAL RETRACE: the body is `23e7:0016` - wait for the current vblank to
+end, then for the next to begin - with `LOOP` around it, at `0x3da` bit 3. So
+`Delay(10)` is 10/70 s and `param * 7` iterations of it is `param` seconds
+exactly, which is one count a second. This also fixes the unit for every other
+hold in the game, the banners' `Delay($28)` included.
 
 ### `1000:8c38`, the Continue screen
 
