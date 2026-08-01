@@ -7931,6 +7931,39 @@ exists to prevent.
 * **ESC** at `1000:3635` jumps straight past all of it to the exit. It abandons
   the save rather than committing what has been typed.
 
+## The boot sequence, read out of `1000:aaba`
+
+The entry program's own order, and the two gates are the same test:
+
+    1000:ac21   if 2685:08aa = 0 then Splashes           { 1b2e:11b0 }
+    ...         { resources, high scores, the save file }
+    1000:b1ee   { seed a new game's defaults }
+    1000:b224   if 2685:08aa = 0 then Cutscene           { 1b2e:1651 }
+    1000:b236   Title                                    { 1b2e:52bf }
+    1000:b23e   { the menu dispatch }
+    1000:b2c1   JMP 1000:b236
+
+**The cutscene runs once, at boot, immediately before the title screen is
+first shown.** The loop's own jump goes back to `b236`, the title call, not to
+`b1ee`, so neither the cutscene nor the defaults block is part of the cycle.
+The second call at `1000:b28b` is the attract arm and is a different thing.
+
+`2685:08aa` is three instructions in the RTL and gates both intros; the port's
+`--no-splash` is its analogue.
+
+**Music, per screen.** Each screen starts its own song and nothing is playing
+before the first one that does:
+
+| screen | song |
+|---|---|
+| Software Creations `21d5:007b` | **none** - it loads three resources and not one is a song |
+| Absolute Magic `2178:00eb` | `AMTHEME.MUS` |
+| the cutscene `1b2e:1651` | `[DS:0x212c]`, which is `CLASS.MUS` |
+| the title `1b2e:52bf` | `TUBES.MUS`, one of the four resources `1b2e:5238` loads for it |
+
+The port had `TUBES.MUS` starting at device-open time, which put the title
+theme over the first splash. It now starts where the title stage does.
+
 ## The opening cutscene, `1b2e:1651` - and the professor has a name
 
 **Dr. Lanny B. Brilliant.** The cutscene names him, and it names the eight

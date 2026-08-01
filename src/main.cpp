@@ -2842,22 +2842,40 @@ int main(int argc, char** argv) {
             std::printf("loaded %d/%d sound effects\n", loadedSfx, wanted);
         }
     }
+    // The device is opened here but NOTHING is played yet. `TUBES.MUS` is the
+    // TITLE screen's song - `1b2e:5238` loads it as one of that stage's own
+    // four resources - and starting it at boot put it over the Software
+    // Creations splash, which `21d5:007b` runs in silence: it loads three
+    // resources and not one of them is a song. The boot sequence's music is
+    // AMTHEME.MUS in the second splash and CLASS.MUS in the cutscene, each
+    // started by the screen that owns it.
+    bool haveMusicDevice = false;
     if (!opt.music.empty() && opt.screenshot.empty()) {
         std::string musicErr;
-        tubes::Bytes song;
         if (!haveDrivers) {
             std::fprintf(stderr, "music disabled: %s\n", driverErr.c_str());
-        } else if (!music.open(drivers, musicErr) ||
-                   !res.read(opt.music, song, musicErr) ||
-                   !music.play(song, musicErr)) {
+        } else if (!music.open(drivers, musicErr)) {
             std::fprintf(stderr, "music disabled: %s\n", musicErr.c_str());
         } else {
-            std::printf("playing %s through Nuked-OPL3\n", opt.music.c_str());
+            haveMusicDevice = true;
         }
     }
 
     tubes::Screen screen;
     std::vector<uint8_t> rgba;
+    // Started once the boot sequence is over, since that is where the screen
+    // that owns this song begins.
+    auto startBootMusic = [&]() {
+        if (!haveMusicDevice || !settings.music) return;
+        std::string musicErr;
+        tubes::Bytes song;
+        if (!res.read(opt.music, song, musicErr) ||
+            !music.play(song, musicErr)) {
+            std::fprintf(stderr, "music disabled: %s\n", musicErr.c_str());
+            return;
+        }
+        std::printf("playing %s through Nuked-OPL3\n", opt.music.c_str());
+    };
 
     // `1b2e:11b0`, the boot sequence. It runs before anything else the program
     // shows, and a skip in the first splash cancels the second - which is the
@@ -2889,6 +2907,12 @@ int main(int argc, char** argv) {
                                    opt.screenshot);
         }
 
+        // `1000:b224`: the cutscene runs HERE - once, after the splashes and
+        // immediately before the title screen is first shown. The main loop's
+        // own `JMP 1000:b236` goes back to the title call and not to this, so
+        // it is a boot-time screen and not part of the cycle. It is not
+        // ported yet; see PLAN.md, which has its five pages read.
+
         // The capture flag is an exit, like every other one: without this the
         // frame loop runs on and overwrites the BMP with the game.
         if (capturing && !opt.screenshot.empty()) {
@@ -2901,6 +2925,9 @@ int main(int argc, char** argv) {
         }
     }
 
+    // `1b2e:5238`: the title stage loads TUBES.MUS for itself, so the song
+    // starts when the boot sequence is over and not before it.
+    startBootMusic();
 
     // GAMEFG on its own, kept as a buffer to stamp back over moving sprites.
     //

@@ -855,6 +855,12 @@ how a page animates the wrong thing and nobody notices.
 Then the port work, which is now well-defined: the five pages with their text
 (already extracted), the two-track player, and three sounds.
 
+**Where it goes is settled too.** `1000:b224` runs the cutscene ONCE, after
+the splashes and immediately before the title screen is first shown - the main
+loop's `JMP 1000:b236` returns to the title call, not to this, so it is a
+boot-time screen rather than part of the cycle. The call site is marked in
+`main.cpp` at the point it belongs. Its music is `[DS:0x212c]`, `CLASS.MUS`.
+
 They are last on purpose. Both are large, neither gates play, and the cutscene
 in particular is an animation system (`WRITE0..9` is a *writing* animation)
 rather than a screen - so it is the one piece most likely to need machinery
