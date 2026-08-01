@@ -1136,7 +1136,7 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
                       bool haveBoard, const SceneArt& art,
                       const tubes::Font& big, bool haveBig,
                       const tubes::Font& script, bool haveScript,
-                      int profFrame) {
+                      const tubes::Font& small, bool haveSmall, int profFrame) {
     screen.clear(0);
     if (haveBoard) screen.blit(*board, 0, tubes::kBoardY);
 
@@ -1212,11 +1212,12 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
                             armed ? "press a key" : bindingLabel(bind.b[i]));
         }
     }
-    if (haveBig) {
-        // Short enough to sit inside the panel: 24 characters at the heading
-        // font's 8-pixel advance is 192, against the panel's 247.
-        tubes::drawTextCentred(screen, big, tubes::kHsPanelX, kPanelRight,
-                               kPanelY + kPanelH - 16, tubes::kHsRowColour,
+    // The hint is an aside, not a row, so it takes TINY6X8 - the same font the
+    // briefings set their prose in. At a 6-pixel advance it also stops
+    // competing with the bindings above it for width.
+    if (haveSmall) {
+        tubes::drawTextCentred(screen, small, tubes::kHsPanelX, kPanelRight,
+                               kPanelY + kPanelH - 14, tubes::kHsRowColour,
                                tubes::textmode::kPeak,
                                "Enter binds, Esc exits");
     }
@@ -3306,7 +3307,8 @@ int main(int argc, char** argv) {
             drawRebindScreen(screen, settings.bindings, rebindRow,
                              rebindWaiting, &blackboard, haveBlackboard,
                              sceneArt, headingFont, haveHeading, scriptFont,
-                             haveScript, tubes::pointerFrameFor(profWave));
+                             haveScript, smallFont, haveSmall,
+                             tubes::pointerFrameFor(profWave));
             presentFrame();
             continue;
         }
