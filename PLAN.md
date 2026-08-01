@@ -40,23 +40,31 @@ Two consequences that shape every decision here:
 What is left is polish, one unread screen, and the enhancements the player has
 asked for. In the order they are worth doing:
 
-1. **The two missing animations**, section 4.5 item 1. The projector screen
-   roll-down on Instructions and Credits (the port has the animation and gates
-   it on `DS:0x210e`, which the original sets once and never clears), and
-   **Professor Lanny's idle** - he should move his mouth and tap his pointer,
-   and `TALK1..5.GFX` and `POINTERT.GFX` are loaded by the same loader and
-   used by NO known arm. Find what sets `DS:0x20c8` and `DS:0x20e3`. Do not
-   invent an interval.
-2. **The joke slide**, 4.5 item 2 - Lanny flashing an Absolute Magic shirt
-   under his lab coat, reported from play and not yet located. Check the
-   sprite draws per slide against `capture/instr/`.
-3. **The video page bookkeeping.** One reading closes three loose ends: the
+1. **The video page bookkeeping.** One reading closes three loose ends: the
    cutscene's last 144 pixels, the stats screen's stand-in background
    (`DS:0x2058`), and the two rect copies nobody has traced.
-4. **`1000:9499`**, the wave-75 ending. The only screen in the program nobody
+2. **`1000:9499`**, the wave-75 ending. The only screen in the program nobody
    has seen, and `PRIZE.GFX` sits behind a "RegisteredEnding" error string.
-5. Then the enhancements in section 5, which are the player's: a **Graphics
+   Note it is now half-read anyway: it is what sets `DS:0x20e3`, the flag that
+   makes the professor JUMP, and it clears it again on the way out.
+3. Then the enhancements in section 5, which are the player's: a **Graphics
    Options screen** (the port cannot even go fullscreen) and **GLDFADE**.
+
+**The three animations that used to head this list are done**, and the two
+leads it carried were both pointing at the wrong routine:
+
+* the **projector screen roll-down** is `1b2e:0510`, not `1b2e:0a11`'s
+  `DS:0x210e` animation, and nothing gates it - what varies is which screens
+  call `1b2e:0510` at all;
+* **Professor Lanny's mouth** is `TALK1..5.GFX` driven by `1b2e:0cd1`, a
+  SECOND key wait every screen runs before `1b2e:0e37`, not a fourth arm of
+  `1b2e:0656`. `DS:0x20c8` is never written by anything, so `0656`'s clap arm
+  is unreachable in this build, and `DS:0x20e3` is set by `1000:9499`;
+* the **joke slide** is `1b2e:084e` and `FLASH.GFX`, which this project's own
+  notes had quoted as "a one-in-twenty easter egg" without asking what it was.
+
+`POINTERT.GFX` turned out to belong to the joke slide rather than to the wave,
+so nothing in the classroom's resource table is unattributed any more.
 
 The three-pixel floor at (59, 10..12) on the play field is still unexplained
 and has been for months. It is not worth a session on its own.
@@ -940,35 +948,39 @@ nothing else needs.
 Five items, given in one go so none of them gets lost. None is a rule; all are
 things a player notices and the port currently does not do.
 
-**1. Every screen with an animation should have it.** Two are missing:
+**1. Every screen with an animation should have it. DONE**, and both leads
+recorded here pointed at the wrong routine - which is the useful part.
 
-* the **projector screen roll-down** on Instructions and Credits. The port has
-  the animation already - `1b2e:0a11`'s six-frame slide drop, ten retraces a
-  frame, in `kSlideDrop` - but it is gated on `DS:0x210e`, which the original
-  sets the FIRST time the scene is shown and never clears. Check whether the
-  slideshow screens re-arm it or whether the roll only ever happens once per
-  run; the port currently drops it once, on the first briefing.
-* **Professor Lanny's idle**. He should MOVE HIS MOUTH and TAP HIS POINTER on
-  alternating intervals rather than only waving. The port draws the wave
-  (`POINTER1..3` on a ping-pong off `DS:0x20b0`) and nothing else.
+* the **projector screen roll-down** is **`1b2e:0510`**, and it has nothing to
+  do with `DS:0x210e`. `1b2e:0a11`'s six-frame animation moves the SLIDE; the
+  screen behind it is rolled down by the routine that builds the classroom
+  from nothing, 15 frames of `Delay(3)` over a word table at `DS:0xb9c` that
+  overshoots its resting height by five and comes back. Nothing gates it.
+  What varies is who calls `1b2e:0510`: the Instructions and the Credits
+  always, the briefing only on `wave = 1` and not after a Continue, and the
+  stats / Continue / ending screens never.
+* **Professor Lanny's mouth** is `TALK1..5.GFX` drawn by **`1b2e:0cd1`** - not
+  a fourth arm of `1b2e:0656` but a SECOND key wait, which every screen runs
+  BEFORE `1b2e:0e37`:
 
-  The lead is `1b2e:0656`, which already has three arms on two flags:
+      k := 1b2e:0cd1(bursts);                  { he talks }
+      if k = 3 then k := 1b2e:0e37(seconds);   { it timed out - now he waves }
 
-      if DS:0x20e3 = 0 then
-        if DS:0x20c8 = 0 then Draw(267, 121, POINTER0)      { the idle }
-        else Draw(267, 165, BOOKS); Draw(267, 100, CLAP[n])  { clapping }
-      else Draw(276, 165, BOOKS); Draw(267, 94, JUMP[n])     { jumping }
+  so he speaks first and gestures only when the talk has run out. The
+  parameter counts bursts of `Random(4)+4` mouths, not frames.
 
-  `TALK1..5.GFX` and `POINTERT.GFX` are loaded by the same loader and are used
-  by NEITHER arm above, so there is a fourth behaviour somewhere that has not
-  been found. Find what sets `DS:0x20c8` and `DS:0x20e3` and what drives the
-  talk frames; do not invent an interval.
+  Of the two flags this list asked about: **`DS:0x20c8` is written by nothing**
+  except the start-up clear, so `1b2e:0656`'s clap arm is unreachable in the
+  shipped build - which is why `CLAP1..3.GFX` are never seen either;
+  **`DS:0x20e3` is set by `1000:9499`**, the wave-75 ending, and cleared again
+  on the way out. So the jump arm belongs to the one screen nobody has reached.
 
-**2. The joke slide.** Lanny accidentally shows a WRONG slide - he is
-"flashing", wearing an Absolute Magic shirt under his lab coat. Reported from
-play, not yet located. It is presumably one of the unattributed sprite arms
-above, or a slide in `1b2e:2d63` that the extraction read as text-only. Worth
-checking the sprite draws per slide against the captures in `capture/instr/`.
+**2. The joke slide. DONE.** `1b2e:084e` and `FLASH.GFX`, which is 172 x 132 -
+the slide rectangle exactly - and draws Lanny holding his coat open over an
+"AM" T-shirt. `POINTERT.GFX` is the startled face that goes with it. Gated on
+`Random(100) < 5` per slide AND on `DS:0x210f`, so at most once per program
+run. `--joke` forces it. This file's own notes had quoted the routine as "a
+one-in-twenty easter egg, not ported" without asking what the egg was.
 
 **3. The screen transition fade. DONE.** The player's lead was right in every
 particular: it is a mandatory effect, it lives in a graphics unit rather than
