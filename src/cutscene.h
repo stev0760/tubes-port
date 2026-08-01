@@ -100,6 +100,24 @@ extern const PanelFill kPanelFills[kPanelFillCount];
 // same y the briefing and the stats screen use.
 constexpr int kCutsceneBoardY = 12;
 
+// `1b2e:1a80`: `WRITE0.GFX` is loaded into a slot of its OWN, outside both
+// frame lists, and blitted once at (87, 150) through `2321:0711` - the
+// transparent blit. It is Lanny's base pose, and the animated frames are
+// drawn OVER his top half at (86, 122): 28x41 reaches y 163 and 28x66
+// reaches 188, so his legs from 188 down are only ever this.
+//
+// That is the same two-draw arrangement the professor uses on the
+// Instructions screen, and missing it was the port's entire disagreement
+// with the original - 256 pixels, all of them his lower half.
+constexpr int kCutsceneBaseX = 87;
+constexpr int kCutsceneBaseY = 150;
+
+// `1b2e:1a62` blits a second held image at (57, 26) from `DS:0x2060`. It
+// leaves no mark on any captured page, so the pointer is nil in this
+// context - `2321:0711` returns at once on a nil segment. Recorded because
+// "there is a call the port does not make" should be written down even when
+// the pixel diff says it does not matter.
+
 // The cutscene's own music, `[DS:0x212c]`.
 constexpr const char* kCutsceneMusic = "CLASS.MUS";
 

@@ -855,11 +855,26 @@ what the two page groups pass.
 screen is first shown; the main loop's `JMP 1000:b236` returns to the title
 call, not to this. Its music is `CLASS.MUS`. `--cutscene N` captures any page.
 
-Left open, and small: the port recomposes each frame rather than blanking the
-other page, so `BlankRect` and the `FillBar` half of the panel call are not
-transliterated - they have no effect on what is drawn. And the cutscene has
-never been captured off the ORIGINAL, so unlike the splashes there is no pixel
-diff behind it; it is verified by reading only.
+**Captured and diffed against the original.** `grab_cutscene.py` sweeps the
+original from boot with a screendump every ~1.4 s - it cannot be paused into,
+since it acts only on Enter/Space and ESC - and `diff_cutscene.py` matches
+each of the port's five pages to its best capture: **0 pixels of 59,184 on
+all five**, with only the two animation rectangles and the cycling atom
+masked. `sweep_cutscene_ticks.py` then removes the masks by rendering the port
+at every tick of a page: **0 pixels of 64,000, whole screen, on every page**.
+
+The captures also confirm the durations independently - 2, 18, 4, 12 and 10
+seconds, measured off the page boundaries in a run captured from its start.
+
+**One thing is still open, and it is 144 pixels on one page.** The original
+never erases while a page runs - each animation frame is painted over the
+last, so the page holds the union of everything drawn. The port rebuilds the
+figures each tick, which matches on four pages and differs on the late ticks
+of page 4, where a 28x66 pose has been drawn over 28x41 ones. Accumulating
+instead fixes page 4 and breaks two others, because the real scheme involves
+`1b2e:1188` blanking a rect on BOTH pages, `1b2e:0f46` flipping `[0x2376]`
+once per call, and `1b2e:1e6b` copying rectangles between them. **Read the
+page bookkeeping** and the last 144 pixels go.
 
 They are last on purpose. Both are large, neither gates play, and the cutscene
 in particular is an animation system (`WRITE0..9` is a *writing* animation)

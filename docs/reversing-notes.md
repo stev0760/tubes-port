@@ -8183,6 +8183,72 @@ page in a double-buffered scheme - but it does have to hold a stopped track's
 LAST frame rather than wrapping it, since the original simply stops drawing
 and what is on the page stays there.
 
+### Captured off the original, and the two things it caught
+
+`grab_cutscene.py` sweeps the original with a screendump every ~1.4 s from
+boot; `diff_cutscene.py` then finds, for each of the port's five pages, the
+capture that matches best. The sweep is deliberate - the cutscene cannot be
+paused into, because it reads the input driver once a frame and acts only on
+1 and 2, so the game's own Pause key is simply ignored.
+
+The captures also **confirm the durations independently**. The attract run
+shows page 1 at t=63.5 and page 2 by t=65.0, and the first run has page 3
+spanning 4.5..16.6 and page 4 spanning 18.2..27.2 - 2, ~13 and ~10 seconds
+against the 2, 12 and 10 the `[BP+0x32] * 7` reading predicts.
+
+Two real differences fell out of the diff, and neither was visible any other
+way:
+
+* **`WRITE0.GFX` is Lanny's base pose.** `1b2e:1a80` blits it once at
+  (87, 150) through `2321:0711`, outside both frame lists, and the animated
+  frames are drawn OVER his top half at (86, 122). 28x41 reaches y 163 and
+  28x66 reaches 188, so his legs below 188 are only ever this draw. The port
+  drew the frames alone and he had no legs - 256 pixels, on every page.
+* **The fourth page's exit takes the top of him with it.** `1b2e:1e6b`
+  restores both animation rectangles from the other page, so on page 5 what
+  survives is the base pose *minus* the box - his feet and nothing else.
+
+With those two fixed the diff is **0 pixels of 59,184 on all five pages**,
+with only the two animation rectangles and the one cycling atom masked.
+
+`sweep_cutscene_ticks.py` then closes the mask: it renders the port at every
+tick of a page and reports the best match with NOTHING masked - the whole
+screen, animation included. That is what puts a number on the frame lists
+themselves, and it found two more differences that the masked diff could not:
+
+* **the beaker stays on the page.** It is drawn once before the fade and never
+  erased, so on page 2 - where track B is driving the eighth element's atom
+  instead - it is still there. The port recomposes every frame and dropped it,
+  losing the atoms inside it: 77 pixels.
+* **page 5's figure is base MINUS the erased box PLUS the frozen frame.**
+  Drawing the base pose and the last frame together doubles him, because the
+  two draws sit a pixel apart. The order that matches is base, then both
+  boxes back to the bare scene, then each track's frozen frame on top.
+
+**And one apparent difference that was the RIG's fault, not the port's.** The
+first capture run began after the game had already started, so its early pages
+were cut off - and comparing against it left a stubborn 24-pixel residue in
+the beaker's bubbles that looked exactly like a one-tick phase error between
+the two tracks. Capturing a run from its start removed it entirely. A number
+that will not go away is worth suspecting the measurement over the code, which
+is this project's own rule about negative results pointed the other way.
+
+**One difference is still open, and it is the drawing MODEL.** The original
+never erases: the base pose goes down once before the fade, and every
+animation frame is painted over the last, so the page holds the union of
+everything drawn with the newest on top. The port rebuilds the figures each
+tick instead. That matches on four pages and differs on the LATE ticks of page
+4, where the 28x66 poses have been drawn over the 28x41 ones and the original
+still holds the difference - **144 pixels**, in a strip at x 90..97,
+y 164..187.
+
+Accumulating instead fixes page 4 and costs 176 and 64 pixels on pages 3 and
+5, because the page bookkeeping is more than "never erase": `1b2e:1188` blanks
+a rect on BOTH pages between pages, `1b2e:0f46` flips `[0x2376]` once per call
+rather than per frame, and `1b2e:1e6b` copies rectangles between the two. That
+whole scheme is what is unread, and reading it is what would take the last
+144 pixels out. Rebuilding is the better of the two models until then.
+
 This also matters beyond the cutscene: `1000:b287` runs it BEFORE the attract
 demo and skips the demo if it returns 2, so the port's attract mode is missing
 its first half until this lands.

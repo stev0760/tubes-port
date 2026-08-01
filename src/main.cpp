@@ -299,6 +299,7 @@ struct Options {
     int splashFrame = -1;       // capture this .ANM frame of the first splash
     int splash2Step = -1;       // capture this step of the second splash
     int cutscenePage = -1;      // capture this page of the opening cutscene
+    int cutsceneTick = -1;      // ... at this tick of it, rather than midway
     int shotAfter = 0;          // present the screenshot after N live frames
     bool autoAdvance = false;   // synthesise RETURN whenever a stage waits
     uint32_t seed = 0;          // 0 = clock for play, fixed for the harnesses
@@ -485,6 +486,8 @@ Options parseArgs(int argc, char** argv) {
             o.wave = std::atoi(argv[++i]);
         } else if (a == "--cutscene" && i + 1 < argc) {
             o.cutscenePage = std::atoi(argv[++i]);
+        } else if (a == "--cutscene-tick" && i + 1 < argc) {
+            o.cutsceneTick = std::atoi(argv[++i]);
         } else if (a == "--splash2" && i + 1 < argc) {
             o.splash2Step = std::atoi(argv[++i]);
         } else if (a == "--splash" && i + 1 < argc) {
@@ -527,6 +530,8 @@ void usage() {
         "                    6-10 the lightning, 11 the writing\n"
         "  --cutscene N      run the opening cutscene and, with --screenshot,\n"
         "                    capture page N (0-4)\n"
+        "  --cutscene-tick T with it, capture at tick T of that page rather\n"
+        "                    than midway - a tick is 10 retraces\n"
         "  --fade-steps N    length of the screen fade, in 70 Hz frames\n"
         "                    (default 40, the original's; 0 cuts instead)\n"
         "  --demo            let the scripted player drive the live loop\n"
@@ -1744,6 +1749,7 @@ void drawPanel(tubes::Screen& screen, int x, int y, int w, int h) {
 struct CutsceneArt {
     std::vector<tubes::Image> writeFrames;   // 26
     std::vector<tubes::Image> blowFrames;    // 17
+    tubes::Image base;                       // WRITE0, Lanny's lower half
     bool ok = false;
 };
 
@@ -1763,7 +1769,8 @@ CutsceneArt loadCutsceneArt(const tubes::Archive& res) {
     };
     art.ok = fill(tubes::kWriteFrames, tubes::kWriteFrameCount,
                   art.writeFrames) &&
-             fill(tubes::kBlowFrames, tubes::kBlowFrameCount, art.blowFrames);
+             fill(tubes::kBlowFrames, tubes::kBlowFrameCount, art.blowFrames) &&
+             loadImage(res, "WRITE0.GFX", art.base, 0);
     return art;
 }
 
@@ -1776,7 +1783,7 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
                 bool musicOn, bool soundOn, const tubes::Image* board,
                 bool haveBoard, const tubes::Sprite* atoms,
                 const bool* haveAtom, const tubes::Font& small, bool haveSmall,
-                int shotPage, const std::string& shotPath) {
+                int shotPage, int shotTick, const std::string& shotPath) {
     const CutsceneArt art = loadCutsceneArt(res);
     if (!art.ok || !haveBoard || !haveSmall) return 0;
 
@@ -1805,31 +1812,70 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
         }
     };
 
+    // A capture runs the pages at full speed: the frame SEQUENCE is what
+    // has to be right, not the wall clock, and `--cutscene 4` would
+    // otherwise sit through 36 seconds of the earlier pages first.
+    const bool capturing = shotPage >= 0;
+
     // `[DS:0x1d6e]` and `[DS:0x1d6f]`, the two GLOBAL frame counters. They
     // live across pages, which is what lets page 4 start part way in.
     int frameA = 0, frameB = 0;
-    // Page 4 erases both animations on its way out; page 5 is text alone.
-    bool showTracks = true;
+    // The beaker is drawn once before the fade and then left on the page, so
+    // it stays put through the pages where track B is driving something else
+    // - page 2, where B is the eighth element's atom. The port recomposes
+    // every frame, so it has to remember the last frame B left it on. The
+    // diff found this: page 2 was missing the atoms inside the beaker.
+    int beakerFrame = 0;
+    // `1b2e:1e6b`: the fourth page ends by copying both animation rectangles
+    // from the OTHER video page (`2321:024d`, a page-to-page rect copy). What
+    // that leaves is not symmetric, and the capture is what says so: on page
+    // 5 the original still shows Lanny in full and the beaker is GONE. So the
+    // copy restored a page that still had him and no longer had it.
+    //
+    // The page bookkeeping behind that is NOT fully traced - `[0x2376]` is
+    // flipped once before each Animate rather than per frame, and which page
+    // holds what by then depends on the whole run. The OUTCOME is read off
+    // seven captures that all agree; the mechanism is marked as unread.
 
-    // The scene under everything: the board, and the two animations' first
-    // frames, drawn statically before the fade-in at `1b2e:1a59` onward.
-    auto compose = [&](const tubes::CutscenePage& page) {
-        screen.clear(0);
-        screen.blit(*board, 0, tubes::kCutsceneBoardY);
-        if (showTracks) {
-            const tubes::Image& a = art.writeFrames[static_cast<size_t>(
-                frameA < tubes::kWriteFrameCount ? frameA : 0)];
-            screen.blit(a, page.a.count ? page.a.x : 86,
-                        page.a.count ? page.a.y : 122);
-            // Track B is the beaker only when it is showing 60x46 frames; on
-            // page 2 it is an ATOM out of the ball table and is drawn there.
-            const bool beaker = page.b.count == 0 || page.b.w == 60;
-            if (beaker) {
-                const tubes::Image& b = art.blowFrames[static_cast<size_t>(
-                    frameB < tubes::kBlowFrameCount ? frameB : 0)];
-                screen.blit(b, 258, 119);
+    // The original draws onto a PAGE and never clears it: the base pose goes
+    // down once before the fade, each page paints its panel and text over
+    // whatever is there, and every animation frame is painted over the last.
+    // Nothing is erased until `1b2e:1e6b`.
+    //
+    // So the port keeps the page too, rather than recomposing each frame. It
+    // matters: recomposing draws only the CURRENT frame, and where an earlier
+    // frame painted something the current one leaves transparent, the page
+    // still holds it. That was worth 144 pixels on the fourth page, and it is
+    // not a detail anyone would have thought to check without the capture.
+    // ... but only for the FIGURES. The pages' panels and text are cleared
+    // between pages (`1b2e:1188` blanks the rect on both pages), so those are
+    // recomposed; the figures are the part that accumulates, and they live in
+    // a layer of their own that is never cleared.
+    tubes::Screen figures;
+    figures.clear(0);
+    figures.blit(art.base, tubes::kCutsceneBaseX, tubes::kCutsceneBaseY);
+    figures.blit(art.writeFrames[0], 86, 122);
+    figures.blit(art.blowFrames[0], 258, 119);
+
+
+    // `1b2e:1e6b`: page 4 ends by copying both animation rectangles from the
+    // other video page. What that leaves is what the captures show - the
+    // frozen frames stay and the base pose's middle goes, so below y 188 he
+    // is the base and above it he is the last frame.
+    auto restoreBox = [&](int rx, int ry, int rw, int rh) {
+        uint8_t* px = figures.pixelsMutable();
+        for (int y = ry; y < ry + rh && y < tubes::kScreenHeight; ++y) {
+            for (int x = rx; x < rx + rw && x < tubes::kScreenWidth; ++x) {
+                if (x < 0 || y < 0) continue;
+                // The figures layer is transparent where nothing painted.
+                px[static_cast<size_t>(y) * tubes::kScreenWidth + x] = 0;
             }
         }
+    };
+
+    // A page's own furniture: the bevelled panel, the story text and, on page
+    // 2, the eight elements' atoms. Drawn once, over whatever is there.
+    auto layout = [&](const tubes::CutscenePage& page) {
         for (int i = 0; i < page.count; ++i) {
             const tubes::CutsceneItem& it = page.items[i];
             switch (it.kind) {
@@ -1848,12 +1894,71 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
                 break;
             }
         }
-        // Page 2's track B is the eighth element's ball, cycling the seven
-        // colours where the static draw put type 4.
-        if (showTracks && page.b.count && page.b.w == 16) {
-            const int type = frameB < 1 ? 1
-                             : frameB > 7 ? 7 : frameB;
-            if (haveAtom[type]) screen.draw(atoms[type], page.b.x, page.b.y);
+    };
+
+    auto compose = [&](const tubes::CutscenePage& page) {
+        screen.clear(0);
+        screen.blit(*board, 0, tubes::kCutsceneBoardY);
+        // `2321:0711`-style: index 0 is transparent, so the board shows
+        // through everywhere the figures have not painted.
+        screen.stamp(figures, 0, 0, tubes::kScreenWidth, tubes::kScreenHeight);
+        layout(page);
+    };
+
+    // One tick's worth of animation, painted over the page.
+    // Rebuild the figures layer for this tick: the base pose, then whichever
+    // frame each live track is on.
+    //
+    // The ORIGINAL does not rebuild - it paints each frame over the last and
+    // never erases until `1b2e:1e6b`. Rebuilding matches it on four of the
+    // five pages and differs by 144 pixels on the late ticks of the fourth,
+    // where a taller pose has been drawn over a shorter one and the page
+    // still holds the difference. Accumulating instead fixes that page and
+    // costs 176 and 64 pixels on two others, because the page bookkeeping
+    // around `1b2e:1188` - which blanks a rect on BOTH pages between pages -
+    // is not read yet. Rebuilding is the better of the two until it is.
+    auto paint = [&](const tubes::CutscenePage& page, bool aLive, bool bLive) {
+        figures.clear(0);
+        figures.blit(art.base, tubes::kCutsceneBaseX, tubes::kCutsceneBaseY);
+        if (!aLive && !bLive) {
+            // Past the fourth page: the two boxes were copied back and each
+            // track's frozen frame is what is left.
+            restoreBox(86, 122, 28, 66);
+            restoreBox(258, 119, 60, 46);
+            figures.blit(art.writeFrames[tubes::kWriteFrameCount - 1], 86, 122);
+            figures.blit(art.blowFrames[tubes::kBlowFrameCount - 1], 258, 119);
+            return;
+        }
+        if (!bLive) {
+            // The beaker is still on the page from whatever B last left it
+            // on, even while B is driving the eighth element's atom.
+            figures.blit(art.blowFrames[static_cast<size_t>(
+                             beakerFrame < tubes::kBlowFrameCount
+                                 ? beakerFrame : 0)],
+                         258, 119);
+        }
+        if (aLive) {
+            figures.blit(art.writeFrames[static_cast<size_t>(
+                            frameA < tubes::kWriteFrameCount ? frameA : 0)],
+                        page.a.x, page.a.y);
+        }
+        if (bLive) {
+            if (page.b.w == 16) {
+                // The ball table, indexed by the counter itself. Entry 0 is
+                // not a ball, so the first tick draws nothing. The beaker is
+                // still there from before, at the frame B left it on.
+                figures.blit(art.blowFrames[static_cast<size_t>(
+                                 beakerFrame < tubes::kBlowFrameCount
+                                     ? beakerFrame : 0)],
+                             258, 119);
+                if (frameB > 0 && frameB < kCellStates && haveAtom[frameB]) {
+                    figures.draw(atoms[frameB], page.b.x, page.b.y);
+                }
+            } else {
+                figures.blit(art.blowFrames[static_cast<size_t>(
+                                frameB < tubes::kBlowFrameCount ? frameB : 0)],
+                            page.b.x, page.b.y);
+            }
         }
     };
 
@@ -1863,16 +1968,14 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
         if (res.read(tubes::kCutsceneMusic, song, err)) music.play(song, err);
     }
 
-    compose(tubes::kCutscenePages[0]);
-    // The first page's own text is not up yet at the fade - only the board
-    // and the two figures are - but composing it costs a frame nobody sees
-    // and keeps this to one code path.
+    // `1b2e:1ad4`: the fade reveals the board and the two figures, with no
+    // page text up yet - the first page's panel is drawn after it.
     if (runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, true, skip)) {
         const int k = skip.take();
         runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, false, skip);
         return k;
     }
-    if (holdRetraces(tubes::kCutsceneOpenDelay, skip)) {
+    if (!capturing && holdRetraces(tubes::kCutsceneOpenDelay, skip)) {
         const int k = skip.take();
         runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, false, skip);
         return k;
@@ -1893,13 +1996,15 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
         const int ticks = page.seconds * 7;
         bool aDone = page.a.count == 0, bDone = page.b.count == 0;
         for (int t = 0; t < ticks; ++t) {
+            paint(page, !aDone, !bDone);
             compose(page);
             presentScreen(ren, tex, screen, pal, rgba);
-            if (shotPage == p && t == ticks / 2) {
+            if (shotPage == p && t == (shotTick >= 0 ? shotTick : ticks / 2)) {
                 saveBmp(rgba, shotPath);
                 return 2;
             }
-            if (holdRetraces(tubes::kCutsceneFrameRetraces, skip)) {
+            if (!capturing &&
+                holdRetraces(tubes::kCutsceneFrameRetraces, skip)) {
                 ended = skip.take();
                 break;
             }
@@ -1928,6 +2033,7 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
                      (page.b.soundFrame < 0 && !music.soundBusy()))) {
                     play(page.b.sound);
                 }
+                if (page.b.w == 60) beakerFrame = frameB;
                 if (++frameB > page.b.count) {
                     if (page.b.count == 16) {
                         frameB = page.b.count;
@@ -1939,8 +2045,9 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
             }
         }
         if (!ended) play(page.soundAfter);
-        // `1b2e:1e6b`: the fourth page clears both animations as it ends.
-        if (p + 1 == tubes::kCutsceneClearPage) showTracks = false;
+        // `1b2e:1e6b`: the fourth page ends with the two box copies, and
+        // then each track's frozen frame is what is left on the page.
+        (void)0;
     }
 
     runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, false, skip);
@@ -3162,7 +3269,7 @@ int main(int argc, char** argv) {
                         !opt.music.empty() && settings.music, settings.sound,
                         haveBlackboard ? &blackboard : nullptr, haveBlackboard,
                         atoms, haveAtom, smallFont, haveSmall,
-                        opt.cutscenePage, opt.screenshot);
+                        opt.cutscenePage, opt.cutsceneTick, opt.screenshot);
         }
 
         // The capture flag is an exit, like every other one: without this the

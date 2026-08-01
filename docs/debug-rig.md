@@ -26,6 +26,9 @@ holds copyrighted game data, so it sits outside:
       grab_instructions.py      capture the in-game Instructions slides
       grab_hiscores.py          capture both High Scores pages, both key paths
       diff_hiscores.py          whole-screen diff of those two against the port
+      grab_cutscene.py          sweep the opening cutscene from boot
+      diff_cutscene.py          match each of its five pages and diff them
+      sweep_cutscene_ticks.py   the same with NOTHING masked, tick by tick
       load_save.py              load a saved game and capture the HUD
       diag_frameclock.py        find which candidate sites execute per frame
       build.log                 the fork's build transcript
@@ -231,6 +234,29 @@ BIOS mode byte. So `0x449 == 0x13` is the right "game is up" signal.
 `diff_frame.py` compares only **structural** pixels and masks the atoms,
 because a gameplay frame has a random backdrop, animated stars and atoms that
 move while the capture is taken. None of that applies to a menu-side screen, so
+### The cutscene: sweep, then aim
+
+The opening cutscene cannot be paused into - `1b2e:0f46` reads the input
+driver once a frame and acts only on 1 (Enter/Space) and 2 (ESC), so the
+game's own Pause key is ignored and there is nothing to freeze. So
+`grab_cutscene.py` does not aim: it fires a screendump every ~1.4 s from the
+moment the game is launched and keeps them all, and `diff_cutscene.py` then
+finds, for each of the port's five pages, the capture that matches it best.
+A fixed sleep would be a guess about DOSBox's clock, and a wrong guess shows
+up as a huge diff that reads like a rendering bug.
+
+**Capture a run from its START.** The first attempt began after the game was
+already running, and the truncated run left a stubborn 24-pixel residue that
+looked exactly like a one-tick phase error in the animation. It was the
+measurement, not the port. Give the sweep enough seconds to cover the boot -
+the splashes take about 10 - and check the page boundaries in the filenames
+before believing a number.
+
+`sweep_cutscene_ticks.py PAGE TICKS [glob]` closes the masks: it renders the
+port at every tick of a page and reports the best match with nothing masked at
+all, which is what puts a number on the animation itself rather than on the
+furniture around it.
+
 `diff_hiscores.py` compares **all 64,000 pixels with no mask at all** - and
 both High Scores pages come back at **0 differing pixels**.
 
