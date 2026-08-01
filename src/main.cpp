@@ -1115,12 +1115,22 @@ void drawSaveScreen(tubes::Screen& screen, const tubes::SaveBankData& bank,
             // 1000:316b: a live record shows its description, an empty one the
             // "( Available )" literal. The row being typed shows the live text.
             std::string left;
-            if (typing && i == selected) left = editText;
+            const bool editing = typing && i == selected;
+            if (editing) left = editText;
             else if (rec.live()) left = rec.description;
             else left = tubes::kSaveAvailable;
+            // `1000:34ba` on entry and `1000:35d1` on every keystroke both
+            // pass colour 0x0f, where the list rows are drawn in
+            // `kSaveRowColour`. So the row being typed turns WHITE, and that
+            // is the only thing on the screen that says the editor is open -
+            // there is no cursor (see below). The port drew it in the row
+            // colour, so selecting a slot looked like it had done nothing,
+            // and a player reported exactly that: no way to tell it was
+            // waiting for a new name.
             tubes::drawText(screen, script, tubes::kSaveRowX, y,
-                            tubes::kSaveRowColour, tubes::textmode::kPeak,
-                            left);
+                            editing ? tubes::kSaveTypingColour
+                                    : tubes::kSaveRowColour,
+                            tubes::textmode::kPeak, left);
             // 1000:31a8 sits AFTER the two arms join, so the number is drawn
             // for every row - an empty slot shows a right-justified 0. The
             // port guarded it on `live()` and the capture said otherwise.
@@ -1417,6 +1427,15 @@ struct SkipWatch {
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             if (ev.type == SDL_QUIT) { key = 2; continue; }
+            // A pad works here too, and it has to: these screens run before
+            // the frame loop exists, so nothing else would see the button.
+            // B and Back are the ESC of a controller; anything else is Enter.
+            if (ev.type == SDL_CONTROLLERBUTTONDOWN) {
+                const int b = ev.cbutton.button;
+                key = (b == SDL_CONTROLLER_BUTTON_B ||
+                       b == SDL_CONTROLLER_BUTTON_BACK) ? 2 : 1;
+                continue;
+            }
             if (ev.type != SDL_KEYDOWN) continue;
             const SDL_Keycode k = ev.key.keysym.sym;
             if (k == SDLK_ESCAPE) key = 2;
@@ -2250,6 +2269,34 @@ bool loadFont(const tubes::Archive& res, const std::string& name, int advance,
 // Keyboard and pad are OR-ed rather than switched between. The original bound
 // one driver at a time because DOS gave it no choice; SDL has no such reason,
 // and a player with a controller plugged in should not have to visit a menu.
+// What a controller button means on a screen that is WAITING - a menu, a
+// slideshow, the save or high score screen, a banner, the cutscene.
+//
+// The original's menu tests joystick button `0x20` directly (`1b2e:4d80`),
+// because DOS gave it no abstraction over a gameport; SDL is that
+// abstraction, so this maps the player's OWN bindings onto the keys those
+// screens already handle rather than porting a driver's button numbers. Same
+// reasoning as the rebinding screen - see input.h.
+//
+// Live play does NOT come through here. `readInput` polls the pad directly,
+// the way the original polls its driver, so A and B stay the test tube's
+// controls and never leak out as RETURN and ESCAPE.
+SDL_Keycode menuKeyForPad(const tubes::Bindings& bind, int button) {
+    static const SDL_Keycode kAs[tubes::kGameButtons] = {
+        SDLK_UP, SDLK_DOWN, SDLK_LEFT, SDLK_RIGHT, SDLK_RETURN, SDLK_ESCAPE,
+    };
+    for (int i = 0; i < tubes::kGameButtons; ++i) {
+        if (bind[static_cast<tubes::GameButton>(i)].pad == button) {
+            return kAs[i];
+        }
+    }
+    // Start and Back are not game buttons and cannot be bound to one, but
+    // every pad has them and a player will try them first.
+    if (button == SDL_CONTROLLER_BUTTON_START) return SDLK_RETURN;
+    if (button == SDL_CONTROLLER_BUTTON_BACK) return SDLK_ESCAPE;
+    return SDLK_UNKNOWN;
+}
+
 uint8_t readInput(const tubes::Bindings& bind, SDL_GameController* pad) {
     static const uint8_t kBit[tubes::kGameButtons] = {
         tubes::button::kUp,   tubes::button::kDown,
@@ -2835,15 +2882,12 @@ int main(int argc, char** argv) {
         if (cf) cf << tubes::encodeSettings(settings);
     };
 
-    // One controller, the first one plugged in. Hot-plug is handled in the
-    // event loop; nothing breaks if there is never one.
+    // One controller, the first one plugged in. Opened below, once SDL is
+    // actually up - this used to enumerate here, which is BEFORE `SDL_Init`,
+    // so `SDL_NumJoysticks` was asked on an uninitialised library and always
+    // said zero. No pad was ever opened at startup and the only way to get
+    // one was to unplug it and plug it back in. Reported from play.
     SDL_GameController* gamepad = nullptr;
-    for (int i = 0; i < SDL_NumJoysticks(); ++i) {
-        if (SDL_IsGameController(i)) {
-            gamepad = SDL_GameControllerOpen(i);
-            if (gamepad) break;
-        }
-    }
 
     // `1b2e:000a`: read `TUBES.SAV` if it is there. Unlike the high score
     // table the game SHIPS one, zero-filled, and the reader zero-fills the
@@ -3112,6 +3156,16 @@ int main(int argc, char** argv) {
         return 1;
     }
     SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
+    for (int i = 0; i < SDL_NumJoysticks(); ++i) {
+        if (SDL_IsGameController(i)) {
+            gamepad = SDL_GameControllerOpen(i);
+            if (gamepad) {
+                std::printf("gamepad: %s\n",
+                            SDL_GameControllerName(gamepad));
+                break;
+            }
+        }
+    }
 
     int scale = opt.scale;
     if (scale <= 0) {
@@ -3749,8 +3803,17 @@ int main(int argc, char** argv) {
                 writeSettings();
                 continue;
             }
-            if (ev.type != SDL_KEYDOWN) continue;
-            const SDL_Keycode k = ev.key.keysym.sym;
+            // Live play polls the pad instead - see `menuKeyForPad`.
+            const bool livePlay = stage == Stage::kPlay &&
+                                  sstage == tubes::SessionStage::kPlay &&
+                                  !saveScreen && !hsActive && !paused;
+            SDL_Keycode k = SDLK_UNKNOWN;
+            if (ev.type == SDL_KEYDOWN) {
+                k = ev.key.keysym.sym;
+            } else if (ev.type == SDL_CONTROLLERBUTTONDOWN && !livePlay) {
+                k = menuKeyForPad(settings.bindings, ev.cbutton.button);
+            }
+            if (k == SDLK_UNKNOWN) continue;
 
             // `1000:9744`'s typing loop. It owns the keyboard entirely while
             // it is up: printable characters append, backspace removes, and
@@ -4085,7 +4148,7 @@ int main(int argc, char** argv) {
                     if (!saveDesc.empty()) saveDesc.pop_back();
                 } else if (k >= 0x20 && k <= 0x7e &&
                            static_cast<int>(saveDesc.size()) <
-                               tubes::kSaveDescMax) {
+                               tubes::kSaveDescTyped) {
                     const bool shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
                     char c = static_cast<char>(k);
                     if (shift && c >= 'a' && c <= 'z') c = c - 'a' + 'A';
@@ -4469,16 +4532,20 @@ int main(int argc, char** argv) {
                     }
                 }
             }
-            // One voice, so one sound a frame: a second event in the same
-            // frame has already replaced the first inside Game, which is what
-            // calling the driver's PlaySound twice does.
-            const int8_t want = game->takeSound();
-            // The sound is TAKEN either way, so F4 mutes without desyncing
+            // Drain the frame's whole queue. The original would have had
+            // each of these cut the last one off - one voice - and the port
+            // now lets them overlap instead; see sfx.h for why that departure
+            // was taken and what it does NOT change.
+            //
+            // The sounds are TAKEN either way, so F4 mutes without desyncing
             // anything - `1000:3859` toggles the driver, it does not stop the
             // game asking for sounds.
-            if (soundOn && want >= 0 && want < tubes::sfx::kCount &&
-                sounds[want].valid()) {
-                music.playSound(&sounds[want]);
+            for (int8_t want = game->takeSound(); want != tubes::sfx::kNone;
+                 want = game->takeSound()) {
+                if (soundOn && want >= 0 && want < tubes::sfx::kCount &&
+                    sounds[want].valid()) {
+                    music.playSound(&sounds[want]);
+                }
             }
         }
 

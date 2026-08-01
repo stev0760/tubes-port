@@ -83,7 +83,12 @@ enum class SaveBank { kEndurance = 0, kWave = 1 };
 // different slot would carry the first slot's tail across. Modelled rather
 // than assumed away.
 constexpr int kSaveDescField = 31;         // Pascal `string[30]`
-constexpr int kSaveDescMax = 30;
+constexpr int kSaveDescMax = 30;           // what the FIELD holds
+
+// What the EDITOR accepts, which is not the same number: `1000:3594` refuses
+// a character once the length reaches 0x14, so the player can type twenty of
+// the thirty the record has room for. The port let them type all thirty.
+constexpr int kSaveDescTyped = 20;         // 0x14
 constexpr int kSaveTailOffset = 0x32;
 constexpr int kSaveTailBytes = kSaveSlotBytes - kSaveTailOffset;   // 30
 
@@ -202,6 +207,8 @@ constexpr int kSaveRowX = 30;              // 0x1e
 constexpr int kSaveRowY0 = 50;             // 0x32
 constexpr int kSaveRowPitch = 17;          // 0x11
 constexpr uint8_t kSaveRowColour = 30;     // 0x1e
+// `1000:34ba` / `1000:35d1`: the row being typed is drawn in 0x0f instead.
+constexpr uint8_t kSaveTypingColour = 15;  // 0x0f
 constexpr int kSaveDetailX = 242;          // 0xf2
 
 inline int saveRowY(int slot) {            // slot is 1-based, as the loop is

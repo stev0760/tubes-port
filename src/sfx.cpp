@@ -61,6 +61,34 @@ void SfxVoice::play(const Sound* s, int deviceRate) {
 
 void SfxVoice::stop() { sound_ = nullptr; }
 
+void SfxPool::play(const Sound* s, int deviceRate) {
+    if (!s) { stop(); return; }
+    for (SfxVoice& v : voices_) {
+        if (!v.busy()) {
+            v.play(s, deviceRate);
+            return;
+        }
+    }
+    // All four busy. The original would have cut the running one off, so
+    // cutting ONE off is still the honest fallback - take the first.
+    voices_[0].play(s, deviceRate);
+}
+
+void SfxPool::stop() {
+    for (SfxVoice& v : voices_) v.stop();
+}
+
+void SfxPool::mix(int16_t* out, int frames) {
+    for (SfxVoice& v : voices_) v.mix(out, frames);
+}
+
+bool SfxPool::busy() const {
+    for (const SfxVoice& v : voices_) {
+        if (v.busy()) return true;
+    }
+    return false;
+}
+
 void SfxVoice::mix(int16_t* out, int frames) {
     const Sound* s = sound_;
     if (!s) return;

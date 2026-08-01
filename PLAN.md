@@ -936,17 +936,19 @@ uploads a retrace apart. See the fade section in `docs/reversing-notes.md`.
 Ported, with `--fade-steps N` (default 40, the original's; 0 cuts) since the
 player sanctioned speeding it up.
 
-**4. Sound is clipped or truncated**, e.g. the Bonus catch (`GLDFADE`).
-Minor but real. Two candidates and they are distinguishable:
+**4. Sound is clipped or truncated. DONE**, and it was BOTH candidates.
 
-* the port's own mixer ending a sample early - check the played length against
-  the `.SFX` header's sample count, which `--dump-sfx` already prints;
-* the ONE voice being taken by a later sound, which is what `SBSOUND.DRV` does
-  and would be faithful. `Game::pendingSound_` is a single slot too, so a
-  second event in the same frame replaces the first before it is ever played.
+`SBSOUND.DRV` has one voice, so the original genuinely cuts a sound off when
+the next one starts - faithful, but a truncated `DROP` reads as a defect to
+anyone who has not read the driver. And the port was worse than the original:
+`Game::pendingSound_` was a single slot, so a second event in the same frame
+replaced the first BEFORE it was ever played. The original at least starts it.
 
-  Establish which before changing anything: if it is the second, the original
-  clips too and the port is right.
+Both lifted, as a DEPARTURE agreed with the player - modern SDL mixes as many
+streams as you like. `SfxPool` (sfx.h) is four voices and `takeSound` is a
+four-deep queue the frame loop drains. Nothing about WHICH sound plays when
+changes: every one still fires from the site the original calls `PlaySound`
+at. They simply finish.
 
 **5. Ports to other platforms** stay an eventual goal - see `Portability`.
 

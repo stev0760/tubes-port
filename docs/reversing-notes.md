@@ -726,6 +726,39 @@ atom is the sound of type nothing. Three more sit just below it.
 
 Types 11..17 and 19 are silent, which is the same set that has no fade family.
 
+### The F2 save screen's editor, and what says it is open
+
+Reported from play: selecting a slot on the F2 screen looked like it had done
+nothing - no prompt, no cursor, no way to tell the game was waiting for a name.
+
+`1000:3448` onward is the answer, and it is three steps:
+
+    Move(bank[slot], scratch, $50)        { 1000:3448 - the whole record }
+    Move(scratch, desc, $1e)              { 1000:3485 - its description }
+    y := slot * $11 + $32
+    CopyRect(page 0 -> page 2, 30, y, 160, 14)   { 1000:34a4, 2321:024d }
+    Write(30, y, $0f, 0, desc)                   { 1000:34ba }
+
+so the description is copied into the edit buffer - re-saving over a slot
+starts from what was there - the cell is **erased back to the paused game
+behind it**, and the line is redrawn in **colour $0f**, where the list rows
+are drawn in `kSaveRowColour` = $1e. The keystroke loop redraws it the same
+way at `1000:35d1`, also $0f.
+
+**That colour change is the entire indication.** There is no cursor: the high
+score screen pulses a 4x4 block at `1000:9757` and this loop has nothing of
+the kind. The port drew the edited row in the row colour, so nothing on screen
+changed at all when the editor opened.
+
+The erase is a page-to-page copy from the page holding the paused game, which
+is why a captured empty row shows the tube artwork through it rather than a
+flat fill. A port that recomposes the screen gets that for free.
+
+**And the editor accepts twenty characters, not thirty.** `1000:3594` refuses
+a character once the length reaches $14, while the record's field is
+`string[30]`. Two different numbers for two different things, and the port had
+been using the field's.
+
 ### `GLDFADE`: the sound is used, the ANIMATION cannot be
 
 Noticed by the player: the Bonus atom never plays a gold fade. It cannot, and

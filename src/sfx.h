@@ -73,4 +73,39 @@ private:
     uint32_t step_ = 1 << 16;
 };
 
+// A small pool of voices, and a DEPARTURE from the original - agreed with the
+// player, and the second one in the port's audio after the resampler above.
+//
+// `SBSOUND.DRV` has exactly one voice: a new sound overwrites whatever is
+// playing, so the original genuinely cuts a drop off when a match lands on
+// top of it. That is not a bug in 1994 - it is what one DMA channel and one
+// set of position variables can do - but SDL mixes as many streams as you
+// like for nothing, and a truncated DROP is heard as a defect by anyone who
+// has not read the driver.
+//
+// So the port keeps the original's ORDER and timing exactly - every sound is
+// still fired from the site the original calls `PlaySound` at - and only
+// lifts the one-at-a-time limit. Nothing about which sound plays when
+// changes; sounds simply finish.
+//
+// Four is chosen for the reason four is enough: the busiest frame in the game
+// fires a match, a settle and a landing, and the fade families run under half
+// a second. `SoundBusy` - which the high score viewer polls to loop its
+// applause and the cutscene polls to loop the beaker - reports the pool busy
+// if ANY voice is, which is what those two callers mean by the question.
+constexpr int kSfxVoices = 4;
+
+class SfxPool {
+public:
+    // Takes a free voice; if all four are busy it cuts one off, which is
+    // what the original does to every sound and is the honest fallback.
+    void play(const Sound* s, int deviceRate);
+    void stop();
+    void mix(int16_t* out, int frames);
+    bool busy() const;
+
+private:
+    SfxVoice voices_[kSfxVoices];
+};
+
 }  // namespace tubes

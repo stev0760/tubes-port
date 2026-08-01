@@ -523,18 +523,18 @@ void Game::updateBeaker() {
         // rather than recomputing it, and the difference is paid by the
         // remainder at the flush. The port used to zero it here, which made
         // every second award pay out faster than the original's.
-        pendingSound_ = s.soundType;
+        queueSound(s.soundType);
     }
     // An AntiMatter blast pays nothing but still arms the clear timer, so a
     // cascade behind it is not judged complete early - `1000:0f76`.
     if (s.blast) {
         clearTimer_ = kClearFrames;
-        pendingSound_ = s.soundType;
+        queueSound(s.soundType);
     }
     // 1000:2777, at the tail of the gravity pass: if anything moved this frame,
     // one HITATOM. Not one per atom - a whole beaker settling is a single
     // knock, which is why the flag is a boolean and not a count.
-    if (s.settled) pendingSound_ = sfx::kHitAtom;
+    if (s.settled) queueSound(sfx::kHitAtom);
     chains_ += s.chainsVertical + s.chainsHorizontal + s.chainsDiagonal;
 
     stepEnduranceRamp(s.runs);
@@ -685,7 +685,7 @@ void Game::catchSpecial() {
             rampIncrement_ = scorePending_ * scoreMultiplier_ / rampSteps_;
         }
         score_ += rampIncrement_;           // 1000:08c4
-        pendingSound_ = kBonus;             // 1000:083b, sound[10] = GLDFADE
+        queueSound(kBonus);             // 1000:083b, sound[10] = GLDFADE
     }
 
     if (!board_.specialsEnabled()) return;
@@ -995,7 +995,7 @@ void Game::stepFrame(uint8_t buttons) {
     if (objective_.mode == WaveMode::kCrystals) {
         if (stepCrystals(board_, crystals_, progress_.interval,
                          [this](int n) { return random(n); })) {
-            pendingSound_ = kCrystal;   // CRFADE, sound[18]
+            queueSound(kCrystal);   // CRFADE, sound[18]
         }
     }
 
@@ -1046,11 +1046,11 @@ void Game::stepFrame(uint8_t buttons) {
     // Display rotation and the beaker morph. The morph body is not read yet.
     if (--taskTimer_ <= 0) {
         taskTimer_ = kTaskTimerFrames;
-        if (taskTimerExpired(objective_, task_)) pendingSound_ = sfx::kSelect;
+        if (taskTimerExpired(objective_, task_)) queueSound(sfx::kSelect);
         // `1000:4bf6`. The same SELECT, from the same slot at `-0x7e`.
         if (objective_.morphBeaker) {
             rotateBeakerColours(board_);
-            pendingSound_ = sfx::kSelect;
+            queueSound(sfx::kSelect);
         }
     }
 
@@ -1169,8 +1169,8 @@ void Game::stepAtom(Falling& a) {
                 a.arrived = true;
                 // 1000:18b3 - the bottom slot rings the glass, anything above
                 // it knocks against the atom below.
-                pendingSound_ = (a.slotDy == kSlotDy[1]) ? sfx::kHitGlass
-                                                         : sfx::kHitAtom;
+                queueSound((a.slotDy == kSlotDy[1]) ? sfx::kHitGlass
+                                                         : sfx::kHitAtom);
             }
             break;
         }
@@ -1198,13 +1198,13 @@ void Game::stepAtom(Falling& a) {
                 // 1000:16d3. The column is full: the atom is destroyed and it
                 // costs a drop. It does NOT sit on top or bounce.
                 if (a.colour != kBonus && dropsRemaining_ > 0) --dropsRemaining_;
-                pendingSound_ = sfx::kDrop;      // 1000:172a
+                queueSound(sfx::kDrop);      // 1000:172a
             } else {
                 board_.set(col, row - 1, a.colour);
                 // 1000:1765. Reaching the floor rings the glass; landing on a
                 // stack knocks. Same pair as the in-tube slide above.
-                pendingSound_ = (row == board_.rows()) ? sfx::kHitGlass
-                                                       : sfx::kHitAtom;
+                queueSound((row == board_.rows()) ? sfx::kHitGlass
+                                                       : sfx::kHitAtom);
             }
             // 1000:17a2, where the two branches join. Settled or destroyed,
             // the atom is out of play - and THIS is what ends a mode-4 wave.
@@ -1297,7 +1297,7 @@ void Game::stepAtom(Falling& a) {
     if (a.y > kLostY) {
         a.y = kLostY;
         a.state = atomstate::kLanded;
-        pendingSound_ = sfx::kDrop;         // 1000:15a0, whatever was missed
+        queueSound(sfx::kDrop);         // 1000:15a0, whatever was missed
         // 1000:157b. An atom lost at the bottom is out of play too, and the
         // count comes down BEFORE the Bonus exemption below - `1000:1543`
         // jumps past the drops block straight to it.

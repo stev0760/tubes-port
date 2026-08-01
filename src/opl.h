@@ -110,7 +110,7 @@ private:
     int deviceRate_ = 44100;
     // The effects voice is mixed on top of the music in the same callback, so
     // there is one device and one clock for both.
-    SfxVoice sfxVoice_;
+    SfxPool sfxVoice_;
     FmTables tables_{};
     std::unique_ptr<OplChip> chip_;
     std::unique_ptr<MusSequencer> seq_;

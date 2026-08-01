@@ -395,12 +395,24 @@ public:
     // atom type for the fade families and DROP, or one of the three ids above
     // it. `sfx::kNone` means nothing happened.
     //
-    // One slot, not a queue, because the driver has one voice: a second event
-    // in the same frame simply cuts off the first, which is exactly what
-    // calling `PlaySound` twice does on the original.
+    // A SMALL QUEUE, not one slot - and this is the same departure the voice
+    // pool in sfx.h is, for the same reason and agreed the same way.
+    //
+    // One slot matched the driver: a second event in the same frame cut off
+    // the first, which is what calling `PlaySound` twice does on hardware
+    // with one voice. But it truncated the sound BEFORE it was ever played,
+    // which is worse than the original - the original at least starts it -
+    // and it is what a player heard as a drop being swallowed when a match
+    // landed in the same frame. Every event still fires from the site the
+    // original calls `PlaySound` at; they no longer overwrite each other on
+    // the way out.
     int8_t takeSound() {
-        const int8_t s = pendingSound_;
-        pendingSound_ = sfx::kNone;
+        if (soundCount_ == 0) return sfx::kNone;
+        const int8_t s = pendingSounds_[0];
+        for (int i = 1; i < soundCount_; ++i) {
+            pendingSounds_[i - 1] = pendingSounds_[i];
+        }
+        --soundCount_;
         return s;
     }
 
@@ -562,7 +574,16 @@ private:
     // wave does not end the instant the last atom is DISPENSED. See
     // `atomLeftPlay`.
     int inPlay_ = 0;
-    int8_t pendingSound_ = sfx::kNone;
+    // Written through `queueSound`; drained by `takeSound`, oldest first.
+    static constexpr int kPendingSounds = 4;
+    int8_t pendingSounds_[kPendingSounds] = {};
+    int soundCount_ = 0;
+
+    void queueSound(int8_t s) {
+        if (s == sfx::kNone) return;
+        if (soundCount_ >= kPendingSounds) return;      // the frame is full
+        pendingSounds_[soundCount_++] = s;
+    }
     int chains_ = 0;
     bool gameOver_ = false;
 
