@@ -240,12 +240,22 @@ What is worth knowing before touching gameplay:
   beaker cell holds `type + 19 * fadeFrame`, so one table draws both.
 - **the test tube holds 5**, stated by the in-game Instructions, not 5/3/2 by
   difficulty as the sprite heights suggested.
-- the **frame rate is 16.11 Hz**, not the 18.2 the project assumed for months.
+- the **frame rate is 16.11 Hz**, not the 18.2 the project assumed for months
+  - and it is now derived rather than measured: `21ea:0690` stores
+  `145 div fps` as the timer period, the session asks for a flat 16, and
+  `145 / (145 div 16)` is 16.11. The odd constant is truncation, not a choice.
+- **`23e7:0024` is `Delay(n)` and its unit is the vertical retrace**, so every
+  hold in the game is n/70 s.
 
 The open gameplay questions are in `PLAN.md`'s "Known wrong" and
-"Player-reported differences" sections, which are kept current. The largest is
-still **the screen cross-fade**, which is genuinely unfound - and note that the
-obvious candidate for it, `[DS:0x230e]`, turned out to be `PlaySound`.
+"Player-reported differences" sections, which are kept current.
+
+**The screen cross-fade is found**, after three failed searches, and how it
+was found is the lesson: the player said it behaved like a *mandatory* effect,
+which meant a graphics unit rather than the game. It is - `23e7:0097` fades in
+and `23e7:00ce` fades out, and every screen calls them. A routine that
+everything calls is not one any single screen names, so searching the game
+segments for a fade call could never have worked.
 
 When chasing a DS-relative global, establish which segment DS actually holds
 first. Two separate wrong turns came from this: `SS:SP` in the EXE header
@@ -265,15 +275,15 @@ arguments. Decompile the two together.
 ## Open work
 
 **Read `PLAN.md` first - it opens with the next step.** **Every menu item now
-works**: play, load, save (F2), Game Options with control rebinding, High
-Scores, Instructions, View Demo and Credits, with attract mode cycling on its
-own. What is left of the original program is
+works**, and so does the whole boot sequence: both splashes, the title, play,
+load, save (F2), Game Options with control rebinding, High Scores,
+Instructions, View Demo and Credits, with attract mode cycling on its own.
+What is left of the original program is
 
-- the **two splashes**, `21d5:007b` and `2178:00eb` - and they must be
-  skippable;
 - the **opening cutscene**, `1b2e:1651` - its text and layout are decoded and
   its two animation helpers are read, so what remains is the call sites;
-- the player's polish list, `PLAN.md` section 4.5.
+- the player's polish list, `PLAN.md` section 4.5, now three items rather than
+  five: the screen fade is found and ported, and so are both splashes.
 
 The rig is built and lives **outside this repo**, at `~/Dev/tubes-tooling/` -
 `docs/debug-rig.md` covers it. Three things to know before planning against it.
