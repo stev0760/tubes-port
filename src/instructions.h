@@ -62,9 +62,19 @@ extern const InstructionSlide kInstructionSlides[kInstructionSlideCount];
 // slide, and nothing ever clears them - so they are on screen for every slide
 // and belong to the screen rather than to any one of them. The credits at
 // `1b2e:4191` do exactly the same thing with the same two strings.
+// `0x76` is the cyan, and 184 is BELOW the blackboard - the board is 152 tall
+// at y 12, so it ends at 163 and these sit on the black floor under it. That
+// is the game's own convention for "how to work this screen", and it reads far
+// better than chalk on green.
+constexpr uint8_t kInstrNavColour = 118;   // 0x76
+constexpr int kInstrNavY = 184;
+constexpr int kInstrNavY2 = 192;
+
 constexpr InstructionItem kInstructionNav[2] = {
-    {InstructionItem::kCentred, 0, 184, 118, 2, 0, "Up - Previous Slide"},
-    {InstructionItem::kCentred, 0, 192, 118, 2, 0, "Down - Next Slide"},
+    {InstructionItem::kCentred, 0, kInstrNavY, kInstrNavColour, 2, 0,
+     "Up - Previous Slide"},
+    {InstructionItem::kCentred, 0, kInstrNavY2, kInstrNavColour, 2, 0,
+     "Down - Next Slide"},
 };
 
 // ---------------------------------------------------------------------------

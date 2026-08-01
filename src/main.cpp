@@ -1287,15 +1287,13 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
                             armed ? "press a key" : bindingLabel(bind.b[i]));
         }
     }
-    // The hint is an aside, not a row, so it takes TINY6X8 - the same font the
-    // briefings set their prose in. At a 6-pixel advance it also stops
-    // competing with the bindings above it for width.
+    // The hint goes where the Instructions and Credits put theirs: on the
+    // BLACK FLOOR below the board, in `0x76` cyan, in TINY6X8, centred over
+    // the whole screen. That is the game's own convention for "how to work
+    // this screen", and off the green it needs no help to be read.
     if (haveSmall) {
-        // In `0x2f` too: at 8 pixels tall the chalk white has too little of
-        // itself on screen to read against the green, where the red carries.
-        tubes::drawTextCentred(screen, small, tubes::kHsPanelX, kPanelRight,
-                               kPanelY + kPanelH - 14, tubes::kHsTitleColour,
-                               tubes::textmode::kPeak,
+        tubes::drawTextCentred(screen, small, 0, 319, tubes::kInstrNavY,
+                               tubes::kInstrNavColour, tubes::textmode::kFadeUp,
                                "Enter binds - Esc exits");
     }
 }
