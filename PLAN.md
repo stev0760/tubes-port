@@ -793,6 +793,62 @@ in particular is an animation system (`WRITE0..9` is a *writing* animation)
 rather than a screen - so it is the one piece most likely to need machinery
 nothing else needs.
 
+### 4.5 FINAL POLISH - the player's list, recorded before it is worked
+
+Five items, given in one go so none of them gets lost. None is a rule; all are
+things a player notices and the port currently does not do.
+
+**1. Every screen with an animation should have it.** Two are missing:
+
+* the **projector screen roll-down** on Instructions and Credits. The port has
+  the animation already - `1b2e:0a11`'s six-frame slide drop, ten retraces a
+  frame, in `kSlideDrop` - but it is gated on `DS:0x210e`, which the original
+  sets the FIRST time the scene is shown and never clears. Check whether the
+  slideshow screens re-arm it or whether the roll only ever happens once per
+  run; the port currently drops it once, on the first briefing.
+* **Professor Lanny's idle**. He should MOVE HIS MOUTH and TAP HIS POINTER on
+  alternating intervals rather than only waving. The port draws the wave
+  (`POINTER1..3` on a ping-pong off `DS:0x20b0`) and nothing else.
+
+  The lead is `1b2e:0656`, which already has three arms on two flags:
+
+      if DS:0x20e3 = 0 then
+        if DS:0x20c8 = 0 then Draw(267, 121, POINTER0)      { the idle }
+        else Draw(267, 165, BOOKS); Draw(267, 100, CLAP[n])  { clapping }
+      else Draw(276, 165, BOOKS); Draw(267, 94, JUMP[n])     { jumping }
+
+  `TALK1..5.GFX` and `POINTERT.GFX` are loaded by the same loader and are used
+  by NEITHER arm above, so there is a fourth behaviour somewhere that has not
+  been found. Find what sets `DS:0x20c8` and `DS:0x20e3` and what drives the
+  talk frames; do not invent an interval.
+
+**2. The joke slide.** Lanny accidentally shows a WRONG slide - he is
+"flashing", wearing an Absolute Magic shirt under his lab coat. Reported from
+play, not yet located. It is presumably one of the unattributed sprite arms
+above, or a slide in `1b2e:2d63` that the extraction read as text-only. Worth
+checking the sprite draws per slide against the captures in `capture/instr/`.
+
+**3. The screen transition fade.** Still the oldest open item in this file and
+still genuinely unfound - `[DS:0x230e]` turned out to be `PlaySound`, so that
+lead is dead. **The player has said it is acceptable to RECREATE it** if it
+cannot be found: a palette ramp between screens is a few lines. Do the search
+once more first, since every screen that would use it is now ported and the
+call sites are all in reach.
+
+**4. Sound is clipped or truncated**, e.g. the Bonus catch (`GLDFADE`).
+Minor but real. Two candidates and they are distinguishable:
+
+* the port's own mixer ending a sample early - check the played length against
+  the `.SFX` header's sample count, which `--dump-sfx` already prints;
+* the ONE voice being taken by a later sound, which is what `SBSOUND.DRV` does
+  and would be faithful. `Game::pendingSound_` is a single slot too, so a
+  second event in the same frame replaces the first before it is ever played.
+
+  Establish which before changing anything: if it is the second, the original
+  clips too and the port is right.
+
+**5. Ports to other platforms** stay an eventual goal - see `Portability`.
+
 ### 5. After the port is faithful: enhancements
 
 Explicitly **not** now, and explicitly **not** in place of the original
