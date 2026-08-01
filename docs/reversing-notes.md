@@ -6322,6 +6322,99 @@ because it is multiplied by 80, the Mode X plane pitch, and `[BP+0x10]` is the
 rows 12..163 and the slide at `y` 31..162 sits inside it. `GAMEBG` cannot be
 the held image - it is 320x200 and does not fit at `y = 12`.
 
+## The video pages: FOUR of them, and one is the eraser
+
+`2321:0109` sets the mode and `2321:0000` lays out the pages, and between them
+they answer every page question this project had open.
+
+`2321:0109` is Mode X by the book: `INT 10h` mode `0x13`, sequencer `04 = 06`
+to unchain, CRTC `11` write-protect cleared, `14 = 00` and `17 = e3` for byte
+mode, `3c4/02 = 0f` for all four planes, then 64 KiB of `A000` zeroed. It ends
+by storing the resolution as two variables rather than constants:
+
+    DS:0x2382 := 320        DS:0x2384 := 200
+
+`2321:0000` then derives everything else from them:
+
+    pageBytes := (DS:0x2382 div 4) * DS:0x2384      { 80 * 200 = 16000 }
+    DS:0x2364 := pageBytes
+    DS:0x2362 := $10000 div pageBytes               { 65536 div 16000 = 4 }
+    for i := 0 to DS:0x2362 - 1 do begin
+      DS:0x2366[i] := $a000 + (pageBytes div 16) * i;    { the page's segment }
+      DS:0x236e[i] := pageBytes * i                      { and its offset }
+    end;
+    DS:0x2376 := 0;  DS:0x2378 := 0;  DS:0x237a := 0
+
+So there are **four pages** of 16000 bytes at offsets 0, 16000, 32000 and
+48000 - 64000 bytes, which is why the mode's own 64 KiB window is the limit and
+`DS:0x2362` comes out as 4 rather than being written down anywhere.
+
+`DS:0x2376` is the page being DRAWN to, `DS:0x2378` the one being SHOWN, and
+`DS:0x235e` / `DS:0x2360` are the current draw page's segment and offset,
+cached so the blitters do not index the tables.
+
+### The five entry points, with their argument order
+
+Ghidra prints Pascal calls in the REVERSE of the push order, so every signature
+below is read off the listing rather than the decompiler.
+
+| address | signature | what it does |
+|---|---|---|
+| `2321:014f` | `Flip` | swap the draw page, point the CRTC at the one just drawn |
+| `2321:019b` | `SetDrawPage(p)` | `DS:0x235e`/`0x2360` only - does NOT touch `DS:0x2376` |
+| `2321:01b5` | `SetShownPage(p)` | programs CRTC `0x0c`/`0x0d` only |
+| `2321:01e6` | `ClearPage(p)` | all four planes, `DS:0x2364` bytes of zero |
+| `2321:020c` | `CopyPage(src, dst)` | whole page, latch mode |
+| `2321:024d` | `CopyRect(src, dst, x, y, w, h)` | `y*80 + x div 4`, `w div 4 + 1` bytes a row |
+
+`CopyRect`'s row width is `w div 4 + 1` - it rounds UP by a whole byte, so it
+always copies up to three columns more than asked for. That is deliberate: the
+callers pass a sprite's width and need the byte the sprite ends inside.
+
+### Page 3 is the eraser, and that is the whole dirty-rect model
+
+There is no per-sprite background save on the menu side. **Page 3 holds a clean
+copy of the backdrop, and anything that moves is erased by copying its old
+rectangle back from page 3.** Three routines do nothing else:
+
+* `1b2e:0510`'s roll-down: `CopyRect(3, DS:0x2376, 57, 26, SLIDEBAR.w, 150)`
+  before each new bar position;
+* `1b2e:0b8f`'s jump: the same call around the professor's box;
+* `1b2e:1188`, which is exactly `Flip; CopyRect(3, DS:0x2376, x, y, w, h);
+  Flip` and nothing else - a four-argument "put the background back here".
+
+`1b2e:0510` is where page 3 is built: it does `SetDrawPage(3); ClearPage(3);`
+and draws `BLACKBRD.GFX` and the two navigation lines into it before switching
+back to the live page for the professor and the bar.
+
+**`DS:0x2058` is `BLACKBRD.GFX`**, loaded at `1000:ae0b` into the record
+`{ptr @0x2058, w @0x205c, h @0x205e}`. It was carried as the stats screen's
+"stand-in background" needing explanation; there is nothing to explain, it is
+the blackboard, and the port already draws it at `(0, 12)`.
+
+### Open: which page `1b2e:0656` snapshots FROM
+
+`1b2e:0656` opens with `PUSH 0; PUSH 3; CALLF 2321:020c`, and by the argument
+order above that is `CopyPage(src := 0, dst := 3)` - it overwrites the clean
+stash with page 0. That reads backwards against everything else here, and the
+honest position is that the direction is settled but **what page 0 contains at
+that moment is not**. The two readings to separate on the rig are whether the
+screens always compose their backdrop on page 0 (in which case this refreshes
+the stash and is right), or whether `DS:0x2376` can be 1 by then (in which case
+the reading of `2321:020c`'s parameters is wrong somewhere).
+
+Do not port an erase model off this until it is settled. Nothing in the port
+depends on it: the port composes whole frames.
+
+### A scope correction on "the page flip is never executed"
+
+The measurement section above records that `2321:014f` at image `0x1335f` got
+**zero breakpoint hits** and concludes it "belongs to code this game does not
+use". The zero was real and the conclusion was too broad. That probe ran during
+PLAY, where `1000:3a67` flips inline; `2321:014f` is what the CLASSROOM screens
+use, and `1b2e:0510`, `1b2e:084e`, `1b2e:0a11` and `1b2e:1188` all call it.
+The claim holds for the game loop and not for the program.
+
 ## The classroom scene is `1b2e:0a11`, and three screens share it
 
 The briefing `1000:86b8`, the stats screen `1000:8da5` and the Continue screen

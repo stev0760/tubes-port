@@ -40,9 +40,18 @@ Two consequences that shape every decision here:
 What is left is polish, one unread screen, and the enhancements the player has
 asked for. In the order they are worth doing:
 
-1. **The video page bookkeeping.** One reading closes three loose ends: the
-   cutscene's last 144 pixels, the stats screen's stand-in background
-   (`DS:0x2058`), and the two rect copies nobody has traced.
+1. **The video page bookkeeping**, part read. `2321:0109` and `2321:0000` are
+   done and written up: FOUR pages of 16000 bytes, `DS:0x2376` the draw page
+   and `DS:0x2378` the shown one, and **page 3 is a clean copy of the backdrop
+   that everything erases from** - which is the whole menu-side dirty-rect
+   model. `2321:024d` is `CopyRect(src, dst, x, y, w, h)` and `1b2e:1188` is
+   just `Flip; CopyRect(3, live, ...); Flip`. `DS:0x2058` turned out to be
+   `BLACKBRD.GFX` and needed no explanation at all.
+
+   What is left of it: **the cutscene's last 144 pixels**, and **which page
+   `1b2e:0656` snapshots from** - its `CopyPage(0, 3)` reads backwards against
+   the rest and the reversing notes say exactly which two readings to separate
+   on the rig. Nothing in the port depends on either.
 2. **`1000:9499`**, the wave-75 ending. The only screen in the program nobody
    has seen, and `PRIZE.GFX` sits behind a "RegisteredEnding" error string.
    Note it is now half-read anyway: it is what sets `DS:0x20e3`, the flag that
@@ -111,10 +120,12 @@ Still unread:
 
 - `1000:9499`, reached on clearing wave 75 - the registered ending, and the
   only screen in the program nobody has seen
-- **the video page bookkeeping**: `1b2e:1188` blanking a rect on BOTH pages,
-  `1b2e:0f46` flipping `[0x2376]` once per call, `1000:34a4` and `1b2e:1e6b`
-  copying rectangles between pages. Reading it is what closes the cutscene's
-  last 144 pixels, and it would settle the stats screen's background too
+- **the video page bookkeeping**, mostly read - `2321:0109` and `2321:0000`
+  give four 16000-byte pages and page 3 as the clean backdrop everything erases
+  from, `2321:024d` is `CopyRect(src, dst, x, y, w, h)`, `1b2e:1188` is a
+  three-line restore-from-3, and `DS:0x2058` was `BLACKBRD.GFX` all along. Left
+  over: the cutscene's last 144 pixels, and `1b2e:0656`'s `CopyPage(0, 3)`,
+  which reads backwards against the rest
 - `.BIN` - one resource, and nothing decompiled reads it
 
 ### The engine: ~90%
