@@ -34,11 +34,38 @@ Two consequences that shape every decision here:
 
 ---
 
+## The next step, in one place
+
+**Every screen of the original is ported and every asset format is decoded.**
+What is left is polish, one unread screen, and the enhancements the player has
+asked for. In the order they are worth doing:
+
+1. **The two missing animations**, section 4.5 item 1. The projector screen
+   roll-down on Instructions and Credits (the port has the animation and gates
+   it on `DS:0x210e`, which the original sets once and never clears), and
+   **Professor Lanny's idle** - he should move his mouth and tap his pointer,
+   and `TALK1..5.GFX` and `POINTERT.GFX` are loaded by the same loader and
+   used by NO known arm. Find what sets `DS:0x20c8` and `DS:0x20e3`. Do not
+   invent an interval.
+2. **The joke slide**, 4.5 item 2 - Lanny flashing an Absolute Magic shirt
+   under his lab coat, reported from play and not yet located. Check the
+   sprite draws per slide against `capture/instr/`.
+3. **The video page bookkeeping.** One reading closes three loose ends: the
+   cutscene's last 144 pixels, the stats screen's stand-in background
+   (`DS:0x2058`), and the two rect copies nobody has traced.
+4. **`1000:9499`**, the wave-75 ending. The only screen in the program nobody
+   has seen, and `PRIZE.GFX` sits behind a "RegisteredEnding" error string.
+5. Then the enhancements in section 5, which are the player's: a **Graphics
+   Options screen** (the port cannot even go fullscreen) and **GLDFADE**.
+
+The three-pixel floor at (59, 10..12) on the play field is still unexplained
+and has been for months. It is not worth a session on its own.
+
 ## Where this stands
 
 Percentages are judgement calls, so the breakdown matters more than the number.
 
-### Reversing: ~85%
+### Reversing: ~95%
 
 | Area | State |
 |---|---|
@@ -68,16 +95,26 @@ Percentages are judgement calls, so the breakdown matters more than the number.
 | The four wave-setup routines | **done** - `1000:0000` marked, `0236` crystals, `035e` pre-fill, `4bf6` the morph |
 | The Mischief Crystal, end to end | **done** - the 10-byte record, the teleport `1000:0560`, the AntiMatter removal `041c`, the gravity follow `04ca` |
 
-Still unread, and most of it is inside `1000:3a67`'s 9,382 bytes:
+Also done since: **every asset format** (`.SPR` and `.ANM` fell in one
+session), both splashes, the opening cutscene with its two-track animation
+player, and the screen fade that was open from the first session.
 
-- `1000:8c38`, the Continue screen, and `1000:9499`, reached on clearing wave 75
-- `.SPR`, `.BIN`, `.ANM`
+Still unread:
 
-### The engine: ~40%
+- `1000:9499`, reached on clearing wave 75 - the registered ending, and the
+  only screen in the program nobody has seen
+- **the video page bookkeeping**: `1b2e:1188` blanking a rect on BOTH pages,
+  `1b2e:0f46` flipping `[0x2376]` once per call, `1000:34a4` and `1b2e:1e6b`
+  copying rectangles between pages. Reading it is what closes the cutscene's
+  last 144 pixels, and it would settle the stats screen's background too
+- `.BIN` - one resource, and nothing decompiled reads it
 
-The core play loop is now largely faithful; almost everything *around* it is
-absent. That is why the number went **down** from the 45% claimed earlier -
-that figure was set before the surrounding scope was properly counted.
+### The engine: ~90%
+
+**Every screen of the original program is ported.** The number is no longer
+about missing screens - it is about the polish inside them, and about how much
+of what is on screen has been measured against the original rather than merely
+read.
 
 Working, and transliterated rather than invented:
 
@@ -146,11 +183,12 @@ The surrounding screens, and where each stands:
 | Demo playback (`.SCR` replay through the same loop) | **done** - matches end to end, terminates on the original's own last byte |
 | The Software Creations splash `21d5:007b` | **done** - 0 pixels of 64,000 against the reference render |
 | The Absolute Magic splash `2178:00eb` | **done** - the built backdrop, the logo zoom, five strikes with the white flash, the writing |
-| The stats blackboard `1000:8da5` and Continue `1000:8c38` | absent, medium |
-| High scores, save/load | absent, medium - the menu reaches them and they do nothing |
-| Attract mode | the 720-frame countdown runs but restarts instead of playing `DEMO.SCR` |
-| Instructions slideshow `1b2e:2d63` | absent, large (4,510 bytes) |
-| Blackboard cutscene `1b2e:1651` | absent, large (2,323 bytes) |
+| The opening cutscene `1b2e:1651` | **done and measured** - **0 pixels of 64,000** on all five pages, whole screen, nothing masked. Open: 144 px on page 4's late ticks, the page bookkeeping |
+| Instructions `1b2e:2d63` and Credits `1b2e:411b` | **done** - all 21 slides and 4 pages, EXTRACTED not transcribed; a captured slide diffs at **8 pixels of 64,000** |
+| High scores, viewer and entry | **done** - both viewer pages at **0 of 64,000**, unmasked; `TUBES.HSC` round-trips byte-exact |
+| Save / load, the menu and F2 | **done** - `TUBES.SAV` re-encodes byte-exact; the slot list diffs at 252 px, all star-rotation phase |
+| The stats blackboard `1000:8da5` and Continue `1000:8c38` | **done**. Open: the background is a stand-in - `2321:068d` blits a held image from `DS:0x2058` and nothing decompiled writes it |
+| Attract mode | **done** - title, cutscene, demo, back to the title, with ESC in the cutscene skipping the demo as `1000:b287` does |
 
 Pixel accuracy against the original reads **0.02% to 0.22%** of structural
 pixels differing on the play field, over eight paused captures with the
@@ -731,13 +769,16 @@ the title. Two things in it are **marked as stand-ins, not derived**:
 
 - the stats screen's background - `2321:068d` blits a held image to `(0, 12)`,
   not `GAMEBG` at the origin, and nothing decompiled writes `DS:0x2058`;
-- the Continue countdown's tick length, since `23e7:0024`'s unit is unread.
-  Both want a capture of the original; `--screenshot-after N` plus
-  `--auto-advance` is how the port side gets captured now.
+- ~~the Continue countdown's tick length~~ **SETTLED**: `23e7:0024` is
+  `Delay(n)` in vertical retraces, so `param * 7` iterations of `Delay(10)` is
+  `param` seconds exactly - one count a second, which is what the port had
+  assumed. The stats background still wants a capture of the original;
+  `--screenshot-after N` plus `--auto-advance` is how the port side is
+  captured.
 
-Still open from it: `1000:2dd0`'s **F1 Help** body and its **F2 Save** slot
-picker are read as a dispatch but their screens are not decompiled, so both
-keys are inert. Those belong with B below, since F2 is save/load.
+Still open from it: `1000:2dd0`'s **F1 Help** body. Its screen is not
+decompiled and the key is inert - the only key in the game that does nothing.
+F2 is done, both ways in: during play, and from the abort banner's own offer.
 
 **B. The menu items that currently do nothing.** Each is reachable and inert,
 which is worse than absent - it looks broken. **The menu is NOT finished**; four
