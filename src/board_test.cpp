@@ -2152,6 +2152,47 @@ void testBindingsCannotBeShared() {
 // `component * n div 40` on the RAW 6-bit .PAL values, and the ends of the
 // ramp have to land exactly on black and on the palette itself - a fade that
 // stops one step short leaves the screen permanently dim.
+// `1b2e:0510`'s roll-down. The table is `DS:0xb9c`, array[1..15] of word, and
+// the only two things that can go wrong in porting it are the bounce and the
+// hand-off to rest - so both are what this checks.
+void testTheProjectorScreenRollsDownAndBouncesOnce() {
+    using namespace tubes;
+
+    // Twelve even steps of 11, then the resting height, an overshoot, and back.
+    bool even = true;
+    for (int i = 0; i < 12; ++i) {
+        if (kRollDown[i] != 11 * (i + 1)) even = false;
+    }
+    check(even, "the first twelve steps are multiples of 11");
+    check(kRollDown[12] == kFrameH, "step 13 reaches the resting height");
+    check(kRollDown[13] > kFrameH, "step 14 overshoots it");
+    check(kRollDown[14] == kFrameH, "and step 15 comes back to rest");
+    // `1b2e:0656` redraws the scene by reading `DS:0xbba`, which IS the last
+    // entry - so the two numbers cannot drift apart.
+    check(kRollDown[kRollDownFrames - 1] == kFrameH,
+          "the table's tail is the height the scene rests at");
+
+    ScreenRoll r;
+    check(!r.rolling() && r.height() == kFrameH, "a fresh roll is settled");
+    r.restart();
+    check(r.rolling() && r.height() == kRollDown[0],
+          "restarting puts the screen back at the top");
+
+    // Delay(3) a frame at 70 Hz, so one retrace short of three frames is still
+    // the second step and not the third.
+    const float retrace = 1.0f / kRetraceHz;
+    r.tick(retrace * 2.0f);
+    check(r.height() == kRollDown[0], "two retraces do not advance it");
+    r.tick(retrace);
+    check(r.height() == kRollDown[1], "the third does");
+
+    // It settles and stays settled, however far it is over-ticked.
+    for (int i = 0; i < 200; ++i) r.tick(retrace);
+    check(!r.rolling() && r.height() == kFrameH, "it settles at rest");
+    r.tick(1.0f);
+    check(r.height() == kFrameH, "and ticking a settled roll does nothing");
+}
+
 void testTheFadeRampEndsOnBlackAndOnThePalette() {
     using namespace tubes;
     Bytes raw(768);
@@ -2885,6 +2926,7 @@ int main() {
     testTheContinueCountdownExpiringDeclines();
     testEnduranceSkipsBothWaveScreens();
     testTheFastSongIsAboutDropsNotDifficulty();
+    testTheProjectorScreenRollsDownAndBouncesOnce();
     testTheFadeRampEndsOnBlackAndOnThePalette();
     testTheGfxPrefixDoesNotDecideTheLayout();
     testTheSprStripSplitsIntoImages();

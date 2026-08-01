@@ -692,8 +692,23 @@ struct SceneArt {
     bool haveBar = false;
 };
 
+// What the scene is doing right now, as opposed to what it is made of. Three
+// of these move: the projector screen rolls down (`1b2e:0510`), the slide
+// wobbles into place once per run (`1b2e:0a11`), and the professor waves
+// (`1b2e:0e37`). Passing them as one struct keeps the four screens that share
+// `drawScene` from each growing another argument every time one is found.
+struct ScenePose {
+    int frameH = tubes::kFrameH;      // the projector screen's rolled height
+    int slideX = tubes::kSlideX;
+    int slideY = tubes::kSlideY;
+    int profFrame = 0;                // 0 standing, 1..3 POINTER1..3
+};
+
 void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
-               const SceneArt& art, int slideX, int slideY, int profFrame) {
+               const SceneArt& art, const ScenePose& pose) {
+    const int slideX = pose.slideX;
+    const int slideY = pose.slideY;
+    const int profFrame = pose.profFrame;
     const tubes::Image* corners = art.corners;
     const bool* haveCorner = art.haveCorner;
     screen.clear(0);
@@ -735,14 +750,22 @@ void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
         screen.blit(art.pointer[profFrame], tubes::kProfX, tubes::kProfY);
     }
 
-    // The frame behind the slide, constant in every call.
-    fillRect(tubes::kFrameX, tubes::kFrameY, tubes::kFrameW, tubes::kFrameH,
+    // The frame behind the slide. Its HEIGHT is the one thing about it that
+    // moves: `1b2e:0656` reads `DS:0xbba` for it and `1b2e:0510` steps that
+    // word down the `kRollDown` table when the scene is first built.
+    fillRect(tubes::kFrameX, tubes::kFrameY, tubes::kFrameW, pose.frameH,
              tubes::kFrameColour);
     // The roller bar rides the frame's bottom edge - `Draw(57, DS:0xbba + 26)`
     // in `1b2e:0656`, where `DS:0xbba` is the frame height as it rolls down.
     if (art.haveBar) {
-        screen.blit(*art.bar, tubes::kBarX, tubes::kFrameH + tubes::kBarDY);
+        screen.blit(*art.bar, tubes::kBarX, pose.frameH + tubes::kBarDY);
     }
+    // While the screen is still rolling there is no slide on it - `1b2e:0510`
+    // draws only the growing rect and the bar, and the slide arrives with the
+    // `1b2e:0a11` that follows. Putting it down early leaves a white panel
+    // hanging in front of a screen that has not reached it yet.
+    if (pose.frameH < tubes::kFrameH) return;
+
     // The slide itself. Its resting place, (74, 31, 172, 132, 17), is exactly
     // the rectangle this file used to carry as "MEASURED, NOT DECOMPILED" -
     // the measurement was right, and it is now derived.
@@ -764,9 +787,9 @@ void drawBriefing(tubes::Screen& screen, const tubes::Game& game,
                   bool haveBigF, bool haveSmallF,
                   const tubes::Sprite* atoms, const bool* haveAtom,
                   const tubes::Sprite* furn, const bool* haveFurn,
-                  int8_t decorBall, const SceneArt& art, int slideX,
-                  int slideY, int profFrame) {
-    drawScene(screen, bg, haveBg, art, slideX, slideY, profFrame);
+                  int8_t decorBall, const SceneArt& art,
+                  const ScenePose& pose) {
+    drawScene(screen, bg, haveBg, art, pose);
 
     const tubes::WaveObjective& obj = game.objective();
     const int count = obj.counter;
@@ -894,7 +917,7 @@ void drawStats(tubes::Screen& screen, const std::vector<tubes::StatsRow>& rows,
                const tubes::Image* board, bool haveBoard, const SceneArt& art,
                const tubes::Font& heading, const tubes::Font& label,
                const tubes::Font& number, bool haveHeading, bool haveLabel,
-               bool haveNumber, int profFrame) {
+               bool haveNumber, const ScenePose& pose) {
     // `1000:8db4` blits the HELD image through `2321:068d` at (0, 12) and then
     // calls `1b2e:0a11`, the same classroom scene the briefing uses - so the
     // stats land on the blackboard's white slide, not on the play backdrop.
@@ -903,8 +926,9 @@ void drawStats(tubes::Screen& screen, const std::vector<tubes::StatsRow>& rows,
     //
     // The slide is always at rest here - the drop animation belongs to the
     // first briefing and `DS:0x210e` has long since been set by this point.
-    drawScene(screen, board, haveBoard, art, tubes::kSlideX, tubes::kSlideY,
-              profFrame);
+    // So is the projector screen: `1000:8da5` reaches the scene through
+    // `1b2e:0656`, which reads `DS:0xbba` at rest, not through `1b2e:0510`.
+    drawScene(screen, board, haveBoard, art, pose);
 
     for (const tubes::StatsRow& r : rows) {
         const tubes::Font* f = nullptr;
@@ -1191,14 +1215,17 @@ void drawInstructionSlide(tubes::Screen& screen,
                           const tubes::InstructionSlide* pages, int count,
                           int slide,
                           const tubes::Image* board, bool haveBoard,
-                          const SceneArt& art, int profFrame,
+                          const SceneArt& art, const ScenePose& pose,
                           const tubes::Font& small, bool haveSmall,
                           const tubes::Font& big, bool haveBig,
                           const tubes::Sprite* atoms, const bool* haveAtom,
                           const tubes::Sprite* tube, const bool* haveTube,
                           const tubes::Sprite* furn, const bool* haveFurn) {
-    drawScene(screen, board, haveBoard, art, tubes::kSlideX, tubes::kSlideY,
-              profFrame);
+    drawScene(screen, board, haveBoard, art, pose);
+    // Nothing is on the screen until it has finished coming down - the
+    // original's `1b2e:0510` returns before its caller writes a word of the
+    // first slide.
+    if (pose.frameH < tubes::kFrameH) return;
     if (slide < 0 || slide >= count) return;
     // The navigation is drawn once by the original and never cleared, so it
     // belongs to the screen rather than to a page.
@@ -3549,12 +3576,21 @@ int main(int argc, char** argv) {
         }
     };
 
-    auto raiseBriefing = [&]() {
+    // `1b2e:0510` builds the classroom from nothing, and the projector screen
+    // ROLLS DOWN while it does. Which screens take that path is not a guess:
+    // `1000:86b8` reads `if (wave = 1) and not replay then 1b2e:0510 else
+    // 1b2e:0656`, so a briefing rolls the screen only at the top of a session
+    // and never after a Continue; `1b2e:2d63` and `1b2e:411b` call it
+    // unconditionally, so the Instructions and the Credits roll every time.
+    tubes::ScreenRoll screenRoll;
+
+    auto raiseBriefing = [&](bool replay) {
         briefingUp = true;
         briefDecor = static_cast<int8_t>(game->rollForTest(8) + 1);
         rollBackdrop();
+        if (game->progress().wave == 1 && !replay) screenRoll.restart();
     };
-    if (briefingUp) raiseBriefing();
+    if (briefingUp) raiseBriefing(false);
 
     // ---- `1000:9e53`'s wave loop -------------------------------------------
     //
@@ -3607,6 +3643,9 @@ int main(int argc, char** argv) {
     // The Instructions slideshow, `1b2e:2d63` - a straight run of 21 slides
     // rather than a dispatch, so the state is just which one is up.
     bool instrOpen = opt.instr >= 0 || opt.credits;
+    // `--instructions` / `--credits` open the screen the way the menu does,
+    // roll-down and all, so a capture of the animation needs no other flag.
+    if (instrOpen) screenRoll.restart();
     int instrSlide = opt.instr > 0 ? opt.instr : 0;
     // The Credits, `1b2e:411b`: the same screen with a different table.
     bool instrCredits = opt.credits;
@@ -3629,6 +3668,20 @@ int main(int argc, char** argv) {
             return tubes::SlideFrame{tubes::kSlideX, tubes::kSlideY};
         }
         return tubes::kSlideDrop[slideFrame];
+    };
+    // Everything about the classroom that moves, gathered once a frame. The
+    // briefing is the only screen that also wobbles the slide, so the other
+    // callers take the pose with the slide left at rest.
+    auto scenePose = [&](bool wobble) {
+        ScenePose p;
+        p.frameH = screenRoll.height();
+        p.profFrame = tubes::pointerFrameFor(profWave);
+        if (wobble) {
+            const tubes::SlideFrame s = slidePos();
+            p.slideX = s.x;
+            p.slideY = s.y;
+        }
+        return p;
     };
 
     // Swapping the song for a stage. The seven names live in `1000:9e53`'s own
@@ -3881,7 +3934,7 @@ int main(int argc, char** argv) {
                                  cr ? tubes::kCreditPageCount
                                     : tubes::kInstructionSlideCount,
                                  instrSlide, &blackboard, haveBlackboard,
-                                 sceneArt, tubes::pointerFrameFor(profWave),
+                                 sceneArt, scenePose(false),
                                  smallFont, haveSmall, headingFont,
                                  haveHeading, atoms, haveAtom, testTube,
                                  haveTube, furn, haveFurn);
@@ -3975,7 +4028,7 @@ int main(int argc, char** argv) {
                         briefingUp = false;
                         if (c.mode == 2) {
                             game->startWave();
-                            raiseBriefing();
+                            raiseBriefing(false);
                         }
                         sstage = tubes::firstStage(gameMode);
                         playSong(sstage == tubes::SessionStage::kBriefing
@@ -4013,7 +4066,7 @@ int main(int argc, char** argv) {
                             // A save resumes at the START of its wave, so the
                             // briefing runs exactly as it would have.
                             game->startWave();
-                            raiseBriefing();
+                            raiseBriefing(false);
                         }
                         sstage = tubes::firstStage(gameMode);
                         playSong(sstage == tubes::SessionStage::kBriefing
@@ -4028,6 +4081,10 @@ int main(int argc, char** argv) {
                         instrOpen = true;
                         instrCredits = false;
                         instrSlide = 0;
+                        // `1b2e:2d63` builds the scene with `1b2e:0510`, so
+                        // the projector screen comes down every time - no
+                        // `DS:0x210e`-style gate on this one.
+                        screenRoll.restart();
                         changeScreen();
                         break;
                     case tubes::MenuResult::kCredits:
@@ -4035,6 +4092,7 @@ int main(int argc, char** argv) {
                         instrOpen = true;
                         instrCredits = true;
                         instrSlide = 0;
+                        screenRoll.restart();
                         changeScreen();
                         break;
                     case tubes::MenuResult::kViewDemo:
@@ -4235,9 +4293,10 @@ int main(int argc, char** argv) {
                         playSong(tubes::kContinueMusic);
                     }
                 } else if (sstage == tubes::SessionStage::kBriefing) {
+                    const bool wasReplay = flags.replay;
                     game->startWave(flags.replay);
                     flags.replay = false;   // `1000:86b8`'s tail clears it
-                    raiseBriefing();
+                    raiseBriefing(wasReplay);
                     playSong(tubes::kBriefingMusic);
                 }
                 continue;
@@ -4260,9 +4319,10 @@ int main(int argc, char** argv) {
                         tubes::advanceStage(sstage, flags, gameMode);
                     sstage = t.next;
                     if (sstage == tubes::SessionStage::kBriefing) {
+                        const bool wasReplay = flags.replay;
                         game->startWave(flags.replay);
                         flags.replay = false;
-                        raiseBriefing();
+                        raiseBriefing(wasReplay);
                         playSong(tubes::kBriefingMusic);
                     } else {
                         endSession();
@@ -4333,32 +4393,31 @@ int main(int argc, char** argv) {
         // is one simulation frame and the capture point is reproducible.
         if (opt.shotAfter > 0) dt = 1.0f / tubes::kFrameHz;
 
+        // `1b2e:0510` runs before the first slide is written, so the screen
+        // finishes coming down while the slideshow waits. This is outside the
+        // stage dispatch on purpose: the Instructions and the Credits are
+        // their own screen, and `--instructions` opens them from the harness
+        // path, where `stage` is `kPlay` rather than `kTitle`.
+        if (instrOpen) screenRoll.tick(dt);
+
         // --demo drives the REAL loop with the scripted player, so the render
         // path gets exercised on every frame of a whole session rather than
         // only on the one frame --auto screenshots. That distinction matters:
         // a crash that needs both a full beaker and a live render is invisible
         // to --auto, which simulates first and draws once at the end.
         if (stage == Stage::kTitle) {
-            // The rebinding screen borrows the classroom, so it borrows the
-            // professor's clock too - `1b2e:0e37` steps him every ten
-            // retraces, and he waves his pointer while any screen waits.
-            if (instrOpen) {
-            const bool cr = instrCredits;
-            drawInstructionSlide(screen,
-                                 cr ? tubes::kCreditPages
-                                    : tubes::kInstructionSlides,
-                                 cr ? tubes::kCreditPageCount
-                                    : tubes::kInstructionSlideCount,
-                                 instrSlide, &blackboard, haveBlackboard,
-                                 sceneArt, tubes::pointerFrameFor(profWave),
-                                 smallFont, haveSmall, headingFont,
-                                 haveHeading, atoms, haveAtom, testTube,
-                                 haveTube, furn, haveFurn);
-            presentFrame();
-            continue;
-        }
-
-        if (rebindOpen) {
+            // The Instructions, the Credits and the rebinding screen all
+            // borrow the classroom, so they borrow the professor's clock too -
+            // `1b2e:0e37` steps him every ten retraces, and he waves his
+            // pointer while any of the three waits for a key.
+            //
+            // This used to read `if (instrOpen)` around a COPY of the render
+            // section's slide draw, which ended the frame with its own
+            // `continue` before the clock below could run - so the professor
+            // stood still on the two screens the original animates him on, and
+            // the render section's own block was unreachable. The draw is gone
+            // from here; the clock is what belongs in the update.
+            if (instrOpen || rebindOpen) {
                 profAccum += dt * tubes::kRetraceHz;
                 while (profAccum >= tubes::kProfWaveRetraces) {
                     profAccum -= tubes::kProfWaveRetraces;
@@ -4533,6 +4592,12 @@ int main(int argc, char** argv) {
                 }
             }
 
+            // `1b2e:0510`'s roll-down. It is armed by `raiseBriefing` only for
+            // wave 1 of a session that is not a replay, which is the condition
+            // `1000:86b8` itself tests before choosing between `1b2e:0510` and
+            // `1b2e:0656`.
+            if (briefingUp) screenRoll.tick(dt);
+
             // `1b2e:0a11`'s slide drop: six frames, each held for ten
             // vertical retraces, and then it is done for the whole run.
             if (briefingUp && !slideDropped) {
@@ -4579,11 +4644,9 @@ int main(int argc, char** argv) {
             }
         }
 
-        // The viewer REPLACES the title screen while it is up, so it has to
-        // The rebinding screen, like the viewer, replaces the title while it
-        // is up. It borrows the menu's own furniture - the title band, the
-        // rule, the row pitch - so a screen the original never had still looks
-        // like it belongs to this game.
+        // The Instructions, the Credits, the high score viewer and the
+        // rebinding screen each REPLACE the title while they are up, so each
+        // ends the frame with its own `continue` before the title is drawn.
         if (instrOpen) {
             const bool cr = instrCredits;
             drawInstructionSlide(screen,
@@ -4592,7 +4655,7 @@ int main(int argc, char** argv) {
                                  cr ? tubes::kCreditPageCount
                                     : tubes::kInstructionSlideCount,
                                  instrSlide, &blackboard, haveBlackboard,
-                                 sceneArt, tubes::pointerFrameFor(profWave),
+                                 sceneArt, scenePose(false),
                                  smallFont, haveSmall, headingFont,
                                  haveHeading, atoms, haveAtom, testTube,
                                  haveTube, furn, haveFurn);
@@ -4842,11 +4905,9 @@ int main(int argc, char** argv) {
         // `1000:a5d2` shows the briefing INSTEAD of the play field, before
         // `1000:3a67` ever runs, so it simply replaces everything above.
         if (briefingUp) {
-            const tubes::SlideFrame sp = slidePos();
             drawBriefing(screen, *game, &blackboard, haveBlackboard, headingFont,
                          smallFont, haveBig, haveSmall, atoms, haveAtom, furn,
-                         haveFurn, briefDecor, sceneArt, sp.x, sp.y,
-                         tubes::pointerFrameFor(profWave));
+                         haveFurn, briefDecor, sceneArt, scenePose(true));
         }
 
         // The stats screen replaces the field; the banner, the Continue prompt
@@ -4856,7 +4917,7 @@ int main(int argc, char** argv) {
             sstage == tubes::SessionStage::kContinue) {
             drawStats(screen, statsRows, &blackboard, haveBlackboard, sceneArt,
                       headingFont, smallFont, bigFont, haveHeading, haveSmall,
-                      haveBig, tubes::pointerFrameFor(profWave));
+                      haveBig, scenePose(false));
         }
         if (sstage == tubes::SessionStage::kBanner) {
             // `1000:5ec9`: the F2 hint appears only on the abort arm, and only
@@ -4872,7 +4933,7 @@ int main(int argc, char** argv) {
         }
         if (hsActive) {
             drawScene(screen, &blackboard, haveBlackboard, sceneArt,
-                      tubes::kSlideX, tubes::kSlideY, 0);
+                      ScenePose{});
             drawHiScores(screen, hiScores[hsBank], headingFont, haveHeading,
                          scriptFont, haveScript, hsRow, hsName,
                          hsHold > 0.0f ? 0 : hsCursor);

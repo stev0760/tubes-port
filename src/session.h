@@ -308,6 +308,64 @@ inline float waitKeySeconds(int param) {
 }
 
 // ---------------------------------------------------------------------------
+// The projector screen ROLLS DOWN - `1b2e:0510`
+// ---------------------------------------------------------------------------
+//
+// This is the animation the plan had been looking for on `DS:0x210e`, and it
+// was never there. `1b2e:0a11`'s gated six-frame wobble (`kSlideDrop`, above)
+// moves the SLIDE; the screen behind it is rolled down by `1b2e:0510`, the
+// routine that builds the scene from nothing - and that one is not gated on
+// anything. It runs every time the scene is built: entering the briefing
+// (`1000:60d8`, `1000:86b8`), the Instructions (`1b2e:2d63`) and the Credits
+// (`1b2e:411b`) all `CALL 1b2e:0510` first.
+//
+// The loop runs `i := 1 to 15`, and the whole of it is three calls:
+//
+//     CopyRect(3, page, 57, 26, SLIDEBAR.w, 150)   { erase the bar's old row }
+//     FillRect(62, 26, 196, kRollDown[i], 19)      { the screen, growing }
+//     Draw(57, kRollDown[i] + 26, SLIDEBAR)        { the bar rides its edge }
+//     Delay(3)
+//
+// so it is the same rect and the same bar `1b2e:0656` draws at rest, with the
+// height stepped. The heights are a word table at `DS:0xb9c`, array[1..15]:
+constexpr int kRollDownFrames = 15;
+constexpr int kRollDown[kRollDownFrames] = {
+    11, 22, 33, 44, 55, 66, 77, 88, 99, 110, 121, 132, 145, 150, 145,
+};
+// Twelve even steps of 11, then 145, an OVERSHOOT to 150, and back to 145 -
+// the screen is yanked down and bounces once, which is what a roller blind
+// does. The last entry is `DS:0xbba`, and `1b2e:0656` reads exactly that word
+// when it redraws the scene at rest, so `kFrameH` and `kRollDown`'s tail are
+// the same number by construction rather than by coincidence.
+constexpr int kRollDownRetraces = 3;     // `Delay(3)`, so 15 * 3/70 = 0.64 s
+
+// The bar rides the screen's lower edge - `Draw(57, h + 26, SLIDEBAR)` - and
+// `kBarX`/`kBarDY` above are those two constants.
+struct ScreenRoll {
+    int frame = kRollDownFrames;    // == settled
+    float accum = 0.0f;
+
+    void restart() { frame = 0; accum = 0.0f; }
+    bool rolling() const { return frame < kRollDownFrames; }
+    // The height the screen is drawn at this instant. Settled is `kFrameH`,
+    // which is `kRollDown`'s last entry, so nothing jumps at the hand-off.
+    int height() const { return rolling() ? kRollDown[frame] : kFrameH; }
+
+    void tick(float dt) {
+        if (!rolling()) return;
+        accum += dt * kRetraceHz;
+        while (accum >= kRollDownRetraces) {
+            accum -= kRollDownRetraces;
+            if (++frame >= kRollDownFrames) {
+                frame = kRollDownFrames;
+                accum = 0.0f;
+                return;
+            }
+        }
+    }
+};
+
+// ---------------------------------------------------------------------------
 // The Continue screen, `1000:8c38`
 // ---------------------------------------------------------------------------
 //

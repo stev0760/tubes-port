@@ -6352,12 +6352,48 @@ frame held for **10 vertical retraces**:
 
     (62,30) (66,32) (72,30) (79,29) (75,37) (71,33)  ->  rest at (74,31)
 
-It wobbles around the resting place rather than easing into it - the projector
-screen being pulled down and bouncing.
+It wobbles around the resting place rather than easing into it.
 
-`1b2e:084e`, also called from `0a11`, is gated on `DS:0x210f` **and**
-`Random(100) < 5`: a one-in-twenty easter egg that happens at most once a run.
-Not ported.
+**This is the SLIDE, not the screen.** The note above used to gloss it as "the
+projector screen being pulled down and bouncing", and `PLAN.md` went looking
+for the missing roll-down on `DS:0x210e` because of that sentence. The roll is
+a different animation in a different routine, and it is not gated on anything -
+see the next section.
+
+### The projector SCREEN rolls down, in `1b2e:0510`
+
+`1b2e:0510` is the routine that builds the classroom from nothing: it clears,
+draws the blackboard, writes the two navigation lines, stands the professor up
+at `POINTER0` - and then rolls the screen down. The loop is `i := 1 to 15` and
+three calls wide:
+
+    CopyRect(3, page, 57, 26, SLIDEBAR.w, 150)     { erase the bar's old row }
+    FillRect(62, 26, 196, DS:0xb9c[i], 19)         { the screen, growing }
+    Draw(57, DS:0xb9c[i] + 26, SLIDEBAR)           { the bar rides its edge }
+    Flip;  Delay(3)
+
+so it is exactly the rect and the bar `1b2e:0656` draws at rest, with the
+height stepped. `DS:0xb9c` is `array[1..15] of word`:
+
+    11  22  33  44  55  66  77  88  99  110  121  132  145  150  145
+
+Twelve even steps of 11, the resting height, an **overshoot to 150**, and back -
+a roller blind yanked down and bouncing once. Fifteen frames at `Delay(3)` is
+`45/70` = **0.64 s**. The last entry is `DS:0xbba`, which is the word
+`1b2e:0656` reads when it redraws the scene at rest, so `kFrameH` and the
+table's tail are the same number by construction.
+
+**Nothing gates it.** What varies is which screens call `1b2e:0510` at all:
+
+| screen | builds with | rolls? |
+|---|---|---|
+| Instructions `1b2e:2d63` | `1b2e:0510` | yes, every time |
+| Credits `1b2e:411b` | `1b2e:0510` | yes, every time |
+| briefing `1000:86b8` | `if (wave = 1) and not replay then 0510 else 0656` | wave 1 only, and not after a Continue |
+| stats `1000:8da5`, Continue `1000:8c38`, ending `1000:9499` | `1b2e:0656` | no |
+
+Ported, with the roll-down and its bounce, and `--instructions` / `--credits`
+open the screen the same way the menu does so a capture needs no other flag.
 
 ### `23e7:0024` is a VERTICAL RETRACE wait - which settles every timeout
 
