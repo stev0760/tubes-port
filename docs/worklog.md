@@ -3296,3 +3296,34 @@ One detail that reads as design rather than accident: the control NAMES are in
 the viewer's cursive because they are words chalked on a blackboard, and the
 BINDINGS are in the heading font because "Left Ctrl" is a label off a keyboard
 and has to be read exactly.
+
+### The game's red is 0x2f, and the viewer's heading is genuinely blue
+
+Player asked for the rebinding screen's highlight in red, and thought the high
+score screen's header should be red too. The first is a clear improvement; the
+second is worth recording because the answer is measured rather than argued.
+
+**There are two high-score screens and they use different colours.** The ENTRY
+screen's title is `0x2f`, the same constant that draws "Save Game" and the
+abort banner - sampled off a capture, `0x2f` is `(215, 0, 0)`, pure red. The
+VIEWER's is `0x9f`, pushed as `-0x61` at `1b2e:63b9`, and sampled off the
+captured original its ink is `(0, 0, 215)` with no red component at all. The
+port renders `(0, 0, 214)` in the same pixels and the page diffs at 0 of
+64,000.
+
+So the red header the player remembers is the entry screen's, and it is already
+red. Changing the viewer would break a zero-pixel match against the original to
+make it match a memory. Left alone, and the highlight took `0x2f` instead -
+which is the better colour on green anyway, and now the game's own red is used
+for both.
+
+The board is also wiped across its full width now rather than just behind the
+rows. A panel that stopped short of the professor left chalk equations showing
+beside him, which read as a mistake rather than as a blackboard; and the
+professor is drawn AFTER the panel so he stands in front of a clean board
+instead of being wiped off it.
+
+The roller bar moved to the top of the board and the title came inside the
+panel. The viewer draws its title across the bar and gets away with it in blue;
+in red on grey it is a struggle, and there is no room to clear a 16-tall font
+between the board's top edge at 12 and the panel below.

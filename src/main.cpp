@@ -1140,21 +1140,13 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
     screen.clear(0);
     if (haveBoard) screen.blit(*board, 0, tubes::kBoardY);
 
-    // The professor, exactly as the scene draws him: the standing pose masked,
-    // then the wave frame stamped opaquely over his top half.
-    if (art.havePointer && art.havePointer[0]) {
-        screen.blit(art.pointer[0], tubes::kProfX, tubes::kProfY);
-    }
-    if (art.havePointer && profFrame > 0 && profFrame < 4 &&
-        art.havePointer[profFrame]) {
-        screen.blit(art.pointer[profFrame], tubes::kProfX, tubes::kProfY);
-    }
-
-    // The chalk panel. `2321:060b`'s colour and left edge, but it stops at 257
-    // so the professor stands clear of it.
+    // The chalk panel, `2321:060b`'s colour, across the board's full width -
+    // the equations are wiped everywhere, not just behind the rows. A panel
+    // that stopped short left chalk showing beside the professor, which read
+    // as a mistake rather than as a board.
     constexpr int kPanelY = 30;
     constexpr int kPanelH = 126;
-    constexpr int kPanelRight = 257;
+    constexpr int kPanelRight = tubes::kHsPanelX + tubes::kHsPanelW;
     uint8_t* px = screen.pixelsMutable();
     for (int y = kPanelY; y < kPanelY + kPanelH; ++y) {
         if (y < 0 || y >= tubes::kScreenHeight) continue;
@@ -1164,19 +1156,36 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
                 tubes::kHsPanelColour;
         }
     }
-    // The roller bar sits on the panel's top edge, as it does in the viewer.
-    if (art.haveBar) screen.blit(*art.bar, tubes::kHsViewBarX, kPanelY - 11);
+
+    // The professor goes on AFTER the panel, so he stands in front of a clean
+    // board rather than being wiped off it. Same two draws the scene makes:
+    // the standing pose masked, then the wave frame stamped over his top half.
+    if (art.havePointer && art.havePointer[0]) {
+        screen.blit(art.pointer[0], tubes::kProfX, tubes::kProfY);
+    }
+    if (art.havePointer && profFrame > 0 && profFrame < 4 &&
+        art.havePointer[profFrame]) {
+        screen.blit(art.pointer[profFrame], tubes::kProfX, tubes::kProfY);
+    }
+    // The roller bar rides the top of the BOARD rather than the top of the
+    // panel. The viewer puts its title across the bar and gets away with it in
+    // blue; in red on grey it is a struggle to read, and there is no room to
+    // clear a 16-tall font between the board's top edge at 12 and the panel.
+    // So the bar goes up and the title comes inside the panel.
+    if (art.haveBar) {
+        screen.blit(*art.bar, tubes::kHsViewBarX, tubes::kBoardY + 1);
+    }
 
     if (haveBig) {
         // Centred over the PANEL rather than the screen, or the professor
         // pushes the title off-centre.
-        tubes::drawTextCentred(screen, big, 0, kPanelRight, 16,
-                               tubes::kHsViewTitleColour,
-                               tubes::textmode::kPeak, "Redefine Controls");
+        tubes::drawTextCentred(screen, big, tubes::kHsPanelX, kPanelRight, 32,
+                               tubes::kHsTitleColour, tubes::textmode::kPeak,
+                               "Redefine Controls");
     }
 
-    constexpr int kRow0 = 42;
-    constexpr int kPitch = 16;
+    constexpr int kRow0 = 52;
+    constexpr int kPitch = 15;
     constexpr int kNameX = 22;
     constexpr int kBindX = 112;
     for (int i = 0; i < tubes::kGameButtons; ++i) {
@@ -1184,7 +1193,11 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
         // The row being bound says so instead of showing its binding, which is
         // also how the player knows the next press is being taken.
         const bool armed = waiting && i == row;
-        const uint8_t colour = (i == row) ? tubes::kHsViewTitleColour
+        // `0x2f` is the game's red - it is what draws "Save Game", the abort
+        // banner and the high score entry screen's own title, and measured off
+        // a capture it is (215, 0, 0). Far more visible on the board's green
+        // than `0x9f`, the blue the viewer's heading uses.
+        const uint8_t colour = (i == row) ? tubes::kHsTitleColour
                                           : tubes::kHsRowColour;
         // Names in the viewer's cursive, because they are words on a
         // blackboard; bindings in the heading font, because "Left Ctrl" is a
@@ -1196,15 +1209,14 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
         if (haveBig) {
             tubes::drawText(screen, big, kBindX, y, colour,
                             tubes::textmode::kPeak,
-                            armed ? "press a key or button"
-                                  : bindingLabel(bind.b[i]));
+                            armed ? "press a key" : bindingLabel(bind.b[i]));
         }
     }
     if (haveBig) {
         // Short enough to sit inside the panel: 24 characters at the heading
         // font's 8-pixel advance is 192, against the panel's 247.
         tubes::drawTextCentred(screen, big, tubes::kHsPanelX, kPanelRight,
-                               kPanelY + kPanelH - 18, tubes::kHsRowColour,
+                               kPanelY + kPanelH - 16, tubes::kHsRowColour,
                                tubes::textmode::kPeak,
                                "Enter binds, Esc exits");
     }
