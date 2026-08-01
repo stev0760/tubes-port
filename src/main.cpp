@@ -1221,7 +1221,7 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
         tubes::drawTextCentred(screen, small, tubes::kHsPanelX, kPanelRight,
                                kPanelY + kPanelH - 14, tubes::kHsTitleColour,
                                tubes::textmode::kPeak,
-                               "Enter binds, Esc exits");
+                               "Enter binds - Esc exits");
     }
 }
 
