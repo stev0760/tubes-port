@@ -112,7 +112,7 @@ without committing loses its reasoning even if the code survives.
 | Path | Contents |
 |---|---|
 | `src/` | the engine (C++17, SDL2) |
-| `src/instructions.cpp`, `credits.cpp` | GENERATED - see "extract, do not transcribe" |
+| `src/instructions.cpp`, `credits.cpp`, `cutscene.cpp` | GENERATED - see "extract, do not transcribe" |
 | `tools/` | Python decoders, one per format, plus `unpack.sh` |
 | `ghidra_scripts/` | Java `GhidraScript` files for headless analysis |
 | `third_party/` | vendored deps, unmodified — currently Nuked-OPL3 (LGPL 2.1) |
@@ -280,10 +280,9 @@ load, save (F2), Game Options with control rebinding, High Scores,
 Instructions, View Demo and Credits, with attract mode cycling on its own.
 What is left of the original program is
 
-- the **opening cutscene**, `1b2e:1651` - its text and layout are decoded and
-  its two animation helpers are read, so what remains is the call sites;
-- the player's polish list, `PLAN.md` section 4.5, now three items rather than
-  five: the screen fade is found and ported, and so are both splashes.
+**Every screen of the original is now ported.** What is left is the player's
+polish list in `PLAN.md` section 4.5 - three items rather than five, since the
+screen fade is found and ported and so are both splashes and the cutscene.
 
 The rig is built and lives **outside this repo**, at `~/Dev/tubes-tooling/` -
 `docs/debug-rig.md` covers it. Three things to know before planning against it.
@@ -357,9 +356,11 @@ Ranked by how often it produced the answer:
    152 strings and the Credits 36, and typing them would have been 188 chances
    to mistype a line of the game's own documentation and never notice.
    `tools/gen_instructions.py` reads the disassembly and emits the tables,
-   because every text call is a fixed push sequence. The same generator did
-   both screens and would do a third. Anything that is a list in the binary
-   should arrive in `src/` the same way.
+   because every text call is a fixed push sequence. It did both screens, and
+   `tools/gen_cutscene.py` then did a third - and that one earned its keep
+   twice over, because the cutscene's 26-slot frame list is built by COPYING
+   pointers and no amount of squinting would have got it right. Anything that
+   is a list in the binary should arrive in `src/` the same way.
 4. **Look for external standards in the decoded output.** GM program and drum
    numbers, 768-byte VGA palettes, equal-tempered frequencies — these can't
    be artifacts of a wrong decode, so they confirm independently.
