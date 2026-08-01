@@ -736,6 +736,14 @@ of the eight items still go nowhere.
 
 DONE:
 
+- **Game Options** - `src/input.{h,cpp}`. The two toggles are the game's own
+  flags (`DS:0x215f`, `DS:0x215e`) and now persist. Redefine Input Device is
+  **deliberately re-implemented rather than transliterated**: the original
+  picks a DRIVER because DOS gave it no abstraction, and SDL is that
+  abstraction, so the port rebinds the six controls instead - keyboard and
+  gamepad at once, which the original could not do. `SETUP.CFG` is NOT written;
+  it is the DOS install's hardware config and belongs to `SETUP.EXE`. See
+  input.h for the reasoning.
 - **High scores** - `src/hiscore.{h,cpp}`, the entry screen `1000:96db` and the
   viewer `1b2e:61b6`. `TUBES.HSC` round-trips byte-exact against a real file,
   and both viewer pages diff against the original at **0 pixels of 64,000**,
@@ -747,31 +755,15 @@ DONE:
 
 STILL INERT, in the order they matter to a player:
 
-1. **Game Options.** The page is `Toggle Music <yes/no>` / `Toggle Sound FX
-   <yes/no>` / `Redefine Input Device` / `Exit`, and **none of it does
-   anything**. The two toggles are the easy half - F3 and F4 already flip
-   `musicOn` and `soundOn` in the session, so the page needs to show and edit
-   the same two flags, and the `<yes/no>` suffix has to be built at runtime
-   the way the save-slot rows are.
-
-   **Redefine Input Device is the important one, and it is two jobs.** The
-   original picks a DRIVER - `KEYBOARD.DRV`, `JOYSTK1/2.DRV`, `MOUSE.DRV` are
-   all in `DRIVERS.RES` - so porting the screen faithfully means porting a
-   device chooser. What a player on SDL actually needs is **key and gamepad
-   binding**, which the original has no concept of. Do the original's screen
-   first so the menu is faithful, then treat bindings as the first entry in
-   section 5's enhancements - but note that the player has called them
-   important, so do not defer them far. The port currently hard-codes arrows,
-   Ctrl/Space and Escape in `readKeyboard()`.
-2. **Instructions.** `1b2e:2d63`, 4,510 bytes - a prev/next slideshow. Every
+1. **Instructions.** `1b2e:2d63`, 4,510 bytes - a prev/next slideshow. Every
    slide's text is already captured in `capture/instr/` from an earlier session,
    and the game's own Instructions have twice settled a rule this project was
    deriving the hard way, so the text is worth having in the repo regardless.
-3. **View Demo / attract mode.** The 720-frame countdown runs and restarts
+2. **View Demo / attract mode.** The 720-frame countdown runs and restarts
    where it should hand off to `DEMO.SCR`, which the port already replays
    correctly end to end - and `1b2e:52bf` returns **9** for exactly this. The
    menu item and the timeout are the same path. Cheapest of the four.
-4. **Credits.** Unread. Small, and it is the one screen nothing else depends on.
+3. **Credits.** Unread. Small, and it is the one screen nothing else depends on.
 
 Also inert: **F1 help** in-game, whose body is in `1b2e:2d63` alongside the
 slideshow.

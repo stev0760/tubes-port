@@ -20,6 +20,7 @@
 #include "scr.h"
 #include "sfx.h"
 #include "hiscore.h"
+#include "input.h"
 #include "save.h"
 #include "menu.h"
 #include "session.h"
@@ -2118,6 +2119,56 @@ void testInformationalItemsReturnTheirNumber() {
 // The format was read off ONE captured file, so the strongest check available
 // is that encoding the shipped defaults reproduces the layout that file has -
 // and that a decode/encode round trip is byte-identical.
+// Control bindings. Not a transliteration - see input.h - so what is tested is
+// that the port's own rules hold, not that they match an address.
+void testBindingsCannotBeShared() {
+    using namespace tubes;
+    Bindings b = defaultBindings();
+    const int up = b[GameButton::kUp].key;
+    check(up != kUnbound, "the defaults bind Up");
+    // Binding Down to Up's key must take it away from Up: the game reads one
+    // mask, and a key that set two directions at once is a state no driver
+    // could ever have produced.
+    b.bindKey(GameButton::kDown, up);
+    check(b[GameButton::kDown].key == up, "Down takes the key");
+    check(b[GameButton::kUp].key == kUnbound, "and Up loses it");
+    // The two sources are independent - rebinding on the keyboard must not
+    // disturb the pad.
+    const int pad = b[GameButton::kUp].pad;
+    check(pad != kUnbound, "Up still has its pad button");
+    b.bindPad(GameButton::kA, pad);
+    check(b[GameButton::kUp].pad == kUnbound && b[GameButton::kA].pad == pad,
+          "and the pad half moves on its own");
+}
+
+void testSettingsRoundTrip() {
+    using namespace tubes;
+    Settings s;
+    s.music = false;
+    s.sound = true;
+    s.bindings.bindKey(GameButton::kB, 99);
+    s.bindings.bindPad(GameButton::kB, 7);
+
+    Settings back;
+    decodeSettings(encodeSettings(s), back);
+    check(!back.music && back.sound, "the toggles survive");
+    check(back.bindings[GameButton::kB].key == 99 &&
+              back.bindings[GameButton::kB].pad == 7,
+          "and so does a rebound control");
+    check(back.bindings[GameButton::kUp].key ==
+              defaultBindings()[GameButton::kUp].key,
+          "with the untouched ones still at their defaults");
+
+    // A file from a version that knew more must not throw away what this one
+    // does understand.
+    Settings older;
+    decodeSettings("music 0\nrumble 1\nbind up 5 6\nnonsense\n", older);
+    check(!older.music, "an unknown line is skipped");
+    check(older.bindings[GameButton::kUp].key == 5 &&
+              older.bindings[GameButton::kUp].pad == 6,
+          "and the lines around it still load");
+}
+
 // `TUBES.SAV`. The record is sixteen stores in `1000:2dd0`'s save arm, so this
 // checks the BYTES at the documented offsets rather than restating the struct.
 // The real oracle is outside the tests, where it belongs: `--dump-save` decodes
@@ -2695,6 +2746,8 @@ int main() {
     testTheContinueCountdownExpiringDeclines();
     testEnduranceSkipsBothWaveScreens();
     testTheFastSongIsAboutDropsNotDifficulty();
+    testBindingsCannotBeShared();
+    testSettingsRoundTrip();
     testSaveFileLayout();
     testTheTwoBanksAreLabelledDifferently();
     testASavedGameRoundTripsThroughTheSession();

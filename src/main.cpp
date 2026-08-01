@@ -11,6 +11,7 @@
 #include <cstring>
 #include <ctime>
 #include <fstream>
+#include <sstream>
 #include <iterator>
 #include <memory>
 #include <utility>
@@ -21,6 +22,7 @@
 #include "game.h"
 #include "gfx.h"
 #include "hiscore.h"
+#include "input.h"
 #include "save.h"
 #include "menu.h"
 #include "mus.h"
@@ -277,6 +279,7 @@ struct Options {
     int titlePage = -1;         // -1 off; 0 the bare title; 1..7 a menu page
     int hsPage = -1;            // -1 off; 0 Endurance, 1 Wave in the viewer
     bool f2 = false;            // open the F2 save screen, for capture
+    bool rebind = false;        // open the rebinding screen, for capture
     // Harness only. `--screenshot` captures the first frame drawn, which can
     // never show a screen that is reached by PLAYING - the banners, the stats
     // screen and the Continue prompt are all past a game over. These two run
@@ -440,6 +443,8 @@ Options parseArgs(int argc, char** argv) {
             }
         } else if (a == "--f2") {
             o.f2 = true;
+        } else if (a == "--rebind") {
+            o.rebind = true;
         } else if (a == "--hiscores") {
             // The viewer's two pages, for capturing against the original:
             // `--hiscores` is Endurance and `--hiscores 1` is Wave.
@@ -1087,6 +1092,76 @@ void drawSaveScreen(tubes::Screen& screen, const tubes::SaveBankData& bank,
     }
 }
 
+// What a binding is CALLED. SDL owns these names, which is the whole reason
+// `input.h` stores opaque integers.
+std::string bindingLabel(const tubes::Binding& x) {
+    std::string s;
+    if (x.key != tubes::kUnbound) {
+        s = SDL_GetScancodeName(static_cast<SDL_Scancode>(x.key));
+    }
+    if (x.pad != tubes::kUnbound) {
+        const char* p = SDL_GameControllerGetStringForButton(
+            static_cast<SDL_GameControllerButton>(x.pad));
+        if (p && *p) {
+            if (!s.empty()) s += " / ";
+            s += p;
+        }
+    }
+    return s.empty() ? std::string("(unbound)") : s;
+}
+
+// Rebinding the six controls. THE PORT'S OWN SCREEN - the original's third
+// Game Options item loads a driver, which SDL makes meaningless; see input.h.
+// It is drawn in the menu's own language so it does not look bolted on: the
+// page title where a page title goes, a rule under it, and one row per
+// control with the same colour the menu items use.
+//
+// It takes the high score panel's colour and x, but its own height: six rows
+// of bindings need more than the ten a score table does, and reusing
+// `2321:060b`'s rect put the title on top of the logo.
+void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
+                      int row, bool waiting, const tubes::Font& big,
+                      bool haveBig) {
+    constexpr int kPanelY = 20;
+    constexpr int kPanelH = 160;
+    uint8_t* px = screen.pixelsMutable();
+    for (int y = kPanelY; y < kPanelY + kPanelH; ++y) {
+        if (y < 0 || y >= tubes::kScreenHeight) continue;
+        for (int x = tubes::kHsPanelX;
+             x < tubes::kHsPanelX + tubes::kHsPanelW; ++x) {
+            if (x < 0 || x >= tubes::kScreenWidth) continue;
+            px[static_cast<size_t>(y) * tubes::kScreenWidth + x] =
+                tubes::kHsPanelColour;
+        }
+    }
+    if (!haveBig) return;
+    tubes::drawTextCentred(screen, big, 0, 319, 26, tubes::kHsTitleColour,
+                           tubes::textmode::kPeak, "Redefine Controls");
+    tubes::drawTextCentred(screen, big, 0, 319, 29, tubes::kHsTitleColour,
+                           tubes::textmode::kPeak, "_________________");
+
+    constexpr int kRow0 = 48;
+    constexpr int kPitch = 18;
+    constexpr int kNameX = 24;
+    constexpr int kBindX = 128;
+    for (int i = 0; i < tubes::kGameButtons; ++i) {
+        const int y = kRow0 + i * kPitch;
+        // The row being bound says so instead of showing its binding, which
+        // is also how the player knows the next press is being taken.
+        const bool armed = waiting && i == row;
+        const uint8_t colour = (i == row) ? tubes::kHsTitleColour
+                                          : tubes::kHsRowColour;
+        tubes::drawText(screen, big, kNameX, y, colour, tubes::textmode::kPeak,
+                        tubes::kGameButtonNames[i]);
+        tubes::drawText(screen, big, kBindX, y, colour, tubes::textmode::kPeak,
+                        armed ? "press a key or button"
+                              : bindingLabel(bind.b[i]));
+    }
+    tubes::drawTextCentred(screen, big, 0, 319, kPanelY + kPanelH - 22,
+                           tubes::kHsRowColour, tubes::textmode::kPeak,
+                           "Enter to change, Esc when done");
+}
+
 // The pause overlay, `1000:3916`. Same two rows as a banner, and the loop is
 // blocked entirely while it is up.
 void drawPaused(tubes::Screen& screen, const tubes::Font& heading,
@@ -1251,18 +1326,32 @@ bool loadFont(const tubes::Archive& res, const std::string& name, int advance,
     return true;
 }
 
-uint8_t readKeyboard() {
+// The one byte the game asks for, built from whatever the player has bound.
+// This IS the port's input driver: everything above it is the original's, and
+// `DEMO.SCR` replay feeds the same byte from a file instead.
+//
+// Keyboard and pad are OR-ed rather than switched between. The original bound
+// one driver at a time because DOS gave it no choice; SDL has no such reason,
+// and a player with a controller plugged in should not have to visit a menu.
+uint8_t readInput(const tubes::Bindings& bind, SDL_GameController* pad) {
+    static const uint8_t kBit[tubes::kGameButtons] = {
+        tubes::button::kUp,   tubes::button::kDown,
+        tubes::button::kLeft, tubes::button::kRight,
+        tubes::button::kA,    tubes::button::kB,
+    };
     const Uint8* k = SDL_GetKeyboardState(nullptr);
     uint8_t b = 0;
-    if (k[SDL_SCANCODE_UP]) b |= tubes::button::kUp;
-    if (k[SDL_SCANCODE_DOWN]) b |= tubes::button::kDown;
-    if (k[SDL_SCANCODE_LEFT]) b |= tubes::button::kLeft;
-    if (k[SDL_SCANCODE_RIGHT]) b |= tubes::button::kRight;
-    if (k[SDL_SCANCODE_LCTRL] || k[SDL_SCANCODE_RCTRL] ||
-        k[SDL_SCANCODE_SPACE]) {
-        b |= tubes::button::kA;
+    for (int i = 0; i < tubes::kGameButtons; ++i) {
+        const tubes::Binding& x = bind.b[i];
+        if (x.key != tubes::kUnbound && k[static_cast<SDL_Scancode>(x.key)]) {
+            b |= kBit[i];
+        }
+        if (pad && x.pad != tubes::kUnbound &&
+            SDL_GameControllerGetButton(
+                pad, static_cast<SDL_GameControllerButton>(x.pad))) {
+            b |= kBit[i];
+        }
     }
-    if (k[SDL_SCANCODE_LALT] || k[SDL_SCANCODE_RALT]) b |= tubes::button::kB;
     return b;
 }
 
@@ -1749,6 +1838,44 @@ int main(int argc, char** argv) {
     // `1b2e:0243`: read `TUBES.HSC` if it is there, otherwise fill both banks
     // with the twenty names the binary ships. The file lives beside the game
     // data, which is where the original writes it.
+    // The port's OWN settings - the toggles and the six bindings. Not in the
+    // game directory: `SETUP.CFG` is the DOS install's hardware configuration
+    // and belongs to `SETUP.EXE`, and the port does not read a byte of it.
+    // `SDL_GetPrefPath` puts this where the platform keeps such things, which
+    // also means the eventual non-desktop ports have somewhere to go.
+    std::string settingsPath;
+    {
+        char* pref = SDL_GetPrefPath("", "tubes-port");
+        if (pref) {
+            settingsPath = std::string(pref) + "settings.cfg";
+            SDL_free(pref);
+        }
+    }
+    tubes::Settings settings;
+    if (!settingsPath.empty()) {
+        std::ifstream cf(settingsPath);
+        if (cf) {
+            std::stringstream ss;
+            ss << cf.rdbuf();
+            tubes::decodeSettings(ss.str(), settings);
+        }
+    }
+    auto writeSettings = [&]() {
+        if (harness || settingsPath.empty()) return;
+        std::ofstream cf(settingsPath);
+        if (cf) cf << tubes::encodeSettings(settings);
+    };
+
+    // One controller, the first one plugged in. Hot-plug is handled in the
+    // event loop; nothing breaks if there is never one.
+    SDL_GameController* gamepad = nullptr;
+    for (int i = 0; i < SDL_NumJoysticks(); ++i) {
+        if (SDL_IsGameController(i)) {
+            gamepad = SDL_GameControllerOpen(i);
+            if (gamepad) break;
+        }
+    }
+
     // `1b2e:000a`: read `TUBES.SAV` if it is there. Unlike the high score
     // table the game SHIPS one, zero-filled, and the reader zero-fills the
     // banks before reading anyway - so a missing or malformed file is simply
@@ -1999,10 +2126,13 @@ int main(int argc, char** argv) {
     }
     if (!opt.renderState.empty() && !loadState(opt.renderState, *game)) return 1;
 
+    // GAMECONTROLLER is not required: SDL_Init fails only on VIDEO, and a
+    // machine with no controller support still plays on the keyboard.
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
     }
+    SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
 
     int scale = opt.scale;
     if (scale <= 0) {
@@ -2293,9 +2423,35 @@ int main(int argc, char** argv) {
     // F5, `1000:3916`. The original blocks in `repeat until ReadKey = $bf`, so
     // the simulation does not advance and ONLY F5 releases it.
     bool paused = false;
-    // F3 and F4, `DS:0x215f` and `DS:0x215e`.
-    bool musicOn = !opt.music.empty();
-    bool soundOn = true;
+    // F3 and F4, `DS:0x215f` and `DS:0x215e`. The Game Options page edits the
+    // same two, which is why they are seeded from the settings file - and why
+    // toggling either in game persists it, exactly as the original's page did
+    // via SETUP.CFG.
+    bool musicOn = !opt.music.empty() && settings.music;
+    bool soundOn = settings.sound;
+    auto persistAudio = [&]() {
+        settings.music = musicOn;
+        settings.sound = soundOn;
+        writeSettings();
+    };
+
+    // Page 6's two toggle rows carry their state. The captured page reads
+    // "Toggle Music <yes/no>", so the row is built at runtime the same way a
+    // save slot's is.
+    auto refreshOptionRows = [&]() {
+        menu.setOptionText(1, std::string("Toggle Music  ") +
+                                  (musicOn ? "Yes" : "No"));
+        menu.setOptionText(2, std::string("Toggle Sound FX  ") +
+                                  (soundOn ? "Yes" : "No"));
+    };
+    refreshOptionRows();
+
+    // The rebinding screen. Port-only, so it is a flag beside the others
+    // rather than a `Menu::Page` - the page machine is the original's and
+    // there is no page 8 in it.
+    bool rebindOpen = opt.rebind;
+    int rebindRow = 0;                 // 0..5, the control being pointed at
+    bool rebindWaiting = false;        // armed, waiting for the press
 
     // `1b2e:0a11`'s slide drop, gated on `DS:0x210e` - it runs the FIRST time
     // the scene is shown and never again, so this is a program-lifetime flag
@@ -2430,6 +2586,34 @@ int main(int argc, char** argv) {
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             if (ev.type == SDL_QUIT) { running = false; continue; }
+            // Hot-plug: take the first controller that appears and let go of
+            // it when it leaves. A player should be able to plug one in mid
+            // game.
+            if (ev.type == SDL_CONTROLLERDEVICEADDED) {
+                if (!gamepad) gamepad = SDL_GameControllerOpen(ev.cdevice.which);
+                continue;
+            }
+            if (ev.type == SDL_CONTROLLERDEVICEREMOVED) {
+                if (gamepad &&
+                    ev.cdevice.which ==
+                        SDL_JoystickInstanceID(
+                            SDL_GameControllerGetJoystick(gamepad))) {
+                    SDL_GameControllerClose(gamepad);
+                    gamepad = nullptr;
+                }
+                continue;
+            }
+            // A controller press binds too, which is the whole point of the
+            // screen accepting either.
+            if (ev.type == SDL_CONTROLLERBUTTONDOWN && rebindOpen &&
+                rebindWaiting) {
+                settings.bindings.bindPad(
+                    static_cast<tubes::GameButton>(rebindRow),
+                    ev.cbutton.button);
+                rebindWaiting = false;
+                writeSettings();
+                continue;
+            }
             if (ev.type != SDL_KEYDOWN) continue;
             const SDL_Keycode k = ev.key.keysym.sym;
 
@@ -2457,6 +2641,29 @@ int main(int argc, char** argv) {
                     char c = static_cast<char>(k);
                     if (shift && c >= 'a' && c <= 'z') c = c - 'a' + 'A';
                     hsName.push_back(c);
+                }
+                continue;
+            }
+
+            // The rebinding screen owns the keyboard while it is up. When it
+            // is ARMED the next press is the binding, ESC included - there is
+            // no other way to bind Escape, and no reason to forbid it.
+            if (rebindOpen) {
+                const auto g = static_cast<tubes::GameButton>(rebindRow);
+                if (rebindWaiting) {
+                    settings.bindings.bindKey(g, ev.key.keysym.scancode);
+                    rebindWaiting = false;
+                    writeSettings();
+                } else if (k == SDLK_UP) {
+                    rebindRow = rebindRow == 0 ? tubes::kGameButtons - 1
+                                               : rebindRow - 1;
+                } else if (k == SDLK_DOWN) {
+                    rebindRow = rebindRow == tubes::kGameButtons - 1
+                                    ? 0 : rebindRow + 1;
+                } else if (k == SDLK_RETURN) {
+                    rebindWaiting = true;
+                } else if (k == SDLK_ESCAPE) {
+                    rebindOpen = false;
                 }
                 continue;
             }
@@ -2569,6 +2776,25 @@ int main(int argc, char** argv) {
                         stage = Stage::kPlay;
                         break;
                     }
+                    case tubes::MenuResult::kToggleMusic:
+                        musicOn = !musicOn;
+                        if (musicOn) playSong("TUBES.MUS");
+                        else music.stop();
+                        persistAudio();
+                        refreshOptionRows();
+                        break;
+                    case tubes::MenuResult::kToggleSound:
+                        soundOn = !soundOn;
+                        persistAudio();
+                        refreshOptionRows();
+                        break;
+                    case tubes::MenuResult::kRedefine:
+                        // The port's own screen - see input.h for why this is
+                        // re-implemented rather than transliterated.
+                        rebindOpen = true;
+                        rebindRow = 0;
+                        rebindWaiting = false;
+                        break;
                     case tubes::MenuResult::kQuit:
                         running = false;
                         break;
@@ -2782,9 +3008,11 @@ int main(int argc, char** argv) {
                 if (musicOn) playSong(tubes::playMusicFor(
                                  game->dropsRemaining()));
                 else music.stop();
+                persistAudio();
                 break;
             case tubes::GameAction::kSoundToggle:
                 soundOn = !soundOn;
+                persistAudio();
                 break;
             case tubes::GameAction::kSave:
                 // `1000:3062`: the screen comes up on the slot the player last
@@ -2858,7 +3086,9 @@ int main(int argc, char** argv) {
                 }
             } else if (sstage == tubes::SessionStage::kPlay && !paused &&
                        !saveScreen) {
-                game->update(opt.demo ? scriptedInput(*game) : readKeyboard(), dt);
+                game->update(opt.demo ? scriptedInput(*game)
+                                      : readInput(settings.bindings, gamepad),
+                             dt);
             }
 
             // `1000:5cff`, the tail of `3a67`'s frame loop: the wave ends on a
@@ -2998,6 +3228,21 @@ int main(int argc, char** argv) {
         }
 
         // The viewer REPLACES the title screen while it is up, so it has to
+        // The rebinding screen, like the viewer, replaces the title while it
+        // is up. It borrows the menu's own furniture - the title band, the
+        // rule, the row pitch - so a screen the original never had still looks
+        // like it belongs to this game.
+        if (rebindOpen) {
+            drawTitle(screen, titleBg, titleFgScene, haveTitleBg && haveTitleFg,
+                      menu, titleAtom, atoms, haveAtom, titleBall, stars,
+                      haveStar, headingFont, haveHeading, titleFg, smallFont,
+                      haveSmall);
+            drawRebindScreen(screen, settings.bindings, rebindRow,
+                             rebindWaiting, headingFont, haveHeading);
+            presentFrame();
+            continue;
+        }
+
         // come before the title draw - that path ends the frame with its own
         // `continue`.
         if (hsViewing) {

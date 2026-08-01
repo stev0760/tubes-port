@@ -3224,3 +3224,48 @@ The screen carries 99.1% of the original's heading ink and 99.5% of its row ink
 at the same coordinates. It cannot be diffed exactly, because what is behind it
 is a live play field with a random backdrop - the one screen in the game where
 the zero-pixel method does not apply.
+
+## 2026-07-31 - Game Options, and the one screen we are not transliterating
+
+The player settled the design before any code: no `SETUP.CFG`, no device
+chooser, just remap the six controls, and make it work with an Xbox pad.
+
+The reasoning is worth keeping because it is the first time this project has
+deliberately NOT transliterated something. The original asks an input driver
+for one byte a frame - Up, Down, Left, Right, A, B - and that byte is real game
+logic: `DEMO.SCR` stores exactly one per frame, which is why a recorded demo
+replays through the same code path as live play. Nothing about it changes.
+
+Everything BELOW it is DOS hardware plumbing. `KEYBOARD.DRV`, `JOYSTK1/2.DRV`
+and `MOUSE.DRV` exist because 1994 had no common abstraction over an XT
+keyboard, a gameport and a serial mouse. SDL is that abstraction. Porting a
+driver chooser would be transliterating the *absence* of SDL - and it would be
+worse than the original, which could bind one device at a time where SDL polls
+a keyboard and a pad at once.
+
+So: the two toggles are ported, because they are the game's own flags
+(`DS:0x215f` and `DS:0x215e`, the same two F3 and F4 flip) and they now
+persist. The third item does what the original's did - remap the six controls -
+by a modern route, and there is no device to choose.
+
+`SETUP.CFG` is deliberately not written. The original rewrites it on leaving
+the page, but it is the DOS install's hardware configuration, `SETUP.EXE` owns
+it, and the port does not read a byte of it. Writing SDL bindings there would
+damage a file the real game still reads. Port settings go in the port's own
+file under `SDL_GetPrefPath`, which is also the answer for the eventual
+non-desktop ports. Same lesson as the game directory, one level out.
+
+`src/input.{h,cpp}` holds the bindings and the settings file with no SDL in it
+- a binding is two opaque integers - and `main.cpp` turns them into the mask.
+`readKeyboard()`, which hard-coded the arrows and Ctrl/Alt, is now
+`readInput(bindings, pad)`.
+
+Small design notes that took a moment each:
+
+- a binding cannot be shared: binding Down to Up's key takes it off Up, because
+  the game reads ONE mask and a key setting two directions is a state no driver
+  could have produced;
+- the keyboard and pad halves move independently, so rebinding on the keyboard
+  does not silently unbind a controller;
+- when the screen is armed the NEXT press binds, Escape included - there is no
+  other way to bind Escape and no reason to forbid it.

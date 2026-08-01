@@ -125,6 +125,14 @@ enum class MenuResult : uint8_t {
     kCredits = 7,
     kQuit = 8,
     kAttract = 9,          // the timeout - this is how DEMO.SCR gets played
+
+    // Page 6's three live items. The original does the first two inline and
+    // its third loads a driver; the port hands all three back to the caller
+    // because what they act on - the audio flags and the SDL bindings - is the
+    // caller's. These are NOT values the original returns, hence the range.
+    kToggleMusic = 20,
+    kToggleSound = 21,
+    kRedefine = 22,
 };
 
 // The globals the game session reads. All four are set HERE and nowhere else,
@@ -174,6 +182,10 @@ public:
     // per live record and assigns it over the menu item. `saveSlotLabel` in
     // save.h builds the same string; this is where it is put.
     void setSaveSlotText(int mode, int slot, const std::string& text);
+    // Page 6's first two rows carry their state - the captured page reads
+    // "Toggle Music <yes/no>" - so they are built at runtime like the slot
+    // rows rather than being fixed strings.
+    void setOptionText(int item, const std::string& text);
     const char* itemText(int i) const;
 
     // The turning star, advanced once per frame.
@@ -191,6 +203,7 @@ private:
     MenuChoice choice_;
     bool slotLive_[3][6] = {};      // [mode][slot], 1-based
     std::string slotText_[3][6];    // the live row, empty when the slot is
+    std::string optionText_[5];     // page 6, 1-based
     int starTick_ = 1;              // `DS:0x1d78`, 1..3
     int starFrame_ = 1;             // `DS:0x1d79`, 1..4
 };

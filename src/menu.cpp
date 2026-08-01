@@ -231,6 +231,11 @@ void Menu::setSaveSlotText(int mode, int slot, const std::string& text) {
     slotText_[mode][slot] = text;
 }
 
+void Menu::setOptionText(int item, const std::string& text) {
+    if (item < 1 || item > 4) return;
+    optionText_[item] = text;
+}
+
 const char* Menu::itemText(int i) const {
     // A live save's row replaces the item text; an empty slot keeps the
     // "(Unavailable)" that is part of the page, which is what the original
@@ -239,6 +244,10 @@ const char* Menu::itemText(int i) const {
         i >= 1 && i <= 5) {
         const std::string& t = slotText_[choice_.mode][i];
         if (!t.empty()) return t.c_str();
+    }
+    if (page_ == Page::kOptions && i >= 1 && i <= 4 &&
+        !optionText_[i].empty()) {
+        return optionText_[i].c_str();
     }
     return kMenuPages[static_cast<int>(page_)].items[i - 1];
 }
@@ -308,10 +317,16 @@ MenuResult Menu::select() {
     }
 
     case Page::kOptions:
-        // Toggling music and sound effects is the caller's business; only the
-        // Exit arm changes page.
-        if (item_ == 4) setPage(Page::kMain);
-        return MenuResult::kNone;
+        // Toggling music and sound effects is the caller's business, and so is
+        // rebinding; only the Exit arm changes page. The original leaves this
+        // page by writing SETUP.CFG, which the port deliberately does not do -
+        // see input.h.
+        switch (item_) {
+        case 1: return MenuResult::kToggleMusic;
+        case 2: return MenuResult::kToggleSound;
+        case 3: return MenuResult::kRedefine;
+        default: setPage(Page::kMain); return MenuResult::kNone;
+        }
 
     case Page::kQuit:
         if (item_ == 1) return MenuResult::kQuit;
