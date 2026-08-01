@@ -195,7 +195,7 @@ Game::Game(int cols, int rows, Difficulty diff, uint32_t seed,
       startingDrops_(dropsFor(diff)),
       spawnInterval_(kSpawnIntervalFrames[difficultyIndex(diff)]),
       networkVel_(velocityFor(diff)),
-      rng_(seed ? seed : 1),
+      rng_{seed ? seed : 1},
       randomTrace_(randomTrace) {
     // 1000:43d6. The test tube STARTS IN A RANDOM COLUMN - `tube.stop :=
     // Random(6) + 1` - and it is the session's very first call to the
@@ -383,10 +383,11 @@ void Game::setTubeAtoms(const std::vector<int8_t>& v) {
 // read as UNSIGNED. That is a scaled fraction of the range, not a modulus, and
 // it is not the same sequence a `% n` would give from the same seed.
 int Game::random(int n) {
-    if (randomTrace_) randomTrace_->emplace_back(n, rng_);
-    rng_ = rng_ * 0x08088405u + 1u;
-    return static_cast<int>(
-        (static_cast<uint64_t>(rng_) * static_cast<uint32_t>(n)) >> 32);
+    if (randomTrace_) randomTrace_->emplace_back(n, rng_.seed);
+    // The arithmetic itself is `tubes::PascalRandom` in session.h, because the
+    // classroom animations call `Random` too and the original has one
+    // `RandSeed` for the whole program.
+    return rng_.next(n);
 }
 
 // The dispensed type, transliterated from `1000:49fd`. One roll of 1..11

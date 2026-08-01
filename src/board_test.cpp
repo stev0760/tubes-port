@@ -2193,6 +2193,66 @@ void testTheProjectorScreenRollsDownAndBouncesOnce() {
     check(r.height() == kFrameH, "and ticking a settled roll does nothing");
 }
 
+// `1b2e:0cd1` then `1b2e:0e37`. What is easy to get wrong here is that the
+// talk's parameter counts BURSTS of 4..7 mouths, not mouths - so a slide's 35
+// is 16..28 seconds rather than four.
+void testTheProfessorTalksBeforeHeWaves() {
+    using namespace tubes;
+
+    // `DS:0xbbb`, array[1..12] of byte. Every entry has to name a real mouth,
+    // and TALK4 is in the resource table but not in the script.
+    bool inRange = true, usesFour = false;
+    for (int i = 0; i < kTalkScriptLen; ++i) {
+        if (kTalkScript[i] < 1 || kTalkScript[i] > 5) inRange = false;
+        if (kTalkScript[i] == 4) usesFour = true;
+    }
+    check(inRange, "every script step names one of TALK1..5");
+    check(!usesFour, "and TALK4 is loaded but never scripted");
+
+    PascalRandom rng{12345u};
+    ProfessorIdle p;
+    check(p.mouthFrame() == 0 && p.wave == 0,
+          "an idle that has not been started draws neither");
+
+    p.restart(kTalkBurstsSlide, rng);
+    check(p.mouthFrame() >= 1 && p.mouthFrame() <= 5, "he starts talking");
+    check(p.wave == 0, "and does not gesture while he speaks");
+
+    const float retrace = 1.0f / kRetraceHz;
+    // `Delay(8)` a mouth, so seven retraces is still the same one.
+    const int first = p.mouthFrame();
+    p.tick(retrace * 7.0f, rng);
+    check(p.mouthFrame() == first, "seven retraces do not advance the mouth");
+
+    // Run it out. 35 bursts of at most 7 mouths at 8 retraces each is an upper
+    // bound of 1960 retraces; anything past that must have moved on.
+    int mouths = 0;
+    for (int i = 0; i < 3000 && p.mouthFrame() != 0; ++i) {
+        p.tick(retrace, rng);
+        ++mouths;
+    }
+    check(p.mouthFrame() == 0, "the talk times out");
+    check(p.wave == 1, "and the wave takes over from the first frame");
+    // Fewer than 35 * 8 retraces would mean the parameter had been read as a
+    // count of mouths, which is the mistake this is here to catch.
+    check(mouths > kTalkBurstsSlide * kTalkRetraces,
+          "35 counts bursts, not mouths");
+
+    // Once waving, it is `1b2e:0e37`'s 1..5 ping-pong on a ten-retrace clock.
+    for (int i = 0; i < 4; ++i) p.tick(retrace * kProfWaveRetraces, rng);
+    check(p.wave == 5, "the wave reaches its last frame");
+    p.tick(retrace * kProfWaveRetraces, rng);
+    check(p.wave == 1, "and wraps back to the first");
+    check(p.mouthFrame() == 0, "no mouth is stamped over a wave frame");
+
+    // The Continue screen has no talk at all - `1000:8c38` runs the wave alone.
+    ProfessorIdle q;
+    q.restart(0, rng);
+    check(q.mouthFrame() == 0, "a zero-burst screen never talks");
+    q.tick(retrace * kProfWaveRetraces, rng);
+    check(q.wave == 1, "it goes straight to waving");
+}
+
 void testTheFadeRampEndsOnBlackAndOnThePalette() {
     using namespace tubes;
     Bytes raw(768);
@@ -2927,6 +2987,7 @@ int main() {
     testEnduranceSkipsBothWaveScreens();
     testTheFastSongIsAboutDropsNotDifficulty();
     testTheProjectorScreenRollsDownAndBouncesOnce();
+    testTheProfessorTalksBeforeHeWaves();
     testTheFadeRampEndsOnBlackAndOnThePalette();
     testTheGfxPrefixDoesNotDecideTheLayout();
     testTheSprStripSplitsIntoImages();

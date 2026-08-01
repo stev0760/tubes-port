@@ -690,6 +690,9 @@ struct SceneArt {
     bool haveBooks = false;
     const tubes::Image* bar = nullptr;
     bool haveBar = false;
+    // `TALK1..5.GFX`, the five mouths `1b2e:0cd1` cycles over his face.
+    const tubes::Image* talk = nullptr;
+    const bool* haveTalk = nullptr;
 };
 
 // What the scene is doing right now, as opposed to what it is made of. Three
@@ -702,6 +705,7 @@ struct ScenePose {
     int slideX = tubes::kSlideX;
     int slideY = tubes::kSlideY;
     int profFrame = 0;                // 0 standing, 1..3 POINTER1..3
+    int mouthFrame = 0;               // 0 none, 1..5 TALK1..5 - `1b2e:0cd1`
 };
 
 void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
@@ -748,6 +752,15 @@ void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
     if (art.havePointer && profFrame > 0 && profFrame < 4 &&
         art.havePointer[profFrame]) {
         screen.blit(art.pointer[profFrame], tubes::kProfX, tubes::kProfY);
+    }
+    // The mouth, `1b2e:0cd1`, stamped over his face at (276, 133) - a third
+    // draw on top of the two above, and only while he is talking. The wave
+    // frames carry their own mouth, so `ProfessorIdle` reports 0 for this the
+    // moment the gesture starts.
+    if (art.haveTalk && pose.mouthFrame >= 1 && pose.mouthFrame <= 5 &&
+        art.haveTalk[pose.mouthFrame - 1]) {
+        screen.blit(art.talk[pose.mouthFrame - 1], tubes::kTalkX,
+                    tubes::kTalkY);
     }
 
     // The frame behind the slide. Its HEIGHT is the one thing about it that
@@ -3010,6 +3023,18 @@ int main(int argc, char** argv) {
     tubes::Image booksArt, slideBar;
     const bool haveBooks = loadImage(res, "BOOKS.GFX", booksArt, 0);
     const bool haveBar = loadImage(res, "SLIDEBAR.GFX", slideBar, 0);
+    // The five mouths, MASKED. `1b2e:0cd1` draws them through `2000:3921`,
+    // which is the same thunk `1b2e:0510` uses for `POINTER0` and not the
+    // `2000:389d` the wave frames are stamped with - so index 0 is
+    // transparent. Loading them opaque left three black columns beside his
+    // chin, because the 12 x 8 the call passes is wider than the mouth in the
+    // art. Two call sites agree on which thunk is which, and a capture showed
+    // it besides.
+    tubes::Image talkFrame[5];
+    bool haveTalk[5] = {false, false, false, false, false};
+    for (int i = 0; i < 5; ++i) {
+        haveTalk[i] = loadImage(res, tubes::kTalkNames[i], talkFrame[i], 0);
+    }
 
     SceneArt sceneArt;
     sceneArt.corners = slideCorner;
@@ -3020,6 +3045,8 @@ int main(int argc, char** argv) {
     sceneArt.haveBooks = haveBooks;
     sceneArt.bar = &slideBar;
     sceneArt.haveBar = haveBar;
+    sceneArt.talk = talkFrame;
+    sceneArt.haveTalk = haveTalk;
     bool haveFg = loadImage(res, "GAMEFG.GFX", foreground, 0);
 
     // ONE table, indexed by a beaker cell's raw value. The original's is at
@@ -3584,11 +3611,25 @@ int main(int argc, char** argv) {
     // unconditionally, so the Instructions and the Credits roll every time.
     tubes::ScreenRoll screenRoll;
 
+    // The professor's idle. Every screen that waits runs TWO waits in order -
+    // `1b2e:0cd1(bursts)` while he talks, and then, only if that timed out,
+    // `1b2e:0e37(seconds)` while he waves - so `ProfessorIdle` owns both
+    // phases and reports a mouth frame or a pointer frame, never both.
+    //
+    // The original draws these from the program-global `RandSeed`; the port's
+    // generator is a `Game` member and the Instructions screen has no Game, so
+    // the scene gets a stream of its own off the boot seed. See the note above
+    // `PascalRandom` for what that does and does not change.
+    tubes::ProfessorIdle profIdle;
+    tubes::PascalRandom sceneRng{bootSeed ? bootSeed : 1u};
+
     auto raiseBriefing = [&](bool replay) {
         briefingUp = true;
         briefDecor = static_cast<int8_t>(game->rollForTest(8) + 1);
         rollBackdrop();
         if (game->progress().wave == 1 && !replay) screenRoll.restart();
+        // `1000:86b8`: `k := 1b2e:0cd1($17)`, then `1b2e:0e37($1e)`.
+        profIdle.restart(tubes::kTalkBurstsBriefing, sceneRng);
     };
     if (briefingUp) raiseBriefing(false);
 
@@ -3645,7 +3686,10 @@ int main(int argc, char** argv) {
     bool instrOpen = opt.instr >= 0 || opt.credits;
     // `--instructions` / `--credits` open the screen the way the menu does,
     // roll-down and all, so a capture of the animation needs no other flag.
-    if (instrOpen) screenRoll.restart();
+    if (instrOpen) {
+        screenRoll.restart();
+        profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
+    }
     int instrSlide = opt.instr > 0 ? opt.instr : 0;
     // The Credits, `1b2e:411b`: the same screen with a different table.
     bool instrCredits = opt.credits;
@@ -3658,11 +3702,6 @@ int main(int argc, char** argv) {
     bool slideDropped = false;
     int slideFrame = 0;          // index into kSlideDrop while dropping
     float slideAccum = 0.0f;
-    // `DS:0x20b0`, the professor's pointer frame. `1b2e:0656` parks it at the
-    // standing pose and `1b2e:0e37` advances it once every ten retraces while
-    // a screen waits for a key.
-    int profWave = 0;
-    float profAccum = 0.0f;
     auto slidePos = [&]() {
         if (slideDropped || slideFrame >= tubes::kSlideDropFrames) {
             return tubes::SlideFrame{tubes::kSlideX, tubes::kSlideY};
@@ -3675,7 +3714,8 @@ int main(int argc, char** argv) {
     auto scenePose = [&](bool wobble) {
         ScenePose p;
         p.frameH = screenRoll.height();
-        p.profFrame = tubes::pointerFrameFor(profWave);
+        p.profFrame = tubes::pointerFrameFor(profIdle.wave);
+        p.mouthFrame = profIdle.mouthFrame();
         if (wobble) {
             const tubes::SlideFrame s = slidePos();
             p.slideX = s.x;
@@ -3818,6 +3858,8 @@ int main(int argc, char** argv) {
         statsRows = tubes::buildStatsScreen(totals, game->progress().wave,
                                             game->score(), false);
         playSong(tubes::kStatsMusic);
+        // `1000:8da5`: `k := 1b2e:0cd1(10)`, then `1b2e:0e37($1e)`.
+        profIdle.restart(tubes::kTalkBurstsStats, sceneRng);
     };
     Uint32 last = SDL_GetTicks();
 
@@ -3916,6 +3958,9 @@ int main(int argc, char** argv) {
                                                : tubes::kInstructionSlideCount)) {
                     instrOpen = false;
                 }
+                // Each slide is its own `1b2e:0cd1(35)` / `1b2e:0e37(30)`
+                // pair, so turning the page starts him talking again.
+                if (instrOpen) profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
                 // Only LEAVING fades. Moving between slides does not - the
                 // original changes the slide inside one screen function and
                 // its fade-out is at the very end, on the way back.
@@ -3926,23 +3971,7 @@ int main(int argc, char** argv) {
             // The rebinding screen owns the keyboard while it is up. When it
             // is ARMED the next press is the binding, ESC included - there is
             // no other way to bind Escape, and no reason to forbid it.
-            if (instrOpen) {
-            const bool cr = instrCredits;
-            drawInstructionSlide(screen,
-                                 cr ? tubes::kCreditPages
-                                    : tubes::kInstructionSlides,
-                                 cr ? tubes::kCreditPageCount
-                                    : tubes::kInstructionSlideCount,
-                                 instrSlide, &blackboard, haveBlackboard,
-                                 sceneArt, scenePose(false),
-                                 smallFont, haveSmall, headingFont,
-                                 haveHeading, atoms, haveAtom, testTube,
-                                 haveTube, furn, haveFurn);
-            presentFrame();
-            continue;
-        }
-
-        if (rebindOpen) {
+            if (rebindOpen) {
                 const auto g = static_cast<tubes::GameButton>(rebindRow);
                 if (rebindWaiting) {
                     settings.bindings.bindKey(g, ev.key.keysym.scancode);
@@ -4081,6 +4110,7 @@ int main(int argc, char** argv) {
                         instrOpen = true;
                         instrCredits = false;
                         instrSlide = 0;
+                        profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
                         // `1b2e:2d63` builds the scene with `1b2e:0510`, so
                         // the projector screen comes down every time - no
                         // `DS:0x210e`-style gate on this one.
@@ -4092,6 +4122,7 @@ int main(int argc, char** argv) {
                         instrOpen = true;
                         instrCredits = true;
                         instrSlide = 0;
+                        profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
                         screenRoll.restart();
                         changeScreen();
                         break;
@@ -4399,6 +4430,10 @@ int main(int argc, char** argv) {
         // their own screen, and `--instructions` opens them from the harness
         // path, where `stage` is `kPlay` rather than `kTitle`.
         if (instrOpen) screenRoll.tick(dt);
+        // And the professor's idle with it. Same reason it sits outside the
+        // stage dispatch: these two screens are reachable with `stage` set to
+        // either, and the session's own clock below is the briefing's.
+        if (instrOpen || rebindOpen) profIdle.tick(dt, sceneRng);
 
         // --demo drives the REAL loop with the scripted player, so the render
         // path gets exercised on every frame of a whole session rather than
@@ -4417,13 +4452,6 @@ int main(int argc, char** argv) {
             // stood still on the two screens the original animates him on, and
             // the render section's own block was unreachable. The draw is gone
             // from here; the clock is what belongs in the update.
-            if (instrOpen || rebindOpen) {
-                profAccum += dt * tubes::kRetraceHz;
-                while (profAccum >= tubes::kProfWaveRetraces) {
-                    profAccum -= tubes::kProfWaveRetraces;
-                    if (++profWave > tubes::kProfWaveFrames) profWave = 1;
-                }
-            }
             // `1b2e:52bf`'s loop body, at the TITLE screen's own rate - see
             // kTitleHz. Everything in it is counted in frames: 4 px a frame
             // along a leg, a star frame every three, 720 frames to attract.
@@ -4542,16 +4570,14 @@ int main(int argc, char** argv) {
 
             // The professor waves while any of the three screens is up -
             // `1b2e:0e37` steps `DS:0x20b0` every ten retraces, 1..5.
-            if (sstage == tubes::SessionStage::kBriefing ||
-                sstage == tubes::SessionStage::kStats ||
-                sstage == tubes::SessionStage::kContinue) {
-                profAccum += dt * tubes::kRetraceHz;
-                while (profAccum >= tubes::kProfWaveRetraces) {
-                    profAccum -= tubes::kProfWaveRetraces;
-                    if (++profWave > tubes::kProfWaveFrames) profWave = 1;
-                }
+            if (instrOpen || rebindOpen) {
+                // Already ticked above - the screen on top owns him.
+            } else if (sstage == tubes::SessionStage::kBriefing ||
+                       sstage == tubes::SessionStage::kStats ||
+                       sstage == tubes::SessionStage::kContinue) {
+                profIdle.tick(dt, sceneRng);
             } else {
-                profWave = 0;
+                profIdle.restart(0, sceneRng);
             }
 
             // `1000:9750`: the cursor colour walks 1..14 and back, one step a
@@ -4668,7 +4694,7 @@ int main(int argc, char** argv) {
                              rebindWaiting, &blackboard, haveBlackboard,
                              sceneArt, headingFont, haveHeading, scriptFont,
                              haveScript, smallFont, haveSmall,
-                             tubes::pointerFrameFor(profWave));
+                             tubes::pointerFrameFor(profIdle.wave));
             presentFrame();
             continue;
         }

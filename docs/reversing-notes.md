@@ -6511,6 +6511,70 @@ The lesson is the one this file already states about searches, applied to a
 metric: a number is only as good as the region it covers. Quote the region with
 the percentage, and make sure the region includes the thing being claimed.
 
+### He TALKS first, and that is `1b2e:0cd1` - the other key wait
+
+`TALK1..5.GFX` were loaded by `1000:aaba` and drawn by no arm anyone had found,
+which `PLAN.md` recorded as "a fourth behaviour somewhere". It is not a fourth
+arm of `1b2e:0656` at all. It is a **second key wait**, and every screen that
+holds for a key runs the two of them in order:
+
+    k := 1b2e:0cd1(bursts);                  { he talks }
+    if k = 3 then k := 1b2e:0e37(seconds);   { it timed out - now he waves }
+
+| screen | talk | wave |
+|---|---|---|
+| Instructions `1b2e:2d63`, Credits `1b2e:411b` | `0cd1(35)` | `0e37($1e)` |
+| briefing `1000:86b8` | `0cd1($17)` | `0e37($1e)` |
+| stats `1000:8da5` | `0cd1(10)` | `0e37($1e)` |
+| Continue `1000:8c38` | none | `0e37(2)` |
+
+Both return the same codes, 3 being "ran out" - so the talk running out is what
+starts the wave, and only the wave running out advances the screen.
+
+The loop:
+
+    repeat
+      DS:0x20c6 := Random(12) + 1;         { where in the script to start }
+      DS:0x20c7 := Random(4)  + 4;         { 4..7 mouths in this burst }
+      repeat
+        Delay(8);
+        Draw(276, 133, TALK[script[DS:0x20c6]], 12, 8);      { 2000:3921 }
+        DS:0x20c6 := DS:0x20c6 + 1;  if DS:0x20c6 > 12 then DS:0x20c6 := 1;
+        <poll the keyboard into k>
+        DS:0x20c7 := DS:0x20c7 - 1
+      until (DS:0x20c7 = 0) or (k <> 0);
+      bursts := bursts - 1;  if bursts = 0 then k := 3
+    until k <> 0;
+    Draw(276, 133, TALK3, 12, 8)           { closes on TALK3 on the way out }
+
+**The parameter counts BURSTS, not mouths.** A burst is 4..7 mouths at 8
+retraces each, so a slide's 35 is 16..28 seconds, not four. Reading it as
+frames is the one mistake that makes the whole thing look wrong.
+
+`DS:0xbbb` is `array[1..12] of byte` and dumps as
+
+    1  2  3  3  3  5  2  3  1  2  3  3
+
+so **`TALK4` is loaded and never scripted**, and `TALK3` is half the cycle -
+which is what makes it read as speech rather than as a flicker.
+
+Three things pin the drawing down independently:
+
+* the size is a **literal in the call**, `12 x 8`, not the resource header -
+  which is why the five records at `DS:0x20b2` hold a far pointer and nothing
+  else, the loader throwing their width and height into the `DS:0x1d70`
+  scratch. `TALK1..5.GFX` measure exactly 12 x 8, so literal and art agree;
+* `(276, 133)` is inside the professor's own 44-wide box at `(267, 121)` - his
+  mouth, nine right and twelve down from his origin;
+* it draws through **`2000:3921`**, the masked thunk `1b2e:0510` uses for
+  `POINTER0`, not the `2000:389d` the wave frames are stamped with. Loading the
+  mouths opaque leaves three black columns beside his chin, because the 12 x 8
+  the call passes is wider than the mouth in the art.
+
+He does not gesture while he speaks: `1b2e:0cd1` never touches `DS:0x20b0`, and
+`1b2e:0656` has parked it at the standing pose, so the mouth moves over
+`POINTER0` and the pointer only comes up once the talk has run out.
+
 ### `1b2e:0e37` is the shared key wait, and its return codes matter
 
 Reached as `1000:c117` from `8c38` - the same linear address, `0x1c117`, under

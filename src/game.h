@@ -620,7 +620,7 @@ private:
     // change takes three frames.
     int moveTimer_ = 0;
 
-    uint32_t rng_ = 1;
+    PascalRandom rng_;
     std::vector<std::pair<int, uint32_t>>* randomTrace_ = nullptr;
 };
 

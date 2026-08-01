@@ -308,6 +308,151 @@ inline float waitKeySeconds(int param) {
 }
 
 // ---------------------------------------------------------------------------
+// Turbo Pascal 7's `Random` - `2000:75bb` steps it, `2000:755e` scales it
+// ---------------------------------------------------------------------------
+//
+// The derivation is in `game.cpp`, above `Game::random`, and it is not a
+// modulus: `Random(n)` is the top 32 bits of the 48-bit product
+// `RandSeed * n`, with `RandSeed` read UNSIGNED.
+//
+// It lives here because the classroom animations draw from it too. The
+// original has ONE `RandSeed` for the whole program, so the professor's mouth
+// and the atom the dispenser picks come off the same sequence; the port keeps
+// a stream per `Game` plus one for the scene, because its generator is a Game
+// member and the Instructions screen has no Game at all. What is transliterated
+// is the arithmetic and every call's argument - `Random(12) + 1`, `Random(4) +
+// 4`, `Random(100) < 5` - not which stream they are drawn from.
+struct PascalRandom {
+    uint32_t seed = 1;
+
+    int next(int n) {
+        seed = seed * 0x08088405u + 1u;
+        return static_cast<int>((static_cast<uint64_t>(seed) *
+                                 static_cast<uint32_t>(n)) >> 32);
+    }
+};
+
+// ---------------------------------------------------------------------------
+// The professor TALKS before he waves - `1b2e:0cd1`
+// ---------------------------------------------------------------------------
+//
+// `TALK1..5.GFX` were loaded by `1000:aaba` and drawn by no arm anyone had
+// found, which is what `PLAN.md` recorded as "a fourth behaviour somewhere".
+// It is `1b2e:0cd1`, and it is not a fourth arm of `1b2e:0656` at all - it is
+// the OTHER key wait. Every screen that waits calls two of them in order:
+//
+//     k := 1b2e:0cd1(bursts);                  { he talks }
+//     if k = 3 then k := 1b2e:0e37(seconds);   { timed out - now he waves }
+//
+// The Instructions pass `(35, 30)` per slide and the briefing `(0x17, 0x1e)`.
+// Both return the same codes `1b2e:0e37` does, 3 being "ran out".
+//
+// The talk loop draws a 12 x 8 sprite at (276, 133) - inside the professor's
+// own 44-wide box at (267, 121), i.e. over his mouth - and the size is a
+// literal in the call rather than the resource header, which is why the five
+// records hold a pointer and nothing else. `TALK1..5.GFX` measure exactly
+// 12 x 8, so the literal and the art agree independently.
+constexpr const char* kTalkNames[5] = {"TALK1.GFX", "TALK2.GFX", "TALK3.GFX",
+                                       "TALK4.GFX", "TALK5.GFX"};
+constexpr int kTalkX = 276;              // 0x114
+constexpr int kTalkY = 133;              // 0x85
+
+// `DS:0xbbb`, array[1..12] of byte: which mouth each step of the cycle shows.
+// Frames 1..5 are TALK1..5, and 4 never comes up - the script uses 3 half the
+// time, which is what makes it read as speech rather than as a flicker.
+constexpr int kTalkScriptLen = 12;
+constexpr int kTalkScript[kTalkScriptLen] = {1, 2, 3, 3, 3, 5, 2, 3, 1, 2, 3, 3};
+constexpr int kTalkRetraces = 8;         // `Delay(8)`, so 8/70 s a mouth
+// `1b2e:0e0a`: whatever the loop was showing, it closes on TALK3 on the way
+// out. That is also the script's most common frame.
+constexpr int kTalkRestFrame = 3;
+
+// The structure of the loop is two counters, and the outer one is NOT frames:
+//
+//     repeat
+//       DS:0x20c6 := Random(12) + 1;         { where in the script to start }
+//       DS:0x20c7 := Random(4)  + 4;         { 4..7 mouths in this burst }
+//       repeat
+//         Delay(8);  Draw(276, 133, TALK[script[DS:0x20c6]]);
+//         DS:0x20c6 := DS:0x20c6 + 1;  if DS:0x20c6 > 12 then DS:0x20c6 := 1;
+//         <poll the keyboard into k>
+//         DS:0x20c7 := DS:0x20c7 - 1
+//       until (DS:0x20c7 = 0) or (k <> 0);
+//       bursts := bursts - 1;  if bursts = 0 then k := 3
+//     until k <> 0;
+//     Draw(276, 133, TALK3)
+//
+// so `bursts` counts BURSTS, each 4..7 mouths long. 35 bursts is 16..28 s.
+constexpr int kTalkBurstBase = 4;        // Random(4) + 4
+constexpr int kTalkBurstSpan = 4;
+
+// The parameter at each call site, read off the call rather than guessed. The
+// Continue screen is the one screen with no talk at all: `1000:8c38` runs
+// `1b2e:0e37(2)` on its own, which is the two-second tick its countdown is
+// made of.
+constexpr int kTalkBurstsBriefing = 0x17;   // `1000:86b8`, then Wave(0x1e)
+constexpr int kTalkBurstsStats = 10;        // `1000:8da5`, then Wave(0x1e)
+constexpr int kTalkBurstsSlide = 35;        // `1b2e:2d63` / `411b`, then Wave(0x1e)
+
+// The two waits, in the order every screen runs them. `talking` is the first
+// phase and `wave` is `DS:0x20b0`, parked at 0 - the standing pose - until the
+// talk times out, which is why he does not gesture while he is speaking.
+struct ProfessorIdle {
+    bool talking = false;
+    int step = 1;            // DS:0x20c6, 1..12 into kTalkScript
+    int burstLeft = 0;       // DS:0x20c7, counts down 4..7 to 0
+    int burstsLeft = 0;      // the loop's own parameter, in bursts
+    int wave = 0;            // DS:0x20b0, 0 standing, 1..5 the gesture
+    float accum = 0.0f;
+
+    // `bursts` is `1b2e:0cd1`'s parameter: 35 for a slide, 0x17 for a briefing.
+    void restart(int bursts, PascalRandom& rng) {
+        talking = bursts > 0;
+        burstsLeft = bursts;
+        wave = 0;
+        accum = 0.0f;
+        if (talking) newBurst(rng);
+    }
+
+    // 0 draws no mouth at all - the wave frames carry their own, and stamping
+    // one over `POINTER1..3` would put a still mouth on a moving head.
+    int mouthFrame() const {
+        if (!talking) return 0;
+        return kTalkScript[step - 1];
+    }
+
+    void tick(float dt, PascalRandom& rng) {
+        const int hold = talking ? kTalkRetraces : kProfWaveRetraces;
+        accum += dt * kRetraceHz;
+        while (accum >= static_cast<float>(hold)) {
+            accum -= static_cast<float>(hold);
+            if (talking) {
+                if (++step > kTalkScriptLen) step = 1;
+                if (--burstLeft <= 0) {
+                    // A burst ends; the parameter counts those, not mouths.
+                    if (--burstsLeft <= 0) {
+                        // `k := 3` - the talk timed out, so the wave starts.
+                        talking = false;
+                        wave = 1;
+                        accum = 0.0f;
+                        return;
+                    }
+                    newBurst(rng);
+                }
+            } else if (++wave > kProfWaveFrames) {
+                wave = 1;
+            }
+        }
+    }
+
+private:
+    void newBurst(PascalRandom& rng) {
+        step = rng.next(kTalkScriptLen) + 1;
+        burstLeft = rng.next(kTalkBurstSpan) + kTalkBurstBase;
+    }
+};
+
+// ---------------------------------------------------------------------------
 // The projector screen ROLLS DOWN - `1b2e:0510`
 // ---------------------------------------------------------------------------
 //
