@@ -288,6 +288,10 @@ struct Options {
     // screen and the Continue prompt are all past a game over. These two run
     // the real loop to get there instead of adding entry points that the
     // original does not have.
+    // `[DS:0x0ce6]` is 40 in the image, and the player has said outright that
+    // the half second between screens may be sped up or turned off. So the
+    // knob exists and its DEFAULT is the original's number; 0 cuts instead.
+    int fadeSteps = tubes::kFadeSteps;
     int shotAfter = 0;          // present the screenshot after N live frames
     bool autoAdvance = false;   // synthesise RETURN whenever a stage waits
     uint32_t seed = 0;          // 0 = clock for play, fixed for the harnesses
@@ -468,6 +472,8 @@ Options parseArgs(int argc, char** argv) {
             o.autoAdvance = true;
         } else if (a == "--wave" && i + 1 < argc) {
             o.wave = std::atoi(argv[++i]);
+        } else if (a == "--fade-steps" && i + 1 < argc) {
+            o.fadeSteps = std::atoi(argv[++i]);
         } else if (a == "--help" || a == "-h") {
             o.help = true;
         } else {
@@ -491,6 +497,8 @@ void usage() {
         "  --auto-advance    press RETURN periodically, so a headless run\n"
         "                    walks through the screens that hold for a key\n"
         "  --auto N          simulate N scripted frames first (for testing)\n"
+        "  --fade-steps N    length of the screen fade, in 70 Hz frames\n"
+        "                    (default 40, the original's; 0 cuts instead)\n"
         "  --demo            let the scripted player drive the live loop\n"
         "  --music NAME      song to play (default: TUBES.MUS)\n"
         "  --no-music        start silent\n"
@@ -2484,8 +2492,13 @@ int main(int argc, char** argv) {
     // because a previous version duplicated it for an overlay and `continue`d
     // past the screenshot arm, which made `--screenshot` hang forever with
     // nothing written.
-    auto presentFrame = [&]() {
-        screen.toRgba(pal, rgba);
+    // The palette actually shown. It is `pal` except while a fade is running,
+    // when it is `pal` scaled by the step counter - the original's `DS:0x2702`
+    // scratch, which is what `23e7:003d` uploads.
+    tubes::Palette shownPal = pal;
+
+    auto blitAndPresent = [&]() {
+        screen.toRgba(shownPal, rgba);
         SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kScreenWidth * 4);
 
         int winW = 0, winH = 0;
@@ -2500,6 +2513,57 @@ int main(int argc, char** argv) {
         SDL_RenderClear(ren);
         SDL_RenderCopy(ren, tex, nullptr, &dst);
         SDL_RenderPresent(ren);
+    };
+
+    // `23e7:0097` and `23e7:00ce`, transliterated: 41 palette uploads, each
+    // one vertical retrace after the last. The screen contents do not change
+    // during a fade - the original is blocking here too, reading no input and
+    // running no game logic, which is why the whole thing is a plain loop
+    // rather than a state in the frame loop.
+    //
+    // Skipped wholesale under `harness`: every capture and every pixel diff
+    // presents the first composed frame, and 41 dimmed copies of it in front
+    // would change which frame `--screenshot` writes.
+    const int fadeSteps = harness ? 0 : opt.fadeSteps;
+    auto runFade = [&](bool in) {
+        if (fadeSteps > 0) {
+            for (int i = 0; i <= fadeSteps; ++i) {
+                const int step = in ? i : fadeSteps - i;
+                shownPal = tubes::fadePalette(palRaw, step, fadeSteps);
+                blitAndPresent();
+                SDL_Delay(14);              // one 70 Hz retrace
+            }
+        }
+        // Fading out leaves the DAC black, so the next screen is drawn while
+        // nothing is visible and only its own fade-in reveals it.
+        shownPal = in ? pal : tubes::fadePalette(palRaw, 0, tubes::kFadeSteps);
+    };
+    // Set at a screen change; the next composed frame is revealed rather than
+    // cut to. `presentFrame` consumes it, so every one of the loop's present
+    // sites gets this without repeating the call.
+    bool pendingFadeIn = false;
+
+    // One screen change, both halves. Every screen function in the original
+    // ends with `CALLF [0x22de]` and then the palette fade-out - the title at
+    // `1b2e:6172`, Instructions at `1b2e:3ef1`, Credits at `1b2e:4600`, the
+    // high score viewer at `1b2e:6498`, the cutscene at `1b2e:1f46`, the
+    // session at `1000:5efb` - and every screen reveals itself with the
+    // fade-in once it has drawn. `[0x22de]` is the music half: it appears
+    // exactly once in each of those six functions, always immediately before
+    // the palette fade, and it is NOT `StopMusic` (`[0x22da]`, which is used
+    // in other places). Its driver entry is unread, so the port fades the
+    // picture and leaves the music alone rather than guessing.
+    auto changeScreen = [&]() {
+        runFade(false);
+        pendingFadeIn = true;
+    };
+
+    auto presentFrame = [&]() {
+        blitAndPresent();
+        if (pendingFadeIn) {
+            pendingFadeIn = false;
+            runFade(true);
+        }
 
         if (!opt.screenshot.empty() && shotCountdown-- <= 0) {
             SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormatFrom(
@@ -2687,8 +2751,10 @@ int main(int argc, char** argv) {
             hsHold = 0.0f;
             hsActive = true;
             music.stop();
+            changeScreen();
             return;
         }
+        changeScreen();
         stage = Stage::kTitle;
         // `1000:b2ac`: the ATTRACT arm clears `DS:0x1d42` on the way back, so
         // the demo returns to a bare title screen with the menu down. Every
@@ -2845,6 +2911,10 @@ int main(int argc, char** argv) {
                                                : tubes::kInstructionSlideCount)) {
                     instrOpen = false;
                 }
+                // Only LEAVING fades. Moving between slides does not - the
+                // original changes the slide inside one screen function and
+                // its fade-out is at the very end, on the way back.
+                if (!instrOpen) changeScreen();
                 continue;
             }
 
@@ -2883,6 +2953,10 @@ int main(int argc, char** argv) {
                     rebindWaiting = true;
                 } else if (k == SDLK_ESCAPE) {
                     rebindOpen = false;
+                    // The port's own screen, so this follows the house rule
+                    // rather than a call site: it borrows the classroom the
+                    // way Instructions does, and Instructions fades.
+                    changeScreen();
                 }
                 continue;
             }
@@ -2897,6 +2971,7 @@ int main(int argc, char** argv) {
                 } else {
                     hsViewing = false;
                     playSong("TUBES.MUS");
+                    changeScreen();
                 }
                 continue;
             }
@@ -2956,6 +3031,7 @@ int main(int argc, char** argv) {
                                      : tubes::playMusicFor(
                                            game->dropsRemaining()));
                         stage = Stage::kPlay;
+                        changeScreen();
                         break;
                     }
                     case tubes::MenuResult::kLoad: {
@@ -2993,21 +3069,24 @@ int main(int argc, char** argv) {
                                      : tubes::playMusicFor(
                                            game->dropsRemaining()));
                         stage = Stage::kPlay;
+                        changeScreen();
                         break;
                     }
                     case tubes::MenuResult::kInstructions:
                         instrOpen = true;
                         instrCredits = false;
                         instrSlide = 0;
+                        changeScreen();
                         break;
                     case tubes::MenuResult::kCredits:
                         // `1000:b280`. Same screen, same keys, four pages.
                         instrOpen = true;
                         instrCredits = true;
                         instrSlide = 0;
+                        changeScreen();
                         break;
                     case tubes::MenuResult::kViewDemo:
-                        startDemo();
+                        if (startDemo()) changeScreen();
                         break;
                     case tubes::MenuResult::kToggleMusic:
                         musicOn = !musicOn;
@@ -3027,6 +3106,7 @@ int main(int argc, char** argv) {
                         rebindOpen = true;
                         rebindRow = 0;
                         rebindWaiting = false;
+                        changeScreen();
                         break;
                     case tubes::MenuResult::kQuit:
                         running = false;
@@ -3041,6 +3121,7 @@ int main(int argc, char** argv) {
                         if (soundOn && haveClapSound) {
                             music.playSound(&clapSound);
                         }
+                        changeScreen();
                         break;
                     default:
                         // Instructions, View Demo, Credits and Load are stages
@@ -3149,6 +3230,9 @@ int main(int argc, char** argv) {
                 briefingUp = false;
                 sstage = tubes::SessionStage::kPlay;
                 playSong(tubes::playMusicFor(game->dropsRemaining()));
+                // `1000:86b8` ends with the fade-out and `1000:44d3` fades the
+                // playfield in, so the briefing and the game are two screens.
+                changeScreen();
                 continue;
 
             case tubes::SessionStage::kBanner:
@@ -3325,7 +3409,7 @@ int main(int argc, char** argv) {
                 // entirely if that returns 2. The cutscene is not ported, so
                 // this goes straight to the demo and the cutscene is noted as
                 // the missing half rather than pretended away.
-                startDemo();
+                if (startDemo()) changeScreen();
             }
         } else if (opt.screenshot.empty() || opt.shotAfter > 0) {
             // `--screenshot` alone captures the opening frame and exits, so it
@@ -3443,6 +3527,7 @@ int main(int argc, char** argv) {
                     stage = Stage::kTitle;
                     menu.raise();
                     playSong("TUBES.MUS");
+                    changeScreen();
                 }
             }
 
@@ -3547,6 +3632,7 @@ int main(int argc, char** argv) {
                 } else {
                     hsViewing = false;
                     playSong("TUBES.MUS");
+                    changeScreen();
                 }
             }
             const tubes::HiScoreBank viewBank =

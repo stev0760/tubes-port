@@ -251,16 +251,17 @@ Observed by the player against the original, so **real** - but not yet
 decompiled, and deliberately not guessed at. Presentation only; none of them
 changes a rule.
 
-1. **Screens cross-fade.** There is a fade between screens. The port cuts.
-   **The `[0x230e]` lead is dead** - it was written up here as taking "two
-   palette pointers", and `1b2e:61b6` settles what it really is: `PlaySound`,
-   taking ONE far pointer, which the decompiler prints as two words. Its
-   argument slots are `DS:0x2120` `CLAP.SFX`, `0x2124` `SLIDE.SFX` and
-   `0x2128` `SWITCH.SFX`, all filled at `1000:b14c` onward, and the companion
-   `[0x230a]` is `SoundBusy` - the viewer polls it to keep the applause
-   looping. `1b2e:0a11` calling it as the slide rolls down is the projector
-   sound, not a fade. The fade is still unfound; the retrace waits nearby
-   (`23e7:0024`) are holds, not fades.
+1. ~~**Screens cross-fade.**~~ **DONE - and it was where the player said it
+   would be.** `23e7:0097` fades in, `23e7:00ce` fades out, both in the
+   GRAPHICS unit, and every screen in the game calls them - which is why three
+   scans of the game segments found nothing. 41 DAC uploads one retrace apart
+   (`[DS:0x0ce6] = 40` steps, `23e7:003d` waits for the retrace), so 0.586 s,
+   matching the half second the player timed. `docs/reversing-notes.md` has
+   the ramp arithmetic. Ported with `--fade-steps N` to shorten or disable it.
+   Still open, and marked as inferred rather than read: `[DS:0x22de]`, a
+   no-argument music-driver call that appears once in each screen function
+   immediately before the palette fade-out and nowhere else - the music half
+   of the same transition. It is NOT `StopMusic`, which is `[DS:0x22da]`.
 2. **The Wave Complete banner ends when its music does. DONE** - the something
    in `1000:5e0b`'s `repeat until KeyPressed or <something>` is
    `[DS:0x22ce] = $ff`, the driver's "the song has been round once" query, and
@@ -844,20 +845,12 @@ play, not yet located. It is presumably one of the unattributed sprite arms
 above, or a slide in `1b2e:2d63` that the extraction read as text-only. Worth
 checking the sprite draws per slide against the captures in `capture/instr/`.
 
-**3. The screen transition fade.** Still the oldest open item in this file and
-still genuinely unfound - `[DS:0x230e]` turned out to be `PlaySound`, so that
-lead is dead.
-
-**A better lead, from the player: it may be Turbo Pascal's, not the game's.**
-It behaves like a mandatory effect - every screen change waits out the same
-half second - which is what a fade in a graphics UNIT would look like rather
-than one the game asks for. So search `2321` (the graphics unit) for a palette
-ramp, not the game segments. That also explains why scanning the game code for
-a fade call has failed three times.
-
-**Recreating it is acceptable** if the search fails again, and the player has
-also said it may be SPED UP or made optional - half a second between screens is
-annoying at modern expectations even if it is faithful.
+**3. The screen transition fade. DONE.** The player's lead was right in every
+particular: it is a mandatory effect, it lives in a graphics unit rather than
+in the game, and it is about half a second. `23e7:0097` / `23e7:00ce`, 41 DAC
+uploads a retrace apart. See the fade section in `docs/reversing-notes.md`.
+Ported, with `--fade-steps N` (default 40, the original's; 0 cuts) since the
+player sanctioned speeding it up.
 
 **4. Sound is clipped or truncated**, e.g. the Bonus catch (`GLDFADE`).
 Minor but real. Two candidates and they are distinguishable:

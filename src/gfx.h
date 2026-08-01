@@ -51,6 +51,31 @@ constexpr int kSpriteBaseY = -2;
 
 bool loadPalette(const Bytes& data, Palette& out, std::string& error);
 
+// The screen fade, at last - `23e7:0097` fades IN and `23e7:00ce` fades OUT,
+// and every screen in the game calls them. That is why three scans of the
+// GAME segments for a fade found nothing: it lives in the graphics unit, which
+// is exactly where the player guessed it would be.
+//
+// Both are one loop over a step counter `n`, up from 0 or down from
+// `[DS:0x0ce6]` = 40, rewriting all 768 DAC components each time:
+//
+//     component := targetComponent * n div 40        { MUL BX / DIV [0ce6] }
+//
+// and handing the result to `23e7:003d`, which waits for ONE vertical retrace
+// before uploading. So a fade is 41 uploads 1/70 s apart - 0.586 s, which is
+// the "half a second or so" the player timed between screens.
+//
+// The target palette is the one `23e7:006c` last stored at `DS:0x2400`, and
+// that routine blacks the DAC as it stores - so a screen is always drawn to a
+// dark display and revealed by the fade, never flashed.
+//
+// The arithmetic is on the RAW 6-bit values, before the DAC expansion, which
+// is why this takes the .PAL bytes rather than a Palette: truncating twice
+// would not give the original's ramp.
+constexpr int kFadeSteps = 40;              // [DS:0x0ce6]
+
+Palette fadePalette(const Bytes& raw, int step, int steps = kFadeSteps);
+
 // .GFX - u16 width, u16 height, then pixels. Data is planar (Mode X
 // plane-major) unless the file carries a leading 0xE5, which marks chunky.
 bool decodeGfx(const Bytes& data, Image& out, std::string& error);

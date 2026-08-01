@@ -74,6 +74,20 @@ bool loadPalette(const Bytes& data, Palette& out, std::string& error) {
     return true;
 }
 
+Palette fadePalette(const Bytes& raw, int step, int steps) {
+    Palette out;
+    if (raw.size() != 768 || steps <= 0) return out;
+    if (step < 0) step = 0;
+    if (step > steps) step = steps;
+    for (int i = 0; i < 256; ++i) {
+        for (int c = 0; c < 3; ++c) {
+            const int v = (raw[i * 3 + c] & 0x3f) * step / steps;
+            out.rgb[i][c] = static_cast<uint8_t>((v * 255) / 63);
+        }
+    }
+    return out;
+}
+
 bool decodeGfx(const Bytes& data, Image& out, std::string& error) {
     // Header sits at offset 0, or at 1 when preceded by the chunky marker.
     // Pick whichever makes width * height exactly fill the file.

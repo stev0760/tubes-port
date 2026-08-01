@@ -423,6 +423,58 @@ explosion frames, and the `WRITE*` scientist animation cells.
     tools/gfx_decode.py INFO   <file.GFX>...
     tools/gfx_decode.py RENDER <palette.PAL> <outdir> <file.GFX>...
 
+### The screen fade - FOUND, after three failed searches
+
+`23e7:0097` fades **in** and `23e7:00ce` fades **out**. They are the oldest
+open item in `PLAN.md`, and the player's lead is what found them: *it behaves
+like a mandatory effect, so look in the graphics unit rather than the game*.
+It is not merely mandatory, it is universal - `MapProgram`'s caller lists are
+
+    23e7:0097  1000:3a67  1000:96db  1b2e:0510  1b2e:0656  1b2e:1651
+               1b2e:52bf  1b2e:61b6  2178:00eb  21d5:007b
+    23e7:00ce  1000:9e53  1000:3a67  1000:60d8  1000:86b8  1000:9499
+               1000:96db  1b2e:1651  1b2e:2d63  1b2e:411b  1b2e:52bf
+               1b2e:61b6  2178:00eb  21d5:007b
+
+- every screen, both splashes included. Scanning the GAME segments for a fade
+was looking in the wrong unit three times over.
+
+Both routines are one loop over a step counter, rewriting all 768 DAC
+components each pass:
+
+    fade in:   for n := 0 to [DS:0x0ce6] do  ramp(n)
+    fade out:  for n := [DS:0x0ce6] downto 0 do  ramp(n)
+
+    ramp(n):   for i := 0 to 767 do
+                 scratch[i] := target[i] * n div [DS:0x0ce6]   { MUL BX / DIV }
+               SetDAC(scratch)                                 { 23e7:003d }
+
+with `target` at `DS:0x2400`, `scratch` at `DS:0x2702`, and
+**`[DS:0x0ce6] = 40`** read out of DGROUP. The division is `DIV r/m8`, so the
+arithmetic is on the raw 6-bit values and truncates.
+
+**`23e7:003d` waits for one vertical retrace before it uploads**, and it is
+called once per step. So a fade is **41 uploads at 70 Hz = 0.586 s** - which
+is exactly the "half a second or so between screens" the player reported, and
+is a second, independent confirmation that these are the right two routines.
+
+`23e7:006c` is the companion `SetPalette`: it copies the 768 bytes to
+`DS:0x2400` **and blacks the DAC as it stores**. So the sequence at every
+screen is set the palette (display goes black), draw, fade in, run, fade out -
+a screen is never flashed before its fade.
+
+**The music fades with it.** `CALLF [DS:0x22de]` appears exactly once in each
+of `1b2e:52bf`, `1b2e:2d63`, `1b2e:411b`, `1b2e:61b6`, `1b2e:1651` and
+`1000:3a67`, always in the instruction immediately before the palette
+fade-out, and nowhere else. It takes no arguments and it is **not** StopMusic,
+which is `[DS:0x22da]` and is called from other places. The driver entry is
+unread, so "the music half of a screen transition" is an inference from the
+call sites, not a decompiled fact.
+
+The port has the palette half in `fadePalette` (`src/gfx.h`), 40 steps by
+default and `--fade-steps N` to shorten or disable it - the player has
+sanctioned speeding it up, so the knob exists and its default is faithful.
+
 ## .SCR - recorded demo (solved)
 
 **Correction to an earlier assumption**: `DEMO.SCR` is not a cutscene script.

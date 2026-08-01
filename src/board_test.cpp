@@ -19,6 +19,7 @@
 #include "screen.h"
 #include "scr.h"
 #include "sfx.h"
+#include "gfx.h"
 #include "hiscore.h"
 #include "input.h"
 #include "save.h"
@@ -2147,6 +2148,40 @@ void testBindingsCannotBeShared() {
           "and the pad half moves on its own");
 }
 
+// `23e7:0097` / `23e7:00ce`, the screen fade. The arithmetic is
+// `component * n div 40` on the RAW 6-bit .PAL values, and the ends of the
+// ramp have to land exactly on black and on the palette itself - a fade that
+// stops one step short leaves the screen permanently dim.
+void testTheFadeRampEndsOnBlackAndOnThePalette() {
+    using namespace tubes;
+    Bytes raw(768);
+    for (size_t i = 0; i < raw.size(); ++i) raw[i] = static_cast<uint8_t>(i % 64);
+    Palette full;
+    std::string err;
+    check(loadPalette(raw, full, err), "the test palette loads");
+
+    const Palette black = fadePalette(raw, 0);
+    const Palette lit = fadePalette(raw, kFadeSteps);
+    bool allBlack = true, matches = true;
+    for (int i = 0; i < 256; ++i) {
+        for (int c = 0; c < 3; ++c) {
+            if (black.rgb[i][c] != 0) allBlack = false;
+            if (lit.rgb[i][c] != full.rgb[i][c]) matches = false;
+        }
+    }
+    check(allBlack, "step 0 is black");
+    check(matches, "step 40 is the palette itself");
+
+    // The middle step truncates, because the original divides a byte by a
+    // byte and keeps the quotient. 63 * 20 div 40 = 31, not 31.5.
+    Bytes one(768, 0);
+    one[0] = 63;
+    check(fadePalette(one, 20).rgb[0][0] == (31 * 255) / 63,
+          "half way up, 63 becomes 31");
+    check(fadePalette(one, 1).rgb[0][0] == (1 * 255) / 63,
+          "and the first step is 1, not 0");
+}
+
 void testSettingsRoundTrip() {
     using namespace tubes;
     Settings s;
@@ -2752,6 +2787,7 @@ int main() {
     testTheContinueCountdownExpiringDeclines();
     testEnduranceSkipsBothWaveScreens();
     testTheFastSongIsAboutDropsNotDifficulty();
+    testTheFadeRampEndsOnBlackAndOnThePalette();
     testBindingsCannotBeShared();
     testSettingsRoundTrip();
     testSaveFileLayout();
