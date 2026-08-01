@@ -8113,18 +8113,75 @@ Four readings drop out of that table and each is corroborated by a size:
 10`, `[DS:0x1d6f] := 4` - which is how a track starts part way in. That is
 also why the counters are globals rather than locals.
 
-**The one piece still missing is the slot map.** The 26 names load in order -
-`WRITE0.GFX`, `WRITE1..9.GFX`, `EXPLOD1..16.GFX`, at `CS:0x11e7` onward - but
-the slots are NOT filled one per name: `1b2e:16aa` copies `[BP-0x74]` into
-`[BP-0x70]`, so at least one frame is duplicated, and the explosion list's
-base (`[BP-0xbc]`) sits *below* the writing list's (`[BP-0x78]`) rather than
-after it. Frames 10..25 being drawn at 28x66 says slots 10..25 hold
-`WRITE6..9` repeated, but that is an inference from a size, not a reading.
+### The slot map, extracted
 
-Extract it mechanically rather than by eye - the loads and the copies are a
-fixed instruction pattern, exactly like the text calls `gen_instructions.py`
-already parses. Guessing at 26 slots is how a page ends up animating the wrong
-thing in a way nobody notices.
+Ten `WRITE*.GFX` fill 26 slots and sixteen `EXPLOD*.GFX` fill 17, because the
+caller **copies pointers**: `1b2e:16aa` and fifteen more like it duplicate a
+slot rather than loading a second time. That is how a pose is held for seven
+ticks when the player has no delay parameter at all.
+
+    writing  [BP-0x78], 26 slots
+      0  WRITE1   1  WRITE2   2  WRITE2   3  WRITE3   4  WRITE3
+      5  WRITE4   6  WRITE4   7  WRITE3   8  WRITE3   9  WRITE5
+     10..16  WRITE6 (seven)  17,18  WRITE7  19..23  WRITE8  24,25  WRITE9
+
+    explosion  [BP-0xbc], 17 slots
+      0..15  EXPLOD1..16      16  EXPLOD16 again
+
+**The sizes prove it.** Slots 0..9 are `WRITE1..5`, every one 28x41, and the
+three pages that play frames 1..5 or 1..8 pass 28x41. Slots 10..25 are
+`WRITE6..9`, every one 28x66, and the one page that plays frames 10..25 passes
+28x66. Nothing else fits, so this is an oracle rather than a reading - which
+matters, because "guessing at 26 slots" is how a page animates the wrong thing
+in a way nobody notices.
+
+`WRITE0.GFX` is loaded but is **not in either list** - it goes to `[BP-8]` on
+its own. The frame counter starts at 0 and the wrap goes to 1, so element 0 is
+drawn once at the start of a track and never again.
+
+The extraction is `tools/gen_cutscene.py`, which reads the loads, the pointer
+copies, the text calls, the atom draws and the two tracks' arguments, and
+emits `src/cutscene.cpp`. It is the third screen through that method after the
+Instructions and the Credits.
+
+### The panel, and the rest of the page furniture
+
+`2321:0ac0(x, y, w, h)` is the bevelled grey panel the story text sits in -
+nine `FillRect`s, a body in colour 7 with highlights in 15 and shadows in 8:
+
+    (x, y, w, h, 7)              (x, y, w, 1, 15)      (x, y, 1, h, 15)
+    (x+w-3, y+2, 1, h-4, 15)     (x+3, y+h-3, w-5, 1, 15)
+    (x+2, y+2, w-4, 1, 8)        (x+w-1, y+1, 1, h-1, 8)
+    (x+2, y+2, 1, h-4, 8)        (x+1, y+h-1, w-1, 1, 8)
+
+Read off the listing by walking its pushes, for the same reason as everything
+else here: "a grey box with a border" is exactly the kind of thing that looks
+right and is three pixels wrong everywhere.
+
+The scene under it is `2321:068d(0, 12, [DS:0x2058])` - the same held
+blackboard, at the same y, that the briefing and the stats screen use - with
+`WRITE1` blitted at (86, 122) and `EXPLOD1` at (258, 119) before the fade-in.
+`EXPLOD1` is not an explosion frame at all: it is the beaker, sitting on the
+board's ledge, and the sixteen frames are it bubbling and then bursting.
+
+### The whole screen, as a program
+
+    ClearPage(0); SetVisual(0); SetActive(0)
+    Blit(0, 12, blackboard);  Blit(86, 122, WRITE1);  Blit(258, 119, EXPLOD1)
+    PlayMusic(CLASS.MUS);  FadeIn;  Delay(45)
+    for each of the five pages:
+      Panel(...);  { the text and, on page 2, the eight atoms }
+      { seed the counters this page drives }
+      k := Animate(...)         { see the call-site table above }
+      { the between-pages sound, if any }
+      BlankRect(...)            { clears the text on BOTH pages }
+    FlipPage;  FadeMusic;  FadeOut
+
+A port that recomposes the whole screen each frame does not need `BlankRect`
+or the `FillBar` half of the panel call - both exist to clear the *other*
+page in a double-buffered scheme - but it does have to hold a stopped track's
+LAST frame rather than wrapping it, since the original simply stops drawing
+and what is on the page stays there.
 
 This also matters beyond the cutscene: `1000:b287` runs it BEFORE the attract
 demo and skips the demo if it returns 2, so the port's attract mode is missing

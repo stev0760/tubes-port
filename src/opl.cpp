@@ -134,6 +134,13 @@ void MusicPlayer::playSound(const Sound* s) {
     SDL_UnlockAudioDevice(deviceId_);
 }
 
+void MusicPlayer::stopSound() {
+    if (deviceId_ == 0) return;
+    SDL_LockAudioDevice(deviceId_);
+    sfxVoice_.stop();
+    SDL_UnlockAudioDevice(deviceId_);
+}
+
 void MusicPlayer::mix(int16_t* out, int frames) {
     // With no song loaded there is nothing to step, but the effects voice
     // still has to be serviced - `--no-music` should not mean no sound.

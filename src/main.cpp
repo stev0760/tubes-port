@@ -23,6 +23,7 @@
 #include "gfx.h"
 #include "hiscore.h"
 #include "input.h"
+#include "cutscene.h"
 #include "instructions.h"
 #include "save.h"
 #include "menu.h"
@@ -297,6 +298,7 @@ struct Options {
     bool noSplash = false;      // skip the boot splashes outright
     int splashFrame = -1;       // capture this .ANM frame of the first splash
     int splash2Step = -1;       // capture this step of the second splash
+    int cutscenePage = -1;      // capture this page of the opening cutscene
     int shotAfter = 0;          // present the screenshot after N live frames
     bool autoAdvance = false;   // synthesise RETURN whenever a stage waits
     uint32_t seed = 0;          // 0 = clock for play, fixed for the harnesses
@@ -481,6 +483,8 @@ Options parseArgs(int argc, char** argv) {
             o.autoAdvance = true;
         } else if (a == "--wave" && i + 1 < argc) {
             o.wave = std::atoi(argv[++i]);
+        } else if (a == "--cutscene" && i + 1 < argc) {
+            o.cutscenePage = std::atoi(argv[++i]);
         } else if (a == "--splash2" && i + 1 < argc) {
             o.splash2Step = std::atoi(argv[++i]);
         } else if (a == "--splash" && i + 1 < argc) {
@@ -521,6 +525,8 @@ void usage() {
         "                    capture its Nth animation frame\n"
         "  --splash2 N       the same for the second: 0-5 the logo frames,\n"
         "                    6-10 the lightning, 11 the writing\n"
+        "  --cutscene N      run the opening cutscene and, with --screenshot,\n"
+        "                    capture page N (0-4)\n"
         "  --fade-steps N    length of the screen fade, in 70 Hz frames\n"
         "                    (default 40, the original's; 0 cuts instead)\n"
         "  --demo            let the scripted player drive the live loop\n"
@@ -1609,9 +1615,13 @@ int runAbsoluteMagicSplash(const tubes::Archive& res, SDL_Renderer* ren,
     writing.transparent = 0;
 
     // The three sounds are loaded here rather than from the atom-indexed
-    // table, and they must outlive their playback - the audio callback holds
-    // a bare pointer at them - so nothing may return past this frame while a
-    // voice is still running. The fade-out at the end is what guarantees it.
+    // table.
+    // The voice MUST be silenced before the sounds below go out of scope:
+    // the audio callback holds a bare pointer at whichever one is playing.
+    struct Silence {
+        tubes::MusicPlayer& m;
+        ~Silence() { m.stopSound(); }
+    } silence{music};
     tubes::Sound woosh, bolt, magic;
     tubes::Bytes raw;
     const bool haveSfx =
@@ -1701,6 +1711,240 @@ int runAbsoluteMagicSplash(const tubes::Archive& res, SDL_Renderer* ren,
 
     runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, false, skip);
     return 0;
+}
+
+// ---- The opening cutscene, `1b2e:1651` -------------------------------------
+//
+// Five pages of the game's own story. The page data is generated - see
+// cutscene.h - so what is here is only the machinery: the two-track player,
+// the panel, and the frame clock.
+
+// `2321:0ac0`, the bevelled panel the story text sits in.
+void drawPanel(tubes::Screen& screen, int x, int y, int w, int h) {
+    uint8_t* px = screen.pixelsMutable();
+    for (const tubes::PanelFill& f : tubes::kPanelFills) {
+        const int rx = x + (f.fromRight ? w : 0) + f.dx;
+        const int ry = y + (f.fromBottom ? h : 0) + f.dy;
+        const int rw = f.useW ? w + f.dw : 1;
+        const int rh = f.useH ? h + f.dh : 1;
+        for (int yy = ry; yy < ry + rh; ++yy) {
+            if (yy < 0 || yy >= tubes::kScreenHeight) continue;
+            for (int xx = rx; xx < rx + rw; ++xx) {
+                if (xx < 0 || xx >= tubes::kScreenWidth) continue;
+                px[static_cast<size_t>(yy) * tubes::kScreenWidth + xx] =
+                    f.colour;
+            }
+        }
+    }
+}
+
+// The cutscene's own art: two frame lists of .GFX, loaded by name. Ten files
+// fill 26 slots and sixteen fill 17, so the same Image is shared - which is
+// exactly what the original does with its pointer copies.
+struct CutsceneArt {
+    std::vector<tubes::Image> writeFrames;   // 26
+    std::vector<tubes::Image> blowFrames;    // 17
+    bool ok = false;
+};
+
+CutsceneArt loadCutsceneArt(const tubes::Archive& res) {
+    CutsceneArt art;
+    auto fill = [&](const char* const* names, int n,
+                    std::vector<tubes::Image>& out) {
+        out.resize(static_cast<size_t>(n));
+        for (int i = 0; i < n; ++i) {
+            // Index 0 is transparent, as `2321:068d` and `2321:0905` both
+            // treat it - the writing frames sit over the blackboard.
+            if (!loadImage(res, names[i], out[static_cast<size_t>(i)], 0)) {
+                return false;
+            }
+        }
+        return true;
+    };
+    art.ok = fill(tubes::kWriteFrames, tubes::kWriteFrameCount,
+                  art.writeFrames) &&
+             fill(tubes::kBlowFrames, tubes::kBlowFrameCount, art.blowFrames);
+    return art;
+}
+
+// `1b2e:1651`. Returns the key that ended it - `1000:b224` stores it, and the
+// attract arm at `1000:b28b` skips the demo when it is 2.
+int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
+                tubes::Screen& screen, std::vector<uint8_t>& rgba,
+                const tubes::Bytes& palRaw, const tubes::Palette& pal,
+                int fadeSteps, SkipWatch& skip, tubes::MusicPlayer& music,
+                bool musicOn, bool soundOn, const tubes::Image* board,
+                bool haveBoard, const tubes::Sprite* atoms,
+                const bool* haveAtom, const tubes::Font& small, bool haveSmall,
+                int shotPage, const std::string& shotPath) {
+    const CutsceneArt art = loadCutsceneArt(res);
+    if (!art.ok || !haveBoard || !haveSmall) return 0;
+
+    // The three sounds are this screen's own.
+    // The voice MUST be silenced before the sounds below go out of scope:
+    // the audio callback holds a bare pointer at whichever one is playing.
+    struct Silence {
+        tubes::MusicPlayer& m;
+        ~Silence() { m.stopSound(); }
+    } silence{music};
+    tubes::Sound sounds[3];
+    const char* const kNames[3] = {"WHATTHE.SFX", "NOOOO.SFX", "BUBBLE.SFX"};
+    bool haveSound[3] = {};
+    for (int i = 0; i < 3; ++i) {
+        tubes::Bytes raw;
+        std::string err;
+        haveSound[i] = soundOn && res.read(kNames[i], raw, err) &&
+                       tubes::decodeSfx(raw, sounds[i], err);
+    }
+    auto play = [&](const char* name) {
+        if (!name) return;
+        for (int i = 0; i < 3; ++i) {
+            if (haveSound[i] && std::strcmp(name, kNames[i]) == 0) {
+                music.playSound(&sounds[i]);
+            }
+        }
+    };
+
+    // `[DS:0x1d6e]` and `[DS:0x1d6f]`, the two GLOBAL frame counters. They
+    // live across pages, which is what lets page 4 start part way in.
+    int frameA = 0, frameB = 0;
+    // Page 4 erases both animations on its way out; page 5 is text alone.
+    bool showTracks = true;
+
+    // The scene under everything: the board, and the two animations' first
+    // frames, drawn statically before the fade-in at `1b2e:1a59` onward.
+    auto compose = [&](const tubes::CutscenePage& page) {
+        screen.clear(0);
+        screen.blit(*board, 0, tubes::kCutsceneBoardY);
+        if (showTracks) {
+            const tubes::Image& a = art.writeFrames[static_cast<size_t>(
+                frameA < tubes::kWriteFrameCount ? frameA : 0)];
+            screen.blit(a, page.a.count ? page.a.x : 86,
+                        page.a.count ? page.a.y : 122);
+            // Track B is the beaker only when it is showing 60x46 frames; on
+            // page 2 it is an ATOM out of the ball table and is drawn there.
+            const bool beaker = page.b.count == 0 || page.b.w == 60;
+            if (beaker) {
+                const tubes::Image& b = art.blowFrames[static_cast<size_t>(
+                    frameB < tubes::kBlowFrameCount ? frameB : 0)];
+                screen.blit(b, 258, 119);
+            }
+        }
+        for (int i = 0; i < page.count; ++i) {
+            const tubes::CutsceneItem& it = page.items[i];
+            switch (it.kind) {
+            case tubes::CutsceneItem::kBar:
+                drawPanel(screen, it.x, it.y, it.a, it.b);
+                break;
+            case tubes::CutsceneItem::kText:
+                tubes::drawText(screen, small, it.x, it.y,
+                                static_cast<uint8_t>(it.a),
+                                static_cast<uint8_t>(it.b), it.text);
+                break;
+            case tubes::CutsceneItem::kAtom:
+                if (it.a > 0 && it.a < kCellStates && haveAtom[it.a]) {
+                    screen.draw(atoms[it.a], it.x, it.y);
+                }
+                break;
+            }
+        }
+        // Page 2's track B is the eighth element's ball, cycling the seven
+        // colours where the static draw put type 4.
+        if (showTracks && page.b.count && page.b.w == 16) {
+            const int type = frameB < 1 ? 1
+                             : frameB > 7 ? 7 : frameB;
+            if (haveAtom[type]) screen.draw(atoms[type], page.b.x, page.b.y);
+        }
+    };
+
+    if (musicOn && music.isOpen()) {
+        tubes::Bytes song;
+        std::string err;
+        if (res.read(tubes::kCutsceneMusic, song, err)) music.play(song, err);
+    }
+
+    compose(tubes::kCutscenePages[0]);
+    // The first page's own text is not up yet at the fade - only the board
+    // and the two figures are - but composing it costs a frame nobody sees
+    // and keeps this to one code path.
+    if (runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, true, skip)) {
+        const int k = skip.take();
+        runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, false, skip);
+        return k;
+    }
+    if (holdRetraces(tubes::kCutsceneOpenDelay, skip)) {
+        const int k = skip.take();
+        runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, false, skip);
+        return k;
+    }
+
+    int ended = 0;
+    for (int p = 0; p < tubes::kCutscenePageCount && !ended; ++p) {
+        const tubes::CutscenePage& page = tubes::kCutscenePages[p];
+        // `1b2e:1b00`, `1cda`, `1d4e`, `1e08`: each page seeds the counters
+        // it is about to drive. The generator does not carry these because
+        // they are stores, not arguments - see cutscene.cpp's header.
+        if (p == 0) frameA = 0;
+        if (p == 1) frameB = 0;
+        if (p == 2) frameB = 1;
+        if (p == 3) { frameA = 10; frameB = 4; }
+
+        // `[BP+0x32] * 7` iterations of `Delay(10)`, so `seconds` seconds.
+        const int ticks = page.seconds * 7;
+        bool aDone = page.a.count == 0, bDone = page.b.count == 0;
+        for (int t = 0; t < ticks; ++t) {
+            compose(page);
+            presentScreen(ren, tex, screen, pal, rgba);
+            if (shotPage == p && t == ticks / 2) {
+                saveBmp(rgba, shotPath);
+                return 2;
+            }
+            if (holdRetraces(tubes::kCutsceneFrameRetraces, skip)) {
+                ended = skip.take();
+                break;
+            }
+            // Advance, then wrap - the original increments after drawing.
+            if (!aDone) {
+                if (page.a.soundFrame == frameA && page.a.sound) {
+                    play(page.a.sound);
+                }
+                if (++frameA > page.a.count) {
+                    // A one-shot track STOPS. The original simply stops
+                    // drawing and its last frame stays on the page, so the
+                    // port - which recomposes every tick - has to hold that
+                    // frame rather than wrap to 1. Without this the explosion
+                    // snapped back to an intact beaker at its own climax.
+                    if (page.a.count == 25) {
+                        frameA = page.a.count;
+                        aDone = true;
+                    } else {
+                        frameA = 1;
+                    }
+                }
+            }
+            if (!bDone) {
+                if (page.b.sound &&
+                    (page.b.soundFrame == frameB ||
+                     (page.b.soundFrame < 0 && !music.soundBusy()))) {
+                    play(page.b.sound);
+                }
+                if (++frameB > page.b.count) {
+                    if (page.b.count == 16) {
+                        frameB = page.b.count;
+                        bDone = true;
+                    } else {
+                        frameB = 1;
+                    }
+                }
+            }
+        }
+        if (!ended) play(page.soundAfter);
+        // `1b2e:1e6b`: the fourth page clears both animations as it ends.
+        if (p + 1 == tubes::kCutsceneClearPage) showTracks = false;
+    }
+
+    runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, false, skip);
+    return ended;
 }
 
 void drawPaused(tubes::Screen& screen, const tubes::Font& heading,
@@ -2883,10 +3127,11 @@ int main(int argc, char** argv) {
     //
     // Skipped under `harness` with every other timed screen, so no capture
     // waits three seconds to reach the frame it wants.
-    if ((!harness || opt.splashFrame >= 0 || opt.splash2Step >= 0) &&
-        !opt.noSplash) {
+    if ((!harness || opt.splashFrame >= 0 || opt.splash2Step >= 0 ||
+         opt.cutscenePage >= 0) && !opt.noSplash) {
         SkipWatch skip;
-        const bool capturing = opt.splashFrame >= 0 || opt.splash2Step >= 0;
+        const bool capturing = opt.splashFrame >= 0 || opt.splash2Step >= 0 ||
+                               opt.cutscenePage >= 0;
         int k = 0;
         if (opt.splash2Step < 0) {
             k = runSoftwareCreationsSplash(
@@ -2897,7 +3142,7 @@ int main(int argc, char** argv) {
         (void)k;
         // `1b2e:11b0`: the second splash runs only if the first was not
         // skipped. One press gets past both, which is the original's design.
-        if ((k != 1 && k != 2 && opt.splashFrame < 0) || opt.splash2Step >= 0) {
+        if ((k != 1 && k != 2 && !capturing) || opt.splash2Step >= 0) {
             // `musicOn` / `soundOn` proper are declared with the frame loop;
             // the splash predates them, so it reads the same two settings.
             runAbsoluteMagicSplash(res, ren, tex, screen, rgba,
@@ -2910,8 +3155,15 @@ int main(int argc, char** argv) {
         // `1000:b224`: the cutscene runs HERE - once, after the splashes and
         // immediately before the title screen is first shown. The main loop's
         // own `JMP 1000:b236` goes back to the title call and not to this, so
-        // it is a boot-time screen and not part of the cycle. It is not
-        // ported yet; see PLAN.md, which has its five pages read.
+        // it is a boot-time screen and not part of the cycle.
+        if ((k != 1 && k != 2 && !capturing) || opt.cutscenePage >= 0) {
+            runCutscene(res, ren, tex, screen, rgba, palRaw, pal,
+                        capturing ? 0 : opt.fadeSteps, skip, music,
+                        !opt.music.empty() && settings.music, settings.sound,
+                        haveBlackboard ? &blackboard : nullptr, haveBlackboard,
+                        atoms, haveAtom, smallFont, haveSmall,
+                        opt.cutscenePage, opt.screenshot);
+        }
 
         // The capture flag is an exit, like every other one: without this the
         // frame loop runs on and overwrites the BMP with the game.

@@ -845,21 +845,21 @@ cycling the seven colours beside the element names, and the explosion looping
 four frames and then running all sixteen. The fifth call has both tracks idle -
 it is a plain hold that still polls for a key.
 
-**One piece is still missing: the slot map.** The 26 sprite names load in
-order (`WRITE0`, `WRITE1..9`, `EXPLOD1..16`) but the slots are not filled one
-per name - `1b2e:16aa` duplicates one - and the two lists' bases overlap.
-Extract it MECHANICALLY, the way `gen_instructions.py` reads the text calls;
-the loads and copies are a fixed instruction pattern. Guessing at 26 slots is
-how a page animates the wrong thing and nobody notices.
+**The cutscene is DONE.** The slot map came out mechanically -
+`tools/gen_cutscene.py`, the third screen through that generator after the
+Instructions and the Credits - and the sizes prove it: slots 0..9 are the
+28x41 `WRITE1..5` and slots 10..25 the 28x66 `WRITE6..9`, which is exactly
+what the two page groups pass.
 
-Then the port work, which is now well-defined: the five pages with their text
-(already extracted), the two-track player, and three sounds.
+`1000:b224` runs it ONCE, after the splashes and immediately before the title
+screen is first shown; the main loop's `JMP 1000:b236` returns to the title
+call, not to this. Its music is `CLASS.MUS`. `--cutscene N` captures any page.
 
-**Where it goes is settled too.** `1000:b224` runs the cutscene ONCE, after
-the splashes and immediately before the title screen is first shown - the main
-loop's `JMP 1000:b236` returns to the title call, not to this, so it is a
-boot-time screen rather than part of the cycle. The call site is marked in
-`main.cpp` at the point it belongs. Its music is `[DS:0x212c]`, `CLASS.MUS`.
+Left open, and small: the port recomposes each frame rather than blanking the
+other page, so `BlankRect` and the `FillBar` half of the panel call are not
+transliterated - they have no effect on what is drawn. And the cutscene has
+never been captured off the ORIGINAL, so unlike the splashes there is no pixel
+diff behind it; it is verified by reading only.
 
 They are last on purpose. Both are large, neither gates play, and the cutscene
 in particular is an animation system (`WRITE0..9` is a *writing* animation)

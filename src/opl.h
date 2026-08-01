@@ -70,6 +70,11 @@ public:
     // playing - which is what `SBSOUND.DRV` does. `s` must outlive the call;
     // the caller owns the decoded sounds.
     void playSound(const Sound* s);
+    // `[DS:0x231a]`, StopSound - and the port needs it for a second reason
+    // the original never had: a screen that owns its own `Sound` objects as
+    // locals MUST silence the voice before they go out of scope, or the audio
+    // thread reads freed memory. The cutscene crashed exactly that way.
+    void stopSound();
 
     // `DS:0x230a`, the driver's "is a sound still playing" vector. The high
     // score viewer polls it to keep the applause looping.
