@@ -726,6 +726,46 @@ atom is the sound of type nothing. Three more sit just below it.
 
 Types 11..17 and 19 are silent, which is the same set that has no fade family.
 
+### `GLDFADE`: the sound is used, the ANIMATION cannot be
+
+Noticed by the player: the Bonus atom never plays a gold fade. It cannot, and
+the reason is one byte in the catch path.
+
+`1000:07f7` rewrites the caught atom's type to 8 the instant the tube takes it,
+so a Bonus is a Flashium before it can be tipped. Every other route into the
+beaker is closed too, and all of them are transliterated:
+
+* the **pre-fill** (`1000:035e`) places `n mod 7 + 1`, so types 1..7 only;
+* the **morph** (`1000:4bf6`) skips anything `>= 8`, so it rotates 1..7 and
+  cannot produce a 10;
+* the **spawn** can roll a 10, but that atom is either caught - and converted -
+  or missed, and a missed atom is lost rather than deposited;
+* and `1000:2790` turns a settled Bonus into **Xenon**, which is the original
+  itself closing the case a fourth time.
+
+So no cell of type 10 can ever be matched and cleared, and `GLDFADE1..6` - six
+compiled sprites that are present, decode, and render - are **never drawn**.
+The pointer sits in the fade table at `DS:0x1df6` beside the ten that are used.
+
+**The SOUND is a different thing and it is used.** The sound table is indexed
+by atom type, and `1000:083b` fires slot 10 on the CATCH - so `GLDFADE.SFX` is
+exactly what a player hears when a Bonus turns into a Flashium. It is named
+after an animation that never plays, and it plays at a moment that is not a
+fade.
+
+One more thing points the same way. Every fade sound carries an internal name -
+"Red Fade", "AntiMatter Fade", "Mischief Crystal Fade" - and **`GLDFADE.SFX`'s
+name field is empty**, alone among the eleven:
+
+    AFADE   "AntiMatter Fade"      GLDFADE  ""
+    CRFADE  "Mischief Crystal Fade"  FFADE  "Flash Fade"
+
+A sprite family that nothing can reach, and a sound file named after it whose
+name field was never filled in. The reading that fits both is the player's:
+the gold fade was designed as a beaker effect, the Bonus was changed to convert
+on catch instead, and what survived was the sound - repurposed - and six
+sprites nobody removed.
+
 `1000:278c` is worth a line: the settle sound is fired **once** at the tail of
 the gravity pass if anything moved, not once per atom. A whole beaker
 collapsing is a single knock, which is why the flag behind it is a boolean.

@@ -4279,19 +4279,35 @@ int main(int argc, char** argv) {
             int steps = static_cast<int>(titleAccum);
             titleAccum -= static_cast<float>(steps);
             if (steps > 8) steps = 8;      // a stall must not teleport the atom
+            // The countdown belongs to the TITLE screen and to nothing else.
+            // Instructions, the Credits, the high score viewer and the
+            // rebinding screen are separate screens with waits of their own -
+            // `1b2e:0e37(30)` for the slideshows, `kHsViewSeconds` for the
+            // viewer - and the original's countdown is inside `1b2e:52bf`,
+            // which is not running while any of them is up. The port ran it
+            // regardless, so a player halfway through binding a key could be
+            // dropped into the demo. Reported from play.
+            const bool onTitleProper = !instrOpen && !rebindOpen && !hsViewing;
             for (int k = 0; k < steps; ++k) {
                 titleAtom.step();
                 if (menu.up()) menu.tick();
-                --attractTimer;
+                if (onTitleProper) --attractTimer;
             }
-            if (attractTimer <= 0) {
+            if (onTitleProper && attractTimer <= 0) {
                 attractTimer = tubes::kAttractTimeout;
-                // `1000:b287`: the arm returns 9, and the original runs the
-                // blackboard cutscene `1b2e:1651` FIRST - skipping the demo
-                // entirely if that returns 2. The cutscene is not ported, so
-                // this goes straight to the demo and the cutscene is noted as
-                // the missing half rather than pretended away.
-                if (startDemo()) changeScreen();
+                // `1000:b287`: the arm runs the blackboard cutscene FIRST and
+                // skips the demo entirely if it returns 2 - which is ESC.
+                SkipWatch attractSkip;
+                const int k = runCutscene(
+                    res, ren, tex, screen, rgba, palRaw, pal, fadeSteps,
+                    attractSkip, music, musicOn, soundOn,
+                    haveBlackboard ? &blackboard : nullptr, haveBlackboard,
+                    atoms, haveAtom, smallFont, haveSmall, -1, -1,
+                    std::string());
+                // The cutscene ends on black, so there is nothing to fade
+                // OUT of - whatever comes next just fades in.
+                if (k != 2) startDemo();
+                pendingFadeIn = true;
             }
         } else if (opt.screenshot.empty() || opt.shotAfter > 0) {
             // `--screenshot` alone captures the opening frame and exits, so it

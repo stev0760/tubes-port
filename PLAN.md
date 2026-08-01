@@ -232,6 +232,13 @@ Listed first because building on them wastes work.
    | 18 | the **Mischief Crystal** - starts in the beaker as contamination and **teleports** between cells; removed with **AntiMatter**, never by matching. `CRFADE` is its *teleport* animation (forward out, reverse back), which is why its static sprite is `CRFADE1` |
    | 19 | `MYSTBALL` - **not a ball at all**: a rendering state, substituted for the real sprite while a hidden-atom wave is running (`-0x189`, six sites in `1000:3a67`) |
 
+   **`GLDFADE` is an unused animation** - see `docs/reversing-notes.md`. The
+   Bonus becomes a Flashium in the catch (`1000:07f7`), the pre-fill and the
+   morph only produce 1..7, and `1000:2790` turns a settled one into Xenon, so
+   no type-10 cell can ever be cleared and the six `GLDFADE` sprites are never
+   drawn. The SOUND of that name is used, at the catch - and it is the only
+   one of the eleven fade sounds whose internal name field is empty.
+
    A fade family is an **effect animation**, not a "can be cleared" marker: the
    seven colours are match-clears, `FFADE` the wildcard's, `GLDFADE` the Bonus,
    `AFADE` the **AntiMatter blast** applied to everything caught in it, and
