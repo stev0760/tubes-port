@@ -866,6 +866,12 @@ at every tick of a page: **0 pixels of 64,000, whole screen, on every page**.
 The captures also confirm the durations independently - 2, 18, 4, 12 and 10
 seconds, measured off the page boundaries in a run captured from its start.
 
+**Enter turns the page; ESC leaves.** `1b2e:112a` onward: Enter or Space sets
+the page's countdown to 1, so that PAGE ends and the next begins, and ESC does
+the same but also sets the return code to 2, which is what leaves the
+cutscene. The port had every key ending the whole thing, which made Enter a
+skip button rather than the page-turner the original gives you.
+
 **One thing is still open, and it is 144 pixels on one page.** The original
 never erases while a page runs - each animation frame is painted over the
 last, so the page holds the union of everything drawn. The port rebuilds the

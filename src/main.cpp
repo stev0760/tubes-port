@@ -1896,12 +1896,18 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
         }
     };
 
-    auto compose = [&](const tubes::CutscenePage& page) {
+    // The scene with no page on it: `1b2e:1a45` onward, which is what the
+    // fade-in reveals.
+    auto scene = [&]() {
         screen.clear(0);
         screen.blit(*board, 0, tubes::kCutsceneBoardY);
         // `2321:0711`-style: index 0 is transparent, so the board shows
         // through everywhere the figures have not painted.
         screen.stamp(figures, 0, 0, tubes::kScreenWidth, tubes::kScreenHeight);
+    };
+
+    auto compose = [&](const tubes::CutscenePage& page) {
+        scene();
         layout(page);
     };
 
@@ -1969,7 +1975,11 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
     }
 
     // `1b2e:1ad4`: the fade reveals the board and the two figures, with no
-    // page text up yet - the first page's panel is drawn after it.
+    // page text up yet - the first page's panel is drawn after it. The scene
+    // has to be COMPOSED first: without this the fade brought up whatever the
+    // Absolute Magic splash had left on the screen, which is what a player
+    // sees as the splash's last frame corrupting.
+    scene();
     if (runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, true, skip)) {
         const int k = skip.take();
         runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, false, skip);
@@ -2005,7 +2015,13 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
             }
             if (!capturing &&
                 holdRetraces(tubes::kCutsceneFrameRetraces, skip)) {
-                ended = skip.take();
+                // `1b2e:112a` onward, transliterated: Enter or Space sets the
+                // page's countdown to 1, so the PAGE ends and the next one
+                // begins; ESC does that AND sets the return code to 2, which
+                // is what leaves the cutscene. The port had every key ending
+                // the whole thing, which made Enter a skip button rather than
+                // the page-turner the original gives you.
+                if (skip.take() == 2) ended = 2;
                 break;
             }
             // Advance, then wrap - the original increments after drawing.
