@@ -48,8 +48,13 @@ on screen cannot be sampled at all, and you will not know it is missing.
 **So the order of authority is:**
 
 1. the **decompiled code** — the only thing that settles a rule;
-2. the game's own text (Instructions, briefings) — good corroboration, and it
-   has twice held an answer that was being derived the hard way;
+2. the game's own text (Instructions, briefings, Credits) — good corroboration,
+   and it has now **three times** held an answer that was being derived the
+   hard way, most recently the Credits stating outright that Tubes "was written
+   in Borland Pascal v7, and uses a planar 320x200x256" - the two assumptions
+   this file's first paragraph has carried since day one. **Read the
+   Instructions and the Credits early.** They cost nothing and this project
+   left them until last;
 3. **live measurement** — for *locating* and *validating*, never for deriving.
 
 Measurement keeps a large role, just not that one. Measured addresses say
@@ -107,6 +112,7 @@ without committing loses its reasoning even if the code survives.
 | Path | Contents |
 |---|---|
 | `src/` | the engine (C++17, SDL2) |
+| `src/instructions.cpp`, `credits.cpp` | GENERATED - see "extract, do not transcribe" |
 | `tools/` | Python decoders, one per format, plus `unpack.sh` |
 | `ghidra_scripts/` | Java `GhidraScript` files for headless analysis |
 | `third_party/` | vendored deps, unmodified — currently Nuked-OPL3 (LGPL 2.1) |
@@ -129,7 +135,7 @@ are all portable and must stay that way.
 
     cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
     cmake --build build -j
-    ./build/tubes-tests                      # 585 checks, and rising
+    ./build/tubes-tests                      # 600 checks, and rising
     ./build/tubes-port --gamedir ..
 
 Music is verified by diffing register streams, not by listening:
@@ -141,10 +147,11 @@ a sequencer bug. `--render-mus NAME OUT.wav` renders offline.
 `--screenshot FILE` renders one frame to a BMP and exits; it works headless
 under `SDL_VIDEODRIVER=dummy`. `--auto N` runs N frames of a scripted player
 first, so a headless capture shows a populated beaker. Together these are how
-rendering gets verified without a display. `--title N`, `--hiscores [0|1]` and
-`--wave N` open a specific screen for capture, and `--dump-save FILE` decodes a
-`TUBES.SAV` and re-encodes it, so the C++ reader can be diffed against
-`tools/sav_decode.py` rather than trusted.
+rendering gets verified without a display. `--title N`, `--hiscores [0|1]`,
+`--wave N`, `--f2`, `--rebind`, `--instructions [N]` and `--credits` each open
+a specific screen for capture, and `--dump-save FILE` decodes a `TUBES.SAV` and
+re-encodes it, so the C++ reader can be diffed against `tools/sav_decode.py`
+rather than trusted.
 
 **A harness flag must never write to the game directory.** `--auto-advance`
 walks a whole session, so it once qualified for a high score and saved a real
@@ -162,6 +169,10 @@ entry point that runs a session, not just the ones that look like tests.
   directory. A leading `./` is rejected outright.
 - Set `__stdcall16far` on game functions before decompiling. Pascal is
   callee-cleans; Ghidra's inferred cdecl signatures come out wrong.
+- **A function taking an open array decompiles to garbage.** Turbo Pascal
+  copies conformant arrays onto the stack at entry, and Ghidra renders the copy
+  loops as a wall of `puVar`. `1b2e:0f46` is the example. Read the listing -
+  its one timing literal was visible in a single grep.
 - Ghidra creates no xrefs for DS-relative globals in 16-bit segmented code.
   Use `ghidra_scripts/FindScalarRefs.java` to chase them.
 - Turbo Pascal 7.0 runs headless under DOSBox; `TPC.EXE` is the scriptable
@@ -194,6 +205,23 @@ paid off. Keep it up.
 - Prefer an oracle over an opinion: exact decompressed sizes, byte-identical
   RTL, directory offsets landing precisely at EOF, a re-encoded `TUBES.SAV`
   differing in 0 of 960 bytes.
+
+## The one place this port does NOT transliterate
+
+Control bindings. The original asks an input driver for one byte a frame - Up,
+Down, Left, Right, A, B - and **that byte is game logic and does not change**:
+`DEMO.SCR` stores exactly one per frame, which is why a recorded demo replays
+through the same code path as live play.
+
+Everything BELOW it is DOS plumbing. `KEYBOARD.DRV`, `JOYSTK1/2.DRV` and
+`MOUSE.DRV` exist because 1994 had no abstraction over an XT keyboard, a
+gameport and a serial mouse; SDL is that abstraction, so porting a driver
+chooser would be transliterating the *absence* of SDL. `src/input.h` carries
+the full reasoning. `SETUP.CFG` is deliberately not written - it is the DOS
+install's hardware config and `SETUP.EXE` owns it.
+
+This is the only such departure, and it was agreed with the player before it
+was written. Do not treat it as a precedent for gameplay.
 
 ## Things known to be provisional
 
@@ -236,11 +264,16 @@ arguments. Decompile the two together.
 
 ## Open work
 
-**Read `PLAN.md` first - it opens with the next step.** The session loop, the
-title screen and menu, the wave table, the high score screens and loading a
-saved game are all done. What is left before a player can sit down with the
-whole program is the **F2 save screen** inside `1000:2dd0`, then attract mode
-handing off to `DEMO.SCR`, then the two splashes and the slideshows.
+**Read `PLAN.md` first - it opens with the next step.** **Every menu item now
+works**: play, load, save (F2), Game Options with control rebinding, High
+Scores, Instructions, View Demo and Credits, with attract mode cycling on its
+own. What is left of the original program is
+
+- the **two splashes**, `21d5:007b` and `2178:00eb` - and they must be
+  skippable;
+- the **opening cutscene**, `1b2e:1651` - its text and layout are decoded and
+  its two animation helpers are read, so what remains is the call sites;
+- the player's polish list, `PLAN.md` section 4.5.
 
 The rig is built and lives **outside this repo**, at `~/Dev/tubes-tooling/` -
 `docs/debug-rig.md` covers it. Three things to know before planning against it.
@@ -310,10 +343,17 @@ Ranked by how often it produced the answer:
 2. **Read the code, don't stare at the bytes.** LZSS, the container, and the
    `.MUS` event grammar all came off the disassembly directly. Every
    histogram-and-stride guess was wrong.
-3. **Look for external standards in the decoded output.** GM program and drum
+3. **Extract data mechanically; never transcribe it.** The Instructions are
+   152 strings and the Credits 36, and typing them would have been 188 chances
+   to mistype a line of the game's own documentation and never notice.
+   `tools/gen_instructions.py` reads the disassembly and emits the tables,
+   because every text call is a fixed push sequence. The same generator did
+   both screens and would do a third. Anything that is a list in the binary
+   should arrive in `src/` the same way.
+4. **Look for external standards in the decoded output.** GM program and drum
    numbers, 768-byte VGA palettes, equal-tempered frequencies — these can't
    be artifacts of a wrong decode, so they confirm independently.
-4. **When two readings of the same bytes disagree, capture the screen.** The
+5. **When two readings of the same bytes disagree, capture the screen.** The
    save file's menu arms read `+0x28` for Endurance and `+0x26` for Wave, which
    looked like an off-by-two until the list was captured from the original:
    both were right, because Endurance has no waves and lists chains instead.

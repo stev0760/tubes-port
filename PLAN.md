@@ -776,9 +776,17 @@ is section C's two splashes and section D's blackboard cutscene.
 Also inert: **F1 help** in-game, whose body is in `1b2e:2d63` alongside the
 slideshow.
 
-**C. The two splashes,** `21d5:007b` and `2178:00eb`. Small, and they make the
-boot sequence real. Deliberately after B: they are the least interactive thing
-on the list.
+**C. The two splashes,** `21d5:007b` and `2178:00eb` - Software Creations and
+Absolute Magic. Small, and they make the boot sequence real.
+
+**They must be SKIPPABLE**, which the player has asked for explicitly. The
+original already is: `1b2e:52bf`'s notes and every capture script in the
+tooling directory start with an ESC to get past them, so find the key test in
+each and port it rather than adding one. Their sounds are already identified -
+`WOOSH.SFX`, `LIGHTN.SFX`, `ABSMAGIC.SFX` (see the sound inventory above).
+
+Now the FIRST thing left rather than the last, since everything below it in
+this section is done.
 
 **D. The slideshow and the cutscene, LAST.** These are two different things and
 were previously conflated in this file:
