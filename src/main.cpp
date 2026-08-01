@@ -1127,10 +1127,17 @@ void drawSaveScreen(tubes::Screen& screen, const tubes::SaveBankData& bank,
             // colour, so selecting a slot looked like it had done nothing,
             // and a player reported exactly that: no way to tell it was
             // waiting for a new name.
+            // `1000:34ba` and `1000:35d1` pass colour $0f AND MODE 0 - flat,
+            // no colour walk - where the list rows walk. Keeping the rows'
+            // mode with the new colour is what turned the edited line into a
+            // scrambled ramp instead of white: `2000:35ec` steps the palette
+            // index per scanline, and index 15 is the top of its ramp, so it
+            // walked straight out of the greys into whatever follows them.
             tubes::drawText(screen, script, tubes::kSaveRowX, y,
                             editing ? tubes::kSaveTypingColour
                                     : tubes::kSaveRowColour,
-                            tubes::textmode::kPeak, left);
+                            editing ? tubes::textmode::kFlat
+                                    : tubes::textmode::kPeak, left);
             // 1000:31a8 sits AFTER the two arms join, so the number is drawn
             // for every row - an empty slot shows a right-justified 0. The
             // port guarded it on `live()` and the capture said otherwise.
@@ -4181,6 +4188,29 @@ int main(int argc, char** argv) {
                 continue;
 
             case tubes::SessionStage::kBanner:
+                // `1000:5eec`: the ABORT arm draws its hint and then calls
+                // `1000:2dd0` - the whole in-game key dispatch - a SECOND
+                // time, which is what makes the offer real. "F2 to Save Game,
+                // ESC for Main Menu!" is not decoration: F2 there opens the
+                // save screen, and it is the last chance to save a session
+                // the player has just abandoned.
+                //
+                // The port dismissed the banner on any key at all, so the
+                // hint pointed at nothing and the only way to save was to
+                // remember F2 BEFORE aborting. Reported from play.
+                if (banner == tubes::Banner::kAborted &&
+                    bannerPhase == tubes::BannerPhase::kWait &&
+                    code == tubes::gamekey::kF2 && gameMode != 0 &&
+                    !tubes::kSaveDisabled) {
+                    saveScreen = true;
+                    saveTyping = false;
+                    saveWritten = 0.0f;
+                    if (saveSlotSel < 1 ||
+                        saveSlotSel > tubes::kSaveSlotsShown) {
+                        saveSlotSel = 1;
+                    }
+                    continue;
+                }
                 // `1000:5e0b` and `1000:5e78`: a key ends the WAIT, and only
                 // the wait. The 40-retrace hold before it does not look at
                 // input at all, and the outro after it is already committed -

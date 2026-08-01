@@ -750,6 +750,33 @@ score screen pulses a 4x4 block at `1000:9757` and this loop has nothing of
 the kind. The port drew the edited row in the row colour, so nothing on screen
 changed at all when the editor opened.
 
+**And the MODE matters as much as the colour.** Both calls pass mode 0 - flat,
+no colour walk - where the list rows walk. Taking the new colour and keeping
+the rows' mode turned the edited line into a scrambled ramp rather than white,
+which is what a player saw: `2000:35ec` steps the palette index once per
+scanline, and index $0f is the top of its grey ramp, so the walk went straight
+out of the greys into whatever follows them. Flat and $0f renders as pure
+white; walked and $0f renders as a mess.
+
+### The abort banner's F2 is a real offer
+
+`1000:5ed7` draws "F2 to Save Game, ESC for Main Menu!" and then `1000:5eec`
+calls `1000:2dd0` - the whole in-game key dispatch - a **second time**. That is
+what makes the offer work: F2 at the banner opens the save screen, exactly as
+F2 during play does, and it is the last chance to save a session the player has
+just abandoned.
+
+So the game has two ways in to the same screen, and the second one is the one a
+player finds first:
+
+    F2 during play         save and carry on
+    ESC, then F2           save and then quit to the main menu
+
+The port dismissed the banner on any key at all, so the hint pointed at
+nothing and the only way to save was to remember F2 *before* aborting.
+Reported from play, and the reporter had gone to the ORIGINAL to check - which
+is how the two-way structure came to light at all.
+
 The erase is a page-to-page copy from the page holding the paused game, which
 is why a captured empty row shows the tube artwork through it rather than a
 flat fill. A port that recomposes the screen gets that for free.
