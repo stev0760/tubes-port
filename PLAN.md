@@ -798,14 +798,18 @@ flash, and the writing. The white flash was a guess when it was written up an
 hour earlier and is now read: the splash `FillChar`s a palette with 63 and
 uploads it either side of the page flip. `--splash2 N` captures any step.
 
-**On skipping.** The original reads the keyboard only in the tail loop of each
-splash, but through a BUFFERED read - `ClearKeyBuffer` is called immediately
-after the wait, which is the tell - so a press during the animation still
-counts. The port reproduces that: `SkipWatch` remembers the press and the
-splash consumes it where the original tests for one. The consequence is that
-ESC does not cut the fade or the animation short, it ends the screen at the
-next test. If that reads as unresponsive, making it immediate is a one-line
-change - but it would no longer be what the original does.
+**On skipping - one deliberate departure, agreed with the player.** The
+original reads the keyboard only in the tail loop of each splash, through a
+BUFFERED read (`ClearKeyBuffer` immediately after the wait is the tell), so a
+press during the animation counted but not until the next poll - which left
+ESC feeling dead for up to a second. **ESC now cuts in at once**: every fade
+step, animation frame and hold polls, and a press ends the screen there. The
+fade-OUT still runs to completion, because the DAC has to reach black or the
+next screen starts up lit. Nothing else changes - the pacing, the order and
+every literal are the original's.
+
+This is the second departure in the whole port, after control bindings, and
+like that one it was asked for explicitly rather than assumed.
 
 **D. The slideshow and the cutscene, LAST.** These are two different things and
 were previously conflated in this file:

@@ -1387,21 +1387,18 @@ void waitRetraces(int n) {
     if (n > 0) SDL_Delay(static_cast<Uint32>(n * 1000 / 70));
 }
 
-// `21ea:0690` is `SetFrameRate(fps)`: it computes `145 div fps` and programs
-// that as the timer period, so what the game actually runs at is
-// `145 / (145 div fps)`. That is where 16.11 Hz comes from - the session asks
-// for 16 (`1000:44d8`), 145 div 16 is 9, and 145/9 is 16.11. Both of the
-// Absolute Magic splash's phases set it, to 9 and to 4.
-void waitGameFrames(int fps) {
-    const int period = 145 / (fps > 0 ? fps : 1);
-    SDL_Delay(static_cast<Uint32>(period * 1000 / 145));
-}
-
-// The player's skip, buffered. The original reads its input driver only in
-// the tail loop of each splash, but the driver reads a BUFFERED key, and
-// `[DS:0x234e]` (ClearKeyBuffer) is called immediately after the wait - which
-// is what makes a press during the animation still count. So a press is
-// remembered here and consumed at the point the original tests for one.
+// The player's skip.
+//
+// The original reads its input driver only in the tail loop of each splash,
+// but through a BUFFERED read - `[DS:0x234e]` (ClearKeyBuffer) immediately
+// after the wait is the tell - so a press during the animation still counts,
+// just not until the next poll. That made ESC feel dead for up to a second,
+// and the player asked for it to cut in at once.
+//
+// So `pumped()` is checked everywhere the screen would otherwise block: the
+// fade steps, the animation frames and the holds. This is a DELIBERATE
+// departure from the original, agreed with the player, and the only one in
+// these two screens - the pacing, the order and every literal are untouched.
 struct SkipWatch {
     int key = 0;                        // 1 Enter/Space, 2 ESC, 0 nothing yet
 
@@ -1420,11 +1417,36 @@ struct SkipWatch {
         key = 0;
         return k;
     }
+    // Pump and report. Anything that waits calls this rather than sleeping.
+    bool pumped() {
+        pump();
+        return key != 0;
+    }
 };
+
+// A hold that a keypress can cut short. `n` retraces, polled once each.
+bool holdRetraces(int n, SkipWatch& skip) {
+    for (int i = 0; i < n; ++i) {
+        if (skip.pumped()) return true;
+        SDL_Delay(1000 / 70);
+    }
+    return skip.pumped();
+}
+
+// `21ea:0690` is `SetFrameRate(fps)`: it computes `145 div fps` and programs
+// that as the timer period, so what the game actually runs at is
+// `145 / (145 div fps)`. That is where 16.11 Hz comes from - the session asks
+// for 16 (`1000:44d8`), 145 div 16 is 9, and 145/9 is 16.11. Both of the
+// Absolute Magic splash's phases set it, to 9 and to 4.
+//
+// The same hold as above, but for a whole game frame.
+bool holdGameFrame(int fps, SkipWatch& skip) {
+    return holdRetraces(70 * (145 / (fps > 0 ? fps : 1)) / 145, skip);
+}
 
 // The palette ramp both splashes fade with. They have their own .PAL, so this
 // takes the raw bytes rather than reaching for the game's.
-void runSplashFade(SDL_Renderer* ren, SDL_Texture* tex,
+bool runSplashFade(SDL_Renderer* ren, SDL_Texture* tex,
                    const tubes::Screen& screen, const tubes::Bytes& palRaw,
                    std::vector<uint8_t>& rgba, int steps, bool in,
                    SkipWatch& skip) {
@@ -1434,16 +1456,19 @@ void runSplashFade(SDL_Renderer* ren, SDL_Texture* tex,
         std::string err;
         if (in) tubes::loadPalette(palRaw, pal, err);
         presentScreen(ren, tex, screen, pal, rgba);
-        skip.pump();
-        return;
+        return skip.pumped();
     }
     for (int i = 0; i <= steps; ++i) {
         const int n = in ? i : steps - i;
         presentScreen(ren, tex, screen, tubes::fadePalette(palRaw, n, steps),
                       rgba);
-        skip.pump();
-        waitRetraces(1);
+        // A skip cuts a fade-IN short - there is no sense revealing a screen
+        // the player has already dismissed - but never a fade-OUT, which has
+        // to reach black or the next screen starts up lit.
+        if (skip.pumped() && in) return true;
+        SDL_Delay(1000 / 70);
     }
+    return skip.key != 0;
 }
 
 // `21d5:007b`, the Software Creations splash. Returns the key that ended it.
@@ -1482,18 +1507,25 @@ int runSoftwareCreationsSplash(const tubes::Archive& res, SDL_Renderer* ren,
 
     screen.clear(0);
     screen.blit(still, 0, 0);
-    runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, true, skip);
 
     tubes::Palette pal;
     tubes::loadPalette(palRaw, pal, err);
-    waitRetraces(10);
-    skip.pump();
+    // Every stage below ends the screen the moment a key arrives, and the
+    // fade-out always runs - the DAC has to reach black either way.
+    auto leave = [&]() {
+        const int k = skip.take();
+        runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, false, skip);
+        return k == 0 ? 2 : k;
+    };
+    if (runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, true, skip)) {
+        return leave();
+    }
+    if (holdRetraces(10, skip)) return leave();
 
     // `21d5:0000`: three retraces a frame, and each frame paints only what it
     // changes over the still image already on screen.
     for (const tubes::AnimFrame& frame : anim) {
-        waitRetraces(3);
-        skip.pump();
+        if (holdRetraces(3, skip)) return leave();
         uint8_t* px = screen.pixelsMutable();
         for (const tubes::AnimFrame::Run& r : frame.runs) {
             for (size_t i = 0; i < r.pixels.size(); ++i) {
@@ -1514,17 +1546,13 @@ int runSoftwareCreationsSplash(const tubes::Archive& res, SDL_Renderer* ren,
     }
 
     // Seven holds of ten retraces - one second - and the only place the
-    // original looks at the keyboard.
-    int k = 0;
+    // ORIGINAL looks at the keyboard.
     for (int n = 7; n > 0; --n) {
-        waitRetraces(10);
-        skip.pump();
-        k = skip.take();
-        if (k == 1 || k == 2) break;
+        if (holdRetraces(10, skip)) return leave();
     }
 
     runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, false, skip);
-    return k;
+    return 0;
 }
 
 // `2178:00eb`, the Absolute Magic splash - the second and much the larger of
@@ -1612,14 +1640,20 @@ int runAbsoluteMagicSplash(const tubes::Archive& res, SDL_Renderer* ren,
     if (musicOn && music.isOpen() && res.read("AMTHEME.MUS", song, err)) {
         music.play(song, err);
     }
-    runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, true, skip);
-    waitRetraces(30);
+    auto leave = [&]() {
+        const int k = skip.take();
+        runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, false, skip);
+        return k == 0 ? 2 : k;
+    };
+    if (runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, true, skip)) {
+        return leave();
+    }
+    if (holdRetraces(30, skip)) return leave();
 
     const tubes::Image& big = logo.back();
     const int bigX = (tubes::kScreenWidth - big.width) / 2;
     const int bigY = (tubes::kScreenHeight - big.height) / 2;
 
-    int k = 0;
     if (haveSfx) music.playSound(&woosh);
     for (size_t f = 0; f < logo.size(); ++f) {
         screen = bg;
@@ -1628,12 +1662,7 @@ int runAbsoluteMagicSplash(const tubes::Archive& res, SDL_Renderer* ren,
                     (tubes::kScreenHeight - im.height) / 2);
         presentScreen(ren, tex, screen, pal, rgba);
         if (shotStep == static_cast<int>(f)) { saveBmp(rgba, shotPath); return 2; }
-        waitGameFrames(9);                      // `SetFrameRate(9)`
-        skip.pump();
-        k = skip.take();
-        if (k == 1 || k == 2) { runSplashFade(ren, tex, screen, palRaw, rgba,
-                                              fadeSteps, false, skip);
-                                return k; }
+        if (holdGameFrame(9, skip)) return leave();   // `SetFrameRate(9)`
     }
 
     // `2178:0424` onward: five strikes, one arm each, coordinates as literals.
@@ -1653,15 +1682,10 @@ int runAbsoluteMagicSplash(const tubes::Archive& res, SDL_Renderer* ren,
             saveBmp(rgba, shotPath);
             return 2;
         }
-        waitGameFrames(4);                      // `SetFrameRate(4)`
-        skip.pump();
-        k = skip.take();
-        if (k == 1 || k == 2) { runSplashFade(ren, tex, screen, palRaw, rgba,
-                                              fadeSteps, false, skip);
-                                return k; }
+        if (holdGameFrame(4, skip)) return leave();   // `SetFrameRate(4)`
     }
 
-    waitRetraces(15);
+    if (holdRetraces(15, skip)) return leave();
     if (haveSfx) music.playSound(&magic);
     screen.clear(0);                            // `2321:01e6`, the page clear
     screen.blit(big, bigX, bigY);
@@ -1669,14 +1693,11 @@ int runAbsoluteMagicSplash(const tubes::Archive& res, SDL_Renderer* ren,
     presentScreen(ren, tex, screen, pal, rgba);
     if (shotStep == 11) { saveBmp(rgba, shotPath); return 2; }
     for (int n = 6; n > 0; --n) {
-        waitRetraces(10);
-        skip.pump();
-        k = skip.take();
-        if (k == 1 || k == 2) break;
+        if (holdRetraces(10, skip)) return leave();
     }
 
     runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, false, skip);
-    return k;
+    return 0;
 }
 
 void drawPaused(tubes::Screen& screen, const tubes::Font& heading,
