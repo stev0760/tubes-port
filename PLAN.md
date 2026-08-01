@@ -786,7 +786,15 @@ were previously conflated in this file:
 | | Function | Size | What it is |
 |---|---|---|---|
 | Instructions slideshow | `1b2e:2d63` | 4,510 | prev-slide / next-slide **slides**, `TESTUBE1.CSP`, `TESTUBES.CSP` |
-| Blackboard cutscene | `1b2e:1651` | 2,323 | the teacher sequence, `WRITE0..9.GFX`, `EXPLOD1..4.GFX` |
+| Blackboard cutscene | `1b2e:1651` | 2,323 | the teacher sequence, `WRITE0..9.GFX`, `EXPLOD1..16.GFX` |
+
+**The cutscene's TEXT and layout are decoded** - see `docs/reversing-notes.md`,
+"The opening cutscene". Dr. Lanny B. Brilliant is named there, so are the eight
+elements, and each element has its own atom drawn beside its name. What is left
+is the ANIMATION, and it is not in `1b2e:1651` itself: the writing frames, the
+explosion and all the pacing are inside `1b2e:0f46` and `1b2e:1188`, which have
+never been read. The cutscene body holds exactly one delay literal, so there is
+nothing to guess from.
 
 They are last on purpose. Both are large, neither gates play, and the cutscene
 in particular is an animation system (`WRITE0..9` is a *writing* animation)

@@ -7683,6 +7683,60 @@ exists to prevent.
 * **ESC** at `1000:3635` jumps straight past all of it to the exit. It abandons
   the save rather than committing what has been typed.
 
+## The opening cutscene, `1b2e:1651` - and the professor has a name
+
+**Dr. Lanny B. Brilliant.** The cutscene names him, and it names the eight
+elements too - which is where the port's type names come from and, checked
+against it, `kPurplium` is spelled the way the game spells it.
+
+The story, extracted the same way the Instructions were, in TINY6X8 at colour
+`0x9a` mode 1:
+
+    (7, 30)   In a lab far, far away in the Great White North...
+    (7, 9)    Dr. Lanny B. Brilliant was completing his  work  on
+    (7, 19)   the creation of eight new elements not yet included
+    (7, 29)   on the periodic table of elements:
+              Redium    Greenium   Bluium    Cyanium      { y 43 }
+              Purplium  Yellowium  Pinkium   Flashium     { y 63 }
+    (7, 76)   Already  going  over  his  Nobel  Prize  acceptance
+    (7, 86)   speech in his head...
+    (7, 30)   Suddenly, his future didn't seem so bright...
+    (7, 10)   Lanny hadn't researched his new elements enough  to
+    (7, 20)   have discovered they were highly  unstable.  Before
+    (7, 30)   he could  react,  they  were  everywhere.   He  had
+    (7, 40)   nothing for the Nobel Prize committee to assess.
+    (7, 10)   But there is still hope!  Lanny knows that  he  can
+    (7, 20)   stabilize the atoms if he bonds three or more atoms
+    (7, 30)   of the same element  together  forming  a  molecule
+    (7, 40)   chain.
+    (7, 55)   Maybe you can help...
+
+The eight element names sit in a 4 x 2 grid at x 34, 108, 188, 258, and **each
+has its own atom drawn beside it** - eight `2321:0905` calls at y 40 and 60,
+one per type, so the story introduces the balls by name and by sprite at once.
+
+It owns three sounds nothing else uses - `WHATTHE.SFX`, `NOOOO.SFX`,
+`BUBBLE.SFX` - and twenty-six sprites: `WRITE0..9.GFX`, the writing animation,
+and `EXPLOD1..16.GFX`, the explosion. Sixteen explosion frames, not the four
+`PLAN.md` carried.
+
+### What is NOT done, and where it is
+
+The text and the layout are settled; **the animation is not**. It lives in the
+two helpers the cutscene calls and this file has never opened:
+
+    1b2e:0f46     called from the cutscene, unread
+    1b2e:1188     called from the cutscene, unread - and the string pool
+                  starts at 0x1188 + something, so read the bounds carefully
+
+Between them they drive the writing frames, the explosion and the pacing. The
+cutscene body itself holds only one delay literal (`0x2d`), so the timing is
+inside those two, not in the caller. Do not guess it.
+
+This also matters beyond the cutscene: `1000:b287` runs it BEFORE the attract
+demo and skips the demo if it returns 2, so the port's attract mode is missing
+its first half until this lands.
+
 ## Wave 75 is the last wave, and it is the hidden-atom objective
 
 Confirmed by playing it, after warping `TUBES.SAV`'s wave byte at `0x206`:
