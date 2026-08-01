@@ -1216,8 +1216,10 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
     // briefings set their prose in. At a 6-pixel advance it also stops
     // competing with the bindings above it for width.
     if (haveSmall) {
+        // In `0x2f` too: at 8 pixels tall the chalk white has too little of
+        // itself on screen to read against the green, where the red carries.
         tubes::drawTextCentred(screen, small, tubes::kHsPanelX, kPanelRight,
-                               kPanelY + kPanelH - 14, tubes::kHsRowColour,
+                               kPanelY + kPanelH - 14, tubes::kHsTitleColour,
                                tubes::textmode::kPeak,
                                "Enter binds, Esc exits");
     }
