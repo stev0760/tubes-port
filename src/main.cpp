@@ -296,6 +296,7 @@ struct Options {
     int fadeSteps = tubes::kFadeSteps;
     bool noSplash = false;      // skip the boot splashes outright
     int splashFrame = -1;       // capture this .ANM frame of the first splash
+    int splash2Step = -1;       // capture this step of the second splash
     int shotAfter = 0;          // present the screenshot after N live frames
     bool autoAdvance = false;   // synthesise RETURN whenever a stage waits
     uint32_t seed = 0;          // 0 = clock for play, fixed for the harnesses
@@ -480,6 +481,8 @@ Options parseArgs(int argc, char** argv) {
             o.autoAdvance = true;
         } else if (a == "--wave" && i + 1 < argc) {
             o.wave = std::atoi(argv[++i]);
+        } else if (a == "--splash2" && i + 1 < argc) {
+            o.splash2Step = std::atoi(argv[++i]);
         } else if (a == "--splash" && i + 1 < argc) {
             o.splashFrame = std::atoi(argv[++i]);
         } else if (a == "--no-splash") {
@@ -516,6 +519,8 @@ void usage() {
         "  --no-splash       go straight to the title screen\n"
         "  --splash N        run the first splash and, with --screenshot,\n"
         "                    capture its Nth animation frame\n"
+        "  --splash2 N       the same for the second: 0-5 the logo frames,\n"
+        "                    6-10 the lightning, 11 the writing\n"
         "  --fade-steps N    length of the screen fade, in 70 Hz frames\n"
         "                    (default 40, the original's; 0 cuts instead)\n"
         "  --demo            let the scripted player drive the live loop\n"
@@ -1382,6 +1387,16 @@ void waitRetraces(int n) {
     if (n > 0) SDL_Delay(static_cast<Uint32>(n * 1000 / 70));
 }
 
+// `21ea:0690` is `SetFrameRate(fps)`: it computes `145 div fps` and programs
+// that as the timer period, so what the game actually runs at is
+// `145 / (145 div fps)`. That is where 16.11 Hz comes from - the session asks
+// for 16 (`1000:44d8`), 145 div 16 is 9, and 145/9 is 16.11. Both of the
+// Absolute Magic splash's phases set it, to 9 and to 4.
+void waitGameFrames(int fps) {
+    const int period = 145 / (fps > 0 ? fps : 1);
+    SDL_Delay(static_cast<Uint32>(period * 1000 / 145));
+}
+
 // The player's skip, buffered. The original reads its input driver only in
 // the tail loop of each splash, but the driver reads a BUFFERED key, and
 // `[DS:0x234e]` (ClearKeyBuffer) is called immediately after the wait - which
@@ -1502,6 +1517,158 @@ int runSoftwareCreationsSplash(const tubes::Archive& res, SDL_Renderer* ren,
     // original looks at the keyboard.
     int k = 0;
     for (int n = 7; n > 0; --n) {
+        waitRetraces(10);
+        skip.pump();
+        k = skip.take();
+        if (k == 1 || k == 2) break;
+    }
+
+    runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, false, skip);
+    return k;
+}
+
+// `2178:00eb`, the Absolute Magic splash - the second and much the larger of
+// the two. Nine resources: `INTRO.PAL`, `CLOUD.GFX`, `AMWRITE.GFX`,
+// `AMLOGO.SPR`, `LIGHTN.SPR`, `AMTHEME.MUS` and the three sounds.
+//
+// The backdrop is built rather than loaded. `2178:0000` clears a 64,000 byte
+// buffer, copies `CLOUD.GFX` (320x83) in at offset 0, and then writes the SAME
+// bytes again DESCENDING from offset 63,999 - so the bottom of the screen is
+// the cloud band rotated 180 degrees, and rows 83..116 stay black. `21d0:0000`
+// then de-chunks it into Mode X planes and `2321:0792` blits it. The port
+// composes the same picture straight into its chunky framebuffer.
+//
+// Three phases, and each one sets the frame rate first:
+//
+//   * the logo arrives - `WOOSH.SFX`, then `AMLOGO.SPR`'s six frames centred,
+//     20x20 growing to 172x127, at 9 fps;
+//   * five lightning strikes - `LIGHTN.SFX` and one `LIGHTN.SPR` frame each,
+//     at five hardcoded positions, at 4 fps, each with a WHITE FLASH: the
+//     splash allocates its own 768-byte palette, fills it with 63s, and
+//     uploads it around the page flip before restoring `INTRO.PAL`;
+//   * the writing - `ABSMAGIC.SFX`, the page cleared to black, the logo and
+//     `AMWRITE.GFX` centred at (72, 88), then six holds of ten retraces.
+//
+// Index 0 is transparent, read out of `2321:09d0`'s inner loop (`OR AL,AL;
+// JZ`) rather than assumed from the way the sprites look.
+int runAbsoluteMagicSplash(const tubes::Archive& res, SDL_Renderer* ren,
+                           SDL_Texture* tex, tubes::Screen& screen,
+                           std::vector<uint8_t>& rgba, int fadeSteps,
+                           SkipWatch& skip, tubes::MusicPlayer& music,
+                           bool musicOn, bool soundOn, int shotStep,
+                           const std::string& shotPath) {
+    tubes::Bytes palRaw, cloudRaw, writeRaw, logoRaw, boltRaw, song;
+    tubes::Image cloud, writing;
+    std::vector<tubes::Image> logo, bolts;
+    std::string err;
+    if (!res.read("INTRO.PAL", palRaw, err) || palRaw.size() != 768 ||
+        !res.read("CLOUD.GFX", cloudRaw, err) ||
+        !tubes::decodeGfx(cloudRaw, cloud, err) ||
+        !res.read("AMWRITE.GFX", writeRaw, err) ||
+        !tubes::decodeGfx(writeRaw, writing, err) ||
+        !res.read("AMLOGO.SPR", logoRaw, err) ||
+        !tubes::decodeSpr(logoRaw, logo, err) ||
+        !res.read("LIGHTN.SPR", boltRaw, err) ||
+        !tubes::decodeSpr(boltRaw, bolts, err) ||
+        logo.empty() || bolts.empty()) {
+        return 0;
+    }
+    for (tubes::Image& im : logo) im.transparent = 0;
+    for (tubes::Image& im : bolts) im.transparent = 0;
+    writing.transparent = 0;
+
+    // The three sounds are loaded here rather than from the atom-indexed
+    // table, and they must outlive their playback - the audio callback holds
+    // a bare pointer at them - so nothing may return past this frame while a
+    // voice is still running. The fade-out at the end is what guarantees it.
+    tubes::Sound woosh, bolt, magic;
+    tubes::Bytes raw;
+    const bool haveSfx =
+        soundOn &&
+        res.read("WOOSH.SFX", raw, err) && tubes::decodeSfx(raw, woosh, err) &&
+        res.read("LIGHTN.SFX", raw, err) && tubes::decodeSfx(raw, bolt, err) &&
+        res.read("ABSMAGIC.SFX", raw, err) && tubes::decodeSfx(raw, magic, err);
+
+    tubes::Palette pal;
+    tubes::loadPalette(palRaw, pal, err);
+    // The all-63 palette the splash fills with `FillChar(p^, 768, 63)`.
+    const tubes::Bytes whiteRaw(768, 0x3f);
+    tubes::Palette white;
+    tubes::loadPalette(whiteRaw, white, err);
+
+    tubes::Screen bg;
+    bg.clear(0);
+    bg.blit(cloud, 0, 0);
+    {
+        uint8_t* px = bg.pixelsMutable();
+        const int last = tubes::kScreenWidth * tubes::kScreenHeight - 1;
+        for (size_t i = 0; i < cloud.pixels.size(); ++i) {
+            const int d = last - static_cast<int>(i);
+            if (d >= 0) px[d] = cloud.pixels[i];
+        }
+    }
+
+    screen = bg;
+    if (musicOn && music.isOpen() && res.read("AMTHEME.MUS", song, err)) {
+        music.play(song, err);
+    }
+    runSplashFade(ren, tex, screen, palRaw, rgba, fadeSteps, true, skip);
+    waitRetraces(30);
+
+    const tubes::Image& big = logo.back();
+    const int bigX = (tubes::kScreenWidth - big.width) / 2;
+    const int bigY = (tubes::kScreenHeight - big.height) / 2;
+
+    int k = 0;
+    if (haveSfx) music.playSound(&woosh);
+    for (size_t f = 0; f < logo.size(); ++f) {
+        screen = bg;
+        const tubes::Image& im = logo[f];
+        screen.blit(im, (tubes::kScreenWidth - im.width) / 2,
+                    (tubes::kScreenHeight - im.height) / 2);
+        presentScreen(ren, tex, screen, pal, rgba);
+        if (shotStep == static_cast<int>(f)) { saveBmp(rgba, shotPath); return 2; }
+        waitGameFrames(9);                      // `SetFrameRate(9)`
+        skip.pump();
+        k = skip.take();
+        if (k == 1 || k == 2) { runSplashFade(ren, tex, screen, palRaw, rgba,
+                                              fadeSteps, false, skip);
+                                return k; }
+    }
+
+    // `2178:0424` onward: five strikes, one arm each, coordinates as literals.
+    static const int kBoltX[5] = {0x3f, 0x09, 0x11c, 0x2e, 0xb6};
+    static const int kBoltY[5] = {0x07, 0xa4, 0x47, 0x32, 0x0f};
+    for (size_t n = 0; n < bolts.size() && n < 5; ++n) {
+        if (haveSfx) music.playSound(&bolt);
+        screen = bg;
+        screen.blit(bolts[n], kBoltX[n], kBoltY[n]);
+        screen.blit(big, bigX, bigY);
+        // `SetDAC(white)`, page flip, `SetDAC(INTRO.PAL)` - and `23e7:003d`
+        // waits a retrace before each upload, so the flash is that long.
+        presentScreen(ren, tex, screen, white, rgba);
+        waitRetraces(1);
+        presentScreen(ren, tex, screen, pal, rgba);
+        if (shotStep == static_cast<int>(n) + 6) {
+            saveBmp(rgba, shotPath);
+            return 2;
+        }
+        waitGameFrames(4);                      // `SetFrameRate(4)`
+        skip.pump();
+        k = skip.take();
+        if (k == 1 || k == 2) { runSplashFade(ren, tex, screen, palRaw, rgba,
+                                              fadeSteps, false, skip);
+                                return k; }
+    }
+
+    waitRetraces(15);
+    if (haveSfx) music.playSound(&magic);
+    screen.clear(0);                            // `2321:01e6`, the page clear
+    screen.blit(big, bigX, bigY);
+    screen.blit(writing, 0x48, 0x58);
+    presentScreen(ren, tex, screen, pal, rgba);
+    if (shotStep == 11) { saveBmp(rgba, shotPath); return 2; }
+    for (int n = 6; n > 0; --n) {
         waitRetraces(10);
         skip.pump();
         k = skip.take();
@@ -2674,19 +2841,33 @@ int main(int argc, char** argv) {
     //
     // Skipped under `harness` with every other timed screen, so no capture
     // waits three seconds to reach the frame it wants.
-    if ((!harness || opt.splashFrame >= 0) && !opt.noSplash) {
+    if ((!harness || opt.splashFrame >= 0 || opt.splash2Step >= 0) &&
+        !opt.noSplash) {
         SkipWatch skip;
-        const int k = runSoftwareCreationsSplash(
-            res, ren, tex, screen, rgba,
-            opt.splashFrame >= 0 ? 0 : opt.fadeSteps, skip, opt.splashFrame,
-            opt.screenshot);
+        const bool capturing = opt.splashFrame >= 0 || opt.splash2Step >= 0;
+        int k = 0;
+        if (opt.splash2Step < 0) {
+            k = runSoftwareCreationsSplash(
+                res, ren, tex, screen, rgba,
+                capturing ? 0 : opt.fadeSteps, skip, opt.splashFrame,
+                opt.screenshot);
+        }
         (void)k;
-        // The second splash, `2178:00eb`, is not ported yet. When it is, it
-        // goes here under `if (k != 1 && k != 2)`.
+        // `1b2e:11b0`: the second splash runs only if the first was not
+        // skipped. One press gets past both, which is the original's design.
+        if ((k != 1 && k != 2 && opt.splashFrame < 0) || opt.splash2Step >= 0) {
+            // `musicOn` / `soundOn` proper are declared with the frame loop;
+            // the splash predates them, so it reads the same two settings.
+            runAbsoluteMagicSplash(res, ren, tex, screen, rgba,
+                                   capturing ? 0 : opt.fadeSteps, skip, music,
+                                   !opt.music.empty() && settings.music,
+                                   settings.sound, opt.splash2Step,
+                                   opt.screenshot);
+        }
 
         // The capture flag is an exit, like every other one: without this the
         // frame loop runs on and overwrites the BMP with the game.
-        if (opt.splashFrame >= 0 && !opt.screenshot.empty()) {
+        if (capturing && !opt.screenshot.empty()) {
             music.stop();
             SDL_DestroyTexture(tex);
             SDL_DestroyRenderer(ren);

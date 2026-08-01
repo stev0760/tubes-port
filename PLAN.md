@@ -145,7 +145,7 @@ The surrounding screens, and where each stands:
 | The title screen and menu `1b2e:52bf` / `1b2e:4d80` | **done and measured** - menu text **0.00%** on pages 1 and 3, whole screen **0.25%**. All seven pages, the transitions, the two-key protocol, the turning stars and the 25-leg letterform walk |
 | Demo playback (`.SCR` replay through the same loop) | **done** - matches end to end, terminates on the original's own last byte |
 | The Software Creations splash `21d5:007b` | **done** - 0 pixels of 64,000 against the reference render |
-| The Absolute Magic splash `2178:00eb` | absent, medium - both its formats are now decoded |
+| The Absolute Magic splash `2178:00eb` | **done** - the built backdrop, the logo zoom, five strikes with the white flash, the writing |
 | The stats blackboard `1000:8da5` and Continue `1000:8c38` | absent, medium |
 | High scores, save/load | absent, medium - the menu reaches them and they do nothing |
 | Attract mode | the 720-frame countdown runs but restarts instead of playing `DEMO.SCR` |
@@ -789,14 +789,14 @@ at three retraces a frame, seven holds of ten retraces, fade out. Its capture
 diffs against the Python reference at **0 pixels of 64,000**. `--splash N`
 captures the Nth animation frame, `--no-splash` skips both.
 
-**Absolute Magic is next.** `2178:00eb`, 1173 bytes, and much the bigger of
-the two: `INTRO.PAL`, `CLOUD.GFX`, `AMWRITE.GFX`, `AMLOGO.SPR` (six frames of
-one logo at 20x20 up to 172x127 - a zoom), `LIGHTN.SPR` (five bolts),
-`AMTHEME.MUS`, and `WOOSH.SFX`, `LIGHTN.SFX`, `ABSMAGIC.SFX`. It allocates two
-64,000-byte buffers and a 768-byte palette buffer and fills the latter with
-63s, so it does its own palette work on top of the standard fade - a white
-flash for the lightning is the obvious reading and is NOT yet confirmed. Both
-formats it needs are decoded.
+**Absolute Magic is DONE too.** `2178:00eb`, whole: the built backdrop
+(`CLOUD.GFX` at the top and the same band rotated 180 degrees at the bottom,
+which is what `2178:0000` writing it backwards from offset 63,999 produces),
+`AMTHEME.MUS`, the six-frame logo zoom at `SetFrameRate(9)`, five lightning
+strikes at their five literal positions at `SetFrameRate(4)` with the white
+flash, and the writing. The white flash was a guess when it was written up an
+hour earlier and is now read: the splash `FillChar`s a palette with 63 and
+uploads it either side of the page flip. `--splash2 N` captures any step.
 
 **On skipping.** The original reads the keyboard only in the tail loop of each
 splash, but through a BUFFERED read - `ClearKeyBuffer` is called immediately

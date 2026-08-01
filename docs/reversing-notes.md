@@ -748,6 +748,68 @@ and this project has already made it once.
 `AMLOGO`'s six frames are one logo at six sizes - the zoom that arrives with
 `WOOSH.SFX` - and `LIGHTN`'s five are lightning bolts.
 
+**The .SPR handle is a record, not a pointer.** `23e7:0105` and `2321:09d0`
+both take `@handle` and read past it, so the caller's variable is
+
+    TSprite = record data: Pointer; frame, x, y: Word end   { 10 bytes }
+
+with `frame` **1-based**. `23e7:0105(var s, var w, var h, var count)` fetches
+the current frame's dimensions and the strip's length; `2321:09d0(var s)`
+draws it at the record's own x, y. Its inner loop is `LODSB; OR AL,AL; JZ` -
+**index 0 is transparent**, read from the code rather than inferred from the
+way the sprites look. The marker word's HIGH byte is a draw mode: 0 is this
+plain path, 2 far-calls into the data as a compiled sprite, and both .SPR
+files are mode 0.
+
+## `2178:00eb`, the Absolute Magic splash
+
+The second of the two, and much the larger. Nine resources: `INTRO.PAL`,
+`CLOUD.GFX`, `AMWRITE.GFX`, `AMLOGO.SPR`, `LIGHTN.SPR`, `AMTHEME.MUS`,
+`WOOSH.SFX`, `LIGHTN.SFX`, `ABSMAGIC.SFX`.
+
+**The backdrop is built, not loaded.** `2178:0000` clears a 64,000-byte
+buffer, copies `CLOUD.GFX` (320x83 chunky) in at offset 0, and then writes the
+same bytes again **descending from offset 63,999**. So the bottom of the
+screen is the cloud band rotated 180 degrees and rows 83..116 stay black - the
+band the logo sits in. `21d0:0000` then de-chunks the buffer into Mode X
+planes (`w div 4` bytes per plane row, four passes at stride 4) and
+`2321:0792` blits it; both temporaries are freed straight afterwards, and page
+0 is copied to pages 1 and 3, so page 3 is the pristine backdrop every
+dirty-rect erase restores from.
+
+Then `PlayMusic(AMTHEME.MUS)`, `FadeIn`, `Delay(30)`, and three phases:
+
+| phase | rate | what |
+|---|---|---|
+| the arrival | `SetFrameRate(9)` | `WOOSH.SFX`, then `AMLOGO`'s six frames, each centred by `(320 - w) div 2`, `(200 - h) div 2` |
+| the storm | `SetFrameRate(4)` | five strikes, `LIGHTN.SFX` each, one `LIGHTN.SPR` frame each |
+| the writing | - | `ABSMAGIC.SFX`, the page cleared, the logo and `AMWRITE.GFX` at (72, 88) |
+
+Each phase erases the previous rect from page 3 and redraws, and each polls
+the input driver once a frame - 1 or 2 leaves at once.
+
+**The lightning positions are five literals**, one per arm of a `case`:
+
+    strike 1  (63, 7)     strike 2  (9, 164)    strike 3  (284, 71)
+    strike 4  (46, 50)    strike 5  (182, 15)
+
+**The white flash is real and it is a palette trick.** The splash allocates a
+768-byte buffer of its own and `FillChar`s it with **63** - full-intensity
+white - then each strike does
+
+    DrawSpr(bolt); DrawSpr(logo);
+    SetDAC(white);          { 23e7:003d, which waits a retrace first }
+    FlipPage;               { 2321:014f }
+    SetDAC(INTRO.PAL);
+
+so the screen is white for the retrace either side of the page flip and then
+snaps back. That is the flash, and it is the only palette effect in the game
+that is not the standard fade.
+
+The tail is `Delay(15)`, the sound, the final picture, then six holds of
+`Delay(10)` polling for a key, and the usual `[DS:0x22de]` + `FadeOut` +
+`ClearKeyBuffer` exit.
+
 ## .ANM - delta animation (solved)
 
 One resource, `SOFT.ANM`, played by the Software Creations splash. Like a
@@ -7579,6 +7641,22 @@ columns convert it. Least squares on (wall clock, game frame), fitting slope
 
 **0.4% apart.** The constant is now derived from the formula and corroborated
 by the fit.
+
+**And now the 9 itself is read rather than measured.** `21ea:0690` is
+`SetFrameRate(fps)`, and it is six instructions:
+
+    [DS:0x0d40] := 145 div fps        { IDIV, so it truncates }
+    SetTimer([DS:0x0d40])
+    [DS:0x0d38] := $ff;  [DS:0x0d39] := 0
+
+so the argument is the frame rate the game ASKS for, and `[0x0d40]` is the
+period it gets. `1000:44d8` calls it with **16** at the top of the play
+session: `145 div 16 = 9`, and `145 / 9 = 16.11`. The 16.11 Hz is therefore an
+artefact of the truncation - the game wants a flat 16 and misses by 0.7%. The
+title's 6 is the same story from `SetFrameRate(24)`.
+
+The Absolute Magic splash sets it twice, to **9** and to **4**, which is what
+paces its two animation phases at 145/16 = 9.06 Hz and 145/36 = 4.03 Hz.
 
 Two things this does and does not change:
 
