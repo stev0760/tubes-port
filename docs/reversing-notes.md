@@ -8295,8 +8295,30 @@ first shown.** The loop's own jump goes back to `b236`, the title call, not to
 `b1ee`, so neither the cutscene nor the defaults block is part of the cycle.
 The second call at `1000:b28b` is the attract arm and is a different thing.
 
-`2685:08aa` is three instructions in the RTL and gates both intros; the port's
-`--no-splash` is its analogue.
+**`2685:08aa` is `ParamCount`.** It reads the command tail's LENGTH out of the
+PSP - `MOV ES,[0xd1e]; MOV DI,0x80; MOV CL,ES:[DI]` - so `TUBES.EXE` started
+with any argument at all skips both intros. That is why the gate is the same
+test in both places and why it looks like a debug switch: it is one. The port
+takes `--gamedir` on every run, so it deliberately does NOT transliterate this;
+`--no-splash` is the analogue and it is opt-in.
+
+**The splashes do not decide whether the cutscene runs.** `1b2e:11b0` is a
+`void` procedure:
+
+    k := Splash1;  if (k = 1) or (k = 2) then exit;
+    k := Splash2;  if (k = 1) or (k = 2) then exit
+
+so it consumes each splash's return code only to decide whether to run the
+SECOND splash, and then throws it away. `1000:b224` has nothing to test, and
+whichever key ended a splash the cutscene plays. The port had gated the
+cutscene on the first splash's key, so Enter on a splash dropped the player
+straight to the menu - reported from play.
+
+The port carries **one departure here**, agreed with the player: ESC on a
+splash skips the cutscene as well. The original gives no way to say "I have
+seen the intro" without sitting through it, and ESC already means "leave the
+whole thing" one screen later (`1b2e:112a` returns 2 for it) while Enter means
+"next page". Enter and Space are unchanged and faithful.
 
 **Music, per screen.** Each screen starts its own song and nothing is playing
 before the first one that does:

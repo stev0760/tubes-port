@@ -2014,12 +2014,19 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
         }
     };
 
-    // The scene with no page on it: `1b2e:1a45` onward, which is what the
-    // fade-in reveals.
+    // The scene with no page on it: `1b2e:1a80`..`1ab6`, which is what the
+    // fade-in reveals. THREE literal draws, and they are spelled out here
+    // rather than routed through `drawFigures` because the first page has no
+    // B track at all - its whole `CutsceneTrack` is zeroed, so asking
+    // `drawFigures` for it put the beaker at `(page.b.x, page.b.y)` = (0, 0)
+    // for the one frame before the fade. Reported from play as a glitch in the
+    // top-left corner, and it was exactly that.
     auto scene = [&]() {
         screen.clear(0);
         screen.blit(*board, 0, tubes::kCutsceneBoardY);
-        drawFigures(tubes::kCutscenePages[0], true, true);
+        screen.blit(art.base, tubes::kCutsceneBaseX, tubes::kCutsceneBaseY);
+        screen.blit(art.writeFrames[0], 86, 122);      // `1b2e:1a96`
+        screen.blit(art.blowFrames[0], 258, 119);      // `1b2e:1aa9`
     };
 
     auto compose = [&](const tubes::CutscenePage& page, bool aLive,
@@ -3400,24 +3407,46 @@ int main(int argc, char** argv) {
                 capturing ? 0 : opt.fadeSteps, skip, opt.splashFrame,
                 opt.screenshot);
         }
-        (void)k;
         // `1b2e:11b0`: the second splash runs only if the first was not
         // skipped. One press gets past both, which is the original's design.
         if ((k != 1 && k != 2 && !capturing) || opt.splash2Step >= 0) {
             // `musicOn` / `soundOn` proper are declared with the frame loop;
             // the splash predates them, so it reads the same two settings.
-            runAbsoluteMagicSplash(res, ren, tex, screen, rgba,
-                                   capturing ? 0 : opt.fadeSteps, skip, music,
-                                   !opt.music.empty() && settings.music,
-                                   settings.sound, opt.splash2Step,
-                                   opt.screenshot);
+            k = runAbsoluteMagicSplash(res, ren, tex, screen, rgba,
+                                       capturing ? 0 : opt.fadeSteps, skip,
+                                       music,
+                                       !opt.music.empty() && settings.music,
+                                       settings.sound, opt.splash2Step,
+                                       opt.screenshot);
         }
 
         // `1000:b224`: the cutscene runs HERE - once, after the splashes and
         // immediately before the title screen is first shown. The main loop's
         // own `JMP 1000:b236` goes back to the title call and not to this, so
         // it is a boot-time screen and not part of the cycle.
-        if ((k != 1 && k != 2 && !capturing) || opt.cutscenePage >= 0) {
+        //
+        // **It does not depend on the splashes.** `1b2e:11b0` is a `void`
+        // procedure: it consumes each splash's return code to decide whether
+        // to run the SECOND splash and then throws it away, so `1000:b224` has
+        // nothing to test. Both this call and the splash call at `1000:ac21`
+        // are gated on one thing and it is the same thing - `2000:70fa`, which
+        // reads the command tail's length out of the PSP at `ES:[0x80]` and is
+        // `ParamCount`. Starting the game with ANY argument skips both.
+        //
+        // The port gated the cutscene on the first splash's key, so Enter on a
+        // splash dropped the player straight to the menu. Reported from play.
+        //
+        // ONE DEPARTURE, and it is the player's, agreed before it was written:
+        // **ESC on a splash skips the cutscene as well.** The original runs the
+        // cutscene whichever key ended the splash, and there is no way to say
+        // "I have seen the intro" without also sitting through it. ESC already
+        // means "leave this whole thing" inside the cutscene (`1b2e:112a`
+        // returns 2 for it) and Enter already means "next", so this only
+        // extends the two keys the screen after it already uses. Enter and
+        // Space are unchanged and faithful: they get past the splashes and
+        // into the cutscene.
+        const bool escaped = (k == 2);
+        if ((!escaped && !capturing) || opt.cutscenePage >= 0) {
             runCutscene(res, ren, tex, screen, rgba, palRaw, pal,
                         capturing ? 0 : opt.fadeSteps, skip, music,
                         !opt.music.empty() && settings.music, settings.sound,
