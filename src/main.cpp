@@ -1593,7 +1593,10 @@ int runAbsoluteMagicSplash(const tubes::Archive& res, SDL_Renderer* ren,
         !res.read("CLOUD.GFX", cloudRaw, err) ||
         !tubes::decodeGfx(cloudRaw, cloud, err) ||
         !res.read("AMWRITE.GFX", writeRaw, err) ||
-        !tubes::decodeGfx(writeRaw, writing, err) ||
+        // PLANAR, though it carries the 0xE5 prefix - `2321:0948` is what
+        // draws it, and that routine walks four planes. See GfxLayout.
+        !tubes::decodeGfx(writeRaw, writing, err,
+                          tubes::GfxLayout::kPlanar) ||
         !res.read("AMLOGO.SPR", logoRaw, err) ||
         !tubes::decodeSpr(logoRaw, logo, err) ||
         !res.read("LIGHTN.SPR", boltRaw, err) ||

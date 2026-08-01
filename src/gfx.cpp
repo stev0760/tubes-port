@@ -91,7 +91,8 @@ Palette fadePalette(const Bytes& raw, int step, int steps) {
     return out;
 }
 
-bool decodeGfx(const Bytes& data, Image& out, std::string& error) {
+bool decodeGfx(const Bytes& data, Image& out, std::string& error,
+               GfxLayout layout) {
     // Header sits at offset 0, or at 1 when preceded by the chunky marker.
     // Pick whichever makes width * height exactly fill the file.
     size_t headerAt = 0;
@@ -106,6 +107,8 @@ bool decodeGfx(const Bytes& data, Image& out, std::string& error) {
         if (off + 4 + static_cast<size_t>(w) * h != data.size()) continue;
         headerAt = off;
         chunky = (off == 1 && data[0] == kChunkyPrefix);
+        if (layout == GfxLayout::kChunky) chunky = true;
+        if (layout == GfxLayout::kPlanar) chunky = false;
         found = true;
         break;
     }

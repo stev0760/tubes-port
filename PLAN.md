@@ -789,6 +789,15 @@ at three retraces a frame, seven holds of ten retraces, fade out. Its capture
 diffs against the Python reference at **0 pixels of 64,000**. `--splash N`
 captures the Nth animation frame, `--no-splash` skips both.
 
+**One bug the player caught, worth keeping in view.** The "Absolute Magic"
+lettering was corrupted, because `AMWRITE.GFX` carries the `0xE5` prefix and
+this project had that prefix written up as "marks chunky storage". It does
+not: it is a header byte both blitters skip, and the LAYOUT is decided by
+which one draws the file. `AMWRITE.GFX` goes through `2321:0948`, the Mode X
+routine, so it is planar. `176 * 25 + 5` fits the file either way, so no size
+check could have found it - only looking at it. `decodeGfx` now takes a
+`GfxLayout`.
+
 **Absolute Magic is DONE too.** `2178:00eb`, whole: the built backdrop
 (`CLOUD.GFX` at the top and the same band rotated 180 degrees at the bottom,
 which is what `2178:0000` writing it backwards from offset 63,999 produces),

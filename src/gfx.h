@@ -76,9 +76,22 @@ constexpr int kFadeSteps = 40;              // [DS:0x0ce6]
 
 Palette fadePalette(const Bytes& raw, int step, int steps = kFadeSteps);
 
-// .GFX - u16 width, u16 height, then pixels. Data is planar (Mode X
-// plane-major) unless the file carries a leading 0xE5, which marks chunky.
-bool decodeGfx(const Bytes& data, Image& out, std::string& error);
+// How a .GFX's pixels are stored. This is NOT a property of the file: three
+// resources carry a leading 0xE5 and it is a header byte, not a layout
+// marker. Both of the original's blitters skip exactly one byte before
+// reading the width - `23df:0022` then copies rows chunky, `2321:0948` walks
+// four planes - so the CALLER decides, by choosing a routine.
+//
+// `kAuto` is the rule the port has used from the start and it is right for 72
+// of the 73 resources: prefixed means chunky. The exception is `AMWRITE.GFX`,
+// which the Absolute Magic splash draws with the Mode X routine, and reading
+// it chunky produced a smear where "Absolute Magic" should be. A player
+// spotted that; no size check could have.
+enum class GfxLayout { kAuto, kChunky, kPlanar };
+
+// .GFX - u16 width, u16 height, then pixels, optionally behind a 0xE5 byte.
+bool decodeGfx(const Bytes& data, Image& out, std::string& error,
+               GfxLayout layout = GfxLayout::kAuto);
 
 // .CSP - generated 16-bit x86 that draws the sprite with unrolled stores.
 // Interpreted rather than executed.

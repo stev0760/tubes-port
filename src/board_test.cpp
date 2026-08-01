@@ -2187,6 +2187,34 @@ void testTheFadeRampEndsOnBlackAndOnThePalette() {
 // format description rather than read from the player's files - and the
 // player's real ones are diffed against `tools/anm_decode.py` with
 // `--dump-anm`, which is where the byte-for-byte agreement is proven.
+// The 0xE5 prefix is a header byte, NOT a layout marker - the routine that
+// draws the file decides. Getting that wrong is invisible to every size check
+// and showed up only as corrupted lettering on screen, which is why the rule
+// is pinned here.
+void testTheGfxPrefixDoesNotDecideTheLayout() {
+    using namespace tubes;
+    // 4x2, prefixed. Planar would be plane-major: plane 0 is {1,5},
+    // plane 1 {2,6}, plane 2 {3,7}, plane 3 {4,8}.
+    const Bytes gfx = {0xE5, 4, 0, 2, 0,
+                       1, 5,  2, 6,  3, 7,  4, 8};
+    Image img;
+    std::string err;
+
+    check(decodeGfx(gfx, img, err), "the prefixed resource decodes");
+    check(img.pixels == std::vector<uint8_t>({1, 5, 2, 6, 3, 7, 4, 8}),
+          "kAuto reads a prefixed file chunky, as 72 of the 73 want");
+
+    check(decodeGfx(gfx, img, err, GfxLayout::kPlanar), "and again as planar");
+    check(img.pixels == std::vector<uint8_t>({1, 2, 3, 4, 5, 6, 7, 8}),
+          "kPlanar de-planarizes the same bytes - AMWRITE.GFX needs this");
+
+    // The override works the other way too, for a file with no prefix.
+    const Bytes plain = {4, 0, 2, 0, 1, 5, 2, 6, 3, 7, 4, 8};
+    check(decodeGfx(plain, img, err, GfxLayout::kChunky) &&
+              img.pixels == std::vector<uint8_t>({1, 5, 2, 6, 3, 7, 4, 8}),
+          "and kChunky forces the other way");
+}
+
 void testTheSprStripSplitsIntoImages() {
     using namespace tubes;
     // Two 4x1 chunky images, the second a different width, in the .SPR
@@ -2858,6 +2886,7 @@ int main() {
     testEnduranceSkipsBothWaveScreens();
     testTheFastSongIsAboutDropsNotDifficulty();
     testTheFadeRampEndsOnBlackAndOnThePalette();
+    testTheGfxPrefixDoesNotDecideTheLayout();
     testTheSprStripSplitsIntoImages();
     testAnmFramesAreRunsOfChangedPixels();
     testBindingsCannotBeShared();

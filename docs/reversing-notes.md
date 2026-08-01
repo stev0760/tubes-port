@@ -404,9 +404,36 @@ leading `0xE5` byte before the header. These are exactly the three fetched
 through a different routine (`21ea:045f` rather than `21ea:03c4` /
 `21ea:035b`), which is what flagged them in the first place.
 
-The prefix marks **chunky** storage: their pixels are already linear and must
-not be de-planarized. Confirmed visually - `SOFT.GFX` decodes to the
-publisher title card only when treated as chunky.
+**The prefix does NOT mark chunky storage.** That was the reading for most of
+this project, it is wrong, and the player caught it: the "Absolute Magic" text
+in the second splash was corrupted. `AMWRITE.GFX` carries the prefix and its
+pixels are **planar**.
+
+What the prefix actually is: a header byte, and nothing more. Both draw
+routines skip exactly one byte before reading the width -
+
+    23df:0022   INC SI; w := [SI]; h := [SI+2]; ... copies w bytes a row
+                { mode 13h, CHUNKY }
+    2321:0948   INC SI; w := [SI] shr 2; h := [SI+2]; ... four plane passes
+                { Mode X, PLANAR }
+
+so **the LAYOUT is decided by which routine draws the file, not by the file**.
+Two of the three prefixed resources happen to go through the chunky path,
+which is why the wrong rule survived:
+
+| resource | drawn by | layout |
+|---|---|---|
+| `SOFT.GFX` | `23df:0022`, the mode 13h blit | chunky |
+| `CLOUD.GFX` | copied byte for byte by `2178:0000` | chunky |
+| `AMWRITE.GFX` | `2321:0948`, the Mode X blit | **planar** |
+
+The other 70 `.GFX` have no prefix, a 4-byte header, and are planar.
+
+This is the exact failure `CLAUDE.md` warns about under "a size check is not a
+correctness check": `176 * 25 + 5` fits the file whichever way the payload is
+read, so every validation passed and only the picture was wrong. It also cost
+nothing to find once looked at - the planar reading renders "Absolute Magic"
+in clean lettering, the chunky one renders a smear.
 
 ### Palettes are per-scene
 
