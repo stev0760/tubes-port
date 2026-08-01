@@ -839,10 +839,21 @@ own frame list, position, size, frame count and sound cue. Its whole parameter
 map is in the notes. Two frame counts are magic - 25 on track A and 16 on
 track B mean "play once and stop" rather than loop.
 
-**What is left is four of the five call sites** (`1b2e:1d12`, `1d8a`, `1e49`,
-`1f2f` - the first is worked in the notes) and the order the 26 sprites are
-loaded into the frame list. Both are mechanical reads now. Then the port work:
-the story pages, the writing animation, the explosion, and three sounds.
+**All five call sites are read too**, and the notes carry them as a table:
+five pages of 2, 18, 4, 12 and 10 seconds, Lanny writing throughout, an atom
+cycling the seven colours beside the element names, and the explosion looping
+four frames and then running all sixteen. The fifth call has both tracks idle -
+it is a plain hold that still polls for a key.
+
+**One piece is still missing: the slot map.** The 26 sprite names load in
+order (`WRITE0`, `WRITE1..9`, `EXPLOD1..16`) but the slots are not filled one
+per name - `1b2e:16aa` duplicates one - and the two lists' bases overlap.
+Extract it MECHANICALLY, the way `gen_instructions.py` reads the text calls;
+the loads and copies are a fixed instruction pattern. Guessing at 26 slots is
+how a page animates the wrong thing and nobody notices.
+
+Then the port work, which is now well-defined: the five pages with their text
+(already extracted), the two-track player, and three sounds.
 
 They are last on purpose. Both are large, neither gates play, and the cutscene
 in particular is an animation system (`WRITE0..9` is a *writing* animation)

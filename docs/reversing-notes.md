@@ -8046,12 +8046,52 @@ confirms the w/h reading rather than an x/y one. `WRITE0` is 28x50 and
 `WRITE6..9` are 28x66, so the list is not uniform and the caller passing the
 size per call is the reason it can hold all of them.
 
-**What is left** is the other four call sites - `1b2e:1d12`, `1d8a`, `1e49`
-and `1f2f` - and the order the 26 sprites are loaded into the list, both of
-which are mechanical reads of `1b2e:1651` now that the callee is understood.
-The obvious reading of the list is `WRITE0`, `WRITE1..9`, `EXPLOD1..16`, which
-would put the explosion at indices 10..25 and make A's "play once at 25" the
-explosion running to its end; that is a **guess** and is marked as one.
+### All five call sites
+
+`[BP+0x32]` is the page's duration **in seconds**: `IMUL AX,7` and a
+`Delay(10)` per iteration is `param * 70` retraces, the same idiom the
+Continue screen uses at `1000:c117`.
+
+| at | secs | track A | track B |
+|---|---|---|---|
+| `1b2e:1b05` | 2 | (86,122) 28x41, frames 1..5 | idle |
+| `1b2e:1cdf` | 18 | (86,122) 28x41, frames 1..8 | (238,60) 16x13, frames 1..7, from `DS:0x1da6` |
+| `1b2e:1d53` | 4 | (86,122) 28x41, frames 1..8 | (258,119) 60x46, frames 1..4, sound on `$ff` |
+| `1b2e:1e12` | 12 | (86,122) 28x66, frames 10..25 ONCE, sound on frame 25 | (258,119) 60x46, frames 4..16 ONCE |
+| `1b2e:1efe` | 10 | idle | idle |
+
+Four readings drop out of that table and each is corroborated by a size:
+
+* **the second page's track B is an ATOM, not a sprite of its own.** Its list
+  is `DS:0x1da6` - the ball table - it is 16x13, which is the atom box the
+  whole port already stamps with, and it cycles frames 1..7, the seven
+  ordinary colours. The page that names the eight elements shows a ball
+  changing colour beside them.
+* **60x46 is `EXPLOD*.GFX`'s size**, so track B on pages 3 and 4 is the
+  explosion - looping four frames while the text talks about instability, then
+  running all sixteen once.
+* **28x41 is `WRITE1..5.GFX` and 28x66 is `WRITE6..9.GFX`**, which is why the
+  caller passes the size at all: one list holds frames of two different sizes
+  and only the caller knows which stretch it is playing.
+* **the last call has both tracks idle.** It is a plain ten-second hold that
+  still polls for a key, so `1b2e:0f46` doubles as the screen's wait.
+
+`1b2e:1e08` pre-seeds both counters before the fourth call - `[DS:0x1d6e] :=
+10`, `[DS:0x1d6f] := 4` - which is how a track starts part way in. That is
+also why the counters are globals rather than locals.
+
+**The one piece still missing is the slot map.** The 26 names load in order -
+`WRITE0.GFX`, `WRITE1..9.GFX`, `EXPLOD1..16.GFX`, at `CS:0x11e7` onward - but
+the slots are NOT filled one per name: `1b2e:16aa` copies `[BP-0x74]` into
+`[BP-0x70]`, so at least one frame is duplicated, and the explosion list's
+base (`[BP-0xbc]`) sits *below* the writing list's (`[BP-0x78]`) rather than
+after it. Frames 10..25 being drawn at 28x66 says slots 10..25 hold
+`WRITE6..9` repeated, but that is an inference from a size, not a reading.
+
+Extract it mechanically rather than by eye - the loads and the copies are a
+fixed instruction pattern, exactly like the text calls `gen_instructions.py`
+already parses. Guessing at 26 slots is how a page ends up animating the wrong
+thing in a way nobody notices.
 
 This also matters beyond the cutscene: `1000:b287` runs it BEFORE the attract
 demo and skips the demo if it returns 2, so the port's attract mode is missing
