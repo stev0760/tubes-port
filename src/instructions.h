@@ -39,6 +39,9 @@ struct InstructionItem {
     // negatives below for the slideshow's own sprites.
     int colour;
     uint8_t mode;       // `2000:35ec`'s colour walk - see font.h
+    // 0 is TINY6X8 and 1 the heading font. The slideshow never changes font;
+    // the credits alternate, names in the big one and roles in the small.
+    uint8_t font;
     const char* text;   // null for kAtom
 };
 
@@ -54,6 +57,32 @@ struct InstructionSlide {
 
 constexpr int kInstructionSlideCount = 21;
 extern const InstructionSlide kInstructionSlides[kInstructionSlideCount];
+
+// The two navigation lines. `1b2e:2e12` draws them ONCE, before the first
+// slide, and nothing ever clears them - so they are on screen for every slide
+// and belong to the screen rather than to any one of them. The credits at
+// `1b2e:4191` do exactly the same thing with the same two strings.
+constexpr InstructionItem kInstructionNav[2] = {
+    {InstructionItem::kCentred, 0, 184, 118, 2, 0, "Up - Previous Slide"},
+    {InstructionItem::kCentred, 0, 192, 118, 2, 0, "Down - Next Slide"},
+};
+
+// ---------------------------------------------------------------------------
+// The Credits, `1b2e:411b`
+// ---------------------------------------------------------------------------
+//
+// Four pages on the same classroom scene, with the same navigation and the
+// same key rules. Two people and a technical note - and the note is worth
+// reading, because the game says of itself:
+//
+//     "Tubes was written in Borland Pascal v7, and uses a planar
+//      320x200x256 for the multiple pages."
+//
+// Borland Pascal 7 and Mode X, from the program's own mouth. This project
+// assumed both from the first session and neither was ever confirmed by the
+// game until now.
+constexpr int kCreditPageCount = 4;
+extern const InstructionSlide kCreditPages[kCreditPageCount];
 
 // `1b2e:2db0` sets TINY6X8 for the whole slideshow - advance 6, peak 4 - and
 // never changes it. Every x in the table is measured against that.

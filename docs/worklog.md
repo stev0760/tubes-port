@@ -3418,3 +3418,32 @@ centred over the whole screen below the sheet.
 **8 pixels of 64,000** against a captured original slide, and they are the
 professor's pointer mid-wave. The text is a 100% ink match - 10,734 pixels, the
 same set.
+
+### Credits, and the game confirms the project's two founding assumptions
+
+`1b2e:411b` is the same screen as the Instructions with a different table -
+four pages on the classroom scene, the same two navigation lines, the same
+`2 leaves / 5 back / anything forward` key rules - so the same generator
+emitted it, parameterised by which disassembly to read.
+
+Two people and a technical note, and the note is the find. Page 3 says:
+
+    Tubes was written in Borland Pascal v7, and uses a planar
+    320x200x256 for the multiple pages.
+
+**Borland Pascal 7 and Mode X, from the program's own mouth.** Both have been
+in `CLAUDE.md`'s first paragraph since the project started, and neither was
+ever confirmed by anything but inference from the compiler's runtime and the
+CRTC writes. The game had been saying so all along on a screen nobody had
+opened.
+
+The credits also needed one thing the slideshow did not: a FONT per item. The
+Instructions set TINY6X8 once and never change; the credits alternate, names in
+the heading font and roles in the small one. The generator now tracks the
+running `2000:3fab` and emits it per item.
+
+And a bug the second screen exposed in the first: the two navigation lines are
+drawn ONCE, before the first slide, and nothing clears them - so they are on
+screen for every slide. Extracting them into slide 1's table put them on slide
+1 only. They are `kInstructionNav` now, drawn by the screen rather than by a
+page, which is what the original's control flow actually describes.

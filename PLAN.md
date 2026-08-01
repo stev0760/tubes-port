@@ -736,6 +736,10 @@ of the eight items still go nowhere.
 
 DONE:
 
+- **Credits** - `1b2e:411b`, four pages, sharing the Instructions screen and
+  its key rules. Its own third page is where the game tells you it was written
+  in Borland Pascal 7 and uses planar 320x200x256 - two things this project
+  assumed from the first session and never had confirmed.
 - **Instructions** - `1b2e:2d63`, all 21 slides. The slide data is EXTRACTED,
   not transcribed: `tools/gen_instructions.py` reads the disassembly and emits
   `src/instructions.cpp`, because 152 strings typed by hand would be 152
@@ -766,10 +770,8 @@ DONE:
   diffs at 252 of 64,000 pixels (all star-rotation phase) and the F2 screen
   carries 99% of the original's ink at the same coordinates.
 
-STILL INERT, in the order they matter to a player:
-
-1. **Credits.** `1b2e:411b`, named by `1000:b280`'s dispatch. Unread, small,
-   and the one screen nothing else depends on.
+**Every menu item now does something.** What is left of the original program
+is section C's two splashes and section D's blackboard cutscene.
 
 Also inert: **F1 help** in-game, whose body is in `1b2e:2d63` alongside the
 slideshow.

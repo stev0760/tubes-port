@@ -282,6 +282,7 @@ struct Options {
     bool f2 = false;            // open the F2 save screen, for capture
     bool rebind = false;        // open the rebinding screen, for capture
     int instr = -1;             // open the Instructions on slide N, for capture
+    bool credits = false;       // open the Credits, for capture
     // Harness only. `--screenshot` captures the first frame drawn, which can
     // never show a screen that is reached by PLAYING - the banners, the stats
     // screen and the Continue prompt are all past a game over. These two run
@@ -447,6 +448,8 @@ Options parseArgs(int argc, char** argv) {
             o.f2 = true;
         } else if (a == "--rebind") {
             o.rebind = true;
+        } else if (a == "--credits") {
+            o.credits = true;
         } else if (a == "--instructions") {
             o.instr = 0;
             if (i + 1 < argc && argv[i + 1][0] != '-') {
@@ -1124,30 +1127,36 @@ std::string bindingLabel(const tubes::Binding& x) {
 //
 // The two navigation lines are the exception. They are centred over the whole
 // screen at y 184 and 192, which is BELOW the sheet, on the black.
-void drawInstructionSlide(tubes::Screen& screen, int slide,
+void drawInstructionSlide(tubes::Screen& screen,
+                          const tubes::InstructionSlide* pages, int count,
+                          int slide,
                           const tubes::Image* board, bool haveBoard,
                           const SceneArt& art, int profFrame,
                           const tubes::Font& small, bool haveSmall,
+                          const tubes::Font& big, bool haveBig,
                           const tubes::Sprite* atoms, const bool* haveAtom,
                           const tubes::Sprite* tube, const bool* haveTube,
                           const tubes::Sprite* furn, const bool* haveFurn) {
     drawScene(screen, board, haveBoard, art, tubes::kSlideX, tubes::kSlideY,
               profFrame);
-    if (slide < 0 || slide >= tubes::kInstructionSlideCount) return;
-    const tubes::InstructionSlide& s = tubes::kInstructionSlides[slide];
-    for (int i = 0; i < s.count; ++i) {
-        const tubes::InstructionItem& it = s.items[i];
+    if (slide < 0 || slide >= count) return;
+    // The navigation is drawn once by the original and never cleared, so it
+    // belongs to the screen rather than to a page.
+    const tubes::InstructionSlide& s = pages[slide];
+    auto item = [&](const tubes::InstructionItem& it) {
+        const tubes::Font& f = it.font ? big : small;
+        const bool have = it.font ? haveBig : haveSmall;
         switch (it.kind) {
         case tubes::InstructionItem::kText:
-            if (haveSmall) {
-                tubes::drawText(screen, small, it.x, it.y,
+            if (have) {
+                tubes::drawText(screen, f, it.x, it.y,
                                 static_cast<uint8_t>(it.colour), it.mode,
                                 it.text);
             }
             break;
         case tubes::InstructionItem::kCentred:
-            if (haveSmall) {
-                tubes::drawTextCentred(screen, small, it.x, 319, it.y,
+            if (have) {
+                tubes::drawTextCentred(screen, f, it.x, 319, it.y,
                                        static_cast<uint8_t>(it.colour),
                                        it.mode, it.text);
             }
@@ -1171,7 +1180,9 @@ void drawInstructionSlide(tubes::Screen& screen, int slide,
             }
             break;
         }
-    }
+    };
+    for (const tubes::InstructionItem& n : tubes::kInstructionNav) item(n);
+    for (int i = 0; i < s.count; ++i) item(s.items[i]);
 }
 
 // Rebinding the six controls. THE PORT'S OWN SCREEN - the original's third
@@ -2590,8 +2601,10 @@ int main(int argc, char** argv) {
 
     // The Instructions slideshow, `1b2e:2d63` - a straight run of 21 slides
     // rather than a dispatch, so the state is just which one is up.
-    bool instrOpen = opt.instr >= 0;
+    bool instrOpen = opt.instr >= 0 || opt.credits;
     int instrSlide = opt.instr > 0 ? opt.instr : 0;
+    // The Credits, `1b2e:411b`: the same screen with a different table.
+    bool instrCredits = opt.credits;
     int rebindRow = 0;                 // 0..5, the control being pointed at
     bool rebindWaiting = false;        // armed, waiting for the press
 
@@ -2829,7 +2842,9 @@ int main(int argc, char** argv) {
                     instrOpen = false;
                 } else if (k == SDLK_UP) {
                     if (instrSlide > 0) --instrSlide;
-                } else if (++instrSlide >= tubes::kInstructionSlideCount) {
+                } else if (++instrSlide >= (instrCredits
+                                               ? tubes::kCreditPageCount
+                                               : tubes::kInstructionSlideCount)) {
                     instrOpen = false;
                 }
                 continue;
@@ -2839,10 +2854,16 @@ int main(int argc, char** argv) {
             // is ARMED the next press is the binding, ESC included - there is
             // no other way to bind Escape, and no reason to forbid it.
             if (instrOpen) {
-            drawInstructionSlide(screen, instrSlide, &blackboard,
-                                 haveBlackboard, sceneArt,
-                                 tubes::pointerFrameFor(profWave), smallFont,
-                                 haveSmall, atoms, haveAtom, testTube,
+            const bool cr = instrCredits;
+            drawInstructionSlide(screen,
+                                 cr ? tubes::kCreditPages
+                                    : tubes::kInstructionSlides,
+                                 cr ? tubes::kCreditPageCount
+                                    : tubes::kInstructionSlideCount,
+                                 instrSlide, &blackboard, haveBlackboard,
+                                 sceneArt, tubes::pointerFrameFor(profWave),
+                                 smallFont, haveSmall, headingFont,
+                                 haveHeading, atoms, haveAtom, testTube,
                                  haveTube, furn, haveFurn);
             presentFrame();
             continue;
@@ -2978,6 +2999,13 @@ int main(int argc, char** argv) {
                     }
                     case tubes::MenuResult::kInstructions:
                         instrOpen = true;
+                        instrCredits = false;
+                        instrSlide = 0;
+                        break;
+                    case tubes::MenuResult::kCredits:
+                        // `1000:b280`. Same screen, same keys, four pages.
+                        instrOpen = true;
+                        instrCredits = true;
                         instrSlide = 0;
                         break;
                     case tubes::MenuResult::kViewDemo:
@@ -3258,10 +3286,16 @@ int main(int argc, char** argv) {
             // professor's clock too - `1b2e:0e37` steps him every ten
             // retraces, and he waves his pointer while any screen waits.
             if (instrOpen) {
-            drawInstructionSlide(screen, instrSlide, &blackboard,
-                                 haveBlackboard, sceneArt,
-                                 tubes::pointerFrameFor(profWave), smallFont,
-                                 haveSmall, atoms, haveAtom, testTube,
+            const bool cr = instrCredits;
+            drawInstructionSlide(screen,
+                                 cr ? tubes::kCreditPages
+                                    : tubes::kInstructionSlides,
+                                 cr ? tubes::kCreditPageCount
+                                    : tubes::kInstructionSlideCount,
+                                 instrSlide, &blackboard, haveBlackboard,
+                                 sceneArt, tubes::pointerFrameFor(profWave),
+                                 smallFont, haveSmall, headingFont,
+                                 haveHeading, atoms, haveAtom, testTube,
                                  haveTube, furn, haveFurn);
             presentFrame();
             continue;
@@ -3473,10 +3507,16 @@ int main(int argc, char** argv) {
         // rule, the row pitch - so a screen the original never had still looks
         // like it belongs to this game.
         if (instrOpen) {
-            drawInstructionSlide(screen, instrSlide, &blackboard,
-                                 haveBlackboard, sceneArt,
-                                 tubes::pointerFrameFor(profWave), smallFont,
-                                 haveSmall, atoms, haveAtom, testTube,
+            const bool cr = instrCredits;
+            drawInstructionSlide(screen,
+                                 cr ? tubes::kCreditPages
+                                    : tubes::kInstructionSlides,
+                                 cr ? tubes::kCreditPageCount
+                                    : tubes::kInstructionSlideCount,
+                                 instrSlide, &blackboard, haveBlackboard,
+                                 sceneArt, tubes::pointerFrameFor(profWave),
+                                 smallFont, haveSmall, headingFont,
+                                 haveHeading, atoms, haveAtom, testTube,
                                  haveTube, furn, haveFurn);
             presentFrame();
             continue;
