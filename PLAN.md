@@ -828,13 +828,21 @@ were previously conflated in this file:
 | Instructions slideshow | `1b2e:2d63` | 4,510 | prev-slide / next-slide **slides**, `TESTUBE1.CSP`, `TESTUBES.CSP` |
 | Blackboard cutscene | `1b2e:1651` | 2,323 | the teacher sequence, `WRITE0..9.GFX`, `EXPLOD1..16.GFX` |
 
-**The cutscene's TEXT and layout are decoded** - see `docs/reversing-notes.md`,
-"The opening cutscene". Dr. Lanny B. Brilliant is named there, so are the eight
-elements, and each element has its own atom drawn beside its name. What is left
-is the ANIMATION, and it is not in `1b2e:1651` itself: the writing frames, the
-explosion and all the pacing are inside `1b2e:0f46` and `1b2e:1188`, which have
-never been read. The cutscene body holds exactly one delay literal, so there is
-nothing to guess from.
+**The cutscene's TEXT, layout and animation player are all decoded** - see
+`docs/reversing-notes.md`, "The opening cutscene". Dr. Lanny B. Brilliant is
+named there, so are the eight elements, and each element has its own atom
+drawn beside its name.
+
+`1b2e:0f46` is now read too, and it is not what its name suggested: it is a
+**two-track** animation player, running two sequences at once, each with its
+own frame list, position, size, frame count and sound cue. Its whole parameter
+map is in the notes. Two frame counts are magic - 25 on track A and 16 on
+track B mean "play once and stop" rather than loop.
+
+**What is left is four of the five call sites** (`1b2e:1d12`, `1d8a`, `1e49`,
+`1f2f` - the first is worked in the notes) and the order the 26 sprites are
+loaded into the frame list. Both are mechanical reads now. Then the port work:
+the story pages, the writing animation, the explosion, and three sounds.
 
 They are last on purpose. Both are large, neither gates play, and the cutscene
 in particular is an animation system (`WRITE0..9` is a *writing* animation)

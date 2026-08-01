@@ -7993,10 +7993,65 @@ it is the house animation rate rather than a number picked for this scene.
 It draws through `2321:0905` and `2321:068d` and flips with `2321:014f` and
 `2321:019b`, so it is double-buffered like everything else.
 
-**What is left** is only the CALL SITES: which frame list and which positions
-each of the cutscene's animations passes in. Those are in `1b2e:1651` itself,
-in the argument set-up before each `1b2e:0f46` call, and reading them is
-mechanical now that the callee's shape is known.
+### `1b2e:0f46`'s parameters, read
+
+It is **not** a sprite-sequence player. It is a **two-track** one: it runs two
+animations at once, each with its own frame list, position, frame count and
+sound cue, and either track may be idle. That is why the argument list is 23
+words long and why the decompiler's output looked like noise.
+
+It is entered with `PUSH CS; CALL near` - a far call synthesised inside the
+segment, not a nested-procedure static link - so the arguments start at
+`[BP+6]` and the first one pushed is at `[BP+0x32]`.
+
+| offset | track | meaning |
+|---|---|---|
+| `[BP+0x32]` | - | byte, `* 7` into `[BP-4]`; the screen's own tick budget |
+| `[BP+0x30]`, `[BP+0x2e]` | A | x, y |
+| `[BP+0x2c/0x2a]` | A | the frame list: `array[0..n] of Pointer` |
+| `[BP+0x28]` | A | its high index |
+| `[BP+0x26]`, `[BP+0x24]` | A | w, h |
+| `[BP+0x22]` | A | frame count; 0 leaves the track idle |
+| `[BP+0x20/0x1e]` | A | a sound, played once |
+| `[BP+0x1c]` | A | the frame it is played on |
+| `[BP+0x1a]`, `[BP+0x18]` | B | x, y |
+| `[BP+0x16/0x14]`, `[BP+0x12]` | B | its frame list and high index |
+| `[BP+0x10]`, `[BP+0xe]` | B | w, h |
+| `[BP+0xc]` | B | frame count |
+| `[BP+0xa/0x08]` | B | a sound |
+| `[BP+0x06]` | B | the frame it is played on, or `$ff` |
+
+The two frame counters are **globals**, `[DS:0x1d6e]` for A and `[DS:0x1d6f]`
+for B, both 1-based and both wrapping back to 1. Two counts are special: a
+track whose count is **25** (A) or **16** (B) stops when it wraps instead of
+looping - so those two numbers mean "play once", and they are exactly the
+lengths of the two one-shot sequences.
+
+`$ff` in B's sound-frame slot means something else again: play the sound
+whenever the effects voice reports itself idle (`[DS:0x230a]`, `SoundBusy`),
+which is the same "keep it going" idiom the high score viewer uses for the
+applause.
+
+Both tracks draw through `2321:068d`, whose signature is now pinned as
+`Blit(x, y, img, w, h)`, except that B draws through `2321:0905` instead when
+its count is exactly 7. The frame is `Delay(10)`, ten retraces, 7 fps.
+
+**The first call site, worked** (`1b2e:1b05`):
+
+    A: (86, 122) 28 x 41, frames 1..5 of the 26-entry list, no sound
+    B: idle
+
+and 28 x 41 is exactly the size of `WRITE1..WRITE5.GFX`, which is what
+confirms the w/h reading rather than an x/y one. `WRITE0` is 28x50 and
+`WRITE6..9` are 28x66, so the list is not uniform and the caller passing the
+size per call is the reason it can hold all of them.
+
+**What is left** is the other four call sites - `1b2e:1d12`, `1d8a`, `1e49`
+and `1f2f` - and the order the 26 sprites are loaded into the list, both of
+which are mechanical reads of `1b2e:1651` now that the callee is understood.
+The obvious reading of the list is `WRITE0`, `WRITE1..9`, `EXPLOD1..16`, which
+would put the explosion at indices 10..25 and make A's "play once at 25" the
+explosion running to its end; that is a **guess** and is marked as one.
 
 This also matters beyond the cutscene: `1000:b287` runs it BEFORE the attract
 demo and skips the demo if it returns 2, so the port's attract mode is missing
