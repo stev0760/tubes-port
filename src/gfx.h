@@ -84,4 +84,45 @@ bool decodeGfx(const Bytes& data, Image& out, std::string& error);
 // Interpreted rather than executed.
 bool decodeCsp(const Bytes& data, Sprite& out, std::string& error);
 
+// .SPR - a numbered strip of .GFX images in one resource. There are two,
+// `AMLOGO.SPR` and `LIGHTN.SPR`, both owned by the Absolute Magic splash.
+//
+//     u16   0x00f5              a marker; both files carry it
+//     u16   count
+//     u16   offset[count]       from the start of the file
+//     ...   count .GFX images, each u16 width, u16 height, then pixels
+//
+// The offsets are an oracle rather than a reading: every one of the eleven
+// sub-images satisfies `next - offset = width * height + 4` exactly, and the
+// first offset is exactly the header length. The pixels are PLANAR, like an
+// ordinary .GFX with no 0xE5 - which is what rendering them settles, since a
+// wrong choice there passes every size check and only shows up on screen.
+bool decodeSpr(const Bytes& data, std::vector<Image>& out, std::string& error);
+
+// .ANM - a delta animation, and like a .CSP it is executable rather than
+// data: `21d5:0000` FAR CALLS each frame with ES:DI on the mode 13h
+// framebuffer and DS:SI on the frame itself.
+//
+//     u16   count
+//     u32   size[count]         bytes of the frame, only the low word read
+//     ...   count code blobs, each ending in RETF with its literal pixels
+//           stored after the RETF - which is what its opening
+//           `add si,<code length>` skips SI over
+//
+// A frame paints only what changed, so the frames must be replayed in order
+// over the still image beneath (`SOFT.GFX`). Here that comes out as runs of
+// bytes at a linear `y * 320 + x` offset; the interpreter is in gfx.cpp and
+// `tools/anm_decode.py` is the cross-check, exactly as `csp_decode.py` is for
+// the compiled sprites.
+struct AnimFrame {
+    struct Run {
+        int offset = 0;                 // linear, into a 320x200 screen
+        std::vector<uint8_t> pixels;
+    };
+    std::vector<Run> runs;
+};
+
+bool decodeAnm(const Bytes& data, std::vector<AnimFrame>& out,
+               std::string& error);
+
 }  // namespace tubes

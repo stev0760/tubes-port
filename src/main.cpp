@@ -267,6 +267,8 @@ struct Options {
     std::string dumpRegs;       // print the OPL register stream and exit
     std::string renderState;    // load a captured state, render it, exit
     bool dumpSfx = false;       // print every .SFX header and exit
+    std::string dumpAnm;        // print a .ANM's runs, to diff the decoder
+    std::string dumpSpr;        // print a .SPR's frame dimensions
     // Decode a TUBES.SAV and print every field, so the C++ decoder can be
     // diffed against `tools/sav_decode.py` rather than trusted.
     std::string dumpSave;
@@ -432,6 +434,10 @@ Options parseArgs(int argc, char** argv) {
             o.playDemo = true;
         } else if (a == "--dump-sfx") {
             o.dumpSfx = true;
+        } else if (a == "--dump-spr" && i + 1 < argc) {
+            o.dumpSpr = argv[++i];
+        } else if (a == "--dump-anm" && i + 1 < argc) {
+            o.dumpAnm = argv[++i];
         } else if (a == "--dump-save" && i + 1 < argc) {
             o.dumpSave = argv[++i];
         } else if (a == "--render-state" && i + 1 < argc) {
@@ -497,6 +503,10 @@ void usage() {
         "  --auto-advance    press RETURN periodically, so a headless run\n"
         "                    walks through the screens that hold for a key\n"
         "  --auto N          simulate N scripted frames first (for testing)\n"
+        "  --dump-anm NAME   print a .ANM's runs, to diff against\n"
+        "                    tools/anm_decode.py RUNS\n"
+        "  --dump-spr NAME   print a .SPR strip's frames\n"
+        "                    tools/anm_decode.py RUNS\n"
         "  --fade-steps N    length of the screen fade, in 70 Hz frames\n"
         "                    (default 40, the original's; 0 cuts instead)\n"
         "  --demo            let the scripted player drive the live loop\n"
@@ -1765,6 +1775,58 @@ int main(int argc, char** argv) {
             }
             std::printf("  %-16s %5d Hz %7zu samples  \"%s\"\n", name.c_str(),
                         snd.rate, snd.pcm.size(), snd.name.c_str());
+        }
+        return 0;
+    }
+
+    // The .SPR strip, printed frame by frame. The format's own oracle is that
+    // `offset[i+1] - offset[i]` is exactly `width * height + 4` for all eleven
+    // sub-images across the two files, so a wrong header would not fit.
+    if (!opt.dumpSpr.empty()) {
+        tubes::Bytes raw;
+        std::vector<tubes::Image> strip;
+        if (!res.read(opt.dumpSpr, raw, err) ||
+            !tubes::decodeSpr(raw, strip, err)) {
+            std::fprintf(stderr, "error: %s\n", err.c_str());
+            return 1;
+        }
+        std::printf("%s: %zu frames\n", opt.dumpSpr.c_str(), strip.size());
+        for (size_t i = 0; i < strip.size(); ++i) {
+            std::printf("  frame %zu  %d x %d  %zu pixels\n", i,
+                        strip[i].width, strip[i].height,
+                        strip[i].pixels.size());
+        }
+        return 0;
+    }
+
+    // Prints what `tools/anm_decode.py RUNS` prints - per frame, the number of
+    // runs, the bytes they carry and an FNV-1a over (offset, bytes). Two
+    // interpreters of the same compiled x86 have to agree run for run, not
+    // merely produce a picture that looks right: a wrong SI would still paint
+    // something plausible, and the .CSP geometry bug this project already had
+    // is exactly that failure mode.
+    if (!opt.dumpAnm.empty()) {
+        tubes::Bytes raw;
+        std::vector<tubes::AnimFrame> anim;
+        if (!res.read(opt.dumpAnm, raw, err) ||
+            !tubes::decodeAnm(raw, anim, err)) {
+            std::fprintf(stderr, "error: %s\n", err.c_str());
+            return 1;
+        }
+        for (size_t i = 0; i < anim.size(); ++i) {
+            size_t bytes = 0;
+            uint32_t h = 0x811c9dc5u;
+            auto mix = [&h](uint8_t b) { h = (h ^ b) * 0x01000193u; };
+            for (const tubes::AnimFrame::Run& r : anim[i].runs) {
+                bytes += r.pixels.size();
+                mix(static_cast<uint8_t>(r.offset));
+                mix(static_cast<uint8_t>(r.offset >> 8));
+                mix(static_cast<uint8_t>(r.pixels.size()));
+                mix(static_cast<uint8_t>(r.pixels.size() >> 8));
+                for (uint8_t b : r.pixels) mix(b);
+            }
+            std::printf("frame %2zu  %4zu runs  %6zu bytes  %08x\n", i,
+                        anim[i].runs.size(), bytes, h);
         }
         return 0;
     }

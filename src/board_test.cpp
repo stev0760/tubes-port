@@ -2182,6 +2182,76 @@ void testTheFadeRampEndsOnBlackAndOnThePalette() {
           "and the first step is 1, not 0");
 }
 
+// The last two undecoded formats, both belonging to the splash screens.
+// There is no game data in this repository, so these are built from the
+// format description rather than read from the player's files - and the
+// player's real ones are diffed against `tools/anm_decode.py` with
+// `--dump-anm`, which is where the byte-for-byte agreement is proven.
+void testTheSprStripSplitsIntoImages() {
+    using namespace tubes;
+    // Two 4x1 chunky images, the second a different width, in the .SPR
+    // container: marker, count, two offsets, then the .GFX pair.
+    Bytes spr = {0xf5, 0x00, 0x02, 0x00, 0x08, 0x00, 0x11, 0x00};
+    const Bytes a = {0xE5, 4, 0, 1, 0, 1, 2, 3, 4};      // 0xE5 marks chunky
+    const Bytes b = {0xE5, 2, 0, 1, 0, 9, 8};
+    spr.insert(spr.end(), a.begin(), a.end());
+    spr.insert(spr.end(), b.begin(), b.end());
+
+    std::vector<Image> strip;
+    std::string err;
+    check(decodeSpr(spr, strip, err), "the strip decodes");
+    check(strip.size() == 2, "two frames");
+    check(strip[0].width == 4 && strip[0].height == 1, "the first is 4x1");
+    check(strip[1].width == 2 && strip[1].pixels[1] == 8, "and the second 2x1");
+
+    // The marker is checked, so a .GFX handed to this decoder is refused
+    // rather than read as a one-frame strip.
+    Bytes notSpr = a;
+    check(!decodeSpr(notSpr, strip, err), "a .GFX is not a .SPR");
+}
+
+void testAnmFramesAreRunsOfChangedPixels() {
+    using namespace tubes;
+    // One frame: skip to offset 0x140 (row 1, column 0), fill three words
+    // with colour 7, then copy two literal bytes that live after the RETF.
+    const std::vector<uint8_t> code = {
+        0x33, 0xc9,                     // xor cx,cx
+        0x81, 0xc6, 0x13, 0x00,         // add si,19  (past this code)
+        0x81, 0xc7, 0x40, 0x01,         // add di,0x140
+        0xb8, 0x07, 0x07,               // mov ax,0x0707
+        0xb1, 0x03,                     // mov cl,3
+        0xf3, 0xab,                     // rep stosw
+        0xa5,                           // movsw
+        0xcb,                           // retf
+        0xaa, 0xbb,                     // the literal pixels
+    };
+    Bytes anm = {0x01, 0x00,
+                 static_cast<uint8_t>(code.size()), 0x00, 0x00, 0x00};
+    anm.insert(anm.end(), code.begin(), code.end());
+
+    std::vector<AnimFrame> anim;
+    std::string err;
+    check(decodeAnm(anm, anim, err), "the animation decodes");
+    check(anim.size() == 1 && anim[0].runs.size() == 1,
+          "contiguous stores coalesce into ONE run");
+    const AnimFrame::Run& r = anim[0].runs[0];
+    check(r.offset == 0x140, "the run starts where DI was left");
+    check(r.pixels.size() == 8, "six filled bytes and two copied");
+    check(r.pixels[0] == 7 && r.pixels[5] == 7, "the fill is colour 7");
+    // The `add si` at the head is what puts SI on the data after the RETF -
+    // getting that wrong still produces pixels, just the wrong ones, which is
+    // why it is asserted rather than eyeballed.
+    check(r.pixels[6] == 0xaa && r.pixels[7] == 0xbb,
+          "and the copy reads the literals past the RETF");
+
+    // An unknown opcode is an error rather than a skip: silently tolerating
+    // one would let a misparsed frame run into the next frame's bytes and
+    // still produce pixels.
+    Bytes bad = anm;
+    bad[bad.size() - 3] = 0x90;                 // where the RETF was
+    check(!decodeAnm(bad, anim, err), "a frame that does not return is refused");
+}
+
 void testSettingsRoundTrip() {
     using namespace tubes;
     Settings s;
@@ -2788,6 +2858,8 @@ int main() {
     testEnduranceSkipsBothWaveScreens();
     testTheFastSongIsAboutDropsNotDifficulty();
     testTheFadeRampEndsOnBlackAndOnThePalette();
+    testTheSprStripSplitsIntoImages();
+    testAnmFramesAreRunsOfChangedPixels();
     testBindingsCannotBeShared();
     testSettingsRoundTrip();
     testSaveFileLayout();

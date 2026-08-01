@@ -714,13 +714,101 @@ collapsing is a single knock, which is why the flag behind it is a boolean.
 | `.MUS` FM/Adlib music | 10 | solved, all 10 decode |
 | `.816` / `.88` fonts | 5 | solved |
 | `.PAL` palettes | 3 | solved |
-| `.SPR` sprites | 2 | not examined |
+| `.SPR` sprite strips | 2 | **solved**, all 11 sub-images render |
 | `.SCR` demo recording | 1 | solved |
-| `.ANM` animation | 1 | not examined |
+| `.ANM` animation | 1 | **solved**, all 23 frames interpret |
 | `.BIN` raw data | 1 | not examined |
 
-Every format the game actually loads is now decoded. `.SPR`, `.ANM` and
-`.BIN` are one or two resources each and have not been looked at yet.
+**Every format the game loads is now decoded.** `.BIN` is the one remaining
+resource and nothing decompiled reads it.
+
+## .SPR - sprite strips (solved)
+
+Two resources, `AMLOGO.SPR` and `LIGHTN.SPR`, both loaded by the Absolute
+Magic splash at `2178:00eb` through `21ea:04c8` - a loader of its own, which
+is what says this is a distinct format rather than a renamed `.GFX`.
+
+    u16   0x00f5              a marker word; both files carry it
+    u16   count               6 in AMLOGO, 5 in LIGHTN
+    u16   offset[count]       from the start of the file
+    ...   count .GFX images: u16 width, u16 height, then PLANAR pixels
+
+The reading is settled by an oracle rather than by inspection: for all eleven
+sub-images across the two files, `offset[i+1] - offset[i]` is exactly
+`width * height + 4`, and `offset[0]` is exactly the header length. Nothing
+else fits.
+
+The pixels are planar, like an ordinary `.GFX` with no `0xE5` prefix - which
+only rendering settles, since a planar/chunky mistake passes every size check
+and this project has already made it once.
+
+    AMLOGO   20x20  44x31  60x59  64x86  128x116  172x127
+    LIGHTN   36x22  60x22  20x73  56x108  76x167
+
+`AMLOGO`'s six frames are one logo at six sizes - the zoom that arrives with
+`WOOSH.SFX` - and `LIGHTN`'s five are lightning bolts.
+
+## .ANM - delta animation (solved)
+
+One resource, `SOFT.ANM`, played by the Software Creations splash. Like a
+`.CSP` it is **executable**: `21d5:0000` far-calls each frame with `ES:DI` on
+the mode 13h framebuffer and `DS:SI` on the frame itself.
+
+    u16   count                       23
+    u32   size[count]                 bytes per frame; only the low word is read
+    ...   count code blobs
+
+The player, in full, is `21d5:0000`:
+
+    N     := ANM^[0]
+    table := @ANM^[2]
+    frame := table + N * 4
+    for i := 0 to N - 1 do begin
+      size := table[i]
+      WaitRetrace; WaitRetrace; WaitRetrace     { 23e7:0016, three times }
+      ES := $A000; DI := 0
+      CALL FAR frame                            { the blob paints itself }
+      frame := frame + size
+    end
+
+Two things follow, and both shape the port:
+
+* **three retraces per frame**, so the animation runs at 70/3 = 23.3 Hz and
+  its 23 frames take almost exactly one second;
+* **frames are deltas**. Each blob paints only what changed, so they have to
+  be replayed in order over the still image beneath - `SOFT.GFX`, drawn first
+  by the splash.
+
+A blob starts by adding its own code length to SI, which lands SI on the
+literal pixels stored *after* its `RETF`; the `movs` runs then copy from
+there. So the bytes past the RETF are data, not code, and a decoder that
+insists a resource ends at its RETF - as the `.CSP` decoder rightly does -
+rejects every frame.
+
+The whole instruction vocabulary, verified against all 23 frames with no
+unknown opcode remaining:
+
+    33 c9        xor cx,cx        f3 ab   rep stosw     ab   stosw
+    b0 ii        mov al,imm8      f3 aa   rep stosb     aa   stosb
+    b1 ii        mov cl,imm8      f3 a5   rep movsw     a5   movsw
+    b9 iiii      mov cx,imm16     f3 a4   rep movsb     a4   movsb
+    b8 iiii      mov ax,imm16     8b df   mov bx,di     cb   retf
+    81 c6/ee     add/sub si,imm16 8b fb   mov di,bx
+    81 c7/ef     add/sub di,imm16
+
+`mov bx,di` appears exactly once per frame, at the head with DI still 0, and
+`mov di,bx` never appears at all - the compiler emits the save and never needs
+the restore.
+
+`tools/anm_decode.py` interprets it (`INFO`, `OPS`, `RUNS`, `RENDER`), and
+`tubes-port --dump-anm SOFT.ANM` prints what `RUNS` prints: per frame, the
+number of coalesced runs, the bytes they carry, and an FNV-1a over
+`(offset, bytes)`. **All 23 frames agree exactly** between the two
+interpreters - the same standard the `.MUS` register stream is held to, and
+for the same reason: a wrong SI would still paint something plausible.
+
+Rendered over `SOFT.GFX`, the animation is four small characters flying in
+from off screen and gathering above the "Software Creations" lettering.
 
 
 `DRIVERS.RES` contains real 8086 code — `55 8B EC ... CA 02 00`

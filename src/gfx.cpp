@@ -9,6 +9,9 @@ namespace {
 
 constexpr uint8_t kChunkyPrefix = 0xE5;
 
+// The marker word both .SPR resources open with.
+constexpr int kSprMarker = 0x00f5;
+
 // Mode X: four planes, so a plane row is a quarter of the image width.
 constexpr int kPlanes = 4;
 
@@ -259,6 +262,205 @@ bool decodeCsp(const Bytes& data, Sprite& out, std::string& error) {
         size_t idx = static_cast<size_t>(w.y - minY) * out.width + (w.x - minX);
         out.pixels[idx] = w.value;
         out.mask[idx] = 1;
+    }
+    return true;
+}
+
+// ---- .SPR ------------------------------------------------------------------
+
+bool decodeSpr(const Bytes& data, std::vector<Image>& out, std::string& error) {
+    out.clear();
+    if (data.size() < 4) {
+        error = ".SPR is too short for a header";
+        return false;
+    }
+    const int marker = rd16(data.data() + 0);
+    const int count = rd16(data.data() + 2);
+    if (marker != kSprMarker) {
+        error = ".SPR marker is " + std::to_string(marker) + ", not 245";
+        return false;
+    }
+    const size_t headerLen = 4 + static_cast<size_t>(count) * 2;
+    if (count <= 0 || headerLen > data.size()) {
+        error = ".SPR frame count " + std::to_string(count) + " does not fit";
+        return false;
+    }
+    std::vector<size_t> offs(static_cast<size_t>(count));
+    for (int i = 0; i < count; ++i) offs[i] = rd16(data.data() + 4 + i * 2);
+    if (offs[0] != headerLen) {
+        error = ".SPR first frame is at " + std::to_string(offs[0]) +
+                ", not the end of the header";
+        return false;
+    }
+    for (int i = 0; i < count; ++i) {
+        const size_t end = (i + 1 < count) ? offs[i + 1] : data.size();
+        if (offs[i] >= end || end > data.size()) {
+            error = ".SPR frame " + std::to_string(i) + " has a bad extent";
+            return false;
+        }
+        Image img;
+        const Bytes slice(data.begin() + static_cast<long>(offs[i]),
+                          data.begin() + static_cast<long>(end));
+        if (!decodeGfx(slice, img, error)) {
+            error = ".SPR frame " + std::to_string(i) + ": " + error;
+            return false;
+        }
+        out.push_back(std::move(img));
+    }
+    return true;
+}
+
+// ---- .ANM ------------------------------------------------------------------
+//
+// The interpreter. Every opcode the one .ANM in the game uses is here, and an
+// unknown one is an error rather than a skip - a compiled format that is
+// silently tolerant decodes garbage into plausible-looking pixels.
+
+bool decodeAnm(const Bytes& data, std::vector<AnimFrame>& out,
+               std::string& error) {
+    out.clear();
+    if (data.size() < 2) {
+        error = ".ANM is too short for a frame count";
+        return false;
+    }
+    const int count = rd16(data.data() + 0);
+    const size_t tableLen = 2 + static_cast<size_t>(count) * 4;
+    if (count <= 0 || tableLen > data.size()) {
+        error = ".ANM frame count " + std::to_string(count) + " does not fit";
+        return false;
+    }
+
+    size_t at = tableLen;
+    for (int f = 0; f < count; ++f) {
+        const size_t size = rd16(data.data() + 2 + f * 4);
+        if (rd16(data.data() + 4 + f * 4) != 0) {
+            error = ".ANM frame " + std::to_string(f) + " has a high size word";
+            return false;
+        }
+        if (at + size > data.size()) {
+            error = ".ANM frame " + std::to_string(f) + " runs past the file";
+            return false;
+        }
+
+        const uint8_t* code = data.data() + at;
+        AnimFrame frame;
+        // The registers the frame's caller sets up: DS:SI on the blob itself,
+        // ES:DI at the top left of the screen.
+        size_t ip = 0;
+        int si = 0, di = 0, ax = 0, cx = 0;
+        int runAt = -1;                         // where the open run started
+        std::vector<uint8_t> run;
+
+        auto put = [&](uint8_t v) {
+            if (runAt < 0 || di != runAt + static_cast<int>(run.size())) {
+                if (runAt >= 0 && !run.empty()) {
+                    frame.runs.push_back({runAt, run});
+                }
+                run.clear();
+                runAt = di;
+            }
+            run.push_back(v);
+            di = (di + 1) & 0xffff;
+        };
+        auto get = [&]() -> uint8_t {
+            const uint8_t v = (si >= 0 && static_cast<size_t>(si) < size)
+                                  ? code[si] : 0;
+            si = (si + 1) & 0xffff;
+            return v;
+        };
+        auto imm16 = [&]() {
+            const int v = code[ip] | (code[ip + 1] << 8);
+            ip += 2;
+            return v;
+        };
+
+        bool done = false;
+        while (!done) {
+            if (ip >= size) {
+                error = ".ANM frame " + std::to_string(f) + " has no RETF";
+                return false;
+            }
+            const uint8_t op = code[ip++];
+            const uint8_t nxt = ip < size ? code[ip] : 0;
+            switch (op) {
+            case 0xcb:                                  // retf
+                done = true;
+                break;
+            case 0x33:                                  // xor cx,cx
+                if (nxt != 0xc9) { error = ".ANM: bad xor"; return false; }
+                ++ip;
+                cx = 0;
+                break;
+            case 0xb0:                                  // mov al,imm8
+                ax = (ax & 0xff00) | code[ip++];
+                break;
+            case 0xb1:                                  // mov cl,imm8
+                cx = (cx & 0xff00) | code[ip++];
+                break;
+            case 0xb9: cx = imm16(); break;             // mov cx,imm16
+            case 0xb8: ax = imm16(); break;             // mov ax,imm16
+            case 0x8b:                                  // mov bx,di / mov di,bx
+                if (nxt != 0xdf && nxt != 0xfb) {
+                    error = ".ANM: bad mov";
+                    return false;
+                }
+                ++ip;
+                break;                                  // bx is never read back
+            case 0x81: {
+                const uint8_t modrm = code[ip++];
+                const int v = imm16();
+                if (modrm == 0xc6) si += v;
+                else if (modrm == 0xee) si -= v;
+                else if (modrm == 0xc7) di = (di + v) & 0xffff;
+                else if (modrm == 0xef) di = (di - v) & 0xffff;
+                else {
+                    error = ".ANM: unknown 81 /" + std::to_string(modrm);
+                    return false;
+                }
+                break;
+            }
+            case 0xf3: {                                // rep <string op>
+                const uint8_t sop = code[ip++];
+                if (sop == 0xab) {
+                    for (int i = 0; i < cx; ++i) {
+                        put(static_cast<uint8_t>(ax));
+                        put(static_cast<uint8_t>(ax >> 8));
+                    }
+                } else if (sop == 0xaa) {
+                    for (int i = 0; i < cx; ++i) put(static_cast<uint8_t>(ax));
+                } else if (sop == 0xa5) {
+                    for (int i = 0; i < cx; ++i) { put(get()); put(get()); }
+                } else if (sop == 0xa4) {
+                    for (int i = 0; i < cx; ++i) put(get());
+                } else {
+                    error = ".ANM: unknown string op after REP";
+                    return false;
+                }
+                cx = 0;
+                break;
+            }
+            case 0xab:                                  // stosw
+                put(static_cast<uint8_t>(ax));
+                put(static_cast<uint8_t>(ax >> 8));
+                break;
+            case 0xaa: put(static_cast<uint8_t>(ax)); break;   // stosb
+            case 0xa5: put(get()); put(get()); break;          // movsw
+            case 0xa4: put(get()); break;                      // movsb
+            default:
+                error = ".ANM frame " + std::to_string(f) +
+                        ": unknown opcode " + std::to_string(op) + " at " +
+                        std::to_string(ip - 1);
+                return false;
+            }
+        }
+        if (runAt >= 0 && !run.empty()) frame.runs.push_back({runAt, run});
+        out.push_back(std::move(frame));
+        at += size;
+    }
+    if (at != data.size()) {
+        error = ".ANM frames end at " + std::to_string(at) + ", file is " +
+                std::to_string(data.size());
+        return false;
     }
     return true;
 }
