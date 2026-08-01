@@ -7720,18 +7720,35 @@ It owns three sounds nothing else uses - `WHATTHE.SFX`, `NOOOO.SFX`,
 and `EXPLOD1..16.GFX`, the explosion. Sixteen explosion frames, not the four
 `PLAN.md` carried.
 
-### What is NOT done, and where it is
+### The two helpers, read
 
-The text and the layout are settled; **the animation is not**. It lives in the
-two helpers the cutscene calls and this file has never opened:
+**`1b2e:1188` is 40 bytes and is a rectangle blank.** Four word parameters and
+`RETF 8`:
 
-    1b2e:0f46     called from the cutscene, unread
-    1b2e:1188     called from the cutscene, unread - and the string pool
-                  starts at 0x1188 + something, so read the bounds carefully
+    2321:014f                        { select the other page }
+    FillRect(x, y, w, h, 3, page)    { 2000:345d, colour 3 }
+    2321:014f                        { and back }
 
-Between them they drive the writing frames, the explosion and the pacing. The
-cutscene body itself holds only one delay literal (`0x2d`), so the timing is
-inside those two, not in the caller. Do not guess it.
+So the story pages are cleared by blanking a rect on BOTH pages, in colour 3 -
+which is why the text can be replaced without redrawing the blackboard.
+
+**`1b2e:0f46` is the sprite-sequence player**, 578 bytes, and it takes TWO
+Turbo Pascal open arrays - the reason the decompiler produces nonsense for it
+is the conformant-array copy loops at its head, which is exactly the case
+`CLAUDE.md` says to read the listing for.
+
+Its one timing literal is the whole cadence: **`Delay(10)` per frame** -
+`1b2e:0fe9`, ten retraces at 70 Hz, so **7 frames a second**. That is the same
+beat as the projector slide drop and the professor's wave, which is a good sign
+it is the house animation rate rather than a number picked for this scene.
+
+It draws through `2321:0905` and `2321:068d` and flips with `2321:014f` and
+`2321:019b`, so it is double-buffered like everything else.
+
+**What is left** is only the CALL SITES: which frame list and which positions
+each of the cutscene's animations passes in. Those are in `1b2e:1651` itself,
+in the argument set-up before each `1b2e:0f46` call, and reading them is
+mechanical now that the callee's shape is known.
 
 This also matters beyond the cutscene: `1000:b287` runs it BEFORE the attract
 demo and skips the demo if it returns 2, so the port's attract mode is missing

@@ -838,10 +838,18 @@ checking the sprite draws per slide against the captures in `capture/instr/`.
 
 **3. The screen transition fade.** Still the oldest open item in this file and
 still genuinely unfound - `[DS:0x230e]` turned out to be `PlaySound`, so that
-lead is dead. **The player has said it is acceptable to RECREATE it** if it
-cannot be found: a palette ramp between screens is a few lines. Do the search
-once more first, since every screen that would use it is now ported and the
-call sites are all in reach.
+lead is dead.
+
+**A better lead, from the player: it may be Turbo Pascal's, not the game's.**
+It behaves like a mandatory effect - every screen change waits out the same
+half second - which is what a fade in a graphics UNIT would look like rather
+than one the game asks for. So search `2321` (the graphics unit) for a palette
+ramp, not the game segments. That also explains why scanning the game code for
+a fade call has failed three times.
+
+**Recreating it is acceptable** if the search fails again, and the player has
+also said it may be SPED UP or made optional - half a second between screens is
+annoying at modern expectations even if it is faithful.
 
 **4. Sound is clipped or truncated**, e.g. the Bonus catch (`GLDFADE`).
 Minor but real. Two candidates and they are distinguishable:
