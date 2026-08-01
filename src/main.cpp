@@ -1907,8 +1907,19 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
     };
 
     auto compose = [&](const tubes::CutscenePage& page) {
-        scene();
+        screen.clear(0);
+        screen.blit(*board, 0, tubes::kCutsceneBoardY);
+        // The page's furniture, THEN the animation over it. That is the
+        // original's order - `1b2e:1cdf` draws the panel, the text and the
+        // eight elements' atoms once, and the Animate call then paints on top
+        // every tick - and it is the whole reason Flashium flashes: the
+        // static draw beside its name is a type 4 ball, and track B cycles a
+        // ball through colours 1..7 at the same coordinates. Stamping the
+        // figures first put the static ball back on top and it never moved.
         layout(page);
+        // `2321:0711`-style: index 0 is transparent, so everything under the
+        // figures shows through where they have not painted.
+        screen.stamp(figures, 0, 0, tubes::kScreenWidth, tubes::kScreenHeight);
     };
 
     // One tick's worth of animation, painted over the page.
