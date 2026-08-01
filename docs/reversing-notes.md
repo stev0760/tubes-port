@@ -766,6 +766,12 @@ the gold fade was designed as a beaker effect, the Bonus was changed to convert
 on catch instead, and what survived was the sound - repurposed - and six
 sprites nobody removed.
 
+**Do not "fix" this in the port.** The unreachability is the original's
+behaviour and is closed four ways in code; reaching it would mean changing a
+rule. It is written up as a candidate ENHANCEMENT in `PLAN.md` section 5,
+behind a switch and after the port is faithful - which is where a thing the
+original never shows anybody belongs.
+
 `1000:278c` is worth a line: the settle sound is fired **once** at the tail of
 the gravity pass if anything moved, not once per atom. A whole beaker
 collapsing is a single knock, which is why the flag behind it is a boolean.

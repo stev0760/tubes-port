@@ -961,6 +961,24 @@ optional extras are wanted, and the architecture should not preclude them:
   bearing - every speed is a whole number of pixels per frame - so anything
   here has to be a *render-side* interpolation with the simulation untouched.
 - small quality-of-life tweaks, each behind a switch that defaults to off.
+- **give `GLDFADE` its animation back.** The player's idea, and it is the best
+  candidate on this list because the work is already done: six compiled
+  sprites that decode and render, a sound already wired to the right event,
+  and a slot in the fade table the original filled in and then closed off four
+  separate ways (see `docs/reversing-notes.md`, "GLDFADE: the sound is used,
+  the ANIMATION cannot be"). Something in 1994 was going to make a gold fade
+  happen in the beaker and the Bonus was changed to convert on catch instead.
+
+  What it would take is a rule that puts a type-10 cell in the glass and lets
+  it clear - the obvious one being "a Bonus that is tipped rather than caught"
+  - which means changing the catch, so it is squarely an ENHANCEMENT and not a
+  restoration: nobody can say what the 1994 rule was, only that there was
+  meant to be one. Behind a switch, default off, like everything here.
+
+  It is also the only item on this list that would show the player something
+  the original never shows anybody, which is a nice thing for a preservation
+  project to be able to offer once it has finished being faithful. And it is a
+  bonus feature for the Bonus atom.
 
 Keeping `kFrameHz` a real measured constant rather than a fudge factor is what
 makes this possible later, which is a second reason the 16.11 Hz correction was
