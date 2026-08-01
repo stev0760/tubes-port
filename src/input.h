@@ -24,6 +24,13 @@
 // to `SETUP.EXE`. The port does not read a byte of it and must not damage it;
 // these settings go in the port's own file. Same lesson as the game directory.
 //
+// The same reasoning extends to a GRAPHICS options screen, which the player
+// has asked for and `PLAN.md` section 5 carries: Mode X was the only display
+// the original had, so fullscreen, scale and aspect are choices SDL creates
+// rather than choices the game made. They belong to the port, they persist in
+// `Settings` beside these, and they must stay render-side - the fixed 16.11 Hz
+// step is load bearing and no display option may touch it.
+//
 // Platform-agnostic: a binding is two opaque integers, because the meaning of
 // a scancode or a controller button belongs to SDL and SDL lives at the edge.
 #ifndef TUBES_INPUT_H

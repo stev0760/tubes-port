@@ -960,6 +960,39 @@ optional extras are wanted, and the architecture should not preclude them:
   frames rather than by running the simulation faster. The fixed step is load
   bearing - every speed is a whole number of pixels per frame - so anything
   here has to be a *render-side* interpolation with the simulation untouched.
+- **a Graphics Options screen**, the player's request, and it is the same kind
+  of thing as the control rebinding: a screen the port OWNS rather than
+  transliterates. The reasoning transfers exactly, and `src/input.h` already
+  writes it down for the input half - the original chooses a DRIVER because
+  DOS gave it no abstraction, SDL *is* that abstraction, so porting the DOS
+  chooser would be transliterating the absence of SDL. The display is the same
+  story one layer over: Mode X was the only mode the original had, and
+  `SETUP.EXE` owned whatever choice there was.
+
+  Right now the port cannot even go fullscreen. Candidates, all render-side:
+
+  * fullscreen / windowed, and remembering which;
+  * the integer scale, which `--scale` already does from the command line and
+    which nothing exposes in the game;
+  * aspect - square pixels versus the 4:3 the original was seen on;
+  * vsync, and a scanline or CRT filter for people who want one.
+
+  Three things make this cheap and one makes it a rule:
+
+  * `Settings` (`src/input.h`) already persists through `SDL_GetPrefPath`, and
+    graphics options ride the same file. It is NOT `SETUP.CFG` - that is the
+    DOS install's hardware config and belongs to `SETUP.EXE`;
+  * the menu page already exists - "Game Options" is `1b2e:4d80`'s own page and
+    the port added `Redefine Input Device` to it, so a `Graphics` entry goes
+    beside it the same way;
+  * `screen.cpp` is a plain indexed framebuffer and only `main.cpp` and
+    `opl.cpp` include SDL, so every one of these lives at the platform edge and
+    touches nothing that was reverse engineered.
+  * **and the rule: none of it may touch the SIMULATION.** The fixed 16.11 Hz
+    step is load bearing - every speed in the game is a whole number of pixels
+    per frame - so a graphics option changes how a frame is PRESENTED and
+    never how one is computed. Same constraint as the frame-rate item above.
+
 - small quality-of-life tweaks, each behind a switch that defaults to off.
 - **give `GLDFADE` its animation back.** The player's idea, and it is the best
   candidate on this list because the work is already done: six compiled
