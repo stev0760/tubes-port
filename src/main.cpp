@@ -1853,9 +1853,16 @@ CutsceneArt loadCutsceneArt(const tubes::Archive& res) {
                     std::vector<tubes::Image>& out) {
         out.resize(static_cast<size_t>(n));
         for (int i = 0; i < n; ++i) {
-            // Index 0 is transparent, as `2321:068d` and `2321:0905` both
-            // treat it - the writing frames sit over the blackboard.
-            if (!loadImage(res, names[i], out[static_cast<size_t>(i)], 0)) {
+            // OPAQUE. `1b2e:0f46` draws every animation frame through
+            // `2000:389d`, which is `2321:068d` - the opaque member of the
+            // blit family, the same one `1b2e:0e37` stamps the professor's
+            // wave frames with. So a frame REPLACES its whole w x h box,
+            // index-0 pixels included, and those land as colour 0 rather than
+            // as "leave what was there". That is the whole of the 144 pixels
+            // this screen was out by: the port had these masked, so the base
+            // pose showed through the bottom of a 28 x 66 frame where the
+            // original had blacked it out.
+            if (!loadImage(res, names[i], out[static_cast<size_t>(i)], -1)) {
                 return false;
             }
         }
@@ -1931,42 +1938,16 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
     // holds what by then depends on the whole run. The OUTCOME is read off
     // seven captures that all agree; the mechanism is marked as unread.
 
-    // The original draws onto a PAGE and never clears it: the base pose goes
-    // down once before the fade, each page paints its panel and text over
-    // whatever is there, and every animation frame is painted over the last.
-    // Nothing is erased until `1b2e:1e6b`.
+    // The original draws onto a PAGE, and the only thing that keeps that
+    // distinguishable from "an overlay over the board" is that its blits are
+    // OPAQUE: a frame writes colour 0 where its art is transparent, and black
+    // is not the same as letting the blackboard through. The port kept the
+    // figures in a layer stamped with index 0 meaning "not painted", which is
+    // exactly the difference the fourth page's 144 pixels measured. They are
+    // drawn straight onto the composed page here instead.
     //
-    // So the port keeps the page too, rather than recomposing each frame. It
-    // matters: recomposing draws only the CURRENT frame, and where an earlier
-    // frame painted something the current one leaves transparent, the page
-    // still holds it. That was worth 144 pixels on the fourth page, and it is
-    // not a detail anyone would have thought to check without the capture.
-    // ... but only for the FIGURES. The pages' panels and text are cleared
-    // between pages (`1b2e:1188` blanks the rect on both pages), so those are
-    // recomposed; the figures are the part that accumulates, and they live in
-    // a layer of their own that is never cleared.
-    tubes::Screen figures;
-    figures.clear(0);
-    figures.blit(art.base, tubes::kCutsceneBaseX, tubes::kCutsceneBaseY);
-    figures.blit(art.writeFrames[0], 86, 122);
-    figures.blit(art.blowFrames[0], 258, 119);
-
-
-    // `1b2e:1e6b`: page 4 ends by copying both animation rectangles from the
-    // other video page. What that leaves is what the captures show - the
-    // frozen frames stay and the base pose's middle goes, so below y 188 he
-    // is the base and above it he is the last frame.
-    auto restoreBox = [&](int rx, int ry, int rw, int rh) {
-        uint8_t* px = figures.pixelsMutable();
-        for (int y = ry; y < ry + rh && y < tubes::kScreenHeight; ++y) {
-            for (int x = rx; x < rx + rw && x < tubes::kScreenWidth; ++x) {
-                if (x < 0 || y < 0) continue;
-                // The figures layer is transparent where nothing painted.
-                px[static_cast<size_t>(y) * tubes::kScreenWidth + x] = 0;
-            }
-        }
-    };
-
+    // The base pose is the exception and stays MASKED: `1b2e:1a91` draws it
+    // through `2000:3921`, the masked thunk, because it goes over the board.
     // A page's own furniture: the bevelled panel, the story text and, on page
     // 2, the eight elements' atoms. Drawn once, over whatever is there.
     auto layout = [&](const tubes::CutscenePage& page) {
@@ -1990,17 +1971,59 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
         }
     };
 
+    // One tick's worth of figures, drawn onto the page after its furniture.
+    auto drawFigures = [&](const tubes::CutscenePage& page, bool aLive,
+                           bool bLive) {
+        screen.blit(art.base, tubes::kCutsceneBaseX, tubes::kCutsceneBaseY);
+        if (!aLive && !bLive) {
+            // Past the fourth page. `1b2e:1e58`..`1e84` copy both animation
+            // boxes from the other page, and each track's frozen frame is
+            // what is left - which an opaque blit of those two frames over
+            // the base pose reproduces exactly, box and all.
+            screen.blit(art.writeFrames[tubes::kWriteFrameCount - 1], 86, 122);
+            screen.blit(art.blowFrames[tubes::kBlowFrameCount - 1], 258, 119);
+            return;
+        }
+        if (!bLive) {
+            // The beaker is still on the page from the last tick that drew
+            // it, even while B is driving the eighth element's atom.
+            screen.blit(art.blowFrames[static_cast<size_t>(
+                            beakerFrame < tubes::kBlowFrameCount
+                                ? beakerFrame : 0)],
+                        258, 119);
+        }
+        if (aLive) {
+            screen.blit(art.writeFrames[static_cast<size_t>(
+                            frameA < tubes::kWriteFrameCount ? frameA : 0)],
+                        page.a.x, page.a.y);
+        }
+        if (bLive) {
+            if (page.b.w == 16) {
+                screen.blit(art.blowFrames[static_cast<size_t>(
+                                beakerFrame < tubes::kBlowFrameCount
+                                    ? beakerFrame : 0)],
+                            258, 119);
+                if (frameB > 0 && frameB < kCellStates && haveAtom[frameB]) {
+                    screen.draw(atoms[frameB], page.b.x, page.b.y);
+                }
+            } else {
+                screen.blit(art.blowFrames[static_cast<size_t>(
+                                frameB < tubes::kBlowFrameCount ? frameB : 0)],
+                            page.b.x, page.b.y);
+            }
+        }
+    };
+
     // The scene with no page on it: `1b2e:1a45` onward, which is what the
     // fade-in reveals.
     auto scene = [&]() {
         screen.clear(0);
         screen.blit(*board, 0, tubes::kCutsceneBoardY);
-        // `2321:0711`-style: index 0 is transparent, so the board shows
-        // through everywhere the figures have not painted.
-        screen.stamp(figures, 0, 0, tubes::kScreenWidth, tubes::kScreenHeight);
+        drawFigures(tubes::kCutscenePages[0], true, true);
     };
 
-    auto compose = [&](const tubes::CutscenePage& page) {
+    auto compose = [&](const tubes::CutscenePage& page, bool aLive,
+                       bool bLive) {
         screen.clear(0);
         screen.blit(*board, 0, tubes::kCutsceneBoardY);
         // The page's furniture, THEN the animation over it. That is the
@@ -2011,66 +2034,7 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
         // ball through colours 1..7 at the same coordinates. Stamping the
         // figures first put the static ball back on top and it never moved.
         layout(page);
-        // `2321:0711`-style: index 0 is transparent, so everything under the
-        // figures shows through where they have not painted.
-        screen.stamp(figures, 0, 0, tubes::kScreenWidth, tubes::kScreenHeight);
-    };
-
-    // One tick's worth of animation, painted over the page.
-    // Rebuild the figures layer for this tick: the base pose, then whichever
-    // frame each live track is on.
-    //
-    // The ORIGINAL does not rebuild - it paints each frame over the last and
-    // never erases until `1b2e:1e6b`. Rebuilding matches it on four of the
-    // five pages and differs by 144 pixels on the late ticks of the fourth,
-    // where a taller pose has been drawn over a shorter one and the page
-    // still holds the difference. Accumulating instead fixes that page and
-    // costs 176 and 64 pixels on two others, because the page bookkeeping
-    // around `1b2e:1188` - which blanks a rect on BOTH pages between pages -
-    // is not read yet. Rebuilding is the better of the two until it is.
-    auto paint = [&](const tubes::CutscenePage& page, bool aLive, bool bLive) {
-        figures.clear(0);
-        figures.blit(art.base, tubes::kCutsceneBaseX, tubes::kCutsceneBaseY);
-        if (!aLive && !bLive) {
-            // Past the fourth page: the two boxes were copied back and each
-            // track's frozen frame is what is left.
-            restoreBox(86, 122, 28, 66);
-            restoreBox(258, 119, 60, 46);
-            figures.blit(art.writeFrames[tubes::kWriteFrameCount - 1], 86, 122);
-            figures.blit(art.blowFrames[tubes::kBlowFrameCount - 1], 258, 119);
-            return;
-        }
-        if (!bLive) {
-            // The beaker is still on the page from whatever B last left it
-            // on, even while B is driving the eighth element's atom.
-            figures.blit(art.blowFrames[static_cast<size_t>(
-                             beakerFrame < tubes::kBlowFrameCount
-                                 ? beakerFrame : 0)],
-                         258, 119);
-        }
-        if (aLive) {
-            figures.blit(art.writeFrames[static_cast<size_t>(
-                            frameA < tubes::kWriteFrameCount ? frameA : 0)],
-                        page.a.x, page.a.y);
-        }
-        if (bLive) {
-            if (page.b.w == 16) {
-                // The ball table, indexed by the counter itself. Entry 0 is
-                // not a ball, so the first tick draws nothing. The beaker is
-                // still there from before, at the frame B left it on.
-                figures.blit(art.blowFrames[static_cast<size_t>(
-                                 beakerFrame < tubes::kBlowFrameCount
-                                     ? beakerFrame : 0)],
-                             258, 119);
-                if (frameB > 0 && frameB < kCellStates && haveAtom[frameB]) {
-                    figures.draw(atoms[frameB], page.b.x, page.b.y);
-                }
-            } else {
-                figures.blit(art.blowFrames[static_cast<size_t>(
-                                frameB < tubes::kBlowFrameCount ? frameB : 0)],
-                            page.b.x, page.b.y);
-            }
-        }
+        drawFigures(page, aLive, bLive);
     };
 
     if (musicOn && music.isOpen()) {
@@ -2111,8 +2075,7 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
         const int ticks = page.seconds * 7;
         bool aDone = page.a.count == 0, bDone = page.b.count == 0;
         for (int t = 0; t < ticks; ++t) {
-            paint(page, !aDone, !bDone);
-            compose(page);
+            compose(page, !aDone, !bDone);
             presentScreen(ren, tex, screen, pal, rgba);
             if (shotPage == p && t == (shotTick >= 0 ? shotTick : ticks / 2)) {
                 saveBmp(rgba, shotPath);

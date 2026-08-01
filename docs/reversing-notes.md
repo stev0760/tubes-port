@@ -8580,21 +8580,68 @@ the two tracks. Capturing a run from its start removed it entirely. A number
 that will not go away is worth suspecting the measurement over the code, which
 is this project's own rule about negative results pointed the other way.
 
-**One difference is still open, and it is the drawing MODEL.** The original
-never erases: the base pose goes down once before the fade, and every
-animation frame is painted over the last, so the page holds the union of
-everything drawn with the newest on top. The port rebuilds the figures each
-tick instead. That matches on four pages and differs on the LATE ticks of page
-4, where the 28x66 poses have been drawn over the 28x41 ones and the original
-still holds the difference - **144 pixels**, in a strip at x 90..97,
-y 164..187.
+### The last 144 pixels were an OPAQUE blit, not the page bookkeeping
 
-Accumulating instead fixes page 4 and costs 176 and 64 pixels on pages 3 and
-5, because the page bookkeeping is more than "never erase": `1b2e:1188` blanks
-a rect on BOTH pages between pages, `1b2e:0f46` flips `[0x2376]` once per call
-rather than per frame, and `1b2e:1e6b` copies rectangles between the two. That
-whole scheme is what is unread, and reading it is what would take the last
-144 pixels out. Rebuilding is the better of the two models until then.
+This was open for two sessions and filed under the video pages, on the reading
+that the original "never erases" and the port lost the union by rebuilding.
+Both halves of that were wrong, and the pixels' own colour says so:
+
+    x 90..97, y 164..187      original: colour 0, all 144 of them
+                              port:     the base pose's greys
+
+**The original is BLACK there and the port let something show through** - the
+opposite way round from "the original holds more". So nothing was accumulating.
+
+`1b2e:0f46` draws every animation frame through `2000:389d`, which is
+`2321:068d` - the OPAQUE member of the blit family, the same one `1b2e:0e37`
+stamps the professor's wave frames with. An opaque blit writes the whole
+`w x h` box including the pixels the art leaves at index 0, and those land as
+colour 0. So a frame REPLACES its box; it does not merge into it.
+
+The strip is where that shows. `WRITE1..5.GFX` are 28 x 41 and `WRITE6..9.GFX`
+are 28 x 66, and page 4 is the first to use the tall ones. Their bottom rows
+are index 0, so the original blacks out the base pose underneath - and the
+port, which kept the figures in a layer stamped with index 0 meaning "not
+painted", drew the base pose through them.
+
+Two things had to change and neither is a page: the frame lists load OPAQUE
+(they were loading with index 0 transparent, on a note that named `2321:068d`
+as the masked one - it is not), and the figures are drawn straight onto the
+composed page instead of through an overlay, because an overlay cannot tell
+"wrote black" from "wrote nothing". The base pose stays masked, since
+`1b2e:1a91` draws it through `2000:3921`.
+
+**The result is 0 pixels on all five pages with nothing masked at all** - 42
+captures, whole screen, `sweep_cutscene_ticks.py` per page - and the masked
+`diff_cutscene.py` stays at 0 too.
+
+### What the page bookkeeping turned out to be, and why it was not the answer
+
+Read anyway, since it was the standing lead. It is all real and none of it was
+needed:
+
+* `1b2e:0f46` calls `Flip` once per tick, and then - only when track A has
+  stopped and B has not - toggles `DS:0x2376` a SECOND time and re-selects the
+  draw page, so a lone track animates on the shown page instead of being
+  double-buffered;
+* `1b2e:1188` is `Flip; CopyRect(3, DS:0x2376, x, y, w, h); Flip`, and every
+  page ends with one. The rectangle differs per page, read off the four call
+  sites: `(0, 25, 320, 20)`, `(0, 4, 320, 95)`, `(0, 25, 320, 20)`,
+  `(0, 4, 320, 50)`. The 95-tall one is page 2's, because its band has to
+  reach the eight elements' atoms at y 60..72;
+* `1b2e:1e58`..`1e84` copy both animation boxes from the other page, and only
+  the FOURTH page does it.
+
+Building all three on top of a two-page model was tried and measured before
+the real cause was found: it moved page 4 from 144 pixels to 148 and put 176
+back on the others. The number that mattered was the one that got worse, and
+the colour of the pixels is what finally pointed the right way.
+
+**A method note, because this cost two sessions.** The residue had been
+described as "the original still holds the difference" without anyone reading
+the pixels' VALUE. One `Counter` over the differing pixels said `(0,0,0) x
+144` and the whole thing fell out in minutes. Diff the colours, not just the
+count.
 
 This also matters beyond the cutscene: `1000:b287` runs it BEFORE the attract
 demo and skips the demo if it returns 2, so the port's attract mode is missing

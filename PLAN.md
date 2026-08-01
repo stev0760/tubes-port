@@ -40,23 +40,11 @@ Two consequences that shape every decision here:
 What is left is polish, one unread screen, and the enhancements the player has
 asked for. In the order they are worth doing:
 
-1. **The video page bookkeeping**, part read. `2321:0109` and `2321:0000` are
-   done and written up: FOUR pages of 16000 bytes, `DS:0x2376` the draw page
-   and `DS:0x2378` the shown one, and **page 3 is a clean copy of the backdrop
-   that everything erases from** - which is the whole menu-side dirty-rect
-   model. `2321:024d` is `CopyRect(src, dst, x, y, w, h)` and `1b2e:1188` is
-   just `Flip; CopyRect(3, live, ...); Flip`. `DS:0x2058` turned out to be
-   `BLACKBRD.GFX` and needed no explanation at all.
-
-   What is left of it: **the cutscene's last 144 pixels**, and **which page
-   `1b2e:0656` snapshots from** - its `CopyPage(0, 3)` reads backwards against
-   the rest and the reversing notes say exactly which two readings to separate
-   on the rig. Nothing in the port depends on either.
-2. **`1000:9499`**, the wave-75 ending. The only screen in the program nobody
+1. **`1000:9499`**, the wave-75 ending. The only screen in the program nobody
    has seen, and `PRIZE.GFX` sits behind a "RegisteredEnding" error string.
    Note it is now half-read anyway: it is what sets `DS:0x20e3`, the flag that
    makes the professor JUMP, and it clears it again on the way out.
-3. Then the enhancements in section 5, which are the player's: a **Graphics
+2. Then the enhancements in section 5, which are the player's: a **Graphics
    Options screen** (the port cannot even go fullscreen) and **GLDFADE**.
 
 **The three animations that used to head this list are done**, and the two
@@ -120,12 +108,12 @@ Still unread:
 
 - `1000:9499`, reached on clearing wave 75 - the registered ending, and the
   only screen in the program nobody has seen
-- **the video page bookkeeping**, mostly read - `2321:0109` and `2321:0000`
-  give four 16000-byte pages and page 3 as the clean backdrop everything erases
-  from, `2321:024d` is `CopyRect(src, dst, x, y, w, h)`, `1b2e:1188` is a
-  three-line restore-from-3, and `DS:0x2058` was `BLACKBRD.GFX` all along. Left
-  over: the cutscene's last 144 pixels, and `1b2e:0656`'s `CopyPage(0, 3)`,
-  which reads backwards against the rest
+- ~~the video page bookkeeping~~ - **done**. Four 16000-byte pages, page 3 the
+  clean backdrop everything erases from, `2321:024d` is
+  `CopyRect(src, dst, x, y, w, h)`, `1b2e:1188` a three-line restore-from-3,
+  `1b2e:0f46`'s second toggle is what pins a lone track to the shown page, and
+  `DS:0x2058` was `BLACKBRD.GFX` all along. It was NOT the cause of the
+  cutscene's 144 pixels - see the notes
 - `.BIN` - one resource, and nothing decompiled reads it
 
 ### The engine: ~90%
@@ -202,7 +190,7 @@ The surrounding screens, and where each stands:
 | Demo playback (`.SCR` replay through the same loop) | **done** - matches end to end, terminates on the original's own last byte |
 | The Software Creations splash `21d5:007b` | **done** - 0 pixels of 64,000 against the reference render |
 | The Absolute Magic splash `2178:00eb` | **done** - the built backdrop, the logo zoom, five strikes with the white flash, the writing |
-| The opening cutscene `1b2e:1651` | **done and measured** - **0 pixels of 64,000** on all five pages, whole screen, nothing masked. Open: 144 px on page 4's late ticks, the page bookkeeping |
+| The opening cutscene `1b2e:1651` | **done and measured** - **0 pixels of 64,000** on all five pages, whole screen, nothing masked, 42 captures. Nothing open |
 | Instructions `1b2e:2d63` and Credits `1b2e:411b` | **done** - all 21 slides and 4 pages, EXTRACTED not transcribed; a captured slide diffs at **8 pixels of 64,000** |
 | High scores, viewer and entry | **done** - both viewer pages at **0 of 64,000**, unmasked; `TUBES.HSC` round-trips byte-exact |
 | Save / load, the menu and F2 | **done** - `TUBES.SAV` re-encodes byte-exact; the slot list diffs at 252 px, all star-rotation phase |
@@ -939,15 +927,20 @@ the same but also sets the return code to 2, which is what leaves the
 cutscene. The port had every key ending the whole thing, which made Enter a
 skip button rather than the page-turner the original gives you.
 
-**One thing is still open, and it is 144 pixels on one page.** The original
-never erases while a page runs - each animation frame is painted over the
-last, so the page holds the union of everything drawn. The port rebuilds the
-figures each tick, which matches on four pages and differs on the late ticks
-of page 4, where a 28x66 pose has been drawn over 28x41 ones. Accumulating
-instead fixes page 4 and breaks two others, because the real scheme involves
-`1b2e:1188` blanking a rect on BOTH pages, `1b2e:0f46` flipping `[0x2376]`
-once per call, and `1b2e:1e6b` copying rectangles between them. **Read the
-page bookkeeping** and the last 144 pixels go.
+**The last 144 pixels are closed, and the cause was not the pages.** The
+residue on the fourth page was written up as "the original holds the union and
+the port rebuilds", and the fix was expected to come out of the page
+bookkeeping. Reading the pixels' COLOUR settled it in minutes instead: all 144
+are colour 0 in the original and the base pose's greys in the port, i.e. the
+original had blacked something out and the port let it show through.
+`1b2e:0f46` blits every frame OPAQUELY (`2000:389d`), so a 28x66 frame's
+transparent bottom rows land as black over the base pose. The frame lists were
+loading with index 0 transparent and the figures lived in an overlay that
+cannot tell "wrote black" from "wrote nothing". Both fixed; **all five pages
+now diff at 0 with nothing masked**.
+
+The page bookkeeping was read as well and is in the notes - it is all real and
+none of it was needed.
 
 They are last on purpose. Both are large, neither gates play, and the cutscene
 in particular is an animation system (`WRITE0..9` is a *writing* animation)
