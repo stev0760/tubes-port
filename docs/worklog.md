@@ -3269,3 +3269,30 @@ Small design notes that took a moment each:
   does not silently unbind a controller;
 - when the screen is armed the NEXT press binds, Escape included - there is no
   other way to bind Escape and no reason to forbid it.
+
+### The rebinding screen becomes a classroom
+
+Player note on the first version, which was a bare green rectangle over the
+title art: make it a whole classroom, similar to but not the same as the high
+score viewer.
+
+It ends up borrowing from both and matching neither, which is the right answer
+for a screen the original never had:
+
+    from 1b2e:0a11   the blackboard at (0, 12) and the professor at (267, 121),
+                     waving his pointer on his own ten-retrace clock - the
+                     "whole classroom", which the high score viewer pointedly
+                     does not have
+    from 1b2e:61b6   the chalk panel over the board, the roller bar on its top
+                     edge, the cursive rows, the centred title
+    its own          a panel that stops at x 257 so the professor is not
+                     painted over, and two columns instead of name-and-score
+
+The projector slide is left out deliberately. `drawScene` always lays it down
+and it is 172 wide - fine for a briefing's small-font prose, hopeless for
+"Button A" against "Left Ctrl / A".
+
+One detail that reads as design rather than accident: the control NAMES are in
+the viewer's cursive because they are words chalked on a blackboard, and the
+BINDINGS are in the heading font because "Left Ctrl" is a label off a keyboard
+and has to be read exactly.

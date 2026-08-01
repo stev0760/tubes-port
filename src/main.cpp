@@ -1116,50 +1116,98 @@ std::string bindingLabel(const tubes::Binding& x) {
 // page title where a page title goes, a rule under it, and one row per
 // control with the same colour the menu items use.
 //
-// It takes the high score panel's colour and x, but its own height: six rows
-// of bindings need more than the ten a score table does, and reusing
-// `2321:060b`'s rect put the title on top of the logo.
+// It borrows from BOTH the classroom scene and the high score viewer and is
+// quite the same as neither, because six labelled rows want more room than
+// either was built for:
+//
+//   from `1b2e:0a11`   the blackboard at (0, 12) and the professor at his own
+//                      (267, 121) - the "whole classroom", which the high
+//                      score viewer deliberately does not have
+//   from `1b2e:61b6`   the chalk panel over the board, the roller bar above
+//                      it, the cursive rows and the centred title
+//   its own            a NARROWER panel, so the professor is not painted over,
+//                      and two columns instead of the viewer's name-and-score
+//
+// The projector slide is left out on purpose. `drawScene` always lays it down
+// and it is only 172 wide - fine for a briefing's small-font prose, hopeless
+// for "Button A" against "Left Ctrl / A".
 void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
-                      int row, bool waiting, const tubes::Font& big,
-                      bool haveBig) {
-    constexpr int kPanelY = 20;
-    constexpr int kPanelH = 160;
+                      int row, bool waiting, const tubes::Image* board,
+                      bool haveBoard, const SceneArt& art,
+                      const tubes::Font& big, bool haveBig,
+                      const tubes::Font& script, bool haveScript,
+                      int profFrame) {
+    screen.clear(0);
+    if (haveBoard) screen.blit(*board, 0, tubes::kBoardY);
+
+    // The professor, exactly as the scene draws him: the standing pose masked,
+    // then the wave frame stamped opaquely over his top half.
+    if (art.havePointer && art.havePointer[0]) {
+        screen.blit(art.pointer[0], tubes::kProfX, tubes::kProfY);
+    }
+    if (art.havePointer && profFrame > 0 && profFrame < 4 &&
+        art.havePointer[profFrame]) {
+        screen.blit(art.pointer[profFrame], tubes::kProfX, tubes::kProfY);
+    }
+
+    // The chalk panel. `2321:060b`'s colour and left edge, but it stops at 257
+    // so the professor stands clear of it.
+    constexpr int kPanelY = 30;
+    constexpr int kPanelH = 126;
+    constexpr int kPanelRight = 257;
     uint8_t* px = screen.pixelsMutable();
     for (int y = kPanelY; y < kPanelY + kPanelH; ++y) {
         if (y < 0 || y >= tubes::kScreenHeight) continue;
-        for (int x = tubes::kHsPanelX;
-             x < tubes::kHsPanelX + tubes::kHsPanelW; ++x) {
+        for (int x = tubes::kHsPanelX; x < kPanelRight; ++x) {
             if (x < 0 || x >= tubes::kScreenWidth) continue;
             px[static_cast<size_t>(y) * tubes::kScreenWidth + x] =
                 tubes::kHsPanelColour;
         }
     }
-    if (!haveBig) return;
-    tubes::drawTextCentred(screen, big, 0, 319, 26, tubes::kHsTitleColour,
-                           tubes::textmode::kPeak, "Redefine Controls");
-    tubes::drawTextCentred(screen, big, 0, 319, 29, tubes::kHsTitleColour,
-                           tubes::textmode::kPeak, "_________________");
+    // The roller bar sits on the panel's top edge, as it does in the viewer.
+    if (art.haveBar) screen.blit(*art.bar, tubes::kHsViewBarX, kPanelY - 11);
 
-    constexpr int kRow0 = 48;
-    constexpr int kPitch = 18;
-    constexpr int kNameX = 24;
-    constexpr int kBindX = 128;
+    if (haveBig) {
+        // Centred over the PANEL rather than the screen, or the professor
+        // pushes the title off-centre.
+        tubes::drawTextCentred(screen, big, 0, kPanelRight, 16,
+                               tubes::kHsViewTitleColour,
+                               tubes::textmode::kPeak, "Redefine Controls");
+    }
+
+    constexpr int kRow0 = 42;
+    constexpr int kPitch = 16;
+    constexpr int kNameX = 22;
+    constexpr int kBindX = 112;
     for (int i = 0; i < tubes::kGameButtons; ++i) {
         const int y = kRow0 + i * kPitch;
-        // The row being bound says so instead of showing its binding, which
-        // is also how the player knows the next press is being taken.
+        // The row being bound says so instead of showing its binding, which is
+        // also how the player knows the next press is being taken.
         const bool armed = waiting && i == row;
-        const uint8_t colour = (i == row) ? tubes::kHsTitleColour
+        const uint8_t colour = (i == row) ? tubes::kHsViewTitleColour
                                           : tubes::kHsRowColour;
-        tubes::drawText(screen, big, kNameX, y, colour, tubes::textmode::kPeak,
-                        tubes::kGameButtonNames[i]);
-        tubes::drawText(screen, big, kBindX, y, colour, tubes::textmode::kPeak,
-                        armed ? "press a key or button"
-                              : bindingLabel(bind.b[i]));
+        // Names in the viewer's cursive, because they are words on a
+        // blackboard; bindings in the heading font, because "Left Ctrl" is a
+        // label off a keyboard and has to be read exactly.
+        if (haveScript) {
+            tubes::drawText(screen, script, kNameX, y, colour,
+                            tubes::textmode::kPeak, tubes::kGameButtonNames[i]);
+        }
+        if (haveBig) {
+            tubes::drawText(screen, big, kBindX, y, colour,
+                            tubes::textmode::kPeak,
+                            armed ? "press a key or button"
+                                  : bindingLabel(bind.b[i]));
+        }
     }
-    tubes::drawTextCentred(screen, big, 0, 319, kPanelY + kPanelH - 22,
-                           tubes::kHsRowColour, tubes::textmode::kPeak,
-                           "Enter to change, Esc when done");
+    if (haveBig) {
+        // Short enough to sit inside the panel: 24 characters at the heading
+        // font's 8-pixel advance is 192, against the panel's 247.
+        tubes::drawTextCentred(screen, big, tubes::kHsPanelX, kPanelRight,
+                               kPanelY + kPanelH - 18, tubes::kHsRowColour,
+                               tubes::textmode::kPeak,
+                               "Enter binds, Esc exits");
+    }
 }
 
 // The pause overlay, `1000:3916`. Same two rows as a banner, and the loop is
@@ -3047,6 +3095,16 @@ int main(int argc, char** argv) {
         // a crash that needs both a full beaker and a live render is invisible
         // to --auto, which simulates first and draws once at the end.
         if (stage == Stage::kTitle) {
+            // The rebinding screen borrows the classroom, so it borrows the
+            // professor's clock too - `1b2e:0e37` steps him every ten
+            // retraces, and he waves his pointer while any screen waits.
+            if (rebindOpen) {
+                profAccum += dt * tubes::kRetraceHz;
+                while (profAccum >= tubes::kProfWaveRetraces) {
+                    profAccum -= tubes::kProfWaveRetraces;
+                    if (++profWave > tubes::kProfWaveFrames) profWave = 1;
+                }
+            }
             // `1b2e:52bf`'s loop body, at the TITLE screen's own rate - see
             // kTitleHz. Everything in it is counted in frames: 4 px a frame
             // along a leg, a star frame every three, 720 frames to attract.
@@ -3233,12 +3291,10 @@ int main(int argc, char** argv) {
         // rule, the row pitch - so a screen the original never had still looks
         // like it belongs to this game.
         if (rebindOpen) {
-            drawTitle(screen, titleBg, titleFgScene, haveTitleBg && haveTitleFg,
-                      menu, titleAtom, atoms, haveAtom, titleBall, stars,
-                      haveStar, headingFont, haveHeading, titleFg, smallFont,
-                      haveSmall);
             drawRebindScreen(screen, settings.bindings, rebindRow,
-                             rebindWaiting, headingFont, haveHeading);
+                             rebindWaiting, &blackboard, haveBlackboard,
+                             sceneArt, headingFont, haveHeading, scriptFont,
+                             haveScript, tubes::pointerFrameFor(profWave));
             presentFrame();
             continue;
         }
