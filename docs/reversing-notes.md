@@ -6360,6 +6360,54 @@ for the missing roll-down on `DS:0x210e` because of that sentence. The roll is
 a different animation in a different routine, and it is not gated on anything -
 see the next section.
 
+### The joke slide is `1b2e:084e`, and `FLASH.GFX` settles it on sight
+
+The player reported this from play: "Lanny accidentally shows a WRONG slide -
+he is flashing, wearing an Absolute Magic shirt under his lab coat." It was
+filed as "not yet located", with the guess that it was an unattributed sprite
+arm or a slide the extraction had read as text-only. It is neither. It is
+`1b2e:084e`, which this file already quoted as "a one-in-twenty easter egg,
+not ported" without knowing what the egg was.
+
+**`FLASH.GFX` is 172 x 132** - the slide rectangle exactly - and what it draws
+is the professor holding his lab coat open over an "AM" T-shirt, on a
+vignetted photo of his own blackboard. `POINTERT.GFX` is the 28 x 21 that goes
+with it: a startled face, stamped over the head of whichever pose is up. Both
+were sitting in the resource table with no known consumer.
+
+`1b2e:0a11` calls `1b2e:084e` on every scene redraw - so every slide change and
+every screen entry - and it is gated twice:
+
+    if (DS:0x210f = 0) and (Random(100) < 5) then begin
+      Flip;  Delay($f);
+      FillRect(74, 31, 172, 132, 17);  <the four 4x4 corners>
+      Draw(74, 31, FLASH, 172, 132);             { 2000:389d, OPAQUE }
+      Flip;  SetPage(DS:0x2376);
+      Draw(267, 121, POINTERT, 28, 21);          { 2000:389d, over his face }
+      Delay($1e);
+      Draw(267, 121, POINTER[DS:0x20b0]);        { and his own head back }
+      Delay($f);
+      DS:0x210f := 1;
+      PlaySound(DS:0x2124)                       { SLIDE.SFX }
+    end
+
+`DS:0x210f` is cleared once, by `1000:b1da` at start-up, and set here - so the
+roll is one in twenty **per slide** but the gag happens **at most once per
+program run**. That is why it is so rarely seen and why it took a player to
+report it.
+
+Two details a port gets wrong by default. The slide rect and the four corners
+`1b2e:084e` lays down are the SAME ones `1b2e:0a11` draws immediately
+afterwards, so the gag is wiped by its own caller and is on screen for its own
+`$1e + $f` retraces - 0.64 s - and no longer. And `1b2e:084e` is a blocking
+routine called *before* the key waits, so nothing else on the screen moves
+while it runs: no mouth, no pointer.
+
+Both stamps are OPAQUE (`2000:389d`), which matters for `FLASH.GFX` because its
+vignette is black and masking it would let the blank slide through. Ported, and
+both stamps diff pixel-exactly against the decoded resources. `--joke` forces
+it, since waiting on a 5% roll is not a capture method.
+
 ### The projector SCREEN rolls down, in `1b2e:0510`
 
 `1b2e:0510` is the routine that builds the classroom from nothing: it clears,

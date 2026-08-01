@@ -2253,6 +2253,47 @@ void testTheProfessorTalksBeforeHeWaves() {
     check(q.wave == 1, "it goes straight to waving");
 }
 
+// `1b2e:084e`. Two gates, and the one that matters is `DS:0x210f`: the roll is
+// one in twenty PER SLIDE, but the flag means at most one showing per run.
+void testTheJokeSlideFiresAtMostOncePerRun() {
+    using namespace tubes;
+
+    PascalRandom rng{99u};
+    JokeSlide j;
+    check(!j.active() && !j.showFlash() && !j.showFace(),
+          "an untouched joke draws nothing");
+
+    // Roll until it takes, then check it can never take again.
+    int tries = 0;
+    while (!j.active() && tries < 10000) {
+        j.maybeStart(rng);
+        ++tries;
+    }
+    check(j.active(), "it fires eventually");
+    check(tries < 200, "and one in twenty does not take 200 slides");
+
+    // Run it out and try again - `DS:0x210f` is set and never cleared.
+    const float retrace = 1.0f / kRetraceHz;
+    bool ended = false;
+    for (int i = 0; i < 500 && !ended; ++i) ended = j.tick(retrace);
+    check(ended, "it ends, and says so on the frame SLIDE.SFX plays");
+    check(!j.active(), "and stops drawing");
+    for (int i = 0; i < 1000; ++i) j.maybeStart(rng);
+    check(!j.active(), "a thousand more slides never show it again");
+
+    // The three phases, in `1b2e:084e`'s own order: a beat with nothing drawn,
+    // then FLASH with POINTERT over his face, then FLASH with his own head.
+    JokeSlide k;
+    k.phase = 1;
+    check(!k.showFlash(), "the lead delay draws no slide yet");
+    for (int i = 0; i < kJokeLeadRetraces; ++i) k.tick(retrace);
+    check(k.showFlash() && k.showFace(), "then the wrong slide and the face");
+    for (int i = 0; i < kJokeFaceRetraces; ++i) k.tick(retrace);
+    check(k.showFlash() && !k.showFace(), "his head comes back first");
+    for (int i = 0; i < kJokeTailRetraces - 1; ++i) k.tick(retrace);
+    check(k.showFlash(), "and the slide is still up a retrace before the end");
+}
+
 void testTheFadeRampEndsOnBlackAndOnThePalette() {
     using namespace tubes;
     Bytes raw(768);
@@ -2988,6 +3029,7 @@ int main() {
     testTheFastSongIsAboutDropsNotDifficulty();
     testTheProjectorScreenRollsDownAndBouncesOnce();
     testTheProfessorTalksBeforeHeWaves();
+    testTheJokeSlideFiresAtMostOncePerRun();
     testTheFadeRampEndsOnBlackAndOnThePalette();
     testTheGfxPrefixDoesNotDecideTheLayout();
     testTheSprStripSplitsIntoImages();

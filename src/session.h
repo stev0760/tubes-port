@@ -333,6 +333,83 @@ struct PascalRandom {
 };
 
 // ---------------------------------------------------------------------------
+// The joke slide, `1b2e:084e`
+// ---------------------------------------------------------------------------
+//
+// The player reported this from play: "Lanny accidentally shows a WRONG slide -
+// he is flashing, wearing an Absolute Magic shirt under his lab coat." It is
+// `FLASH.GFX`, and the sprite settles it on sight - 172 x 132, which is the
+// slide rectangle exactly, and what it draws is the professor holding his coat
+// open over an "AM" T-shirt. `POINTERT` is the 28 x 21 head that goes with it,
+// a startled face stamped over his own.
+//
+// `1b2e:0a11` calls `1b2e:084e` on EVERY scene redraw - every slide change and
+// every screen entry - and it is gated twice:
+//
+//     if (DS:0x210f = 0) and (Random(100) < 5) then begin
+//       Flip;  Delay($f);
+//       FillRect(74, 31, 172, 132, 17);  <the four corners>
+//       Draw(74, 31, FLASH);                       { 2321:068d, opaque }
+//       Flip;  SetPage;
+//       Draw(267, 121, POINTERT);                  { over his face }
+//       Delay($1e);
+//       Draw(267, 121, POINTER[DS:0x20b0]);        { and back }
+//       Delay($f);
+//       DS:0x210f := 1;
+//       PlaySound(SLIDE.SFX)
+//     end
+//
+// `DS:0x210f` is cleared once, by `1000:b1da` at start-up, and set here - so
+// this is one-in-twenty per slide but **at most once per program run**.
+//
+// The slide rect and corners it draws are the same ones `1b2e:0a11` lays down
+// immediately afterwards, which is what wipes the gag: it is on screen for its
+// own two delays and no longer.
+constexpr int kJokeChance = 5;            // `Random(100) < 5`
+constexpr int kJokeLeadRetraces = 15;     // `Delay($f)` before it appears
+constexpr int kJokeFaceRetraces = 30;     // `Delay($1e)` with POINTERT up
+constexpr int kJokeTailRetraces = 15;     // `Delay($f)` after his head is back
+
+struct JokeSlide {
+    bool used = false;     // DS:0x210f - start-up clears it, this sets it
+    int phase = 0;         // 0 idle, 1 lead, 2 FLASH + POINTERT, 3 FLASH alone
+    float accum = 0.0f;
+
+    // Call wherever the original calls `1b2e:084e`: from every `1b2e:0a11`.
+    bool maybeStart(PascalRandom& rng) {
+        if (used || phase != 0) return false;
+        if (rng.next(100) >= kJokeChance) return false;
+        used = true;
+        phase = 1;
+        accum = 0.0f;
+        return true;
+    }
+
+    bool active() const { return phase != 0; }
+    bool showFlash() const { return phase >= 2; }   // the wrong slide is up
+    bool showFace() const { return phase == 2; }    // and POINTERT with it
+
+    // True on the frame the gag ends, which is where `SLIDE.SFX` goes - the
+    // original plays it last, as the projector moves off the wrong slide.
+    bool tick(float dt) {
+        if (phase == 0) return false;
+        accum += dt * kRetraceHz;
+        for (;;) {
+            const int hold = phase == 1   ? kJokeLeadRetraces
+                             : phase == 2 ? kJokeFaceRetraces
+                                          : kJokeTailRetraces;
+            if (accum < static_cast<float>(hold)) return false;
+            accum -= static_cast<float>(hold);
+            if (++phase > 3) {
+                phase = 0;
+                accum = 0.0f;
+                return true;
+            }
+        }
+    }
+};
+
+// ---------------------------------------------------------------------------
 // The professor TALKS before he waves - `1b2e:0cd1`
 // ---------------------------------------------------------------------------
 //

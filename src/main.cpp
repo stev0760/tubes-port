@@ -301,6 +301,7 @@ struct Options {
     int cutscenePage = -1;      // capture this page of the opening cutscene
     int cutsceneTick = -1;      // ... at this tick of it, rather than midway
     int shotAfter = 0;          // present the screenshot after N live frames
+    bool joke = false;          // force `1b2e:084e`, which is a 5% roll
     bool autoAdvance = false;   // synthesise RETURN whenever a stage waits
     uint32_t seed = 0;          // 0 = clock for play, fixed for the harnesses
     bool help = false;
@@ -478,6 +479,8 @@ Options parseArgs(int argc, char** argv) {
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 o.hsPage = std::atoi(argv[++i]);
             }
+        } else if (a == "--joke") {
+            o.joke = true;
         } else if (a == "--screenshot-after" && i + 1 < argc) {
             o.shotAfter = std::atoi(argv[++i]);
         } else if (a == "--auto-advance") {
@@ -544,6 +547,8 @@ void usage() {
         "  --play-demo       replay DEMO.SCR through the live game loop\n"
         "  --demo-trace      run DEMO.SCR headless and print every spawn\n"
         "  --demo-csv FILE   with it, write per-frame state for the rig diff\n"
+        "  --joke            force `1b2e:084e`'s joke slide, which is a one in\n"
+        "                    twenty roll per slide and fires at most once a run\n"
         "  --wave N          start Wave mode on wave N (1..75) instead of\n"
         "                    Endurance. There is no briefing screen yet, and\n"
         "                    the marked-atom, crystal and pre-filled waves\n"
@@ -693,6 +698,12 @@ struct SceneArt {
     // `TALK1..5.GFX`, the five mouths `1b2e:0cd1` cycles over his face.
     const tubes::Image* talk = nullptr;
     const bool* haveTalk = nullptr;
+    // `1b2e:084e`'s joke slide: the wrong transparency and the face that
+    // goes with it.
+    const tubes::Image* flash = nullptr;
+    bool haveFlash = false;
+    const tubes::Image* pointerT = nullptr;
+    bool havePointerT = false;
 };
 
 // What the scene is doing right now, as opposed to what it is made of. Three
@@ -706,6 +717,13 @@ struct ScenePose {
     int slideY = tubes::kSlideY;
     int profFrame = 0;                // 0 standing, 1..3 POINTER1..3
     int mouthFrame = 0;               // 0 none, 1..5 TALK1..5 - `1b2e:0cd1`
+    bool jokeSlide = false;           // FLASH.GFX is up  - `1b2e:084e`
+    bool jokeFace = false;            // and POINTERT with it
+
+    // Nothing a screen wants to write belongs on the slide in either of these:
+    // `1b2e:0510` returns before its caller writes a word, and `1b2e:084e`
+    // runs inside `1b2e:0a11` before the caller is reached at all.
+    bool slideIsBusy() const { return frameH < tubes::kFrameH || jokeSlide; }
 };
 
 void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
@@ -753,6 +771,11 @@ void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
         art.havePointer[profFrame]) {
         screen.blit(art.pointer[profFrame], tubes::kProfX, tubes::kProfY);
     }
+    // `1b2e:084e` stamps `POINTERT` over whatever pose is up, which is why it
+    // comes after both of the draws above and not instead of them.
+    if (pose.jokeFace && art.havePointerT) {
+        screen.blit(*art.pointerT, tubes::kProfX, tubes::kProfY);
+    }
     // The mouth, `1b2e:0cd1`, stamped over his face at (276, 133) - a third
     // draw on top of the two above, and only while he is talking. The wave
     // frames carry their own mouth, so `ProfessorIdle` reports 0 for this the
@@ -792,6 +815,12 @@ void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
     for (int i = 0; i < 4; ++i) {
         if (haveCorner[i]) screen.blit(corners[i], cx[i], cy[i]);
     }
+
+    // The wrong slide goes ON the blank one, in `1b2e:084e`'s own order:
+    // FillRect, the four corners, then `FLASH.GFX` at the slide's origin.
+    if (pose.jokeSlide && art.haveFlash) {
+        screen.blit(*art.flash, slideX, slideY);
+    }
 }
 
 void drawBriefing(tubes::Screen& screen, const tubes::Game& game,
@@ -803,6 +832,7 @@ void drawBriefing(tubes::Screen& screen, const tubes::Game& game,
                   int8_t decorBall, const SceneArt& art,
                   const ScenePose& pose) {
     drawScene(screen, bg, haveBg, art, pose);
+    if (pose.slideIsBusy()) return;
 
     const tubes::WaveObjective& obj = game.objective();
     const int count = obj.counter;
@@ -942,6 +972,7 @@ void drawStats(tubes::Screen& screen, const std::vector<tubes::StatsRow>& rows,
     // So is the projector screen: `1000:8da5` reaches the scene through
     // `1b2e:0656`, which reads `DS:0xbba` at rest, not through `1b2e:0510`.
     drawScene(screen, board, haveBoard, art, pose);
+    if (pose.slideIsBusy()) return;
 
     for (const tubes::StatsRow& r : rows) {
         const tubes::Font* f = nullptr;
@@ -1235,10 +1266,7 @@ void drawInstructionSlide(tubes::Screen& screen,
                           const tubes::Sprite* tube, const bool* haveTube,
                           const tubes::Sprite* furn, const bool* haveFurn) {
     drawScene(screen, board, haveBoard, art, pose);
-    // Nothing is on the screen until it has finished coming down - the
-    // original's `1b2e:0510` returns before its caller writes a word of the
-    // first slide.
-    if (pose.frameH < tubes::kFrameH) return;
+    if (pose.slideIsBusy()) return;
     if (slide < 0 || slide >= count) return;
     // The navigation is drawn once by the original and never cleared, so it
     // belongs to the screen rather than to a page.
@@ -3035,6 +3063,13 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 5; ++i) {
         haveTalk[i] = loadImage(res, tubes::kTalkNames[i], talkFrame[i], 0);
     }
+    // `1b2e:084e`'s joke slide. Both go down through `2321:068d`, the OPAQUE
+    // blit - `FLASH.GFX` because it is a whole 172 x 132 transparency and
+    // covers the slide exactly, `POINTERT.GFX` because its 28 x 21 carries a
+    // patch of blackboard green behind the head it replaces.
+    tubes::Image flashArt, pointerTArt;
+    const bool haveFlash = loadImage(res, "FLASH.GFX", flashArt, -1);
+    const bool havePointerT = loadImage(res, "POINTERT.GFX", pointerTArt, -1);
 
     SceneArt sceneArt;
     sceneArt.corners = slideCorner;
@@ -3047,6 +3082,10 @@ int main(int argc, char** argv) {
     sceneArt.haveBar = haveBar;
     sceneArt.talk = talkFrame;
     sceneArt.haveTalk = haveTalk;
+    sceneArt.flash = &flashArt;
+    sceneArt.haveFlash = haveFlash;
+    sceneArt.pointerT = &pointerTArt;
+    sceneArt.havePointerT = havePointerT;
     bool haveFg = loadImage(res, "GAMEFG.GFX", foreground, 0);
 
     // ONE table, indexed by a beaker cell's raw value. The original's is at
@@ -3306,6 +3345,10 @@ int main(int argc, char** argv) {
     // atom TYPE - so it is loaded on its own for the high score viewer.
     tubes::Sound clapSound;
     bool haveClapSound = false;
+    // `SLIDE.SFX`, `DS:0x2124` - the projector advancing. `1b2e:084e` plays it
+    // last, as the joke slide is moved off.
+    tubes::Sound slideSound;
+    bool haveSlideSound = false;
     tubes::MusicPlayer music;
     if (opt.screenshot.empty()) {
         std::string audioErr;
@@ -3317,6 +3360,12 @@ int main(int argc, char** argv) {
                 std::string err;
                 haveClapSound = res.read("CLAP.SFX", raw, err) &&
                                 tubes::decodeSfx(raw, clapSound, err);
+            }
+            {
+                tubes::Bytes raw;
+                std::string err;
+                haveSlideSound = res.read("SLIDE.SFX", raw, err) &&
+                                 tubes::decodeSfx(raw, slideSound, err);
             }
             int loadedSfx = 0, wanted = 0;
             for (int i = 0; i < tubes::sfx::kCount; ++i) {
@@ -3622,6 +3671,10 @@ int main(int argc, char** argv) {
     // `PascalRandom` for what that does and does not change.
     tubes::ProfessorIdle profIdle;
     tubes::PascalRandom sceneRng{bootSeed ? bootSeed : 1u};
+    // `1b2e:084e`, rolled from every `1b2e:0a11` and good for at most one
+    // showing per run. `raiseScene` is where the port calls it, because that
+    // is every place the original reaches `1b2e:0a11` from.
+    tubes::JokeSlide joke;
 
     auto raiseBriefing = [&](bool replay) {
         briefingUp = true;
@@ -3630,6 +3683,7 @@ int main(int argc, char** argv) {
         if (game->progress().wave == 1 && !replay) screenRoll.restart();
         // `1000:86b8`: `k := 1b2e:0cd1($17)`, then `1b2e:0e37($1e)`.
         profIdle.restart(tubes::kTalkBurstsBriefing, sceneRng);
+        joke.maybeStart(sceneRng);
     };
     if (briefingUp) raiseBriefing(false);
 
@@ -3689,6 +3743,8 @@ int main(int argc, char** argv) {
     if (instrOpen) {
         screenRoll.restart();
         profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
+        if (opt.joke) joke.phase = 1;   // harness: show it without the roll
+        else joke.maybeStart(sceneRng);
     }
     int instrSlide = opt.instr > 0 ? opt.instr : 0;
     // The Credits, `1b2e:411b`: the same screen with a different table.
@@ -3715,7 +3771,13 @@ int main(int argc, char** argv) {
         ScenePose p;
         p.frameH = screenRoll.height();
         p.profFrame = tubes::pointerFrameFor(profIdle.wave);
-        p.mouthFrame = profIdle.mouthFrame();
+        // `1b2e:084e` is a blocking routine called from inside `1b2e:0a11`,
+        // which itself runs BEFORE the key wait - so while the gag is up the
+        // professor is not talking, and no mouth is stamped over the face it
+        // replaces.
+        p.mouthFrame = joke.active() ? 0 : profIdle.mouthFrame();
+        p.jokeSlide = joke.showFlash();
+        p.jokeFace = joke.showFace();
         if (wobble) {
             const tubes::SlideFrame s = slidePos();
             p.slideX = s.x;
@@ -3860,6 +3922,7 @@ int main(int argc, char** argv) {
         playSong(tubes::kStatsMusic);
         // `1000:8da5`: `k := 1b2e:0cd1(10)`, then `1b2e:0e37($1e)`.
         profIdle.restart(tubes::kTalkBurstsStats, sceneRng);
+        joke.maybeStart(sceneRng);
     };
     Uint32 last = SDL_GetTicks();
 
@@ -3960,7 +4023,10 @@ int main(int argc, char** argv) {
                 }
                 // Each slide is its own `1b2e:0cd1(35)` / `1b2e:0e37(30)`
                 // pair, so turning the page starts him talking again.
-                if (instrOpen) profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
+                if (instrOpen) {
+                    profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
+                    joke.maybeStart(sceneRng);
+                }
                 // Only LEAVING fades. Moving between slides does not - the
                 // original changes the slide inside one screen function and
                 // its fade-out is at the very end, on the way back.
@@ -4111,6 +4177,7 @@ int main(int argc, char** argv) {
                         instrCredits = false;
                         instrSlide = 0;
                         profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
+                        joke.maybeStart(sceneRng);
                         // `1b2e:2d63` builds the scene with `1b2e:0510`, so
                         // the projector screen comes down every time - no
                         // `DS:0x210e`-style gate on this one.
@@ -4123,6 +4190,7 @@ int main(int argc, char** argv) {
                         instrCredits = true;
                         instrSlide = 0;
                         profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
+                        joke.maybeStart(sceneRng);
                         screenRoll.restart();
                         changeScreen();
                         break;
@@ -4433,7 +4501,18 @@ int main(int argc, char** argv) {
         // And the professor's idle with it. Same reason it sits outside the
         // stage dispatch: these two screens are reachable with `stage` set to
         // either, and the session's own clock below is the briefing's.
-        if (instrOpen || rebindOpen) profIdle.tick(dt, sceneRng);
+        if ((instrOpen || rebindOpen) && !joke.active()) {
+            profIdle.tick(dt, sceneRng);
+        }
+        // `1b2e:084e` runs to its own three delays and plays `SLIDE.SFX` as it
+        // ends. It is held while the screen is still coming down because it
+        // lives inside `1b2e:0a11`, and `1b2e:0510` has returned before its
+        // caller reaches that - the port arms both at the same instant, so
+        // without this the gag would expire behind the rolling screen.
+        if (!screenRoll.rolling() && joke.tick(dt) && soundOn &&
+            haveSlideSound) {
+            music.playSound(&slideSound);
+        }
 
         // --demo drives the REAL loop with the scripted player, so the render
         // path gets exercised on every frame of a whole session rather than
@@ -4572,6 +4651,8 @@ int main(int argc, char** argv) {
             // `1b2e:0e37` steps `DS:0x20b0` every ten retraces, 1..5.
             if (instrOpen || rebindOpen) {
                 // Already ticked above - the screen on top owns him.
+            } else if (joke.active()) {
+                // `1b2e:084e` blocks - nothing else on the screen moves.
             } else if (sstage == tubes::SessionStage::kBriefing ||
                        sstage == tubes::SessionStage::kStats ||
                        sstage == tubes::SessionStage::kContinue) {
