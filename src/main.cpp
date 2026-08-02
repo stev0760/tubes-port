@@ -1771,10 +1771,24 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
     // Hold until a key. The original does not wait - it has already exited and
     // the banner simply persists - so this is the port's substitute for a
     // screen that outlives the program.
+    // PRESENT EVERY RETRACE, not only when the cursor changes.
+    //
+    // Presenting once per blink flickered, and the cause is the swap chain
+    // rather than anything drawn: the renderer is created without
+    // `SDL_RENDERER_PRESENTVSYNC`, so consecutive `SDL_RenderPresent` calls
+    // alternate buffers, and at four presents a second the display spends most
+    // of its time showing whichever buffer was filled last time rather than
+    // this time. The picture appeared to blink along with the cursor.
+    //
+    // Every other blocking screen in this port already presents every 70 Hz
+    // retrace for the same reason. Doing it here is also the more faithful
+    // thing: a CRTC does not stop scanning out because nothing changed.
+    //
+    // The cursor state is therefore derived from elapsed retraces rather than
+    // toggled by the present, which keeps the blink rate independent of how
+    // often the frame happens to be drawn.
     bool waiting = true;
-    uint32_t lastToggle = SDL_GetTicks();
-    // 16 retraces at 70 Hz. Expressed as the retrace count it actually is, and
-    // converted here, so the constant stays readable as hardware behaviour.
+    const uint32_t start = SDL_GetTicks();
     const uint32_t blinkMs = kCursorBlinkRetraces * 1000 / 70;
     while (waiting) {
         SDL_Event ev;
@@ -1784,13 +1798,9 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
                 waiting = false;
             }
         }
-        const uint32_t now = SDL_GetTicks();
-        if (now - lastToggle >= blinkMs) {
-            lastToggle = now;
-            cursorOn = !cursorOn;
-            present(lit);
-        }
-        SDL_Delay(4);
+        cursorOn = ((SDL_GetTicks() - start) / blinkMs) % 2 == 0;
+        present(lit);
+        SDL_Delay(1000 / 70);
     }
     SDL_DestroyTexture(tex);
     (void)win;
