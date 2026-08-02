@@ -4716,3 +4716,65 @@ edition names them.
 
 931 checks / 0 failures, `--demo-trace` md5 unmoved at `dc4f5e6a`, game
 directory untouched.
+
+## 2026-08-02 - the port asks which edition you own, in Setup's voice
+
+The last shareware decision, and the one with no original behaviour to copy.
+`--shareware` was a developer's flag; a shareware owner should not have to know
+a flag exists to play the game they own.
+
+**The shape is the player's: a settings entry for storage, a first-run prompt
+for discovery, the flags kept as an override.** Resolution order is flag, then
+file, then ask. The key is ABSENT from the settings file until answered, so its
+absence is the first-run state - which means upgrading asks once, deleting the
+line asks again, and an unrecognised value is not an answer. The flags win and
+do NOT persist: running `--shareware` once must not answer the question on the
+player's behalf.
+
+**Four candidate looks were built and rendered rather than argued about**, which
+is this project's standard for anything visual, and it earned its keep - the
+choice turned on something that only became clear once they were side by side.
+
+Three of the four put the question inside the game: on the title screen in page
+7's idiom (and literally page 7's layout, since `Exit Tubes?` is a titled page
+with two 16-pixel rows), or on the projector slide in Lanny's mouth. They look
+right. They are also a small lie. **The 1994 game never asked this and had no
+reason to**, so a screen speaking AS the game claims something about the
+original that is not true - the same category error as showing the exit banner
+on the registered build's quit path, which this file already refused.
+
+The fourth is a text screen in `TUBESEND.BIN`'s idiom, CP437 box art before the
+graphics come up. It sits OUTSIDE the program's world, which is where a question
+the original never asked belongs, and it is still period-honest: it is what
+`SETUP.EXE` would have looked like. Chosen.
+
+It reuses the exit screen's renderer, so it inherits window scaling, 4:3 and the
+fade without the display code learning about a second resolution.
+`buildEditionPrompt` lives in `textscreen.h` rather than `main.cpp` for the same
+reason `kPromptRow` does - the layout is then testable without SDL - and
+`--edition-prompt [N]` opens it for capture like every other screen here.
+
+**One ordering constraint drove the plumbing.** The edition NAMES the save and
+high-score files, so it has to be fixed before either is opened - and the prompt
+needs a renderer, which is created after those paths used to be built. So the
+save and high-score loading moved below the renderer, behind the prompt. That
+ordering is also the argument against the menu-item candidate: switching edition
+live would mean rebuilding and re-reading both files, which is exactly the write
+path `edition.h` warns about.
+
+The prompt is skipped under `harness` with every other timed screen. Not a
+convenience: a capture script that stopped on a question would hang, and
+`writeSettings` refuses to write under the harness anyway, so an answer given
+there could not be remembered.
+
+Verified end to end against a scratch `XDG_DATA_HOME`, since this is the part
+unit tests cannot reach:
+
+* a capture with no settings file does not block and writes nothing;
+* `edition shareware` in the file brings up the ten-item shareware menu, with
+  `Preview Registered` and `Ordering Info` on it;
+* `--shareware` over an `edition registered` file matches that menu **exactly**,
+  0 pixels different, and leaves the file unedited.
+
+948 checks / 0 failures, up from 936. `--demo-trace` md5 unmoved at `dc4f5e6a`,
+game directory untouched.

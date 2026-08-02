@@ -91,8 +91,9 @@ asked for, and then publishing:
    ever had the shareware disc, which is a fitting thing for an abandonware
    preservation project to be able to do.
 
-   **One item left open, and it is the next shareware decision: where
-   `--shareware` belongs.** See "Where the edition switch should live" below.
+   **Where the edition switch lives is settled too**: a first-run prompt, a
+   remembered setting, and the flags kept as the override. See "Where the
+   edition switch should live" below.
 6. **Publishing**, which is the last section of this file and is gated on a
    comment and documentation pass, a repository check and a final code review.
    **The player has a specific method in mind for the review and lint pass, so
@@ -1463,13 +1464,12 @@ game's own quit path stays silent, as it is.
 The rule that keeps this straight: **the port may show the player their own
 data, but it may not claim the original showed it.**
 
-### Where the edition switch should live - OPEN, and the next shareware item
+### Where the edition switch should live - DONE
 
-Everything else in this section is done. `--shareware` and `--preview` are
-command-line flags, which is fine for a developer and wrong for a player: a
-shareware owner should not have to know a flag exists to play the game they
-own. This is the last shareware decision and it is a **design** one, so it is
-written down rather than guessed at.
+**Decided and shipped: the settings file is the storage, a first-run prompt is
+the discovery, and the flags stay as the override.** That was option 1 + 3 of
+the three written up here; the reasoning below is kept because it is what the
+choice was made against.
 
 **Auto-detection is impossible, and that is settled rather than assumed.**
 `TUBES.RES` is byte-identical between the editions - same md5 - so an install
@@ -1479,36 +1479,57 @@ sniff, and any heuristic dressed up as detection would be inventing evidence.
 (`SETUP.CFG` is not a way out either: it is the DOS install's hardware config,
 `SETUP.EXE` owns it, and the port deliberately does not write it.)
 
-That leaves three candidates, and they are not exclusive:
+The three candidates were:
 
-1. **A settings entry**, in the file `src/input.cpp` already writes for the
-   control bindings. Cheapest, persists across runs, and it is the port's own
-   file rather than the player's game directory - so it breaks no rule. It is
-   also invisible: a player who never opens the file never finds it.
-2. **A menu item**, on the port's own Game Options page beside the rebinding
-   and graphics screens. Discoverable, and it is where a player would look.
-   The cost is that it changes the game *mid-run*, and the edition currently
-   picks the save filenames at start-up - `savePath` and `hiScorePath` are
-   built once, before the loop. Switching editions live means rebuilding both
-   and re-reading them, which is real work and exactly the write path that
-   `edition.h` warns about. **Do not do this one casually.**
-3. **A first-run prompt**, asked once and remembered in the settings file.
-   Honest about the fact that the port cannot know, and it puts the question
-   where the answer is cheap - before any session exists, so nothing has to be
-   rebuilt.
+1. **A settings entry** - cheap, persists, port-owned so it breaks no rule, but
+   invisible on its own. **Taken, as the storage.**
+2. **A menu item** on the port's own Game Options page. Discoverable, and the
+   one with a trap: the edition picks the save filenames at start-up, so
+   switching live means rebuilding and re-reading both. **Not taken**, and the
+   trap is why.
+3. **A first-run prompt**, asked once and remembered. Honest that the port
+   cannot know, and asked before any session exists so nothing is rebuilt.
+   **Taken, as the discovery.**
 
-**The recommendation is 1 + 3**: the settings file is the storage, a first-run
-prompt is the discovery, and the flags stay as the override that the harness
-and the developer use. That gets a shareware owner into their own game without
-a flag, keeps the edition fixed for the lifetime of a run, and needs no live
-switch at all.
+So the resolution order is: a `--shareware` / `--preview` flag wins and does not
+persist; otherwise the settings file, if the question has been answered;
+otherwise the player is asked. The key is **absent** from the file until it is
+answered, so its absence is the first-run state and deleting the line asks
+again - which is the recovery path for answering it wrongly. An unrecognised
+value is not an answer either.
 
-Whichever way it goes, two things must hold. The edition must be **fixed before
-the first file is opened**, since it names them. And the flags must keep
-working unchanged: every capture script and every harness invocation passes
-them, and `--preview` implies `--shareware` on purpose.
+#### What the prompt looks like, and why
 
-**This is the player's call to make, not one to take in passing.**
+**A text screen, in `TUBESEND.BIN`'s idiom** - CP437 box art at 80 x 25, before
+the graphics come up. Four candidates were built and rendered rather than
+argued about, which is this project's own standard for anything visual:
+
+| | |
+|---|---|
+| the menu page, in `Exit Tubes?`'s idiom | page 7 is a titled page with two 16-pixel rows, so this was its layout used **verbatim** rather than imitated |
+| the same with short answers | row width is not cosmetic - `placeStars` flanks the row's own text, and `Yes` / `No` sets the house style |
+| the classroom, in the Instructions' idiom | blackboard, projector, Lanny, the nav lines where every deck puts them |
+| **a text screen, in `TUBESEND.BIN`'s idiom** | **chosen** |
+
+The three in-game candidates all look right and all tell a small lie. **The
+1994 game never asked this question and had no reason to**, so a screen that
+speaks *as* the game is claiming something about the original that is not true -
+the same category error as showing the exit banner on the registered build's
+quit path. A setup screen before the graphics come up sits **outside** the
+program's world, which is where a question the original never asked belongs, and
+it is still period-honest because it is what `SETUP.EXE` would have looked like.
+
+It reuses the exit screen's renderer, so it needs no display code of its own and
+inherits window scaling, 4:3 and the fade. `buildEditionPrompt` is in
+`textscreen.h` rather than `main.cpp` so the layout is testable without SDL, and
+`--edition-prompt [N]` opens it for capture like every other screen here.
+
+Two invariants that must hold if this is ever revisited. The edition is **fixed
+before the first file is opened**, since it names the save and high-score files -
+that ordering is the whole reason this is a start-up question rather than a menu
+item. And the prompt is skipped under `harness`: a capture script that stopped
+on a question would hang, and `writeSettings` refuses to write there anyway, so
+an answer given in a harness run could not be remembered.
 
 ### The work, in order
 

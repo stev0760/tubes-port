@@ -2118,6 +2118,65 @@ void testABinDumpLoadsItsRowsAndLeavesTheRestBlank() {
           "more than 25 rows is refused");
 }
 
+// The first-run edition prompt. Every pixel of it is the port's own, so what
+// there is to check is the thing a screen like this actually gets wrong:
+// which answer is marked, and whether the marking agrees with the argument.
+void testTheEditionPromptMarksExactlyTheChosenAnswer() {
+    using tubes::kEditionAnswers;
+    for (int sel = 0; sel < kEditionAnswers; ++sel) {
+        tubes::TextScreen ts;
+        tubes::buildEditionPrompt(ts, sel);
+
+        for (int i = 0; i < kEditionAnswers; ++i) {
+            const int row = tubes::editionAnswerRow(i);
+            // The answer's text is where the header says it is, so a caller
+            // reading it back does not have to know the box's geometry.
+            const char* want = tubes::kEditionAnswerText[i];
+            bool matches = true;
+            for (int c = 0; want[c]; ++c) {
+                if (ts.at(tubes::kEditionAnswerCol + c, row).ch !=
+                    static_cast<uint8_t>(want[c])) {
+                    matches = false;
+                }
+            }
+            check(matches, "each answer is written at its own row and column");
+        }
+
+        // Exactly one pointer, on the selected row. Two would be a screen that
+        // cannot be answered; none would be a screen with no cursor at all.
+        int pointers = 0, pointerRow = -1;
+        for (int row = 0; row < tubes::kTextRows; ++row) {
+            for (int col = 0; col < tubes::kTextCols; ++col) {
+                if (ts.at(col, row).ch == 0x10) {
+                    ++pointers;
+                    pointerRow = row;
+                }
+            }
+        }
+        check(pointers == 1, "exactly one answer is pointed at");
+        check(pointerRow == tubes::editionAnswerRow(sel),
+              "and it is the one that was asked for");
+
+        // The chosen row is also brighter, so the answer reads without the
+        // glyph - which matters on a screen whose only cursor IS a glyph.
+        const uint8_t chosen =
+            ts.at(tubes::kEditionAnswerCol, tubes::editionAnswerRow(sel)).attr;
+        const uint8_t other = ts.at(tubes::kEditionAnswerCol,
+                                    tubes::editionAnswerRow(1 - sel)).attr;
+        check(chosen != other, "the chosen answer is a different attribute");
+    }
+
+    // The prompt must not collide with the DOS prompt row the exit screen
+    // draws in: both are text screens and a future session may well show them
+    // in sequence.
+    tubes::TextScreen ts;
+    tubes::buildEditionPrompt(ts, 0);
+    for (int i = 0; i < kEditionAnswers; ++i) {
+        check(tubes::editionAnswerRow(i) < tubes::kPromptRow,
+              "the answers sit above the row a DOS prompt would take");
+    }
+}
+
 // Foreground where the glyph has a bit, background where it does not, MSB
 // leftmost - the order the character generator shifts pixels out. Checked on
 // 0xDB, the solid block, and on 0x20, which has no bits at all.
@@ -4014,6 +4073,7 @@ int main() {
 
     testTheTextScreenIsEightyByTwentyFiveOfEightBySixteen();
     testABinDumpLoadsItsRowsAndLeavesTheRestBlank();
+    testTheEditionPromptMarksExactlyTheChosenAnswer();
     testThePromptLandsInTheRowsTheDumpLeavesBlank();
     testGlyphsRenderForegroundOverBackground();
     testTheBlinkBitDoesNotBecomeABrightBackground();

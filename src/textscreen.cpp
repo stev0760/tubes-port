@@ -90,4 +90,84 @@ void TextScreen::render(std::vector<uint8_t>& out) const {
     }
 }
 
+// ---------------------------------------------------------------------------
+// The first-run edition prompt - see the header for why it looks like this
+// ---------------------------------------------------------------------------
+
+const char* const kEditionAnswerText[kEditionAnswers] = {
+    // The game's own words for the two releases. The shareware build calls the
+    // other one `Preview Registered` on its own menu and its sign-off says
+    // `Register`, so "Registered" is the program's term rather than a label
+    // invented here; "Shareware" is what the release itself was called.
+    "Registered Version",
+    "Shareware Version",
+};
+
+namespace {
+
+// A dialogue box roughly centred in the 80 x 25 field. The numbers are the
+// port's - there is nothing to transliterate on a screen the original does not
+// have - so they are named rather than scattered through the drawing.
+constexpr int kBoxX = 14;
+constexpr int kBoxY = 5;
+constexpr int kBoxW = 52;
+constexpr int kBoxH = 13;
+constexpr int kTextX = kBoxX + 3;
+
+// The text-mode attributes, in the DOS-dialogue convention: light grey for
+// body, white for what matters, yellow for the row under the cursor.
+constexpr uint8_t kBody = 0x07;
+constexpr uint8_t kBright = 0x0F;
+constexpr uint8_t kChosen = 0x0E;
+
+// CP437's double-line box drawing, and the right-pointing triangle at 0x10.
+constexpr uint8_t kHBar = 205, kVBar = 186, kTopL = 201, kTopR = 187;
+constexpr uint8_t kBotL = 200, kBotR = 188, kPointer = 0x10;
+
+void say(TextScreen& ts, int col, int row, const char* s, uint8_t attr) {
+    for (int i = 0; s[i]; ++i) {
+        ts.put(col + i, row, static_cast<uint8_t>(s[i]), attr);
+    }
+}
+
+}  // namespace
+
+int editionAnswerRow(int index) { return kBoxY + 8 + index; }
+
+void buildEditionPrompt(TextScreen& ts, int selected) {
+    for (int row = 0; row < kTextRows; ++row) {
+        for (int col = 0; col < kTextCols; ++col) ts.put(col, row, ' ', kBody);
+    }
+
+    for (int i = 1; i < kBoxW - 1; ++i) {
+        ts.put(kBoxX + i, kBoxY, kHBar, kBody);
+        ts.put(kBoxX + i, kBoxY + kBoxH - 1, kHBar, kBody);
+    }
+    for (int j = 1; j < kBoxH - 1; ++j) {
+        ts.put(kBoxX, kBoxY + j, kVBar, kBody);
+        ts.put(kBoxX + kBoxW - 1, kBoxY + j, kVBar, kBody);
+    }
+    ts.put(kBoxX, kBoxY, kTopL, kBody);
+    ts.put(kBoxX + kBoxW - 1, kBoxY, kTopR, kBody);
+    ts.put(kBoxX, kBoxY + kBoxH - 1, kBotL, kBody);
+    ts.put(kBoxX + kBoxW - 1, kBoxY + kBoxH - 1, kBotR, kBody);
+
+    say(ts, kBoxX + 19, kBoxY, " Tubes Setup ", kBright);
+    say(ts, kTextX, kBoxY + 2, "Tubes shipped in two editions, and this", kBody);
+    say(ts, kTextX, kBoxY + 3, "one cannot tell which you have: the game", kBody);
+    say(ts, kTextX, kBoxY + 4, "files are identical in both.", kBody);
+    say(ts, kTextX, kBoxY + 6, "Which copy of Tubes do you have?", kBright);
+
+    for (int i = 0; i < kEditionAnswers; ++i) {
+        const bool on = i == selected;
+        ts.put(kTextX + 3, editionAnswerRow(i), on ? kPointer : ' ',
+               on ? kChosen : kBody);
+        say(ts, kEditionAnswerCol, editionAnswerRow(i), kEditionAnswerText[i],
+            on ? kChosen : kBody);
+    }
+
+    say(ts, kTextX, kBoxY + kBoxH - 2,
+        "Up/Down to choose, Enter to accept.", kBody);
+}
+
 }  // namespace tubes

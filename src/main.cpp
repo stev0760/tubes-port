@@ -281,6 +281,12 @@ struct Options {
     int randomTrace = 0;        // with --demo-trace: print the first N rolls
     std::string demoCsv;        // with --demo-trace: per-frame state, for the rig
     std::string gameBg = "GAMEBG1.GFX";   // backdrop, for matching a capture
+    // True when the edition came from the command line rather than from the
+    // settings file. The flags are the developer's and the harness's override:
+    // they win, they do NOT persist, and they suppress the first-run prompt -
+    // so a capture script never blocks on a question and never rewrites the
+    // player's answer.
+    bool editionFromFlag = false;
     // Which build of Tubes to be. `--shareware` is the 25-wave edition, and
     // `--preview` opens its Preview Registered mode - menu arm 3, and the same
     // flag View Demo and the attract loop set. See edition.h.
@@ -299,9 +305,7 @@ struct Options {
     bool f2 = false;            // open the F2 save screen, for capture
     bool rebind = false;        // open the rebinding screen, for capture
     bool graphics = false;      // open the graphics screen, for capture
-    // MOCKUP ONLY, and temporary: render candidate look N for the first-run
-    // edition prompt so the choice can be made by looking rather than by
-    // description. The chosen one becomes real and this flag goes.
+    // Open the first-run edition prompt on answer N, for capture.
     int editionPrompt = -1;
     int instr = -1;             // open the Instructions on slide N, for capture
     bool credits = false;       // open the Credits, for capture
@@ -489,11 +493,6 @@ Options parseArgs(int argc, char** argv) {
             o.rebind = true;
         } else if (a == "--graphics") {
             o.graphics = true;
-        } else if (a == "--edition-prompt") {
-            o.editionPrompt = 0;
-            if (i + 1 < argc && argv[i + 1][0] != '-') {
-                o.editionPrompt = std::atoi(argv[++i]);
-            }
         } else if (a == "--credits") {
             o.credits = true;
         } else if (a == "--instructions") {
@@ -543,13 +542,20 @@ Options parseArgs(int argc, char** argv) {
         } else if (a == "--exit-screen") {
             o.exitScreen = true;
             o.edition.edition = tubes::Edition::kShareware;
+        } else if (a == "--edition-prompt") {
+            o.editionPrompt = 0;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                o.editionPrompt = std::atoi(argv[++i]);
+            }
         } else if (a == "--shareware") {
             o.edition.edition = tubes::Edition::kShareware;
+            o.editionFromFlag = true;
         } else if (a == "--preview") {
             // The Preview only exists in the shareware build, so asking for it
             // implies the edition rather than needing both flags.
             o.edition.edition = tubes::Edition::kShareware;
             o.edition.preview = true;
+            o.editionFromFlag = true;
         } else if (a == "--no-splash") {
             o.noSplash = true;
         } else if (a == "--fade-steps" && i + 1 < argc) {
@@ -584,6 +590,7 @@ void usage() {
         "  --dump-spr NAME   print a .SPR strip's frames\n"
         "                    tools/anm_decode.py RUNS\n"
         "  --no-splash       go straight to the title screen\n"
+        "  --edition-prompt [N]  open the first-run edition prompt, for capture\n"
         "  --shareware       play the 25-wave shareware edition\n"
         "  --exit-screen     show TUBESEND.BIN, the shareware sign-off\n"
         "  --ordering [N]    open the shareware Ordering Info deck at page N\n"
@@ -1705,6 +1712,158 @@ void drawPrompt(tubes::TextScreen& ts, const char* prompt) {
     }
 }
 
+// The first-run edition prompt, on the same text screen `TUBESEND.BIN` uses.
+//
+// See `textscreen.h` for why the question exists at all and why it is asked
+// HERE, before the graphics come up, rather than inside the game: the original
+// never asked it, so a screen that speaks as the game would be claiming
+// something about the original that is not true. This one is plainly the port's
+// setup, in the idiom `SETUP.EXE` would have used.
+//
+// Returns the answer. `cancelled` comes back true if the player closed the
+// window, in which case nothing is saved and the program should stop - quietly
+// defaulting to registered and carrying on would file their saves under a
+// choice they never made.
+tubes::Edition runEditionPrompt(SDL_Renderer* ren, int fadeSteps,
+                                bool& cancelled,
+                                const std::string& screenshot = std::string(),
+                                int startOn = 0) {
+    cancelled = false;
+    int selected = startOn;
+
+    tubes::TextScreen ts;
+    std::vector<uint8_t> indexed;
+
+    tubes::Bytes raw(768, 0);
+    for (int i = 0; i < 16; ++i) {
+        raw[i * 3 + 0] = tubes::kTextPalette[i][0];
+        raw[i * 3 + 1] = tubes::kTextPalette[i][1];
+        raw[i * 3 + 2] = tubes::kTextPalette[i][2];
+    }
+
+    // STATIC, for the reason the exit screen documents at length: this is a
+    // 640x400 RGBA picture that changes only when the selection moves, and
+    // STREAMING + `SDL_UpdateTexture` is the pairing that produced the partial
+    // uploads reported as a flicker.
+    SDL_Texture* tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32,
+                                         SDL_TEXTUREACCESS_STATIC,
+                                         tubes::kTextScreenW,
+                                         tubes::kTextScreenH);
+    if (!tex) return tubes::Edition::kRegistered;
+    SDL_SetTextureScaleMode(tex, SDL_ScaleModeNearest);
+
+    std::vector<uint8_t> rgba(static_cast<size_t>(tubes::kTextScreenW) *
+                              tubes::kTextScreenH * 4);
+    auto upload = [&](const tubes::Palette& pal) {
+        for (size_t i = 0; i < indexed.size(); ++i) {
+            const uint8_t* c = pal.rgb[indexed[i]];
+            rgba[i * 4 + 0] = static_cast<uint8_t>(c[0] * 255 / 63);
+            rgba[i * 4 + 1] = static_cast<uint8_t>(c[1] * 255 / 63);
+            rgba[i * 4 + 2] = static_cast<uint8_t>(c[2] * 255 / 63);
+            rgba[i * 4 + 3] = 255;
+        }
+        SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kTextScreenW * 4);
+    };
+    auto draw = [&]() {
+        int winW = 0, winH = 0;
+        SDL_GetRendererOutputSize(ren, &winW, &winH);
+        const tubes::DisplayRect r = tubes::presentRect(winW, winH, g_display);
+        const SDL_Rect dst{r.x, r.y, r.w, r.h};
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+        SDL_RenderClear(ren);
+        SDL_RenderCopy(ren, tex, nullptr, &dst);
+        if (g_display.scanlines && dst.h >= tubes::kScreenHeight * 2) {
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(ren, 0, 0, 0, 64);
+            for (int y = dst.y + 1; y < dst.y + dst.h; y += 2) {
+                SDL_Rect line{dst.x, y, dst.w, 1};
+                SDL_RenderFillRect(ren, &line);
+            }
+        }
+        SDL_RenderPresent(ren);
+    };
+
+    auto rebuild = [&]() {
+        tubes::buildEditionPrompt(ts, selected);
+        ts.render(indexed);
+    };
+
+    // Fade in, the same way every screen in this port arrives.
+    rebuild();
+    for (int i = 0; i <= fadeSteps; ++i) {
+        upload(tubes::fadePalette(raw, i, fadeSteps ? fadeSteps : 1));
+        draw();
+        if (fadeSteps > 0) SDL_Delay(1000 / 70);
+    }
+    const tubes::Palette lit = tubes::textPalette();
+    upload(lit);
+    draw();
+
+    // `--edition-prompt` captures the screen and leaves, the same way every
+    // other screen in this port can be opened for a capture without walking to
+    // it. It answers nothing: the caller treats a capture as a harness run.
+    if (!screenshot.empty()) {
+        SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormatFrom(
+            rgba.data(), tubes::kTextScreenW, tubes::kTextScreenH, 32,
+            tubes::kTextScreenW * 4, SDL_PIXELFORMAT_RGBA32);
+        if (surf) {
+            SDL_SaveBMP(surf, screenshot.c_str());
+            SDL_FreeSurface(surf);
+            std::printf("wrote %s\n", screenshot.c_str());
+        }
+        SDL_DestroyTexture(tex);
+        cancelled = true;
+        return tubes::Edition::kRegistered;
+    }
+
+    // Throttled unconditionally - a vsync request is advisory on this port's
+    // targets and paces nothing. Same measurement as the exit screen's hold.
+    bool answering = true;
+    while (answering) {
+        SDL_Event ev;
+        while (SDL_PollEvent(&ev)) {
+            if (ev.type == SDL_QUIT) {
+                cancelled = true;
+                answering = false;
+                break;
+            }
+            int move = 0;
+            bool accept = false;
+            if (ev.type == SDL_KEYDOWN) {
+                switch (ev.key.keysym.sym) {
+                case SDLK_UP: case SDLK_LEFT: move = -1; break;
+                case SDLK_DOWN: case SDLK_RIGHT: move = 1; break;
+                case SDLK_RETURN: case SDLK_KP_ENTER: case SDLK_SPACE:
+                    accept = true; break;
+                case SDLK_ESCAPE: cancelled = true; answering = false; break;
+                default: break;
+                }
+            } else if (ev.type == SDL_CONTROLLERBUTTONDOWN) {
+                switch (ev.cbutton.button) {
+                case SDL_CONTROLLER_BUTTON_DPAD_UP: move = -1; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_DOWN: move = 1; break;
+                case SDL_CONTROLLER_BUTTON_A: accept = true; break;
+                default: break;
+                }
+            }
+            if (move != 0) {
+                // Two answers, so a wrap and a clamp are the same thing - but
+                // it wraps, because every list in this game does.
+                selected = (selected + move + tubes::kEditionAnswers) %
+                           tubes::kEditionAnswers;
+                rebuild();
+                upload(lit);
+            }
+            if (accept) answering = false;
+        }
+        draw();
+        SDL_Delay(1000 / 70);
+    }
+    SDL_DestroyTexture(tex);
+    return selected == 1 ? tubes::Edition::kShareware
+                         : tubes::Edition::kRegistered;
+}
+
 void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& banner,
                    int fadeSteps, const std::string& screenshot) {
     tubes::TextScreen ts = banner;
@@ -2709,125 +2868,6 @@ void drawTitle(tubes::Screen& screen, const tubes::Image& bg,
     }
 }
 
-// ---------------------------------------------------------------------------
-// MOCKUP: candidate looks for the first-run edition prompt
-// ---------------------------------------------------------------------------
-//
-// TEMPORARY. The port has to ask which edition the player owns, because it
-// cannot detect it - `TUBES.RES` is byte-identical between the two. The
-// question is the port's own, so the only thing keeping it from feeling bolted
-// on is that it borrows the ORIGINAL'S vocabulary rather than inventing one.
-//
-// Three candidates, each lifted from a screen the game already has:
-//
-//   0  the MENU PAGE, in page 7's exact idiom - `Exit Tubes?` with Yes and No.
-//      That is the original's own two-way question: centred title in the
-//      heading font, an underline rule two rows below, items in one colour,
-//      and the selection marked by the animated stars alone.
-//   1  the CLASSROOM, in the Instructions' idiom - the professor, the
-//      blackboard, the projector screen and a slide with the question on it.
-//      The game's own way of explaining something to the player.
-//   2  the TEXT SCREEN, in `TUBESEND.BIN`'s idiom - CP437 with attribute
-//      colours, before the graphics come up at all, the way a 1994 installer
-//      would have asked.
-//
-// Only one of these survives; the other two and this whole function go with
-// the flag.
-void drawEditionPromptMock(tubes::Screen& screen, int variant,
-                           const tubes::Image& titleBgArt,
-                           const tubes::Image& titleFgArt, bool haveTitleArt,
-                           const tubes::Image* board, bool haveBoard,
-                           const SceneArt& art, const ScenePose& pose,
-                           const tubes::Font& big, bool haveBig,
-                           const tubes::Font& small, bool haveSmall,
-                           const tubes::Image* stars, const bool* haveStar,
-                           int starFrame, int selected) {
-    // The two answers, in the game's own words for them. The shareware build
-    // calls the other edition `Preview Registered` and its deck `Ordering
-    // Info`; the exit banner says `Register`. So "Registered" is the game's
-    // term, and "Shareware" is what the release itself is called.
-    const char* kAnswersLong[2] = {"Registered Version", "Shareware Version"};
-    const char* kAnswersShort[2] = {"Registered", "Shareware"};
-    // Variant 3 is variant 0 with the short labels. Row length is not a detail
-    // on this page: `placeStars` flanks the ROW'S OWN width, so the answers
-    // decide how far apart the stars sit, and `Exit Tubes?` sets the house
-    // style with `Yes` and `No`.
-    const char* const* kAnswers = (variant == 3) ? kAnswersShort : kAnswersLong;
-    if (variant == 3) variant = 0;
-
-    if (variant == 0) {
-        // Page 7's idiom exactly. `menuYBase` centres `count + 1` rows in the
-        // 180-pixel block, so a two-item page lands where `Exit Tubes?` does.
-        screen.clear(0);
-        if (haveTitleArt) {
-            screen.blit(titleBgArt);
-            screen.blit(titleFgArt);
-        }
-        if (!haveBig) return;
-        // Page 7's own layout, used verbatim rather than reconstructed: it is
-        // a titled page with two items at a 16-pixel pitch, which is exactly
-        // the shape this question needs. If the numbers match `Exit Tubes?`
-        // it is because they ARE `Exit Tubes?`'s.
-        const tubes::Page p = tubes::Page::kQuit;
-        const tubes::Edition e = tubes::Edition::kRegistered;
-        tubes::drawTextCentred(screen, big, 0, 319, tubes::menuTitleY(p, e),
-                               tubes::kMenuTitleColour, tubes::kMenuTitleMode,
-                               "Which Tubes?");
-        tubes::drawTextCentred(screen, big, 0, 319, tubes::menuRuleY(p, e),
-                               tubes::kMenuTitleColour, tubes::kMenuTitleMode,
-                               "__________");
-        for (int i = 1; i <= 2; ++i) {
-            tubes::drawTextCentred(screen, big, 0, 319,
-                                   tubes::menuItemY(p, i, e),
-                                   tubes::kMenuItemColour, tubes::kMenuItemMode,
-                                   kAnswers[i - 1]);
-        }
-        // The stars flank the SELECTED row's own text width, which is what
-        // `placeStars` measures - not the page's widest item.
-        const tubes::StarPlacement s =
-            tubes::placeStars(p, selected + 1, kAnswers[selected], e);
-        if (starFrame >= 1 && starFrame <= tubes::kStarFrames &&
-            haveStar[starFrame]) {
-            screen.blit(stars[starFrame], s.xLeft, s.y);
-            screen.blit(stars[starFrame], s.xRight, s.y);
-        }
-        return;
-    }
-
-    if (variant == 1) {
-        // The classroom, with the question on the slide. Same geometry the
-        // Instructions use - text at x 76, ten pixels a line, colour 150.
-        drawScene(screen, board, haveBoard, art, pose);
-        if (pose.slideIsBusy() || !haveSmall) return;
-        const char* kLines[] = {
-            "Tubes came in two editions and",
-            "this one cannot tell them apart",
-            "- the game files are identical.",
-            "So Lanny would like to ask:",
-            "which copy of Tubes  do  you",
-            "have?",
-        };
-        int y = 40;
-        for (const char* line : kLines) {
-            tubes::drawText(screen, small, 76, y, 150, 2, line);
-            y += 10;
-        }
-        for (int i = 0; i < 2; ++i) {
-            tubes::drawText(screen, small, 90, 118 + i * 12,
-                            i == selected ? 38 : 150, 2, kAnswers[i]);
-        }
-        // The slideshow's own navigation colour and rows, so the screen says
-        // how to work it in the place every other deck says it.
-        tubes::drawTextCentred(screen, small, 0, 319, tubes::kInstrNavY,
-                               tubes::kInstrNavColour, 2, "Up / Down - Choose");
-        tubes::drawTextCentred(screen, small, 0, 319, tubes::kInstrNavY2,
-                               tubes::kInstrNavColour, 2, "Button A - Continue");
-        return;
-    }
-
-    // variant 2 is drawn on the text screen, not here.
-}
-
 void drawTaskDisplay(tubes::Screen& screen, const tubes::Game& game,
                      const tubes::Font& big, bool haveBig,
                      const tubes::Sprite* atoms, const bool* haveAtom,
@@ -3526,6 +3566,33 @@ int main(int argc, char** argv) {
         if (cf) cf << tubes::encodeSettings(settings);
     };
 
+    // Which edition to be, resolved once and before anything opens a file -
+    // because the edition NAMES the save and high-score files. See `edition.h`.
+    //
+    // Three sources, in this order:
+    //
+    //   1. a `--shareware` / `--preview` flag, which wins and does not persist;
+    //   2. the settings file, if the question has been answered before;
+    //   3. the player, asked once - `runEditionPrompt`.
+    //
+    // The prompt is skipped under `harness` along with every other timed
+    // screen. That is not a convenience: a capture script that stopped on a
+    // question would hang, and `writeSettings` already refuses to write under
+    // the harness, so an answer given there could not be remembered anyway.
+    if (opt.editionFromFlag) {
+        // Nothing to store and nothing to ask. The flag is an override, so it
+        // deliberately leaves `editionChosen` alone - running `--shareware`
+        // once must not answer the question on the player's behalf.
+    } else if (settings.editionChosen) {
+        opt.edition.edition = settings.edition;
+    }
+    // The third source, the prompt, needs a renderer and so cannot run here.
+    // It is below, and everything that depends on the edition - which is the
+    // two filenames - is below IT.
+    const bool mustAskEdition =
+        opt.editionPrompt >= 0 ||
+        (!opt.editionFromFlag && !settings.editionChosen && !harness);
+
     // One controller, the first one plugged in. Opened below, once SDL is
     // actually up - this used to enumerate here, which is BEFORE `SDL_Init`,
     // so `SDL_NumJoysticks` was asked on an uninitialised library and always
@@ -3537,72 +3604,6 @@ int main(int argc, char** argv) {
     // table the game SHIPS one, zero-filled, and the reader zero-fills the
     // banks before reading anyway - so a missing or malformed file is simply
     // five empty slots per bank rather than an error.
-    // The NAME is edition-dependent and the port's own rule - `TUBES.SAV`
-    // registered, `TUBESSW.SAV` shareware. The two files have identical
-    // formats, so a cross-load would be silent; distinct names make it
-    // impossible instead of detectable. `edition.h` carries the reasoning.
-    //
-    // `opt.edition` is right here and `game->edition()` would not be: this runs
-    // before any session exists, and it is the EDITION that picks the file, not
-    // the Preview flag - a Preview run writes nothing at all.
-    const std::string savePath =
-        opt.gameDir + "/" + opt.edition.saveFileName();
-    tubes::SaveFile saves;
-    {
-        std::ifstream sf(savePath, std::ios::binary);
-        if (sf) {
-            std::vector<uint8_t> raw((std::istreambuf_iterator<char>(sf)),
-                                      std::istreambuf_iterator<char>());
-            if (!tubes::decodeSaves(raw, saves)) {
-                std::fprintf(stderr,
-                             "%s is malformed (%zu bytes); starting "
-                             "with no saved games\n",
-                             opt.edition.saveFileName(), raw.size());
-                saves = tubes::SaveFile{};
-            }
-        }
-    }
-
-    const std::string hiScorePath =
-        opt.gameDir + "/" + opt.edition.hiScoreFileName();
-    tubes::HiScoreFile hiScores = tubes::defaultHiScores();
-    {
-        std::ifstream hf(hiScorePath, std::ios::binary);
-        if (hf) {
-            std::vector<uint8_t> raw((std::istreambuf_iterator<char>(hf)),
-                                      std::istreambuf_iterator<char>());
-            if (!tubes::decodeHiScores(raw, hiScores)) {
-                std::fprintf(stderr,
-                             "%s is malformed (%zu bytes); using the "
-                             "shipped table\n",
-                             opt.edition.hiScoreFileName(), raw.size());
-                hiScores = tubes::defaultHiScores();
-            }
-        }
-    }
-    auto saveHiScores = [&]() {
-        // A HARNESS RUN MUST NOT WRITE TO THE GAME DIRECTORY. `--auto-advance`
-        // walks a whole session, so it reaches the end of a wave, qualifies,
-        // and saved a real `TUBES.HSC` into the player's own game files -
-        // which then changed what every later capture compared against. The
-        // unit tests were careful about this from the start; the harness was
-        // not, because nothing in it used to write anything.
-        if (harness) return;
-        const std::vector<uint8_t> raw = tubes::encodeHiScores(hiScores);
-        std::ofstream hf(hiScorePath, std::ios::binary);
-        if (hf) hf.write(reinterpret_cast<const char*>(raw.data()),
-                         static_cast<std::streamsize>(raw.size()));
-    };
-
-    // `1b2e:00ac`. Same harness guard as the high score table, and for the
-    // same reason: this is the player's own game directory.
-    auto writeSaves = [&]() {
-        if (harness) return;
-        const std::vector<uint8_t> raw = tubes::encodeSaves(saves);
-        std::ofstream sf(savePath, std::ios::binary);
-        if (sf) sf.write(reinterpret_cast<const char*>(raw.data()),
-                         static_cast<std::streamsize>(raw.size()));
-    };
 
     tubes::Image blackboard;
     const bool haveBlackboard = loadImage(res, "BLACKBRD.GFX", blackboard, -1);
@@ -3934,6 +3935,102 @@ int main(int argc, char** argv) {
                                          tubes::kScreenWidth,
                                          tubes::kScreenHeight);
 
+    // The edition's third and last source: ask the player, once. It lives here
+    // rather than beside the other two because it needs a renderer, and the
+    // save and high-score files below need the ANSWER - the edition names them.
+    // That ordering is the whole reason this is a start-up question and not a
+    // menu item; see PLAN.md, "Where the edition switch should live".
+    if (mustAskEdition) {
+        bool cancelled = false;
+        const tubes::Edition chosen = runEditionPrompt(
+            ren, opt.editionPrompt >= 0 ? 0 : opt.fadeSteps, cancelled,
+            opt.editionPrompt >= 0 ? opt.screenshot : std::string(),
+            opt.editionPrompt > 0 ? 1 : 0);
+        // Closing the window is not an answer. Defaulting to registered and
+        // carrying on would file this player's saves under a choice they never
+        // made, and the point of the question is that the port cannot work it
+        // out for itself.
+        if (cancelled) {
+            if (tex) SDL_DestroyTexture(tex);
+            SDL_DestroyRenderer(ren);
+            SDL_DestroyWindow(win);
+            SDL_Quit();
+            return 0;
+        }
+        opt.edition.edition = chosen;
+        settings.edition = chosen;
+        settings.editionChosen = true;
+        writeSettings();
+    }
+
+    // The NAME is edition-dependent and the port's own rule - `TUBES.SAV`
+    // registered, `TUBESSW.SAV` shareware. The two files have identical
+    // formats, so a cross-load would be silent; distinct names make it
+    // impossible instead of detectable. `edition.h` carries the reasoning.
+    //
+    // `opt.edition` is right here and `game->edition()` would not be: this runs
+    // before any session exists, and it is the EDITION that picks the file, not
+    // the Preview flag - a Preview run writes nothing at all.
+    const std::string savePath =
+        opt.gameDir + "/" + opt.edition.saveFileName();
+    tubes::SaveFile saves;
+    {
+        std::ifstream sf(savePath, std::ios::binary);
+        if (sf) {
+            std::vector<uint8_t> raw((std::istreambuf_iterator<char>(sf)),
+                                      std::istreambuf_iterator<char>());
+            if (!tubes::decodeSaves(raw, saves)) {
+                std::fprintf(stderr,
+                             "%s is malformed (%zu bytes); starting "
+                             "with no saved games\n",
+                             opt.edition.saveFileName(), raw.size());
+                saves = tubes::SaveFile{};
+            }
+        }
+    }
+
+    const std::string hiScorePath =
+        opt.gameDir + "/" + opt.edition.hiScoreFileName();
+    tubes::HiScoreFile hiScores = tubes::defaultHiScores();
+    {
+        std::ifstream hf(hiScorePath, std::ios::binary);
+        if (hf) {
+            std::vector<uint8_t> raw((std::istreambuf_iterator<char>(hf)),
+                                      std::istreambuf_iterator<char>());
+            if (!tubes::decodeHiScores(raw, hiScores)) {
+                std::fprintf(stderr,
+                             "%s is malformed (%zu bytes); using the "
+                             "shipped table\n",
+                             opt.edition.hiScoreFileName(), raw.size());
+                hiScores = tubes::defaultHiScores();
+            }
+        }
+    }
+    auto saveHiScores = [&]() {
+        // A HARNESS RUN MUST NOT WRITE TO THE GAME DIRECTORY. `--auto-advance`
+        // walks a whole session, so it reaches the end of a wave, qualifies,
+        // and saved a real `TUBES.HSC` into the player's own game files -
+        // which then changed what every later capture compared against. The
+        // unit tests were careful about this from the start; the harness was
+        // not, because nothing in it used to write anything.
+        if (harness) return;
+        const std::vector<uint8_t> raw = tubes::encodeHiScores(hiScores);
+        std::ofstream hf(hiScorePath, std::ios::binary);
+        if (hf) hf.write(reinterpret_cast<const char*>(raw.data()),
+                         static_cast<std::streamsize>(raw.size()));
+    };
+
+    // `1b2e:00ac`. Same harness guard as the high score table, and for the
+    // same reason: this is the player's own game directory.
+    auto writeSaves = [&]() {
+        if (harness) return;
+        const std::vector<uint8_t> raw = tubes::encodeSaves(saves);
+        std::ofstream sf(savePath, std::ios::binary);
+        if (sf) sf.write(reinterpret_cast<const char*>(raw.data()),
+                         static_cast<std::streamsize>(raw.size()));
+    };
+
+
     // Run the scripted player before drawing, so a headless screenshot shows
     // a populated beaker rather than the empty opening frame.
     for (int f = 0; f < opt.autoFrames; ++f) {
@@ -4262,44 +4359,6 @@ int main(int argc, char** argv) {
         tubes::Bytes blob;
         std::string berr;
         if (res.read("TUBESEND.BIN", blob, berr)) exitBanner.loadBin(blob);
-    }
-
-    // MOCKUP, temporary: variant 2 of the edition prompt is a text screen, so
-    // it goes through the same renderer `TUBESEND.BIN` does rather than the
-    // 320x200 one. Everything it draws is the port's - this is a candidate
-    // look, not a resource.
-    if (opt.editionPrompt == 2) {
-        tubes::TextScreen ts;
-        auto say = [&](int col, int row, const char* s, uint8_t attr) {
-            for (int i = 0; s[i]; ++i) {
-                ts.put(col + i, row, static_cast<uint8_t>(s[i]), attr);
-            }
-        };
-        const uint8_t kBright = 0x0f, kNormal = 0x07, kPick = 0x0e;
-        // A double-line box in CP437, the way a 1994 installer would draw one.
-        const int x0 = 14, y0 = 5, w = 52, h = 13;
-        for (int i = 1; i < w - 1; ++i) {
-            ts.put(x0 + i, y0, 205, kNormal);
-            ts.put(x0 + i, y0 + h - 1, 205, kNormal);
-        }
-        for (int j = 1; j < h - 1; ++j) {
-            ts.put(x0, y0 + j, 186, kNormal);
-            ts.put(x0 + w - 1, y0 + j, 186, kNormal);
-        }
-        ts.put(x0, y0, 201, kNormal);
-        ts.put(x0 + w - 1, y0, 187, kNormal);
-        ts.put(x0, y0 + h - 1, 200, kNormal);
-        ts.put(x0 + w - 1, y0 + h - 1, 188, kNormal);
-        say(x0 + 19, y0, " Tubes Setup ", kBright);
-        say(x0 + 3, y0 + 2, "Tubes shipped in two editions, and this", kNormal);
-        say(x0 + 3, y0 + 3, "one cannot tell which you have: the game", kNormal);
-        say(x0 + 3, y0 + 4, "files are identical in both.", kNormal);
-        say(x0 + 3, y0 + 6, "Which copy of Tubes do you have?", kBright);
-        say(x0 + 6, y0 + 8, "\020 Registered Version", kPick);
-        say(x0 + 6, y0 + 9, "  Shareware Version", kNormal);
-        say(x0 + 3, y0 + 11, "Up/Down to choose, Enter to accept.", kNormal);
-        runExitScreen(win, ren, ts, fadeSteps, opt.screenshot);
-        return 0;
     }
 
     // `--exit-screen` opens it directly and leaves, so a capture never has to
@@ -5578,7 +5637,6 @@ int main(int argc, char** argv) {
         // are consecutive, not concurrent.
         const bool classroomUp =
             briefingUp || instrOpen || endingPage > 0 ||
-            opt.editionPrompt == 1 ||     // MOCKUP, temporary
             sstage == tubes::SessionStage::kStats ||
             sstage == tubes::SessionStage::kContinue;
         if (classroomUp && !screenRoll.rolling() && !slideDropped) {
@@ -5878,18 +5936,6 @@ int main(int argc, char** argv) {
                               tubes::kHsViewTitle[hsViewPage], &blackboard,
                               haveBlackboard, &slideBar, haveBar, headingFont,
                               haveHeading, scriptFont, haveScript);
-            presentFrame();
-            continue;
-        }
-
-        // MOCKUP, temporary: candidate looks 0 and 1 for the edition prompt.
-        if (opt.editionPrompt == 0 || opt.editionPrompt == 1 ||
-            opt.editionPrompt == 3) {
-            drawEditionPromptMock(
-                screen, opt.editionPrompt, titleBg, titleFg,
-                haveTitleBg && haveTitleFg, &blackboard, haveBlackboard,
-                sceneArt, scenePose(), headingFont, haveHeading, smallFont,
-                haveSmall, stars, haveStar, menu.starFrame(), 0);
             presentFrame();
             continue;
         }

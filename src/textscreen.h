@@ -121,4 +121,46 @@ private:
     int rowsLoaded_ = 0;
 };
 
+// ---------------------------------------------------------------------------
+// The first-run edition prompt
+// ---------------------------------------------------------------------------
+//
+// THE PORT'S OWN SCREEN, top to bottom, and it is deliberately the only one
+// that does not pretend otherwise.
+//
+// The port has to know which edition the player owns, and it cannot find out:
+// `TUBES.RES` is byte-identical between the shareware and registered releases,
+// so an install carries no evidence of which one it came from. The edition
+// lives only in the executable, and the port IS the executable. So it asks.
+//
+// WHY THIS IS A TEXT SCREEN, and why that was the right of four candidates.
+// The other three put the question inside the game - on the title screen in
+// the `Exit Tubes?` page's idiom, or on the projector slide in Lanny's mouth.
+// Both look authentic and both are a small lie: the 1994 game never asked this
+// and had no reason to, so a screen that speaks AS the game is claiming
+// something about the original. A setup screen before the graphics come up is
+// outside the program's world, which is exactly where a question the original
+// never asked belongs - and it is still period-honest, because it is what
+// `SETUP.EXE` would have looked like.
+//
+// It borrows `TUBESEND.BIN`'s presentation - CP437 in 80 x 25 at 8 x 16, the
+// sixteen text-mode attributes - so it needs no renderer of its own and
+// inherits the window scaling, the 4:3 correction and the fade with it.
+//
+// The layout lives here rather than in `main.cpp` so it can be tested without
+// SDL, the same reason `kPromptRow` does.
+
+constexpr int kEditionAnswers = 2;
+// Index 0 is registered and 1 shareware, matching `Edition`'s own order.
+extern const char* const kEditionAnswerText[kEditionAnswers];
+
+// Draws the whole prompt into `ts`, with answer `selected` marked. Everything
+// on the screen is redrawn, so moving the selection is one more call.
+void buildEditionPrompt(TextScreen& ts, int selected);
+
+// Where the answers land, so a test can read them back off the screen without
+// knowing the box's geometry.
+int editionAnswerRow(int index);
+constexpr int kEditionAnswerCol = 22;
+
 }  // namespace tubes
