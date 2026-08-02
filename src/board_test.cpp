@@ -2120,6 +2120,25 @@ void testABinDumpLoadsItsRowsAndLeavesTheRestBlank() {
 // Foreground where the glyph has a bit, background where it does not, MSB
 // leftmost - the order the character generator shifts pixels out. Checked on
 // 0xDB, the solid block, and on 0x20, which has no bits at all.
+// The prompt is the port's own invention, so the one thing that can actually
+// go wrong with it is placement: it must land in rows the dump leaves blank.
+// If TUBESEND.BIN were ever 24 rows, or the row constant slipped, it would
+// overwrite the art rather than sit under it.
+void testThePromptLandsInTheRowsTheDumpLeavesBlank() {
+    tubes::TextScreen ts;
+    std::vector<uint8_t> blob(static_cast<size_t>(80) * 23 * 2, 0);
+    for (size_t i = 0; i < blob.size(); i += 2) { blob[i] = 'X'; blob[i + 1] = 0x1f; }
+    check(ts.loadBin(blob), "the 23-row dump loads");
+    check(tubes::kPromptRow >= ts.rowsLoaded(),
+          "the prompt row is below every row the dump occupies");
+    check(tubes::kPromptRow < tubes::kTextRows, "and is still on the screen");
+    check(ts.at(0, tubes::kPromptRow).ch == ' ',
+          "the row the prompt uses is blank before it is drawn");
+    // The cursor is an underline on the cell's last scanlines, not a block.
+    check(tubes::kCursorTopRow > 0 && tubes::kCursorTopRow < tubes::kGlyphH,
+          "the cursor underline is inside the cell");
+}
+
 void testGlyphsRenderForegroundOverBackground() {
     tubes::TextScreen ts;
     ts.put(0, 0, 0xDB, 0x1E);        // fg 14 yellow on bg 1 blue
@@ -3728,6 +3747,7 @@ int main() {
 
     testTheTextScreenIsEightyByTwentyFiveOfEightBySixteen();
     testABinDumpLoadsItsRowsAndLeavesTheRestBlank();
+    testThePromptLandsInTheRowsTheDumpLeavesBlank();
     testGlyphsRenderForegroundOverBackground();
     testTheBlinkBitDoesNotBecomeABrightBackground();
     testTheTextPaletteIsTheEgaOneIncludingBrown();

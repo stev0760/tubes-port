@@ -67,6 +67,29 @@ extern const uint8_t kTextPalette[16][3];
 // `TextScreen` renders through the same `toRgba` path as everything else.
 Palette textPalette();
 
+// ---------------------------------------------------------------------------
+// The fake DOS prompt
+// ---------------------------------------------------------------------------
+//
+// THE PORT'S OWN INVENTION, and the only content on this screen that is not in
+// the file. It is here rather than buried in the SDL layer so the invariant
+// below can be tested.
+//
+// The justification is the file's own shape: 3,680 bytes is 23 rows of a
+// 25-row screen, and it stops short precisely so the shell's next line lands
+// under the art instead of scrolling it. The blank rows are a hole cut for the
+// prompt. Drawing one fills the gap the dump was designed around, which is why
+// the screen reads as finished rather than as cropped.
+constexpr int kPromptRow = 23;
+constexpr uint8_t kPromptAttr = 0x07;       // light grey on black, the DOS default
+
+// The VGA text cursor is an underline on the cell's last two scanlines,
+// toggling every 16 vertical retraces. Written as a retrace count because that
+// is the unit this project measures every hold in - `23e7:0024` is `Delay(n)`
+// at n/70 s - rather than as milliseconds.
+constexpr int kCursorBlinkRetraces = 16;
+constexpr int kCursorTopRow = 14;
+
 class TextScreen {
 public:
     TextScreen() : cells_(kTextCols * kTextRows) {}
