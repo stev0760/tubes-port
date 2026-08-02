@@ -9218,3 +9218,99 @@ which is what the main menu at `1ac3:2d0a` (4510 bytes) would use. Not chased
 yet. Recording it because "no function references this string" is exactly the
 kind of negative result this project has learned to distrust: the string is
 plainly on screen, so the search is what is incomplete, not the program.
+
+### `DS:0x1d4b` is the Preview flag, and the menu has TWO preview arms
+
+First real decompilation of the shareware program. Two corrections and one
+substantive finding.
+
+**Correction, before anything else: `1ac3:2d0a` is not the main menu.** It was
+written up as one in the map pass on the strength of a grep for `Start Game|
+High Scores|View Demo|Instructions`. Decompiling it shows the Instructions
+pattern - runs of `2333:049b` text lines with a key wait between screens - so
+those hits were Instructions *body text* mentioning the menu items, not menu
+code. Registered `1b2e:2d63` is the same screen. A grep for menu item names
+finds the screen that *describes* the menu as readily as the one that is it.
+
+**Second correction, and it dissolves the loose end above:** the map has no
+function referencing `Start Game` in EITHER edition. So `Preview Registered`
+being unreferenced is not a shareware quirk and not an incomplete search - the
+main menu is **table-driven in both builds**, and its item strings are data.
+The earlier note treating this as a gap in the search was wrong about the
+cause, though right to distrust the negative.
+
+The real title-and-menu screen is **`1ac3:59f5`** (3782 bytes), which names
+`TUBESBG.GFX`, `TUBESFG.GFX`, `TUBES.MUS`, `SELECT.SFX`, `Copyright 1994
+Absolute Magic`, and the save-list arms `Chains` and `Wave`. The high score
+viewer is `1ac3:68ec` (registered `1b2e:61b6`).
+
+#### The flag
+
+`DS:0x1d4b` is a byte, and `FindScalarRefs` over the whole image gives it a
+very clean shape: **written in `entry` and nowhere else** - four sites - and
+read in four functions (`1000:2dd0`, `1000:3a67`, `1000:7fc7`, `1000:9718`).
+
+The menu dispatch at `1000:ab3d` is the whole thing. `AL` is the selection
+returned by `2000:0625`:
+
+    AL = 1, 2   CALL 1000:9718                                   normal session
+    AL = 3      [0x1d4e]=2  [0x1d4f]=0  [0x1d4c]=1  [0x1d4b]=1
+                CALL 1000:9718  then [0x1d4b]=0
+    AL = 5      CALLF 2000:151c
+    AL = 6      CALLF 1000:d93a
+    AL = 7      [0x1d4e]=0  [0x1d4f]=2  [0x1d4c]=1  [0x1d4b]=1
+                CALL 1000:9718  then [0x1d4b]=0
+    AL = 8      CALLF 1000:f4b9
+
+**There are two preview arms, not one.** Arms 3 and 7 both run the ordinary
+session with `0x1d4b` set and clear it on return, and they differ only in the
+mode bytes: arm 3 sets `0x1d4e=2, 0x1d4f=0`, arm 7 sets `0x1d4e=0,
+0x1d4f=2`. Both set `0x1d4c=1`. The player reported *one* extra menu item, so
+either one arm is reached another way or the item leads to a submenu; **not
+resolved, and not guessed at here.** `0x1d4e` is set to 1 at boot and looks
+like the game mode, `0x1d4f` a sub-selector; neither is pinned yet.
+
+The boot defaults are at `1000:aad4`, and they are worth having written down:
+
+    [0x1d47]=0  [0x210f]=0  [0x1d4e]=1  [0x1d4b]=0  [0x1d48]=1  [0x1d50]=1
+    [0x1d52]=1  [0x1d51]=9  [0x1d54]=0x100  [0x1d56]=0x46  [0x1d4f]=0
+    [0x2056]=0xff
+
+#### What the flag gates, so far
+
+`1000:7fc7` is the **wave briefing**, and it is where the flag earns its name:
+
+    if ([0x1d4b] != 0)  FUN_1000_7e3f()      the Preview blurb screen
+    if ([0x1d4b] == 0)  dispatch by objective mode to the per-wave briefing
+                        (1000:73fa, 6b3b, 67ba, 766e, 78e7, 6d5d, 668f, 62f1 …)
+
+So Preview mode replaces the whole per-wave briefing with the one blurb screen.
+`1000:7e3f` itself is small and entirely presentational: two heading lines via
+`2333:05da`, six body lines via `2333:049b` - 28 columns each, which is exactly
+the wrap in the string dump - then a key wait whose result lands in `0x1d45`.
+
+**And `1000:5ec9`, inside the playfield routine `1000:3a67`, is the one that
+matters for the save work:**
+
+    CMP byte ptr [0x1d4e],0x0
+    JZ   5ef0
+    CMP  byte ptr [0x1d4b],0x0
+    JNZ  5ef0
+    ... draw the string at 1000:3a43 ...
+    CALL 1000:2dd0
+
+`1000:3a43` is a Pascal string of length 0x23: **`F2 to Save Game, ESC for Main
+Menu`**. (`1000:3a20` is `___________`, `3a2c` `Game Over`, `3a36` `Game
+Aborted`.)
+
+So **Preview mode suppresses the save prompt entirely, and with it the call
+into `1000:2dd0`.** A preview run cannot be saved. That is a direct answer to
+part of the savegame question in `PLAN.md`: whatever the shareware `TUBES.SAV`
+layout turns out to be, it does **not** need a third bank for Preview, because
+Preview never reaches a save path. Read off the branch, not inferred from the
+file.
+
+Still open from this pass: which arm is the menu item the player saw, what
+`0x1d4e`/`0x1d4f` mean, and the spawn distribution. `1000:5ed0` is a text draw
+and **not** the spawn check - noting that explicitly, because it was reached
+while looking for the spawn and would have been easy to write down as one.
