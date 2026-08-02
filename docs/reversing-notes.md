@@ -9366,15 +9366,41 @@ ones.
 
 **Two consequences that matter for the port.**
 
-* The random numbers are **still consumed either way**. The `Random(100)+1` is
-  rolled and then discarded, and the `Random(8)+1` fallback is rolled too. So
-  the RNG sequence does not diverge between the editions - a shareware session
-  and a registered session from the same seed make the same calls in the same
-  order. Shareware mode is **two constants**, not a second code path, and the
-  `DEMO.SCR` oracle's determinism argument survives intact.
+* Shareware mode is **two constants**, not a second code path. That part holds.
 * Because `Random(8)+1` includes 8, Flashium is still dispensed normally in
   shareware. Only 9 and 10 are suppressed. The specials family at 11 is
   untouched.
+
+> **CORRECTED 2026-08-02, by a test written while porting this.** The first
+> version of this section also claimed *"the random numbers are still consumed
+> either way, so the RNG sequence does not diverge between the editions… the
+> `DEMO.SCR` oracle's determinism argument survives intact."* **That is wrong**,
+> and it was wrong in `PLAN.md` and `docs/worklog.md` too. Corrected below
+> rather than deleted, because the shape of the error is worth keeping: it was
+> reasoned from the disassembly, it sounded right, and nothing about reading
+> the code any harder would have caught it. Running it did.
+>
+> The **gate** roll `Random(100)+1` is spent either way - that much was true.
+> The **fallback** `Random(8)+1` is spent only when the special is REJECTED.
+> The registered game grants a share of its 9s and 10s and skips the fallback
+> each time; shareware normal play rejects every one and always spends it. So
+> a rate of 0 spends strictly MORE calls. Measured from seed 12345 over 200
+> dispenses: **280 calls registered against 301 shareware, first difference at
+> call 21.**
+>
+> **The `DEMO.SCR` oracle survives anyway, for a better reason than the wrong
+> one.** The demo always runs with the rates ON in both editions: registered
+> arms 6 and 9 set 50 and 25 unconditionally, and the shareware's View Demo
+> (arm 7) and attract loop (arm 11) set the Preview flag, which restores
+> exactly those two values. Preview against registered measures **280 against
+> 280, identical throughout**.
+>
+> And that is very likely **why those two arms set the flag at all**. One
+> `DEMO.SCR` ships in a `.RES` byte-identical between the editions; played at
+> rate 0 it would desync exactly as measured. The marketing reading recorded
+> earlier - the demo is the advertisement - and this technical necessity
+> coincide, and only the second one is forced. So the flag on `View Demo` is
+> not a marketing choice that happens to work; it is required.
 
 #### The registered build has the Preview flag too, and never sets it
 

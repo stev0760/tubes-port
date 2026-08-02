@@ -478,9 +478,26 @@ public:
     void setTubeAtoms(const std::vector<int8_t>& v);
     // The HUD is part of the frame now, so a captured state has to be able to
     // describe it or a mid-game capture can never be matched.
+    // The session setup's write to `DS:0x1d49` and `DS:0x1d4a` - `1000:9e63`
+    // in the shareware image, `1000:a59e` in the registered one. It is a
+    // SESSION-level act in both, done once before the frame loop, which is why
+    // this is a setter rather than a constructor argument threaded through
+    // every caller: `1000:9718` and `1000:9e53` are the only writers.
+    void applyEdition(const EditionState& ed) {
+        edition_ = ed;
+        antiMatterChance_ = ed.antiMatterChance();
+        bonusChance_ = ed.bonusChance();
+    }
+    const EditionState& edition() const { return edition_; }
+
     // Exposes one roll of the generator, so a test can check it against the
     // algorithm rather than against itself.
     int rollForTest(int n) { return random(n); }
+    int antiMatterChanceForTest() const { return antiMatterChance_; }
+    int bonusChanceForTest() const { return bonusChance_; }
+    // One dispensed type, so the edition's effect on the distribution can be
+    // sampled without running a whole session.
+    int8_t nextColourForTest() { return nextColour(); }
     // The two values the endurance ramp moves, so a test can watch it step.
     int spawnIntervalForTest() const { return spawnInterval_; }
     int rampCounterForTest() const { return rampCounter_; }
@@ -619,6 +636,15 @@ private:
     // The tube slides at 6 px/frame over an 18 px column pitch, so a column
     // change takes three frames.
     int moveTimer_ = 0;
+
+    // `DS:0x1d49` and `DS:0x1d4a`, the two special-atom rates the dispenser
+    // rolls against. Session state in the original, not literals - which is
+    // the entire mechanism by which the shareware edition withholds AntiMatter
+    // and Bonus from normal play. Defaulted to the registered values so a
+    // caller that never mentions an edition gets the registered game.
+    int antiMatterChance_ = kAntiMatterChanceOn;   // DS:0x1d49
+    int bonusChance_ = kBonusChanceOn;             // DS:0x1d4a
+    EditionState edition_{};                       // registered, no Preview
 
     PascalRandom rng_;
     std::vector<std::pair<int, uint32_t>>* randomTrace_ = nullptr;

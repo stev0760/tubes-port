@@ -1394,9 +1394,17 @@ data, but it may not claim the original showed it.**
    bytes: registered sets `[0x1d49]=50` and `[0x1d4a]=25` unconditionally,
    shareware zeroes both and restores **those same two values** only when the
    Preview flag `[0x1d4b]` is set. With a rate of 0 the roll is still made and
-   always rejected, so **the RNG sequence does not diverge between editions** -
-   shareware mode is two constants, not a code path, and Flashium is unaffected
-   because the fallback `Random(8)+1` includes it.
+   always rejected, so shareware mode is two constants rather than a code path,
+   and Flashium is unaffected because the fallback `Random(8)+1` includes it.
+
+   **This item previously also claimed the RNG sequence does not diverge
+   between the editions. It does** - the gate roll is spent either way but the
+   fallback only on rejection, so a rate of 0 spends strictly more calls: 280
+   against 301 from seed 12345, first difference at call 21. Caught by a test
+   written during the port, not by re-reading the code. The `DEMO.SCR` oracle
+   survives for a different reason - the demo runs with the rates **on** in
+   both editions, so Preview against registered is 280 against 280 - and that
+   is very likely why View Demo sets the Preview flag at all. See the notes.
 
    The control comparison settles the design: **the registered build contains
    the Preview path too**, reads `[0x1d4b]` at addresses identical to the

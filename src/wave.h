@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "board.h"
+#include "edition.h"
 
 namespace tubes {
 
@@ -78,12 +79,20 @@ enum class Objective : uint8_t {
     kMystery,            // 1000:8581  - picks one of four at random
 };
 
-constexpr int kWaveCount = 75;
+// The REGISTERED wave count. `kWaveCountShareware` is 25; see `edition.h`,
+// which carries both and the count that produced them.
+constexpr int kWaveCount = kWaveCountRegistered;
 
 // `1000:86b8`'s dispatch. Waves are 1-based; anything outside 1..75 has no arm
 // in the original either, and returns `kAnyAtom` here rather than reading off
 // the end of the table.
 Objective objectiveForWave(int wave);
+
+// The shareware Preview's five-arm chain, `1000:7fc7`'s `else` side.
+Objective objectiveForPreviewWave(int wave);
+
+// Picks the chain the way `1000:7fc7` does, off the Preview flag.
+Objective objectiveForWave(int wave, const EditionState& ed);
 
 // The 720-frame timer seeded at `1000:3b00` and reloaded at `1000:4b6d`. It is
 // what the briefings call "every 45 seconds".

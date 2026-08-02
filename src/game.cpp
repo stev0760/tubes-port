@@ -422,15 +422,26 @@ int Game::random(int n) {
 // This replaces a "seven colours only" placeholder that PLAN.md carried as
 // unmeasured. The specials were always visible in play; what was missing was
 // any measured rate to give them.
-constexpr int kBonusChance = 25;        // DS:0x1d4a
-constexpr int kAntiMatterChance = 50;   // DS:0x1d49
+//
+// THE TWO RATES ARE NOT CONSTANTS. They are `DS:0x1d49` and `DS:0x1d4a`,
+// written by the session setup, and the shareware edition is the reason it
+// matters: `1000:9718` zeroes both and restores them only under the Preview
+// flag, where the registered `1000:9e53` writes 50 and 25 unconditionally. See
+// `edition.h`. The code below is byte-identical between the editions - the
+// same instructions at the same addresses - so the whole difference is what
+// these two members hold.
+//
+// A rate of 0 is unreachable by `Random(100)+1`, so both specials fall through
+// to `Random(8)+1`. Note where the sequence diverges: the GATE roll is spent
+// either way, but the FALLBACK roll is spent only on rejection, so a rate of 0
+// spends strictly more calls than a rate of 25 or 50. See `edition.h`.
 
 int8_t Game::nextColour() {
     int type = random(11) + 1;
     if (type == kBonus) {
-        if (random(100) + 1 >= kBonusChance) type = random(8) + 1;
+        if (random(100) + 1 >= bonusChance_) type = random(8) + 1;
     } else if (type == kAntiMatter) {
-        if (random(100) + 1 >= kAntiMatterChance) type = random(8) + 1;
+        if (random(100) + 1 >= antiMatterChance_) type = random(8) + 1;
     } else if (type == kXenon) {
         const int r = random(100) + 1;
         if (r <= 29)      type = kXenon;

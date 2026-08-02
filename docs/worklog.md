@@ -3885,8 +3885,9 @@ there:
 
 A rate of 0 can never be reached by `Random(100)+1`, so every 9 and 10 falls
 through to `Random(8)+1`. Two things follow that make the port trivial: the
-random numbers are consumed either way, so **the RNG sequence does not diverge
-between the editions** and the `DEMO.SCR` determinism argument is untouched;
+random numbers are consumed either way, so the RNG sequence does not diverge
+between the editions and the `DEMO.SCR` determinism argument is untouched;
+**[WRONG - corrected the same day, see the entry below]**;
 and `Random(8)+1` includes 8, so Flashium is dispensed normally and only 9 and
 10 are suppressed.
 
@@ -4063,3 +4064,59 @@ Pascal exit procedure, which is why nothing appears to call it.
 porting.
 
 No code changed; 742 checks unmoved.
+
+## 2026-08-02 - porting starts, and a test kills this morning's claim
+
+First shareware code lands: `src/edition.h` with the two rules that are pure
+constants, the Preview's five-arm wave table in `wave.cpp`, the two rate bytes
+as `Game` members rather than literals, and `--shareware` / `--preview`.
+
+`edition.h` is deliberately the whole derivation and not just the numbers,
+because the fact that shapes it is not obvious from the code: **the two
+executables are one Pascal source.** The registered build carries the entire
+Preview path and writes `DS:0x1d4b` exactly once, to zero. So this is not a
+compatibility layer over a port of one edition - it is the same program with
+two settings, which is what the original is.
+
+**And then the test suite refuted a claim this project committed three times
+today.** `testTheEditionsDoNotDivergeTheRandomSequence` was written to pin down
+what the notes, `PLAN.md` and the worklog all asserted: that because both rolls
+are spent either way, a shareware session and a registered session from one
+seed make the same calls, so the `DEMO.SCR` oracle is untouched.
+
+It failed on the first run. The **gate** roll `Random(100)+1` is spent either
+way - that much was right. The **fallback** `Random(8)+1` is spent only when
+the special is REJECTED. The registered game grants a share of its 9s and 10s
+and skips the fallback each time; shareware rejects every one and always spends
+it. From seed 12345 over 200 dispenses: **280 calls registered against 301
+shareware, first difference at call 21.**
+
+Worth being precise about how this got through. It was not sloppy reading - the
+disassembly says exactly what the note said it says, and the inference from it
+was one step long and plausible. No amount of re-reading `1000:49fd` would have
+caught it, because the error was in reasoning about the code rather than in
+reading it. Running it caught it in one second. That is a category this
+project's verification standards did not previously name: **a claim derived
+correctly from a correct reading can still be false, and only execution
+distinguishes those.**
+
+**The `DEMO.SCR` oracle survives anyway, for a better reason than the wrong
+one - and the better reason is a finding.** The demo always runs with the rates
+ON in both editions: registered arms 6 and 9 set 50 and 25 unconditionally, and
+the shareware's View Demo (arm 7) and attract loop (arm 11) set the Preview
+flag, which restores exactly those two values. Preview against registered
+measures **280 against 280, identical throughout**.
+
+So the flag on `View Demo` is **required, not decorative**. One `DEMO.SCR`
+ships in a `.RES` byte-identical between the editions; played at rate 0 it
+would desync precisely as measured. This morning's reading - that the shareware
+demos its registered content because the advertisement is the demo - is still
+true and is no longer the whole story: it is also the only way the shipped
+recording can replay at all.
+
+Both the divergence and the demo's immunity are now tests. The wrong claim is
+corrected in `PLAN.md` and `docs/reversing-notes.md` and flagged in place in
+this file's earlier entry, rather than deleted.
+
+778 checks / 0 failures, up from 742. `--demo-trace` md5 unmoved and still 71
+spawns / score 13,000, which is the recorded oracle.

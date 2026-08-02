@@ -279,6 +279,10 @@ struct Options {
     int randomTrace = 0;        // with --demo-trace: print the first N rolls
     std::string demoCsv;        // with --demo-trace: per-frame state, for the rig
     std::string gameBg = "GAMEBG1.GFX";   // backdrop, for matching a capture
+    // Which build of Tubes to be. `--shareware` is the 25-wave edition, and
+    // `--preview` opens its Preview Registered mode - menu arm 3, and the same
+    // flag View Demo and the attract loop set. See edition.h.
+    tubes::EditionState edition{};
     double renderSeconds = 0;   // 0 = one pass, songs loop forever
     int wave = 0;               // 0 = Endurance; 1..75 starts Wave mode there
     int titlePage = -1;         // -1 off; 0 the bare title; 1..7 a menu page
@@ -511,6 +515,13 @@ Options parseArgs(int argc, char** argv) {
             o.splash2Step = std::atoi(argv[++i]);
         } else if (a == "--splash" && i + 1 < argc) {
             o.splashFrame = std::atoi(argv[++i]);
+        } else if (a == "--shareware") {
+            o.edition.edition = tubes::Edition::kShareware;
+        } else if (a == "--preview") {
+            // The Preview only exists in the shareware build, so asking for it
+            // implies the edition rather than needing both flags.
+            o.edition.edition = tubes::Edition::kShareware;
+            o.edition.preview = true;
         } else if (a == "--no-splash") {
             o.noSplash = true;
         } else if (a == "--fade-steps" && i + 1 < argc) {
@@ -545,6 +556,8 @@ void usage() {
         "  --dump-spr NAME   print a .SPR strip's frames\n"
         "                    tools/anm_decode.py RUNS\n"
         "  --no-splash       go straight to the title screen\n"
+        "  --shareware       play the 25-wave shareware edition\n"
+        "  --preview         its Preview Registered mode (implies --shareware)\n"
         "  --splash N        run the first splash and, with --screenshot,\n"
         "                    capture its Nth animation frame\n"
         "  --splash2 N       the same for the second: 0-5 the logo frames,\n"

@@ -26,6 +26,7 @@
 #include "save.h"
 #include "menu.h"
 #include "session.h"
+#include "edition.h"
 #include "wave.h"
 
 namespace {
@@ -2071,6 +2072,170 @@ void testTitleLegTwentyThreeDoesNotCurve() {
 // The layout numbers, checked against captures of the original. The +1 on the
 // count and the +2 on the star row were both wrong until a capture caught
 // them, so they are pinned here.
+
+// ---------------------------------------------------------------------------
+// The shareware edition
+// ---------------------------------------------------------------------------
+
+// `1000:9718` at `9e63` zeroes both rate bytes and restores them only under
+// the Preview flag, where the registered `1000:9e53` at `a59e` writes 50 and
+// 25 unconditionally. Four combinations, and the Preview is the one that makes
+// a shareware session behave like a registered one.
+void testSharewareWithholdsTheTwoSpecialAtoms() {
+    struct { tubes::Edition ed; bool preview; int anti; int bonus; } cases[] = {
+        {tubes::Edition::kRegistered, false, 50, 25},
+        {tubes::Edition::kRegistered, true,  50, 25},
+        {tubes::Edition::kShareware,  false,  0,  0},
+        {tubes::Edition::kShareware,  true,  50, 25},
+    };
+    for (const auto& c : cases) {
+        tubes::Game g(6, 5, tubes::Difficulty::k101, 1);
+        g.applyEdition({c.ed, c.preview});
+        check(g.antiMatterChanceForTest() == c.anti, "edition sets DS:0x1d49");
+        check(g.bonusChanceForTest() == c.bonus, "edition sets DS:0x1d4a");
+    }
+}
+
+// Where the two editions' random sequences part company, and where they do
+// not. An earlier draft of edition.h claimed they never diverge, on the
+// grounds that both rolls are spent either way. Half right: the GATE roll
+// `Random(100)+1` is spent either way, but the FALLBACK `Random(8)+1` is spent
+// only when the special is REJECTED - so a rate of 0 spends strictly more
+// calls than a rate of 25 or 50, and the sequences part at the first 9 or 10
+// the registered game would have granted.
+//
+// This test is why that claim is not still in the file.
+void testTheEditionsDivergeExactlyWhereTheSpecialsAre() {
+    std::vector<std::pair<int, uint32_t>> regTrace, swTrace;
+    tubes::Game reg(6, 5, tubes::Difficulty::k101, 12345, &regTrace);
+    tubes::Game sw(6, 5, tubes::Difficulty::k101, 12345, &swTrace);
+    reg.applyEdition({tubes::Edition::kRegistered, false});
+    sw.applyEdition({tubes::Edition::kShareware, false});
+    for (int i = 0; i < 200; ++i) {
+        (void)reg.nextColourForTest();
+        (void)sw.nextColourForTest();
+    }
+    check(swTrace.size() > regTrace.size(),
+          "a rate of 0 spends MORE random calls, never fewer");
+    size_t n = std::min(regTrace.size(), swTrace.size());
+    size_t first = n;
+    for (size_t i = 0; i < n; ++i) {
+        if (regTrace[i] != swTrace[i]) { first = i; break; }
+    }
+    check(first < n, "normal shareware play does diverge from registered");
+}
+
+// But the DEMO is safe, and this is the assertion the `DEMO.SCR` oracle rests
+// on. In BOTH editions the demo plays with the rates ON: registered arms 6 and
+// 9 set 50 and 25 unconditionally, and the shareware's View Demo (arm 7) and
+// attract loop (arm 11) set the Preview flag, which restores exactly those.
+// So one recorded demo replays identically under either build - which is very
+// likely why those two arms set the flag at all.
+void testTheDemoRunsWithTheSameRatesInBothEditions() {
+    std::vector<std::pair<int, uint32_t>> regTrace, pvTrace;
+    tubes::Game reg(6, 5, tubes::Difficulty::k101, 12345, &regTrace);
+    tubes::Game pv(6, 5, tubes::Difficulty::k101, 12345, &pvTrace);
+    reg.applyEdition({tubes::Edition::kRegistered, false});
+    pv.applyEdition({tubes::Edition::kShareware, true});   // View Demo / attract
+    for (int i = 0; i < 200; ++i) {
+        (void)reg.nextColourForTest();
+        (void)pv.nextColourForTest();
+    }
+    check(regTrace.size() == pvTrace.size(),
+          "the demo makes the same NUMBER of random calls in both editions");
+    bool same = regTrace.size() == pvTrace.size();
+    for (size_t i = 0; same && i < regTrace.size(); ++i) {
+        if (regTrace[i] != pvTrace[i]) same = false;
+    }
+    check(same, "the demo makes the same random calls in the same order");
+}
+
+// And the types themselves DO differ, or the test above would be vacuous -
+// a shareware normal run must never dispense 9 or 10, and must still dispense
+// Flashium, because the fallback `Random(8)+1` includes 8.
+void testSharewareNeverDispensesNineOrTenButStillDispensesFlashium() {
+    tubes::Game sw(6, 5, tubes::Difficulty::k101, 999);
+    sw.applyEdition({tubes::Edition::kShareware, false});
+    bool sawSpecial = false, sawFlashium = false;
+    for (int i = 0; i < 4000; ++i) {
+        int8_t t = sw.nextColourForTest();
+        if (t == 9 || t == 10) sawSpecial = true;
+        if (t == 8) sawFlashium = true;
+    }
+    check(!sawSpecial, "shareware normal play dispenses no AntiMatter or Bonus");
+    check(sawFlashium, "shareware normal play still dispenses Flashium");
+
+    tubes::Game pv(6, 5, tubes::Difficulty::k101, 999);
+    pv.applyEdition({tubes::Edition::kShareware, true});
+    bool previewSpecial = false;
+    for (int i = 0; i < 4000; ++i) {
+        int8_t t = pv.nextColourForTest();
+        if (t == 9 || t == 10) previewSpecial = true;
+    }
+    check(previewSpecial, "the Preview dispenses them again");
+}
+
+// `1000:7fc7`'s dispatch: a 25-arm chain and a 5-arm chain, chosen by the
+// flag. The five Preview arms are registered-only waves, so none of them may
+// coincide with the arm the same number would give in normal play.
+void testThePreviewHasItsOwnFiveWaveList() {
+    tubes::EditionState pv{tubes::Edition::kShareware, true};
+    check(pv.waveCount() == 5, "the Preview is five waves");
+    check(tubes::objectiveForWave(1, pv) == tubes::Objective::kCrystals,
+          "Preview wave 1 is the Mischief Crystal wave");
+    check(tubes::objectiveForWave(2, pv) == tubes::Objective::kMarkedXenon,
+          "Preview wave 2 is marked atoms inside Xenon rings");
+    check(tubes::objectiveForWave(3, pv) == tubes::Objective::kSurviveHidden,
+          "Preview wave 3 is hidden atoms");
+    check(tubes::objectiveForWave(4, pv) == tubes::Objective::kTaskBothTimed,
+          "Preview wave 4 is colour-and-chain on the 45s timer");
+    check(tubes::objectiveForWave(5, pv) == tubes::Objective::kMystery,
+          "Preview wave 5 is the Mystery Wave");
+
+    tubes::EditionState sw{tubes::Edition::kShareware, false};
+    bool anyShared = false;
+    for (int w = 1; w <= 5; ++w) {
+        if (tubes::objectiveForWave(w, pv) == tubes::objectiveForWave(w, sw)) {
+            anyShared = true;
+        }
+    }
+    check(!anyShared, "no Preview wave is the wave that number gives normally");
+}
+
+// The wave counts, and the background roll that differs by one operand.
+void testTheEditionsDifferInWaveAndBackgroundCounts() {
+    tubes::EditionState reg{tubes::Edition::kRegistered, false};
+    tubes::EditionState sw{tubes::Edition::kShareware, false};
+    check(reg.waveCount() == 75, "the registered game is 75 waves");
+    check(sw.waveCount() == 25, "the shareware game is 25 waves");
+    check(reg.backdropCount() == 10, "registered rolls Random(10)");
+    check(sw.backdropCount() == 5, "shareware rolls Random(5)");
+    // The Preview's backgrounds are fixed per wave, not rolled - and the table
+    // really does repeat GAMEBG5 and never show GAMEBG8.
+    const int expect[6] = {0, 10, 5, 9, 6, 7};
+    for (int w = 1; w <= 5; ++w) {
+        check(tubes::kPreviewBackdrop[w] == expect[w],
+              "the Preview's fixed background for its wave");
+    }
+    bool showsEight = false;
+    for (int w = 1; w <= 5; ++w) if (tubes::kPreviewBackdrop[w] == 8) showsEight = true;
+    check(!showsEight, "no shareware path shows GAMEBG8");
+}
+
+// Both guards are explicit branches on the Preview flag: `1000:5ed0` for the
+// F2 save prompt and `1000:9fb9` for the high score entry. Neither is a
+// consequence of anything else, so both are asserted.
+void testAPreviewRunCanNeitherBeSavedNorPlace() {
+    tubes::EditionState pv{tubes::Edition::kShareware, true};
+    tubes::EditionState sw{tubes::Edition::kShareware, false};
+    tubes::EditionState reg{tubes::Edition::kRegistered, false};
+    check(!pv.canSave(), "the Preview cannot be saved - 1000:5ed0");
+    check(!pv.canEnterHiScore(), "the Preview cannot place a score - 1000:9fb9");
+    check(sw.canSave() && sw.canEnterHiScore(), "ordinary shareware play can do both");
+    check(reg.canSave() && reg.canEnterHiScore(), "the registered game can do both");
+}
+
+
 void testMenuLayoutMatchesTheCaptures() {
     using tubes::Page;
     // Main menu, 8 items: yBase 18, "Start Game" starred at 100/203, y 36.
@@ -3421,6 +3586,14 @@ int main() {
     testNameIsCappedAtTwentyFive();
     testTheSentinelTailSurvivesPastTheName();
     testAMalformedTableIsRefused();
+
+    testSharewareWithholdsTheTwoSpecialAtoms();
+    testTheEditionsDivergeExactlyWhereTheSpecialsAre();
+    testTheDemoRunsWithTheSameRatesInBothEditions();
+    testSharewareNeverDispensesNineOrTenButStillDispensesFlashium();
+    testThePreviewHasItsOwnFiveWaveList();
+    testTheEditionsDifferInWaveAndBackgroundCounts();
+    testAPreviewRunCanNeitherBeSavedNorPlace();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

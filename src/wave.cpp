@@ -41,6 +41,30 @@ constexpr Objective kWaveTable[kWaveCount] = {
     O::kMystery, O::kTaskBoth, O::kCrystals, O::kTaskChainTimed, O::kSurviveHidden,                   // 71..75
 };
 
+// The shareware Preview's wave list - the `else` side of `1000:7fc7`'s
+// dispatch, five arms against the normal twenty-five. Each shareware arm is
+// identified by the registered routine carrying the same briefing, so these are
+// addresses rather than descriptions:
+//
+//     Preview 1   sw 1000:6591  ->  reg 1000:66cb   Mischief Crystals
+//     Preview 2   sw 1000:6458  ->  reg 1000:6592   marked atoms in Xenon rings
+//     Preview 3   sw 1000:6c32  ->  reg 1000:6fd5   hidden atoms
+//     Preview 4   sw 1000:729e  ->  reg 1000:7b72   colour AND chain, timed
+//     Preview 5   sw 1000:7cad  ->  reg 1000:8581   Mystery Wave
+//
+// Arm 4 is the TIMED variant, not `kTaskBoth`: its briefing says the
+// requirement "will change every 45 seconds" where the untimed one says "will
+// change after completing each task".
+//
+// NONE of these five appears anywhere in the shareware's own 25-arm chain -
+// checked per function, zero hits each - so they are registered-only waves
+// carried in the shareware binary and reachable only through the Preview. That
+// is what "play some of the new waves" means, and waves 1 and 2 needing
+// AntiMatter is why the Preview turns the special-atom rates back on.
+constexpr Objective kPreviewTable[kPreviewWaveCount] = {
+    O::kCrystals, O::kMarkedXenon, O::kSurviveHidden, O::kTaskBothTimed, O::kMystery,
+};
+
 // `repeat colour := Random(8) + 1 until colour <= 7`, which is how six of the
 // routines pick a colour. The rejection loop is the original's - it rolls over
 // eight and throws Flashium away rather than rolling over seven.
@@ -242,6 +266,19 @@ void crystalCellFell(std::vector<Crystal>& crystals, int col, int fromRow,
 Objective objectiveForWave(int wave) {
     if (wave < 1 || wave > kWaveCount) return O::kAnyAtom;
     return kWaveTable[wave - 1];
+}
+
+// The Preview's own dispatch. Same shape as the one above, and the same
+// out-of-range behaviour, because it is the same `if`-chain in the original -
+// one `if/else` on `DS:0x1d4b` with a 25-arm side and a 5-arm side.
+Objective objectiveForPreviewWave(int wave) {
+    if (wave < 1 || wave > kPreviewWaveCount) return O::kAnyAtom;
+    return kPreviewTable[wave - 1];
+}
+
+// `1000:7fc7` picks the arm chain by the flag, so callers do not have to.
+Objective objectiveForWave(int wave, const EditionState& ed) {
+    return ed.preview ? objectiveForPreviewWave(wave) : objectiveForWave(wave);
 }
 
 // `1000:a616`. Note what is NOT stepped: the crystal count, which `1000:66cb`
