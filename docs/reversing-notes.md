@@ -9124,14 +9124,97 @@ one part of this work that can damage files a player owns. See `PLAN.md`.
 
 ### Images on disk
 
-| | registered | shareware | Impulse re-release |
-|---|---|---|---|
-| install | `..` | `~/Dev/tubes-tooling/editions/sw/` | `~/Dev/tubes-tooling/editions/reg/Tubes93/` |
-| unpacked | `assets-extracted/TUBES_UNP.EXE` | `editions/SW_UNP.EXE` | `editions/REG_UNP.EXE` |
-| waves | 75 | 25 | 25 |
+Two images are in use, and there are only two:
 
-The `reg/` and `REG_UNP` names are a **misnomer kept from the archive.org item
-title**, which advertises `msdos_Tubes_1993` as the registered version. It is
-not; it is a 25-wave shareware build with an Impulse splash. Renaming them is
-worth doing before the shareware decompilation starts, since "REG" meaning
-"shareware" is a trap laid for a later session.
+| | registered | shareware |
+|---|---|---|
+| install | `..` | `~/Dev/tubes-tooling/editions/sw/` |
+| unpacked | `assets-extracted/TUBES_UNP.EXE` | `editions/SW_UNP.EXE` |
+| waves | 75 | 25 |
+| Ghidra project | `../ghidra-project`, `tubes` | `../ghidra-project-sw`, `tubes-sw` |
+
+The third image is **filed away** at
+`editions/filed-impulse-rerelease/`, with a `README.txt` saying why. It was
+`editions/reg/` and `REG_UNP.EXE`, named after the archive.org item title,
+which advertises `msdos_Tubes_1993` as the registered version. It is not: it is
+a 25-wave shareware build differing from `sw/` only by its publisher splash
+(`IMPULSE.DAT` for `SOFT.ANM`/`SOFT.GFX`/`SOFT.PAL`). Confirmed once more on
+the way out - `IMPULSE` appears twice in that image's strings and not at all in
+`SW_UNP.EXE`, and `SOFT.` the other way round.
+
+Renamed rather than deleted, because **"REG" meaning shareware is a trap laid
+for a later session** and the misnomer is worth remembering. Nothing in the
+plan uses that image.
+
+The shareware program gets **its own Ghidra project**, not a second program in
+the existing one. Two builds of the same Pascal source share a segment layout,
+so `1000:9e53` names a function in both and they are not the same function -
+one project holding both is a wrong-address finding waiting to happen.
+
+### The shareware map: every new stage located, by string
+
+`SW_UNP.EXE` imported into `../ghidra-project-sw` (project `tubes-sw`), Old-style
+DOS Executable (MZ), `x86:LE:16:Real Mode:default` - the same loader and
+language the registered image got, chosen by Ghidra without prompting. Clean
+import, no errors. `FindPascalStrings.java` then `MapProgram.java`: **297
+functions, 686 strings, 195 call edges**, dumped to
+`~/Dev/tubes-tooling/map-sw.txt`.
+
+The one-liner from `CLAUDE.md` - the one that found the high score viewer after
+a scalar scan had "disproved" it - found every new stage on the first try:
+
+    awk '/^@FUNC/{f=$0} /@STR/{print f" || "$0}' map-sw.txt \
+      | grep -iE "Preview|Ordering|TUBESEND|stop now|Register"
+
+| Stage | Address | Size | Strings that name it |
+|---|---|---|---|
+| Preview Registered screen | `1000:7e3f` | 245 | `Preview`, `This Preview allows you to`, `available in the registered` |
+| "See Ordering Info" prompt | `1000:8c22` | 286 | `Register!`, `See Ordering Info for more` |
+| Quit / registration deck | `1000:8df8` | 337 | `You can't stop now!`, `Register and continue` |
+| **Ordering Info deck** | `1ac3:4889` | 1204 | `Order by Phone`, `Order by Fax`, `Order by BBS (OPEN Door 5)` |
+| **`TUBESEND.BIN` load and dump** | `1ac3:6bfb` | 103 | `TUBESEND.BIN` |
+
+None of these is decompiled yet. They are located, which is what a map is for.
+
+#### The segment layout shifted, and by how much is itself informative
+
+**This is the trap to hold on to.** The interface unit is `1b2e` in the
+registered image and **`1ac3`** in the shareware one. Every address this
+project has written down for a slide, a fade or a menu - `1b2e:411b` the
+Credits, `1b2e:2d63` the Instructions, `1b2e:0510` the projector roll-down -
+**names a different function in the shareware program**, and will still
+decompile into something plausible. Never carry a `1b2e:` address across.
+
+Lining the two segment inventories up shows the whole shape of the edition
+difference in one column of numbers:
+
+| | registered | shareware | delta |
+|---|---|---|---|
+| game segment | `1000` (61 funcs) | `1000` (57 funcs) | -4 |
+| interface unit | `1b2e` (23) | `1ac3` (25) | **-0x6b paragraphs, +2 funcs** |
+| everything after | `2178`, `21ea`, `2321`, `23e7`, `2685` … | `218a`, `21fc`, `2333`, `23f9`, `2697` … | **uniformly +0x12** |
+
+Read it as two independent size changes:
+
+* segment `1000` is **smaller** by 0x6b paragraphs - about 1.7 KB - which is
+  the 50 missing dispatch arms and the wave-75 ending gone, minus the three new
+  functions above that live in `1000`. That is what drags `1ac3` down;
+* the interface unit is **larger**, by enough that the segment after it still
+  lands 0x12 paragraphs - 288 bytes - higher than the registered layout. That
+  growth is the Ordering Info deck and the exit-screen dump.
+
+Every unit from `218a` onward is `registered + 0x12`, with no exceptions, which
+says the shared units are **identical builds** and only the two edition-aware
+segments changed size. That is a strong structural check to re-run whenever a
+shareware address is written down: if a supposedly shared routine is not at
+`registered + 0x12`, one of the two readings is wrong.
+
+#### One loose end from this pass
+
+`Preview Registered` is in the string dump but **no function references it** in
+the map, unlike `Preview` which `1000:7e3f` names directly. So it is reached
+some other way - a menu item table rather than an inline push, most likely,
+which is what the main menu at `1ac3:2d0a` (4510 bytes) would use. Not chased
+yet. Recording it because "no function references this string" is exactly the
+kind of negative result this project has learned to distrust: the string is
+plainly on screen, so the search is what is incomplete, not the program.
