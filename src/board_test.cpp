@@ -27,7 +27,6 @@
 #include "menu.h"
 #include "session.h"
 #include "edition.h"
-#include "ending.h"
 #include "textscreen.h"
 #include "wave.h"
 
