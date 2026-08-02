@@ -1268,7 +1268,7 @@ and only the third column settles anything.
 |---|---|---|
 | 25 waves, not 75 | yes | 25 dispatch arms at `1000:86b8`; *"50 more exciting Waves!"* |
 | ~~**No Bonus and no AntiMatter in normal play**~~ **DECOMPILED** | yes | two rate bytes zeroed at `1000:9e63`; see below |
-| **An extra menu item, "Preview Registered"** | yes | `Preview Registered`, `Preview` |
+| ~~**An extra menu item, "Preview Registered"**~~ **DECOMPILED** - **two** items inserted, at 3 and 8 | yes | the item table at a `0x24` stride, and `entry`'s dispatch, agreeing independently |
 | ~~Preview has **its own wave list**, first wave the **Mischief Crystal** one~~ **DECOMPILED** | yes | a 5-arm chain in `1000:7fc7`; arm 1 is Mischief Crystals, and none of the five occurs in the normal 25 |
 | **An "Ordering Info" slide deck** | yes | `Ordering Info`, `Order by Phone`, `Order by Fax`, `Order by BBS (OPEN Door 5)`, `Down - Next Slide  Register!` |
 | **Quitting goes to the registration deck first** | yes | *"You can't stop now!"*, *"Lanny is 1/3 of the way to his goal and he still needs your help."* |

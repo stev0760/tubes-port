@@ -4016,3 +4016,50 @@ it**. The shipped program does not consult it, so the port has nothing to
 transliterate.
 
 No code changed; 742 checks unmoved.
+
+## 2026-08-02 - the menu: item 3, and the demo runs in Preview too
+
+The last open shareware question, answered twice over by routes that agree.
+
+**The item table is data at a `0x24` stride**, which is why no function
+references the labels and why a grep for `Start Game` came back empty in both
+editions. `strings -t x` finds them consecutively, and lining the two images up
+shows **two items inserted, not one**: `Preview Registered` at 3 right after
+Continue, and `Ordering Info` at 8 between View Demo and Credits, with
+everything after each insertion shifting down. Shareware Exit is item 10 where
+the registered one is 8.
+
+**The dispatch in `entry` agrees arm for arm.** Ghidra prints far targets on a
+normalised `0x2000` base, so subtracting the unit base names each one:
+`2000:151c` is `1ac3:68ec` High Scores, `1000:d93a` is `1ac3:2d0a`
+Instructions, `1000:f4b9` is `1ac3:4889` Ordering Info, `1000:ecf2` is
+`1ac3:40c2` Credits. Every arm lands on a function already identified by its
+strings, and the table and the dispatch were derived independently of each
+other. `1b2e:61b6` naming both high-score banks - `CLAUDE.md`'s example of a
+string search succeeding where a scalar scan had "disproved" the code existed -
+falls out as registered arm 4, which is a third agreement.
+
+**So the two preview arms were never two menu items.** The map pass left that
+unresolved on purpose. Arm 3 is the item; **arm 7 is `View Demo`** and arm 11
+is the attract loop, and both set the Preview flag on top of the demo triple
+the registered build sets without it. The shareware demos its registered
+content - the advertisement is the demo, which is obvious in hindsight and was
+not guessable from the menu.
+
+Worth recording what checking prevented: arm 7 sets `[0x1d4e]=0`, and
+`[0x1d4e]` picks the high-score bank. Reading arm 7 as a second play mode would
+have put demo scores in the Endurance bank. It cannot happen - `1000:9fb9`
+gates high-score entry on the Preview flag, the same guard that covers the
+Preview proper - but the port would have had to know that to avoid inventing
+the bug.
+
+And the exit path, off the branch at `1000:abf7`: selection = 10 calls
+`1ac3:4889`, the Ordering Info deck, and then halts. That is the player's "when
+we exit we automatically get taken to the registration info slide deck". The
+`TUBESEND.BIN` dump at `1ac3:6bfb` sits downstream of the `Halt` as a Turbo
+Pascal exit procedure, which is why nothing appears to call it.
+
+**Every shareware question in `PLAN.md` is now decompiled.** What remains is
+porting.
+
+No code changed; 742 checks unmoved.

@@ -9609,3 +9609,94 @@ background count and the `wave = 5` prompt test - and it is **still** not
 evidence of what the byte is for, because nothing reads it. Recorded as closed
 for practical purposes: whatever it was meant to be, the shipped program does
 not consult it, so the port has nothing to transliterate.
+
+### The menu: item 3 is "Preview Registered", and the demo runs in Preview too
+
+Both open menu questions answered, by two independent routes that agree.
+
+#### The item table is data, at a 36-byte stride
+
+`strings -t x` over each image finds the labels consecutively at a **`0x24`
+stride**, which is the menu record size and why no function references them:
+
+| # | registered | shareware |
+|---|---|---|
+| 1 | `Start Game` | `Start Game` |
+| 2 | `Continue Saved Game` | `Continue Saved Game` |
+| 3 | `Game Options` | **`Preview Registered`** |
+| 4 | `High Scores` | `Game Options` |
+| 5 | `Instructions` | `High Scores` |
+| 6 | `View Demo` | `Instructions` |
+| 7 | `Credits` | `View Demo` |
+| 8 | `Exit Tubes` | **`Ordering Info`** |
+| 9 | - | `Credits` |
+| 10 | - | `Exit Tubes` |
+
+**Two items inserted, not one**: `Preview Registered` at 3, right after
+Continue, and `Ordering Info` at 8, between View Demo and Credits. Everything
+after each insertion shifts down. That is the whole menu difference.
+
+#### The dispatch agrees, arm for arm
+
+`entry`'s chain after the menu returns its selection in `AL`. Ghidra prints far
+targets on a normalised `0x2000` base, so `2000:151c` is flat `0x2151c` and
+`0x2151c - 0x1ac30 = 0x68ec` - subtract the unit base and the target names
+itself:
+
+| AL | registered | shareware |
+|---|---|---|
+| 1, 2 | session `1000:9e53` | session `1000:9718` |
+| 3 | *(absent - Options is handled in the menu)* | **Preview: `[0x1d4e]=2 [0x1d4f]=0 [0x1d4c]=1 [0x1d4b]=1`, session, then `[0x1d4b]=0`** |
+| 4 | High Scores `1b2e:61b6` | *(absent - Options)* |
+| 5 | Instructions `1b2e:2d63` | High Scores `1ac3:68ec` |
+| 6 | View Demo - `[0x1d4e]=0 [0x1d4c]=1 [0x1d4f]=2`, session | Instructions `1ac3:2d0a` |
+| 7 | Credits `1b2e:411b` | View Demo - the same three **plus `[0x1d4b]=1`** |
+| 8 | *exit* | Ordering Info `1ac3:4889` |
+| 9 | attract demo - `c931`, then the View Demo triple | Credits `1ac3:40c2` |
+| 10 | - | *exit* |
+| 11 | - | attract demo - `c228`, then the View Demo triple **plus `[0x1d4b]=1`** |
+
+Every arm lands on a function already identified by its strings, and the item
+table and the dispatch were derived independently. `1b2e:61b6` naming both
+high-score banks - which `CLAUDE.md` records as the finding a string search
+produced after a scalar scan had "disproved" it - is arm 4 here, which is a
+third agreement.
+
+#### So the two preview arms were never two menu items
+
+The map pass recorded "there are two preview arms, 3 and 7, and the player
+reported one extra menu item, so either one arm is reached another way or the
+item leads to a submenu - not resolved, and not guessed at here". Neither
+option, as it turns out:
+
+* **arm 3 is the menu item `Preview Registered`**;
+* **arm 7 is `View Demo`**, and arm 11 is the attract-mode demo. Both set the
+  Preview flag on top of the demo triple that the registered build sets without
+  it.
+
+So **the shareware demos its registered content**: View Demo and the attract
+loop both play with `[0x1d4b]` set, which means the registered spawn rates and
+the Preview's five waves. Commercially obvious in hindsight - the demo is the
+advertisement - and it is the reason the flag had more writers than the one
+menu item accounted for.
+
+Worth noting what would have gone wrong without checking: arm 7 sets
+`[0x1d4e]=0`, and `[0x1d4e]` picks the high-score bank. Reading arm 7 as a
+second *play* mode would have made the port write demo scores into the
+Endurance bank. It cannot happen, because `1000:9fb9` gates high-score entry on
+the Preview flag - the same guard that protects the Preview proper.
+
+#### The exit path
+
+`1000:abf7` compares the selection against **`0xa`** - the shareware's Exit is
+item 10, the registered's is 8 - and on a match:
+
+    1000:ac01  CALLF 0x1000:f4b9        { = 1ac3:4889, the Ordering Info deck }
+    1000:ac06  MOV AL,[0x1d38]
+    1000:ac0a  CALLF 0x2000:25e3        { Halt }
+
+**Choosing Exit runs the Ordering Info deck first, then halts**, which is the
+player's *"when we exit we automatically get taken to the registration info
+slide deck"*, read off the branch. The `TUBESEND.BIN` dump at `1ac3:6bfb` is
+downstream of the `Halt` - a Turbo Pascal exit procedure - which is why nothing
+appears to call it.
