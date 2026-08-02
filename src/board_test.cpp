@@ -25,6 +25,7 @@
 #include "input.h"
 #include "save.h"
 #include "menu.h"
+#include "ordering.h"
 #include "session.h"
 #include "edition.h"
 #include "textscreen.h"
@@ -2482,6 +2483,23 @@ void testTheEditionsDifferInWaveAndBackgroundCounts() {
 // builds with a different literal - CMP 0x4b registered, CMP 0x19 shareware -
 // and a different destination. The destinations are NOT interchangeable: the
 // shareware image contains none of the registered ending's text.
+// The two editions' end screens are different data and must never be
+// substituted for one another - neither image contains the other's text.
+void testTheTwoEditionsHaveDifferentEndScreens() {
+    check(tubes::kRegistrationPageCount == 1,
+          "the shareware end screen is one page - it does not page");
+    // Its text is the shareware's own, and says the wave count out loud.
+    bool saysOneThird = false, saysStopNow = false;
+    const tubes::InstructionSlide& p = tubes::kRegistrationPages[0];
+    for (int i = 0; i < p.count; ++i) {
+        const char* t = p.items[i].text;
+        if (t && std::string(t).find("1/3 of the") != std::string::npos) saysOneThird = true;
+        if (t && std::string(t).find("stop now") != std::string::npos) saysStopNow = true;
+    }
+    check(saysOneThird, "it states Lanny is 1/3 of the way - 25 of 75");
+    check(saysStopNow, "and it is the registration pitch, not the Nobel ending");
+}
+
 void testEachEditionEndsOnItsOwnWave() {
     tubes::EditionState reg{tubes::Edition::kRegistered, false};
     tubes::EditionState sw{tubes::Edition::kShareware, false};
@@ -3874,6 +3892,7 @@ int main() {
     testSharewareNeverDispensesNineOrTenButStillDispensesFlashium();
     testThePreviewHasItsOwnFiveWaveList();
     testTheEditionsDifferInWaveAndBackgroundCounts();
+    testTheTwoEditionsHaveDifferentEndScreens();
     testEachEditionEndsOnItsOwnWave();
     testAPreviewRunCanNeitherBeSavedNorPlace();
 

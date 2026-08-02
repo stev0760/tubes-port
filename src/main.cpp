@@ -290,6 +290,8 @@ struct Options {
     bool exitScreen = false;
     // Open the shareware's Ordering Info deck at page N, for capture.
     int ordering = -1;
+    // Open the shareware's wave-25 end screen, for capture.
+    bool registration = false;
     double renderSeconds = 0;   // 0 = one pass, songs loop forever
     int wave = 0;               // 0 = Endurance; 1..75 starts Wave mode there
     int titlePage = -1;         // -1 off; 0 the bare title; 1..7 a menu page
@@ -522,6 +524,9 @@ Options parseArgs(int argc, char** argv) {
             o.splash2Step = std::atoi(argv[++i]);
         } else if (a == "--splash" && i + 1 < argc) {
             o.splashFrame = std::atoi(argv[++i]);
+        } else if (a == "--registration") {
+            o.registration = true;
+            o.edition.edition = tubes::Edition::kShareware;
         } else if (a == "--ordering") {
             o.ordering = (i + 1 < argc && argv[i + 1][0] != '-')
                              ? std::atoi(argv[++i]) : 0;
@@ -573,6 +578,7 @@ void usage() {
         "  --shareware       play the 25-wave shareware edition\n"
         "  --exit-screen     show TUBESEND.BIN, the shareware sign-off\n"
         "  --ordering [N]    open the shareware Ordering Info deck at page N\n"
+        "  --registration    open the shareware wave-25 end screen\n"
         "  --preview         its Preview Registered mode (implies --shareware)\n"
         "  --splash N        run the first splash and, with --screenshot,\n"
         "                    capture its Nth animation frame\n"
@@ -1378,7 +1384,7 @@ std::string bindingLabel(const tubes::Binding& x) {
 // screen at y 184 and 192, which is BELOW the sheet, on the black.
 void drawInstructionSlide(tubes::Screen& screen,
                           const tubes::InstructionSlide* pages, int count,
-                          int slide,
+                          int slide, bool hasNav,
                           const tubes::Image* board, bool haveBoard,
                           const SceneArt& art, const ScenePose& pose,
                           const tubes::Font& small, bool haveSmall,
@@ -1430,7 +1436,15 @@ void drawInstructionSlide(tubes::Screen& screen,
             break;
         }
     };
-    for (const tubes::InstructionItem& n : tubes::kInstructionNav) item(n);
+    // The two navigation lines at y 184 and 192. The Instructions, the
+    // Credits and the shareware's Ordering deck all draw them - checked in
+    // each, not assumed - but the wave-25 end screen draws NEITHER, because it
+    // does not page: `1000:8df8` waits with `1ac3:0b8f`, the terminal wait, and
+    // has no nav strings at all. So this is a property of the deck rather than
+    // of the screen it is drawn on.
+    if (hasNav) {
+        for (const tubes::InstructionItem& n : tubes::kInstructionNav) item(n);
+    }
     for (int i = 0; i < s.count; ++i) item(s.items[i]);
 }
 
@@ -4281,7 +4295,8 @@ int main(int argc, char** argv) {
 
     // The Instructions slideshow, `1b2e:2d63` - a straight run of 21 slides
     // rather than a dispatch, so the state is just which one is up.
-    bool instrOpen = opt.instr >= 0 || opt.credits || opt.ordering >= 0;
+    bool instrOpen = opt.instr >= 0 || opt.credits || opt.ordering >= 0 ||
+                     opt.registration;
     // `--instructions` / `--credits` open the screen the way the menu does,
     // roll-down and all, so a capture of the animation needs no other flag.
     if (instrOpen) {
@@ -4299,15 +4314,21 @@ int main(int argc, char** argv) {
     // different table rather than three screens.
     const tubes::InstructionSlide* instrPages = tubes::kInstructionSlides;
     int instrPageCount = tubes::kInstructionSlideCount;
-    auto openDeck = [&](const tubes::InstructionSlide* pages, int count) {
+    bool instrNav = true;
+    auto openDeck = [&](const tubes::InstructionSlide* pages, int count,
+                        bool nav = true) {
         instrPages = pages;
         instrPageCount = count;
+        instrNav = nav;
         instrSlide = 0;
     };
     if (opt.credits) { instrPages = tubes::kCreditPages;
                        instrPageCount = tubes::kCreditPageCount; }
     if (opt.ordering >= 0) { instrPages = tubes::kOrderingPages;
                              instrPageCount = tubes::kOrderingPageCount; }
+    if (opt.registration) { instrPages = tubes::kRegistrationPages;
+                            instrPageCount = tubes::kRegistrationPageCount;
+                            instrNav = false; }
     // `1000:ac01`: the shareware's Exit does not exit. It runs the Ordering
     // Info deck first and only then Halts, at which point the exit banner is
     // dumped over the text screen. So a quit that has been asked for waits for
@@ -5110,18 +5131,28 @@ int main(int argc, char** argv) {
                 // place in both builds, with a different literal and a
                 // different destination.
                 //
-                // PLACEHOLDER, and marked as one: the shareware's destination
-                // is the registration deck at `1000:8df8`, which is NOT YET
-                // PORTED. Until it is, a shareware session ends here without a
-                // closing screen rather than running the REGISTERED ending,
-                // which would be flatly wrong - that ending's text is not in
-                // the shareware image at all.
+                // The destinations differ as well as the literals. Wave 25
+                // in the shareware reaches `1000:8df8` - "You can't stop now!"
+                // - where wave 75 in the registered build reaches the Nobel
+                // ending at `1000:9499`. Neither image contains the other's
+                // text, so the port shows each edition its own screen and
+                // never substitutes one for the other.
                 const bool sharewareEnd =
                     opt.edition.edition == tubes::Edition::kShareware;
                 if (t.advanceWave &&
                     game->progress().wave >= opt.edition.endingWave()) {
                     if (sharewareEnd) {
+                        // One page, and `1000:8df8` waits with `1ac3:0b8f` -
+                        // the terminal wait, not the paging one - so it is
+                        // shown through the deck screen and any key leaves.
+                        instrOpen = true;
+                        openDeck(tubes::kRegistrationPages,
+                                 tubes::kRegistrationPageCount, false);
+                        profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
+                        screenRoll.restart();
                         flags.gameOver = true;
+                        stage = Stage::kTitle;
+                        changeScreen();
                         continue;
                     }
                     endingPage = 1;
@@ -5526,7 +5557,7 @@ int main(int argc, char** argv) {
         // ends the frame with its own `continue` before the title is drawn.
         if (instrOpen) {
             drawInstructionSlide(screen, instrPages, instrPageCount,
-                                 instrSlide, &blackboard, haveBlackboard,
+                                 instrSlide, instrNav, &blackboard, haveBlackboard,
                                  sceneArt, scenePose(false),
                                  smallFont, haveSmall, headingFont,
                                  haveHeading, atoms, haveAtom, testTube,

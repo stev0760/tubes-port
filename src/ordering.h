@@ -26,4 +26,19 @@ namespace tubes {
 constexpr int kOrderingPageCount = 4;
 extern const InstructionSlide kOrderingPages[kOrderingPageCount];
 
+// The shareware's END-OF-GAME screen, `1000:8df8` - one page, reached from
+// `1000:9f56` when the wave reaches 25, where the registered build reaches its
+// Nobel ending at `1000:9499` on wave 75.
+//
+// THE TWO ARE NOT INTERCHANGEABLE. The shareware image has no `PRIZE.GFX` and
+// none of the registered ending's text; the registered image has none of this
+// screen's. Substituting either for the other would be inventing an ending for
+// an edition that does not have one.
+//
+// It waits with `1ac3:0b8f` - the terminal wait the registered ending also
+// uses - rather than the paging wait the decks use, which is what says it is
+// one screen and not the first page of something.
+constexpr int kRegistrationPageCount = 1;
+extern const InstructionSlide kRegistrationPages[kRegistrationPageCount];
+
 }  // namespace tubes
