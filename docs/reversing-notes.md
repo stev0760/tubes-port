@@ -8330,6 +8330,21 @@ all. `JUMP1..3.GFX` are 36/48/44 x 71 against the standing pose's 44 x 79.
 The loop erases with `CopyRect(3, DS:0x2376, 267, y, w, h)` - the same
 restore-from-page-3 every other menu-side animation uses.
 
+### The high score ENTRY screen is not the classroom
+
+`1000:96db` calls neither `1b2e:0656` nor `1b2e:0a11`. Its whole backdrop is
+three calls:
+
+    Draw(0, 12, BLACKBRD)             { 2321:068d, opaque }
+    Draw(57, 26, SLIDEBAR)            { 2321:0711, masked }
+    FillRect(10, 37, 299, 118, 111)
+
+so there is no projector screen on it, no slide, no corners and no professor -
+and the bar sits at y 26, the height it has BEFORE the roll-down, which is
+where the viewer `1b2e:61b6` parks it too. The port had drawn the whole
+classroom behind the panel and the screen showed through. Reported from play,
+after a real wave-75 clear.
+
 ### Extracted, not transcribed
 
 Twelve strings is few enough that typing them looks harmless, which is exactly

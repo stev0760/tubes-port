@@ -305,6 +305,7 @@ struct Options {
     bool joke = false;          // force `1b2e:084e`, which is a 5% roll
     int ending = -1;            // open `1000:9499` at page 1 or 2
     std::string makeSave;       // write a TUBES.SAV for --wave N and exit
+    bool hsEntry = false;       // open the high score ENTRY screen, 1000:96db
     bool autoAdvance = false;   // synthesise RETURN whenever a stage waits
     uint32_t seed = 0;          // 0 = clock for play, fixed for the harnesses
     bool help = false;
@@ -482,6 +483,8 @@ Options parseArgs(int argc, char** argv) {
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 o.hsPage = std::atoi(argv[++i]);
             }
+        } else if (a == "--hs-entry") {
+            o.hsEntry = true;
         } else if (a == "--make-save" && i + 1 < argc) {
             o.makeSave = argv[++i];
         } else if (a == "--ending") {
@@ -560,6 +563,7 @@ void usage() {
         "  --make-save FILE  with --wave N, write a TUBES.SAV holding that\n"
         "                    wave in Wave slot 1 and exit. Writes ONLY to the\n"
         "                    path given - never to the game directory.\n"
+        "  --hs-entry        open the high score ENTRY screen, `1000:96db`\n"
         "  --ending [N]      open the wave-75 ending `1000:9499` at page N\n"
         "                    (1 the text, 2 the prize); implies a session\n"
         "  --joke            force `1b2e:084e`'s joke slide, which is a one in\n"
@@ -819,8 +823,15 @@ void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
     // draw on top of the two above, and only while he is talking. The wave
     // frames carry their own mouth, so `ProfessorIdle` reports 0 for this the
     // moment the gesture starts.
-    if (art.haveTalk && pose.mouthFrame >= 1 && pose.mouthFrame <= 5 &&
-        art.haveTalk[pose.mouthFrame - 1]) {
+    // ...and only while he is standing. The mouth's (276, 133) is nine right
+    // and twelve down from the STANDING pose's origin; the jump arm puts him
+    // at (267, 94..88) and there is nothing under (276, 133) but blackboard.
+    // Structurally it cannot happen in the original either - the mouth is
+    // drawn by `1b2e:0cd1` and the jump by `1b2e:0b8f`, and no screen runs
+    // both - but the port drives one professor from two clocks, so it has to
+    // be said. Reported from play: a mouth left floating beside him.
+    if (pose.jumpFrame == 0 && art.haveTalk && pose.mouthFrame >= 1 &&
+        pose.mouthFrame <= 5 && art.haveTalk[pose.mouthFrame - 1]) {
         screen.blit(art.talk[pose.mouthFrame - 1], tubes::kTalkX,
                     tubes::kTalkY);
     }
@@ -3915,9 +3926,10 @@ int main(int argc, char** argv) {
     // `1000:a6c1` runs it when the wave loop falls out and the session was NOT
     // aborted, the mode is not attract, and `DS:0x1d4b` is clear. The score is
     // then offered to the bank for the mode just played.
-    bool hsActive = false;
+    bool hsActive = opt.hsEntry;
     std::string hsName;
-    int hsRow = 0;             // 1-based, as the original's display loop is
+    int hsRow = opt.hsEntry ? 3 : 0;   // 1-based, as the original's display
+                                       // loop is
     int hsCursor = tubes::kHsCursorMin;
     int hsCursorDir = 1;
     float hsCursorAccum = 0.0f;
@@ -4536,6 +4548,11 @@ int main(int argc, char** argv) {
                     endingTimer = tubes::kEndingHoldSeconds;
                     jumpFrame = 1;
                     jumpAccum = 0.0f;
+                    // `1000:9499` waits with `1b2e:0b8f` only - it never
+                    // reaches the talk loop, so the stats screen's
+                    // `1b2e:0cd1(10)` has to stop here rather than run on
+                    // underneath the hop.
+                    profIdle.restart(0, sceneRng);
                     flags.gameOver = true;
                     continue;
                 }
@@ -5223,8 +5240,24 @@ int main(int argc, char** argv) {
                          haveHeading, bigFont, haveBig);
         }
         if (hsActive) {
-            drawScene(screen, &blackboard, haveBlackboard, sceneArt,
-                      ScenePose{});
+            // `1000:96db` does NOT call `1b2e:0656` or `1b2e:0a11`. It draws
+            // three things and they are all here:
+            //
+            //     Draw(0, 12, BLACKBRD)          { 2321:068d, opaque }
+            //     Draw(57, 26, SLIDEBAR)         { 2321:0711, masked }
+            //     FillRect(10, 37, 299, 118, 111)
+            //
+            // and `drawHiScores` makes the third. So there is no projector
+            // screen on this screen, no slide, no corners and no professor -
+            // the port put the whole classroom behind it and the screen showed
+            // through the panel. Reported from play. The bar sits at y 26, the
+            // height it has before the roll-down, which is the same place the
+            // VIEWER parks it.
+            screen.clear(0);
+            if (haveBlackboard) screen.blit(blackboard, 0, tubes::kBoardY);
+            if (haveBar) {
+                screen.blit(slideBar, tubes::kHsViewBarX, tubes::kHsViewBarY);
+            }
             drawHiScores(screen, hiScores[hsBank], headingFont, haveHeading,
                          scriptFont, haveScript, hsRow, hsName,
                          hsHold > 0.0f ? 0 : hsCursor);
