@@ -1694,6 +1694,7 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
     // the cursor scanline registers, not fetched from the character ROM.
     int cursorCol = 0;
     bool cursorOn = false;
+    std::function<void()> drawToWindow;
     auto present = [&](const tubes::Palette& pal) {
         for (size_t i = 0; i < indexed.size(); ++i) {
             const uint8_t* c = pal.rgb[indexed[i]];
@@ -1720,6 +1721,13 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
             }
         }
         SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kTextScreenW * 4);
+        drawToWindow();
+    };
+
+    // Everything below the texture upload, so a frame that only needs the
+    // picture put on the window again does not re-upload 256,000 unchanged
+    // pixels. The screen is static apart from an 8 x 2 cursor.
+    drawToWindow = [&]() {
         int winW = 0, winH = 0;
         SDL_GetRendererOutputSize(ren, &winW, &winH);
         const tubes::DisplayRect r = tubes::presentRect(winW, winH, g_display);
@@ -1771,25 +1779,34 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
     // Hold until a key. The original does not wait - it has already exited and
     // the banner simply persists - so this is the port's substitute for a
     // screen that outlives the program.
-    // PRESENT EVERY RETRACE, not only when the cursor changes.
     //
-    // Presenting once per blink flickered, and the cause is the swap chain
-    // rather than anything drawn: the renderer is created without
-    // `SDL_RENDERER_PRESENTVSYNC`, so consecutive `SDL_RenderPresent` calls
-    // alternate buffers, and at four presents a second the display spends most
-    // of its time showing whichever buffer was filled last time rather than
-    // this time. The picture appeared to blink along with the cursor.
+    // WHY VSYNC, and why the first fix for this was wrong.
     //
-    // Every other blocking screen in this port already presents every 70 Hz
-    // retrace for the same reason. Doing it here is also the more faithful
-    // thing: a CRTC does not stop scanning out because nothing changed.
+    // The screen flickered, and the first attempt blamed stale buffers: the
+    // renderer has no `SDL_RENDERER_PRESENTVSYNC`, so presenting only on the
+    // cursor blink was assumed to leave the display showing a buffer filled
+    // one toggle ago. That reasoning does not survive reading the code -
+    // `present` does `RenderClear` + `RenderCopy` every time, so BOTH buffers
+    // always hold a complete, identical frame, and identical frames presented
+    // repeatedly cannot flicker. Presenting more often did not help, which is
+    // the evidence that settles it.
     //
-    // The cursor state is therefore derived from elapsed retraces rather than
-    // toggled by the present, which keeps the blink rate independent of how
-    // often the frame happens to be drawn.
+    // What actually varies is the SWAP. Without vsync `SDL_RenderPresent`
+    // swaps the moment it is called, so a compositor sampling on its own clock
+    // can catch a half-swapped pair. That matches every observation: one
+    // present is stable, four a second flickers occasionally, seventy a second
+    // flickers constantly. The frames were never the problem; the swapping was.
+    //
+    // `SDL_RenderSetVSync` (SDL >= 2.0.18) fixes it on the existing renderer,
+    // which is why this does not have to be decided when the renderer is made.
+    // The game loop is deliberately left alone: it paces itself off the
+    // original's 16.11 Hz frame clock and vsync there would fight it.
+    const bool hadVSync = SDL_RenderSetVSync(ren, 1) == 0;
+
     bool waiting = true;
     const uint32_t start = SDL_GetTicks();
     const uint32_t blinkMs = kCursorBlinkRetraces * 1000 / 70;
+    bool shown = cursorOn;
     while (waiting) {
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
@@ -1798,10 +1815,21 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
                 waiting = false;
             }
         }
-        cursorOn = ((SDL_GetTicks() - start) / blinkMs) % 2 == 0;
-        present(lit);
-        SDL_Delay(1000 / 70);
+        const bool want = ((SDL_GetTicks() - start) / blinkMs) % 2 == 0;
+        if (want != shown) {
+            // Only the cursor ever changes, so only the cursor is re-uploaded.
+            shown = want;
+            cursorOn = want;
+            present(lit);
+        } else {
+            // Same picture, put on the window again. With vsync this blocks
+            // until the retrace, which is also what paces the loop.
+            drawToWindow();
+        }
+        if (!hadVSync) SDL_Delay(1000 / 70);
     }
+    // Leave the renderer as it was found, in case anything presents after this.
+    if (hadVSync) SDL_RenderSetVSync(ren, 0);
     SDL_DestroyTexture(tex);
     (void)win;
 }

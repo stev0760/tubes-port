@@ -4209,3 +4209,49 @@ player's own game directory.
 
 841 checks / 0 failures, up from 778. `--demo-trace` md5 unmoved, nothing
 written to the game directory.
+
+## 2026-08-02 - the exit screen flicker: the frames were never the problem
+
+Reported twice, because the first fix was a misdiagnosis and shipping it did
+not help.
+
+**The wrong reading.** The renderer has no `SDL_RENDERER_PRESENTVSYNC`, and the
+wait loop presented only when the cursor blinked - four times a second. That
+was written up as consecutive presents alternating buffers, leaving the display
+showing a buffer filled one toggle ago. Plausible, and wrong: `present` does
+`RenderClear` + `RenderCopy` every time, so both buffers always hold a
+complete, identical frame. **Identical frames presented repeatedly cannot
+flicker.** The fix - present every retrace - changed nothing, and that null
+result is what settled it.
+
+**What it actually is.** The swap, not the frames. Without vsync
+`SDL_RenderPresent` swaps the instant it is called, so a compositor sampling on
+its own clock can catch a half-swapped pair. That explains every observation
+including the ones the first reading could not: one present is stable, four a
+second flickers occasionally, seventy a second flickers constantly. More
+presenting made it worse, not better, which should have been the tell
+immediately.
+
+`SDL_RenderSetVSync` (SDL >= 2.0.18) sets it on the existing renderer, so this
+did not have to be decided when the renderer was created. The game loop is
+deliberately left alone - it paces off the original's 16.11 Hz frame clock and
+vsync there would fight it - and the setting is restored on the way out.
+
+Also tightened while in there, because it was the other suspicious thing: the
+picture is static apart from an 8 x 2 cursor, and every frame was re-uploading
+256,000 unchanged pixels through `SDL_UpdateTexture`. The upload is now split
+from the window draw, so only a cursor toggle re-uploads and every other frame
+just puts the existing texture up.
+
+**The lesson is the shape of the first error, not the fix.** The mechanism was
+inferred from a real property of the code - no vsync is genuinely true - and
+never checked against the one prediction that would have falsified it, which is
+that presenting more often should have helped. It made it worse. This is the
+second time today a plausible one-step inference from a correct reading has
+been wrong; the first was the RNG divergence claim, caught by a test. This one
+had no test to catch it and needed a null result instead.
+
+The rendered frame is byte-identical throughout: 0 of 256,000 pixels differ
+across all three versions, so none of this ever changed what is drawn.
+
+846 checks / 0 failures, `--demo-trace` md5 unmoved.
