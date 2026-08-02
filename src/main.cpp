@@ -1793,29 +1793,23 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
     // the banner simply persists - so this is the port's substitute for a
     // screen that outlives the program.
     //
-    // WHY VSYNC, and why the first fix for this was wrong.
+    // THROTTLE UNCONDITIONALLY. Do not trust vsync.
     //
-    // The screen flickered, and the first attempt blamed stale buffers: the
-    // renderer has no `SDL_RENDERER_PRESENTVSYNC`, so presenting only on the
-    // cursor blink was assumed to leave the display showing a buffer filled
-    // one toggle ago. That reasoning does not survive reading the code -
-    // `present` does `RenderClear` + `RenderCopy` every time, so BOTH buffers
-    // always hold a complete, identical frame, and identical frames presented
-    // repeatedly cannot flicker. Presenting more often did not help, which is
-    // the evidence that settles it.
+    // Measured on this machine rather than assumed, after three wrong theories:
     //
-    // What actually varies is the SWAP. Without vsync `SDL_RenderPresent`
-    // swaps the moment it is called, so a compositor sampling on its own clock
-    // can catch a half-swapped pair. That matches every observation: one
-    // present is stable, four a second flickers occasionally, seventy a second
-    // flickers constantly. The frames were never the problem; the swapping was.
+    //     SDL video driver: wayland      renderer: opengl
+    //     SDL_RenderSetVSync(1) -> 0 (ok), and the PRESENTVSYNC flag is set
+    //     60 presents took 459 ms = 130.7 fps
     //
-    // `SDL_RenderSetVSync` (SDL >= 2.0.18) fixes it on the existing renderer,
-    // which is why this does not have to be decided when the renderer is made.
-    // The game loop is deliberately left alone: it paces itself off the
-    // original's 16.11 Hz frame clock and vsync there would fight it.
-    const bool hadVSync = SDL_RenderSetVSync(ren, 1) == 0;
-
+    // So `SDL_RenderSetVSync` REPORTS SUCCESS AND DOES NOT SYNC. An earlier
+    // version of this loop believed that return value and skipped its delay,
+    // which left it presenting unthrottled at 130+ fps into a Wayland
+    // compositor - and that is the flicker. It is also exactly why the fade
+    // never flickered: the fade delays every iteration unconditionally.
+    //
+    // The rule this leaves behind is worth more than the fix: on this port's
+    // targets a vsync request is advisory, so anything that presents in a loop
+    // paces itself and treats vsync as a bonus if it happens to be real.
     bool waiting = true;
     const uint32_t start = SDL_GetTicks();
     const uint32_t blinkMs = kCursorBlinkRetraces * 1000 / 70;
@@ -1827,16 +1821,12 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
                 waiting = false;
             }
         }
-        // Exactly what the fade above does, with a palette that happens not to
-        // change: rebuild, upload, draw, present. The fade is the control here
-        // - it runs at this rate through this texture and does not flicker -
-        // so the hold does not get to be clever where the fade is not.
+        // Structurally identical to the fade loop above, which is the control:
+        // rebuild, upload, draw, present, delay one retrace. No cleverness.
         cursorOn = ((SDL_GetTicks() - start) / blinkMs) % 2 == 0;
         present(lit);
-        if (!hadVSync) SDL_Delay(1000 / 70);
+        SDL_Delay(1000 / 70);
     }
-    // Leave the renderer as it was found, in case anything presents after this.
-    if (hadVSync) SDL_RenderSetVSync(ren, 0);
     SDL_DestroyTexture(tex);
     (void)win;
 }

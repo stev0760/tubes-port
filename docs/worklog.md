@@ -4301,3 +4301,45 @@ Output byte-identical throughout: 0 of 256,000 pixels differ across all four
 versions.
 
 846 checks / 0 failures, `--demo-trace` md5 unmoved.
+
+### The flicker, measured at last: SDL_RenderSetVSync lies on Wayland
+
+Three theories, three failures, and the fourth attempt started by measuring the
+machine instead of reading the code. A probe that builds a window and renderer
+exactly the way `main.cpp` does reports:
+
+    SDL video driver: wayland      renderer: opengl
+    SDL_RenderSetVSync(1) -> 0 (ok), and the PRESENTVSYNC flag is set afterwards
+    60 presents took 459 ms = 130.7 fps
+
+**`SDL_RenderSetVSync` reports success, sets the flag, and does not sync.** The
+previous fix believed that return value and wrote `if (!hadVSync)
+SDL_Delay(...)`, so the hold loop skipped its throttle entirely and presented
+unthrottled at 130+ fps into a Wayland compositor. That is the flicker.
+
+And it is exactly why the fade never flickered, which was the clue sitting in
+plain sight for three rounds: **the fade delays every iteration
+unconditionally.** The hold was the only loop in the file that had been given a
+reason to skip its delay, and the reason was false.
+
+The fix is to delete the cleverness. The hold is now structurally identical to
+the fade - rebuild, upload, draw, present, `SDL_Delay(1000/70)` - with no vsync
+call of its own, which is also correct on other grounds: vsync is already a
+player-facing graphics option and `applyDisplayOptions` owns it. The local
+override was wrong even before it was untrustworthy.
+
+**The rule worth keeping: on this port's targets a vsync request is advisory.**
+Anything that presents in a loop paces itself and treats real vsync as a bonus.
+
+**And the method rule, which cost four rounds to learn.** Every wrong theory
+here was reasoned from correct facts about the code - no `PRESENTVSYNC` flag at
+creation, streaming textures not guaranteeing persistence, swap chains needing
+to converge. All three are true statements. None of them was the cause, and no
+further reading would have separated them, because the code was equally
+consistent with all of them. One probe, twenty lines long, settled it in a
+minute. **When two rounds of reading have not found it, stop reading and
+measure the machine.**
+
+Output byte-identical across all five versions: 0 of 256,000 pixels differ.
+
+846 checks / 0 failures, `--demo-trace` md5 unmoved.
