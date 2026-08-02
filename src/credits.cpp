@@ -1,10 +1,21 @@
-// GENERATED from `1b2e:2d63` by tools/gen_instructions.py - do not edit
-// by hand. 21 slides, 152 strings and 22 illustrations: data, not
-// logic, and extracted rather than transcribed so that no line of the
-// game's own documentation can be quietly mistyped.
+// GENERATED from `1b2e:411b` by tools/gen_instructions.py - do not edit by
+// hand. Regenerate with:
 //
-// The illustrations index the ball table at `DS:0x1da6 + 4 * type`, so
-// they are atom TYPES and the port already has every sprite.
+//   tools/gen_instructions.py disasm-411b.txt strings-411b.txt Credit \
+//       "CALL 0x1000:c117" --array kCreditPages --count kCreditPageCount
+//
+// FOUR pages and 36 strings - not the Instructions' 21 and 152, which is what
+// this header used to claim, verbatim, because the generator hardcoded one
+// file's comment before it was parameterised.
+//
+// The page separator is `CALL 0x1000:c117`, the paging key wait, rather than
+// the Instructions' `CMP byte ptr [BP + -0x3],0x2`: this deck tests the key it
+// gets back somewhere the slideshow does not. `CALL 0x1000:bfb1` separates the
+// four pages identically and would do as well; `c117` is named here because it
+// is the wait itself.
+//
+// No illustrations - the credits draw text only, and alternate fonts instead:
+// names in the heading font, roles in TINY6X8.
 #include "instructions.h"
 
 namespace tubes {

@@ -29,7 +29,10 @@ compile_commands.json
 
 # Session transcripts the assistant harness drops in the working directory.
 # They are working notes, not the record - docs/worklog.md is the record.
+# Two harnesses, two naming schemes: Claude Code dates them, Opencode uses the
+# session id and Markdown.
 20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.txt
+session-ses_*.md
 
 # Python
 __pycache__/

@@ -23,6 +23,15 @@ BALL_TABLE = 0x1DA6            # DS:0x1da6 + 4*type - see board.h
 # lookups. See docs/reversing-notes.md, "The segment layout shifted".
 WRITE_AT, WRITE_MID, DRAW = 0x36AB, 0x37EA, 0x3B15
 SET_FONT = 0x3FAB
+# `LoadSprite(name: string; var dest)`. The slideshow calls it twice at its head
+# to load the two sprites it owns, and the DRAW calls later push those same two
+# locals. Following the load is how a draw's sprite gets its NAME rather than a
+# guess from its frame offset - see `SPRITE_SLOT`.
+LOAD_SPRITE = 0x21FB
+# The negatives `instructions.h` uses for the slideshow's own sprites, by the
+# file the binary loads into the local a draw pushes. Anything not listed here
+# is an atom type out of the ball table.
+SPRITE_SLOT = {"TESTUBE1.CSP": -1, "TESTUBES.CSP": -2}
 # Any interface-unit segment: `1b2e` registered, `1ac3` shareware.
 INSN = re.compile(r"^[0-9a-f]{4}:([0-9a-f]{4})\s+(.*?)\s*$")
 
@@ -86,7 +95,33 @@ def main():
     write_mid = f"0x2000:{WRITE_MID + args.shift:04x}"
     draw = f"0x2000:{DRAW + args.shift:04x}"
     set_font = f"0x2000:{SET_FONT + args.shift:04x}"
+    load_sprite = f"0x2000:{LOAD_SPRITE + args.shift:04x}"
     seps = [a for a, t in ins if t == sep_insn]
+
+    # Which sprite each frame local holds, read off the loads at the head of the
+    # routine rather than assumed from the offset. The two editions use the same
+    # two offsets, but nothing in the binary promises that and an earlier version
+    # of this script hardcoded the pair - backwards, as it turned out, so the
+    # slideshow drew the tube under its own interior shading. Deriving it costs
+    # one pass and cannot be wrong in the same way.
+    #
+    #     MOV DI,<name>  PUSH CS  PUSH DI          { the filename    }
+    #     LEA DI,[BP + -0xX]  PUSH SS  PUSH DI     { var dest        }
+    #     CALLF <load_sprite>
+    locals_ = {}
+    for i, (addr, text) in enumerate(ins):
+        if not text.startswith("CALLF") or text.split()[-1] != load_sprite:
+            continue
+        dest, stroff = None, None
+        for j in range(i - 1, max(i - 12, -1), -1):
+            t = ins[j][1]
+            if t.startswith("LEA DI,[BP + ") and dest is None:
+                dest = int(t.split("[BP + ")[1].split("]")[0], 16)
+            elif t.startswith("MOV DI,0x"):
+                stroff = int(t.split(",")[1], 16)
+                break
+        if dest is not None and stroff is not None:
+            locals_[dest] = pascal(strs, stroff)
 
     events = []          # (addr, kind, payload)
     font = 0             # 0 = TINY6X8 (advance 6), 1 = the heading font
@@ -126,11 +161,19 @@ def main():
                 stroff = int(t.split(",")[1], 16)
             elif t.startswith(("CALLF", "CALL ", "PUSH word ptr [BP")):
                 if t.startswith("PUSH word ptr [BP"):
-                    # A local sprite. 1b2e:1f64 "TESTUBE1.CSP" loads into
-                    # [BP-0x10] and 1b2e:1f71 "TESTUBES.CSP" into [BP-0x8], so
-                    # the frame offset says which.
-                    off = t.split("[BP + ")[1].split("]")[0]
-                    slot = -1 if off == "-0x10" else -2
+                    # A local sprite, pushed as a far pointer: the segment half
+                    # first, then the offset half at the variable's own base.
+                    # Scanning backwards the base is what arrives FIRST, so keep
+                    # it and let the segment push fall through - the reverse is
+                    # what made every draw resolve to the same sprite.
+                    if slot is None:
+                        off = int(t.split("[BP + ")[1].split("]")[0], 16)
+                        what = locals_.get(off)
+                        if what not in SPRITE_SLOT:
+                            sys.exit(f"{addr:04x}: draw pushes [BP{off:+#x}], "
+                                     f"which holds {what!r} - add it to "
+                                     f"SPRITE_SLOT and to instructions.h")
+                        slot = SPRITE_SLOT[what]
                     j -= 1
                     continue
                 break

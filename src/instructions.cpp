@@ -1,10 +1,19 @@
-// GENERATED from `1b2e:2d63` by tools/gen_instructions.py - do not edit
-// by hand. 21 slides, 152 strings and 22 illustrations: data, not
-// logic, and extracted rather than transcribed so that no line of the
-// game's own documentation can be quietly mistyped.
+// GENERATED from `1b2e:2d63` by tools/gen_instructions.py - do not edit by
+// hand. Regenerate with:
+//
+//   tools/gen_instructions.py disasm-2d63.txt strings-2d63.txt Slide
+//
+// 21 slides, 152 strings and 22 illustrations: data, not logic, and extracted
+// rather than transcribed so that no line of the game's own documentation can
+// be quietly mistyped.
 //
 // The illustrations index the ball table at `DS:0x1da6 + 4 * type`, so
 // they are atom TYPES and the port already has every sprite.
+//
+// THIS FILE SERVES BOTH EDITIONS. The shareware deck at `1ac3:2d0a` extracts to
+// the same 21 slides and the same 174 items, and its 152-string pool is
+// byte-identical - checked with the generator and again without it. See
+// docs/reversing-notes.md, "The Instructions are NOT re-wrapped".
 #include "instructions.h"
 
 namespace tubes {
@@ -24,8 +33,8 @@ const InstructionItem kSlide0[] = {
 };
 const InstructionItem kSlide1[] = {
     {InstructionItem::kText, 76, 40, 38, 2, 0, "  The Detailed Instructions "},
-    {InstructionItem::kAtom, 75, 50, -1, 0, 0, nullptr},
     {InstructionItem::kAtom, 75, 50, -2, 0, 0, nullptr},
+    {InstructionItem::kAtom, 75, 50, -1, 0, 0, nullptr},
     {InstructionItem::kText, 103, 65, 150, 2, 0, "The   test   tube   you"},
     {InstructionItem::kText, 103, 75, 150, 2, 0, "control to collect  and"},
     {InstructionItem::kText, 103, 85, 150, 2, 0, "release atoms can  hold"},
