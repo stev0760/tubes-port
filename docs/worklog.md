@@ -3913,3 +3913,53 @@ running one scalar scan per edition. Four Ghidra invocations. Reading the
 shareware spawn from scratch would have been an afternoon.
 
 No code changed; 742 checks unmoved.
+
+## 2026-08-02 - the save routines are the same code, and Preview writes nothing
+
+The item that gated every shareware write path, and it turned out to need no
+format work at all.
+
+`TUBES.SAV` I/O, `TUBES.HSC` load/store and the high-score entry screen are the
+**same code in both editions** - `1ac3:00ac` / `1ac3:0243` / `1000:8fa0`
+against `1b2e:00ac` / `1b2e:0243` / `1000:96db`, identical sizes and identical
+unit-relative offsets. Decompiled from each image they come to 334 lines each,
+and a diff with the segment renumbering normalised away is **22 lines, every
+one a string-literal address** in the shorter segment `1000`. Same two 396-byte
+banks at `DS:0x1610` and `DS:0x179c`, same 36-byte records, same bank test,
+same sort, same 25-character name limit. So `sav_decode.py` and `src/save.cpp`
+already read a shareware install correctly.
+
+`DS:0x1d4e` is confirmed as the game mode by the bank it selects, which also
+made the two Preview menu arms look alarming - arm 3 sets it to 2 and arm 7 to
+0, neither being the 1 that picks the Wave bank. It does not matter, because
+**Preview writes nothing**: `1000:5ed0` skips the F2 save prompt and
+`1000:9fb9` skips the high score entry, both on the Preview flag, both read off
+the branch rather than inferred.
+
+That shrinks the separation work to keeping the two EDITIONS apart - and the
+formats being identical makes that more dangerous rather than less, since a
+25-wave shareware save is a structurally valid registered save and nothing in a
+mismatched file will look wrong. The edition tag has to be the port's own
+invention, because the original never had the problem: in 1994 they were two
+installs in two directories.
+
+Found on the way through, and it closes the other open question in that
+section: `[BP-0x170]` is the **wave number** - seeded from `DS:0x1d50` for a new
+game and `DS:0x1d0e` from a save, driving the ramp through `wave mod 15` and
+`wave mod 20`, incremented once per wave. And at `1000:9f56`:
+
+    if wave >= 25 then call 1000:8df8       { "You can't stop now!" }
+
+So **the shareware's ending is the registration deck at wave 25**, ungated by
+the Preview flag, which is what the player saw on the way out. `1000:8df8` is
+the structural counterpart of the registered `1000:9499`. In Preview the same
+block also fires the "See Ordering Info" prompt at `1000:8c22` when the run
+ends or at wave 5 - which reads as a five-wave Preview, but that is one
+comparison against a literal and is written up as unconfirmed.
+
+The dead store `[BP-0x16f]` from this morning turns out to be the byte
+immediately after the wave number, and its Preview value is also 5. Left as a
+coincidence on purpose. Two numbers that agree can still be counting different
+things, which this project has already been wrong about once this week.
+
+No code changed; 742 checks unmoved.

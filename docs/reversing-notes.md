@@ -9415,3 +9415,108 @@ it is the **original** doing it, so it is a fact about the game rather than a
 defect to fix. 7 and 5 are suggestive next to "the other five backgrounds", and
 that suggestion is deliberately not being turned into a finding: the background
 lists are still unread.
+
+### The save and high-score routines are the SAME CODE, and Preview writes nothing
+
+The question `PLAN.md` gated all shareware write paths on: does the shareware
+`TUBES.SAV` / `TUBES.HSC` layout match the registered one? **It does. The
+routines are the same code.**
+
+Three functions handle it, and they are the same size in both images:
+
+| | registered | shareware | size |
+|---|---|---|---|
+| `TUBES.SAV` file I/O | `1b2e:00ac` | `1ac3:00ac` | 139 |
+| `TUBES.HSC` load / store | `1b2e:0243` | `1ac3:0243` | 679 |
+| high-score entry screen | `1000:96db` | `1000:8fa0` | 1384 |
+
+Note the unit-relative offsets are **identical** - `00ac` and `0243` in both -
+which is the `1b2e`/`1ac3` segment shift and nothing else.
+
+Decompiling all three from each image gives **334 lines each**, and a diff with
+the segment renumbering normalised away comes back with **22 differing lines,
+every one of them a string-literal offset in segment `1000`** (`0x9684` against
+`0x8f49`, and so on) - the same strings at different addresses because that
+segment is 0x6b paragraphs shorter. Not one structural difference:
+
+* the high-score bank is `0x18c` = **396 bytes**, twice, at `DS:0x1610` and
+  `DS:0x179c` - 792 total, which is exactly the size of both editions'
+  shipped `TUBES.HSC`;
+* the record stride is `0x24` = 36 bytes, 11 of them per bank (10 entries plus
+  the working slot);
+* the bank is chosen by **`[0x1d4e] == 1`** in both;
+* the same 10-entry bubble sort, the same 25-character name limit (`0x19`), the
+  same backspace and Escape/Return handling.
+
+So there is nothing edition-specific to read, and `tools/sav_decode.py` and
+`src/save.cpp` are already correct for a shareware install.
+
+#### `DS:0x1d4e` is the game mode, and it picks the bank
+
+Settled by the bank test above and consistent with everything else it gates. It
+is 1 at boot, and the high-score routine reads bank `0x1610` when it is 1 and
+bank `0x179c` otherwise. That is the Wave / Endurance split the save-file work
+already knew about from the other side.
+
+Which makes the two Preview menu arms worth re-reading: arm 3 sets
+`[0x1d4e]=2` and arm 7 sets `[0x1d4e]=0`. **Neither is 1**, so on the face of it
+a Preview score would land in the Endurance bank. It does not, because -
+
+#### Preview writes NOTHING, and both guards are explicit
+
+Two separate gates, both keyed on the Preview flag, both read off the branch:
+
+    1000:5ed0   the "F2 to Save Game, ESC for Main Menu" prompt and the call
+                into 1000:2dd0 are skipped when [0x1d4b] <> 0
+
+    1000:9fb9   CMP byte ptr [0x1d4b],0x0
+                JNZ 0x1000:9fc4          { skip }
+                CALL 0x1000:8fa0         { the high score entry }
+
+So a Preview run can neither be saved nor enter a high score. **The shareware
+needs no third bank and no extra file**, and the port's separation work shrinks
+to keeping the two *editions* apart - which, since the formats are identical, is
+a question of which file a given mode is allowed to touch rather than of
+schema.
+
+The remaining hazard is unchanged and is entirely the port's own making: one
+binary that can run either edition against either install. The formats being
+identical makes a mismatched load **more** dangerous, not less, because nothing
+in the file will look wrong - a 25-wave shareware save is a structurally valid
+registered save. Refusing on an edition tag the port writes itself is therefore
+still the right design, and it cannot be derived from the original because the
+original never had the problem.
+
+#### `[BP-0x170]` is the wave number, and wave 25 calls the registration deck
+
+Found on the way through, and it answers the other question `PLAN.md` carried -
+"what `1000:a657`'s equivalent is in the shareware image, since the registered
+one calls the wave-75 ending there".
+
+`[BP-0x170]` in `1000:9718`'s frame is seeded from `DS:0x1d50` for a new game
+(`1000:9db8`) and from `DS:0x1d0e` when a save is loaded (`1000:9e11`), drives
+the difficulty ramp through `wave mod 15` and `wave mod 20` at `1000:9f00` and
+`1000:9f1b`, and is incremented once per wave at `1000:9f61`. It is the wave
+number.
+
+The end-of-wave block reads:
+
+    if [0x1d4b] <> 0 then                          { Preview only }
+        if (quitFlag <> 0) or (wave = 5) then
+            call 1000:8c22                         { "See Ordering Info…" }
+    if wave >= 25 then call 1000:8df8              { "You can't stop now!" }
+    Inc(wave)
+
+So **the shareware's ending is the registration deck at wave 25**, and it is
+*not* gated on the Preview flag - it fires in normal play, which is what the
+player saw. `1000:8df8` is the structural counterpart of the registered
+`1000:9499`. The Preview additionally shows the ordering prompt when its run
+ends or at **wave 5**, which reads as the Preview being a five-wave run; that
+last inference is from one comparison against the literal 5 and is **not
+confirmed** by a wave list yet.
+
+Noted and still not explained: the dead store `[BP-0x16f]` from the spawn work
+is the byte **immediately after** the wave number, and its Preview value is
+also 5. That is exactly the kind of coincidence this file has been wrong about
+before - two counts that agree can still be counting different things - so it
+stays a coincidence until the Preview's wave list is read.

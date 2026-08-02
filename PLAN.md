@@ -1314,16 +1314,25 @@ looks entirely intentional and lands in the wrong schema.
 
 So, in order:
 
-1. **Read the shareware save and high-score routines before writing anything.**
-   Whether `TUBES.SAV`'s two-bank-by-mode layout is even the same shape across
-   editions is still unknown, and it was already the last open item in this
-   section before any of this came up. A Preview mode with its own progression
-   is a third thing that might need a bank. The shareware ships a 792-byte
-   `TUBES.HSC`, the same size as the registered one, which is suggestive and
-   not proof.
-2. **Refuse rather than reinterpret.** Whatever the layouts turn out to be, a
-   save whose edition does not match the running mode is not loaded. The
-   failure mode to design out is a plausible misread, not an error message.
+1. ~~**Read the shareware save and high-score routines before writing
+   anything.**~~ - **DONE, and there is no format work.** All three routines
+   are the **same code**: `1ac3:00ac` / `1ac3:0243` / `1000:8fa0` against the
+   registered `1b2e:00ac` / `1b2e:0243` / `1000:96db`, same sizes, same
+   unit-relative offsets. Decompiled from both images they are 334 lines each
+   and differ in **22 lines, all of them string-literal addresses**. Same 396
+   byte banks at `DS:0x1610` / `DS:0x179c`, same 36-byte records, same bank
+   test on `[0x1d4e]`. `sav_decode.py` and `src/save.cpp` are already right for
+   a shareware install.
+
+   **And Preview writes nothing** - two explicit guards on `[0x1d4b]`, at
+   `1000:5ed0` (the F2 save prompt) and `1000:9fb9` (the high score entry). So
+   no third bank, no extra file.
+2. **Refuse rather than reinterpret** - and note the formats being **identical**
+   makes this MORE important, not less. A 25-wave shareware save is a
+   structurally valid registered save, so nothing in a mismatched file will
+   look wrong. This is the port's own hazard, from one binary running either
+   edition against either install; the original never had it, so the edition
+   tag has to be the port's own and cannot be derived.
 3. **Decide the filenames from what the original does.** Writing `TUBES.SAV`
    into a shareware install is faithful, because that is what the shareware
    build does. The combination that has no original behaviour to copy is
