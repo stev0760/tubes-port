@@ -104,8 +104,10 @@ player, and the screen fade that was open from the first session.
 Still unread - `.BIN` and nothing else:
 
 - ~~`1000:9499`, the wave-75 ending~~ - **done**, and it is what set
-  `DS:0x20e3`. `--ending [N]` opens either page, and `--wave 75 --make-save
-  FILE` writes a save to reach it by playing
+  `DS:0x20e3`. Verified from play: a real wave-75 clear runs the ending, the
+  high score entry screen and the return to the title. `--ending [N]` opens
+  either page, `--hs-entry` the entry screen, and `--wave 75 --make-save FILE`
+  writes a save to reach it by playing
 - ~~the video page bookkeeping~~ - **done**. Four 16000-byte pages, page 3 the
   clean backdrop everything erases from, `2321:024d` is
   `CopyRect(src, dst, x, y, w, h)`, `1b2e:1188` a three-line restore-from-3,

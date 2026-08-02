@@ -3447,3 +3447,97 @@ drawn ONCE, before the first slide, and nothing clears them - so they are on
 screen for every slide. Extracting them into slide 1's table put them on slide
 1 only. They are `kInstructionNav` now, drawn by the screen rather than by a
 page, which is what the original's control flow actually describes.
+
+## 2026-08-01 - the classroom's last three animations, and the end of the map
+
+A session against `PLAN.md`'s tail, in order, and the pattern that ran through
+it: **every lead this project had written down pointed at the wrong routine,
+and each one was wrong in a way that looked right.**
+
+**The projector screen roll-down** was filed under `1b2e:0a11`'s six-frame
+animation gated on `DS:0x210e`. That animation moves the SLIDE. The screen is
+rolled down by `1b2e:0510`, the routine that builds the classroom from
+nothing, and nothing gates it - 15 frames of `Delay(3)` over a word table at
+`DS:0xb9c` that overshoots its resting height by five and comes back. What
+varies is who CALLS `1b2e:0510`: the Instructions and Credits always, the
+briefing only on `wave = 1` and not after a Continue, the other three screens
+never.
+
+**The professor's mouth** was filed as "a fourth arm of `1b2e:0656` that has
+not been found". It is not an arm of anything. `TALK1..5.GFX` belong to
+`1b2e:0cd1`, a SECOND key wait that every screen runs before the one this
+project already knew about:
+
+    k := 1b2e:0cd1(bursts);                  { he talks }
+    if k = 3 then k := 1b2e:0e37(seconds);   { it timed out - now he waves }
+
+The parameter counts BURSTS of `Random(4)+4` mouths, not frames. Of the two
+flags the plan asked about, `DS:0x20c8` is written by nothing but the start-up
+clear - so `1b2e:0656`'s clap arm is unreachable in the shipped build and
+`CLAP1..3.GFX` are never drawn - and `DS:0x20e3` is set by `1000:9499`.
+
+**The joke slide** the player had reported was `1b2e:084e`, which this file's
+own notes had already quoted as "a one-in-twenty easter egg, not ported"
+without anyone asking what the egg was. `FLASH.GFX` settles it on sight: 172 x
+132, the slide rectangle exactly, and it draws Lanny holding his coat open over
+an "AM" T-shirt.
+
+### The 144 pixels, and the method note that cost two sessions
+
+The cutscene's residue had been written up as "the original still holds the
+difference and the port rebuilds", and the fix was expected out of the video
+page bookkeeping. The page bookkeeping was read - four 16000-byte pages, page 3
+the clean backdrop everything erases from, `1b2e:0f46`'s second toggle pinning
+a lone track to the shown page - and built on a two-page model, and it measured
+WORSE: page 4 went 144 to 148 and 176 came back on the others.
+
+That regression is what sent me to the pixel values, which nobody had read:
+
+    x 90..97, y 164..187      original: (0,0,0) x 144
+                              port:     the base pose's greys
+
+The original was BLACK there and the port was drawing - the opposite way round
+from the write-up. `1b2e:0f46` blits through `2000:389d`, the OPAQUE thunk, so
+a 28 x 66 frame's transparent bottom rows land as colour 0 over the base pose.
+The frame lists were loading masked and the figures lived in an overlay that
+cannot tell "wrote black" from "wrote nothing". **0 pixels on all five pages,
+nothing masked, 42 captures.** A pixel count says where; the values say what,
+and that is now in `CLAUDE.md`.
+
+### `1000:9499`, and the map is finished
+
+The wave-75 ending was the last unread screen. The trigger is two instructions
+inside the progression block - `if wave >= 75 then RegisteredEnding; wave :=
+wave + 1` - so it fires on CLEARING 75, and a replay does not re-run it. Its
+first act sets `gameOver` through the static link, which is why the session
+ends the moment it does. It is the classroom again with `DS:0x20e3` set: the
+jumping arm, and this is the only caller in the program that reaches it.
+
+Twelve strings still got a generator. The game spells it "prove the existance
+of the new elements", and there is a test asserting the misspelling survives.
+
+`--wave 75 --make-save FILE` writes a save to reach it by playing, and it
+builds the record through the engine because a save carries `WaveProgress`:
+wave 75 with wave-1 counters is the warp these notes warn about, not a wave 75.
+It writes to the path given and never to the game directory.
+
+### What playing it found that opening it could not
+
+Four bugs, all from the player and none reachable from a harness flag:
+
+* Enter on a splash dropped you at the menu. `1b2e:11b0` is a `void`
+  procedure - it uses each splash's key only to decide whether to run the
+  SECOND splash and throws it away, so the cutscene plays whichever key ended
+  it. Both boot gates turned out to be `ParamCount` (`2685:08aa` reads the
+  command tail's length out of the PSP), not a key at all;
+* a one-frame beaker at (0,0) before the cutscene's fade - mine, from routing
+  the pre-fade scene through a page whose B track is zeroed;
+* the professor's mouth left hopping beside him during the ending, because the
+  stats screen's talk clock kept running under the jump;
+* the high score ENTRY screen showing the classroom through its panel.
+  `1000:96db` calls neither `1b2e:0656` nor `1b2e:0a11` - its whole backdrop is
+  a blackboard, the roller bar at y 26 and one filled rect, and the port had
+  been drawing the whole scene behind it.
+
+The last two came out of a real wave-75 clear. Nothing in the program is unread
+now except `.BIN`; what is left is the player's enhancements.
