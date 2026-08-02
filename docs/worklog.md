@@ -4560,3 +4560,63 @@ forward" for months, sourced to `1b2e:2f27` - true of the deck body, and wrong
 about what could reach it.
 
 889 checks / 0 failures, `--demo-trace` md5 unmoved.
+
+## 2026-08-02 - the last shareware item closed by a negative result
+
+Picked up an Opencode session (`session-ses_03bb.md`, kimi-k2.7-code) that had
+found and fixed two real edition-threading bugs - `newSession` never calling
+`applyEdition`, and `Game::startWave` calling the registered-only objective
+overload - and had then stalled on the one item left, the shareware
+Instructions. It stalled on a wrong reading: it checked
+`ghidra-project-sw/.../versioned/~index.dat`, found `NEXT-ID:0`, and concluded
+`SW_UNP.EXE` had never been imported. The programs are in `idata/`, and it is
+imported. Two indexes, and the empty one is not the one that answers the
+question.
+
+So the extraction ran, and **the item it was blocked on does not exist**.
+
+**The Instructions are not re-wrapped between the editions.** `1ac3:2d0a`
+extracts to the same 21 slides and 174 items as the registered `1b2e:2d63`, and
+the two string pools decode to the same 152 Pascal strings byte-for-byte -
+checked once through the generator and once with a throwaway pool decoder,
+because one parser over two inputs would agree with its own bugs.
+
+The original claim came from `MapProgram` string dumps and was a
+**misattribution**: `will change every 45 seconds.` and `change every 45
+seconds.` are in segment `1000`, the game unit. They are *wave briefings*, and
+the shareware lacks two wrappings because it lacks the two **waves** carrying
+them. The tell was in the evidence as written - a re-wrap changes one string in
+both images, it does not delete two strings from one.
+
+**And the waves turn out to be shared too**, which the plan had never actually
+claimed either way. `1000:86b8` and `1000:7fc7` call a briefing routine per arm;
+paired over 1..25 the two lists are isomorphic - 14 distinct routines, every
+repeat in the same place, wave 8's arm at `1000:62f1` in both images - and the
+full string set behind each pair matches, 25 of 25. So the shareware's 25 waves
+ARE the registered's first 25 and one `kWaveTable` is right for both.
+`testSharewareWavesAreTheRegisteredFirstTwentyFive` says so in code, because
+"no table needed" is the kind of conclusion a later session will want to
+re-derive.
+
+**A generator bug fell out of doing the extraction.** The slideshow loads
+`TESTUBE1.CSP` into `[BP-0x8]` and `TESTUBES.CSP` into `[BP-0x10]`, and draws
+`[BP-0x10]` first - shading under glass, the play field's own order.
+`gen_instructions.py` had "`-0x10` is TESTUBE1" hardcoded backwards, and its
+scan-back let the far pointer's segment half overwrite the offset half, so every
+draw resolved identically anyway. `src/instructions.cpp` looked right only
+because one of the two entries had been **hand-edited**, in a file whose first
+line forbids it.
+
+The generator now maps a draw to its sprite by the filename it saw loaded, and
+exits on one it does not know rather than guessing. Both generated decks
+regenerate byte-for-byte now; neither did before. Rendering is unchanged at 0
+pixels, the two sprites being disjoint - `TESTUBE1` the glass outline at x
+128..149, `TESTUBES` the shading at x 134..143.
+
+Also fixed `src/credits.cpp`'s header, which was the Instructions' header
+verbatim and had been on the lint list since the generator was parameterised.
+Both generated files now carry their own regenerate command line.
+
+924 checks / 0 failures, up from 897. `--demo-trace` md5 unmoved at
+`dc4f5e6a`, Instructions slide 1 and the Credits re-captured, game directory
+untouched.

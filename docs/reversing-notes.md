@@ -9086,15 +9086,10 @@ being derived the hard way.
 
 Both change the shape of the porting work rather than the gameplay.
 
-**The Instructions text is re-wrapped between editions.** The shareware has
-`will change every 45 seconds.` where the registered has `change every 45
-seconds.`, and it is not the only one. The content is the same game's
-documentation; the line breaks are not. So `src/instructions.cpp` is
-**edition-specific and cannot be shared**. `tools/gen_instructions.py` already
-takes a disassembly and a string dump as arguments, so this is a second
-extraction rather than a second tool - but shareware mode owns a second
-generated table, and any assumption that its Instructions are a truncation of
-the registered ones is false.
+~~**The Instructions text is re-wrapped between editions.**~~ **WRONG, and
+retracted in full - see "The Instructions are NOT re-wrapped" below.** The
+shareware's Instructions are the registered's, to the byte. What differed was
+never in the Instructions at all.
 
 **The background lists are split, not merely shorter.** The registered image
 names only the prefix `GAMEBG` and constructs each filename numerically. The
@@ -9726,3 +9721,99 @@ player's *"when we exit we automatically get taken to the registration info
 slide deck"*, read off the branch. The `TUBESEND.BIN` dump at `1ac3:6bfb` is
 downstream of the `Halt` - a Turbo Pascal exit procedure - which is why nothing
 appears to call it.
+
+### The Instructions are NOT re-wrapped, and the waves are the same waves
+
+Two claims retracted and replaced, both by the same mistake and both in the
+port's favour: **`src/instructions.cpp` and `src/wave.cpp` serve both editions
+unchanged.** The shareware needs no table of its own for either.
+
+#### What was actually compared
+
+The re-wrap finding came from `MapProgram` dumps, and the two strings really do
+differ between the images:
+
+    registered   FUN_1000_7b72   "will change every 45 seconds."
+                 FUN_1000_7802   "change every 45 seconds."
+                 FUN_1000_798b   "change every 45 seconds."
+                 FUN_1000_7f42   "every 45 seconds."
+    shareware    FUN_1000_729e   "will change every 45 seconds."
+                 FUN_1000_766e   "every 45 seconds."
+
+Every one of those is in **segment `1000`, the game unit**. They are *wave
+briefings* - the task text a wave prints before play - and the Instructions
+slideshow is in the interface unit, `1b2e` / `1ac3`. The shareware is missing
+two wrappings because it is missing the two **waves** that carry them, which is
+the 25-against-75 difference restating itself. Nothing was re-wrapped.
+
+This is `CLAUDE.md`'s "read the context around a grep hit before believing it",
+and the tell was there to be seen: a re-wrap would change *one* string in
+*both* images, not delete two strings from one of them.
+
+#### The Instructions, checked two ways
+
+`1ac3:2d0a` is the shareware slideshow, against the registered `1b2e:2d63`.
+
+* through the generator: **21 slides and 174 items each**, and the emitted
+  tables differ in exactly one line - the name of the array;
+* without it: the two string pools decode to **152 Pascal strings apiece,
+  identical in order and content**. 152 is the count this file has quoted for
+  the registered deck since it was extracted.
+
+The second check matters because the first runs one parser over two inputs. A
+parser bug would agree with itself; two raw pools cannot.
+
+The four text-unit entry points confirm the `0x120` shift again from a fresh
+routine - the shareware calls `2000:37cb` / `2000:3c35` / `2000:40cb` where the
+registered calls `2000:36ab` / `2000:3b15` / `2000:3fab`.
+
+#### The waves, checked off the dispatches
+
+`1000:86b8` registered and `1000:7fc7` shareware each call one briefing routine
+per arm. Extracting both arm lists and pairing them 1..25:
+
+| | |
+|---|---|
+| distinct routines | 14, in both |
+| repeat pattern | identical: 9=1, 10=3, 11=4, 12=7, 15=3, 16=8, 17=7, 20=8, 22=13, 23=4, 24=2 |
+| briefing text per pair | **identical, 25 of 25**, compared as whole string sets from the two `MapProgram` dumps |
+| shared address | wave 8's arm is `1000:62f1` in *both* images |
+
+An isomorphism that holds across fourteen routines, eleven repeats and the full
+text of each is not a coincidence, so **the shareware's 25 waves are the
+registered's first 25**, and `objectiveForWave(w)` is right for both.
+`testSharewareWavesAreTheRegisteredFirstTwentyFive` pins it.
+
+Note what this does *not* say. The two editions still end differently - wave 25
+reaches `1000:8df8`'s registration screen, not an early copy of the Nobel
+ending - and the Preview's five waves remain registered-only and outside this
+chain entirely.
+
+#### The slideshow's own two sprites, and a generator that was guessing
+
+Found while extracting the shareware deck. Both routines load two sprites at
+their head and draw them on the "Detailed Instructions" slide:
+
+    MOV DI,<"TESTUBE1.CSP">  ...  LEA DI,[BP + -0x8]   CALLF <LoadSprite>
+    MOV DI,<"TESTUBES.CSP">  ...  LEA DI,[BP + -0x10]  CALLF <LoadSprite>
+
+and then draw `[BP-0x10]` **first** and `[BP-0x8]` second - the interior
+shading under the glass, which is the same order the play field uses.
+
+`tools/gen_instructions.py` had this hardcoded as "`-0x10` is TESTUBE1", which
+is backwards, and its scan-back loop then let the *segment* half of the far
+pointer overwrite the offset half, so every draw resolved to the same sprite
+regardless. The committed `src/instructions.cpp` did not show it only because
+someone had corrected one of the two entries **by hand**, in a file whose first
+line says not to.
+
+The generator now reads the loads and maps a draw to its sprite **by filename**,
+and exits rather than guessing if it meets one it does not know. `instructions.cpp`
+and `credits.cpp` both regenerate byte-for-byte from it now, which they did not
+before.
+
+The rendering is unaffected: the two sprites' drawn pixels are disjoint -
+`TESTUBE1` is 398 px over x 128..149 and `TESTUBES` 118 px over x 134..143, the
+glass outline and the shading inside it - so the capture is 0 pixels different
+either way. The order was still wrong, and a position in a frame is part of the
+transliteration.

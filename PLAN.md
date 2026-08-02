@@ -64,11 +64,10 @@ asked for, and then publishing:
    to the four that are extracted: the same shape as `kOptionsPagePort` beside
    `kMenuPages`, and for the same reason.
 
-   Noted while checking this, and left for the lint pass rather than fixed in
-   passing: **`src/credits.cpp`'s header comment is the Instructions' header**,
-   verbatim - it names `1b2e:2d63` and "21 slides, 152 strings and 22
-   illustrations", which describes the other screen. The Credits are 4 pages
-   and 36 strings out of `1b2e:411b`.
+   ~~Noted while checking this, and left for the lint pass: **`src/credits.cpp`'s
+   header comment is the Instructions' header**, verbatim.~~ **FIXED.** It now
+   names `1b2e:411b`, its 4 pages and 36 strings, and its own regenerate command
+   line - as does `src/instructions.cpp`, which had none.
 5. **Shareware edition support**, via a `--shareware` switch - and it turned
    out to be far LARGER than this list assumed, twice over. It was written up
    as "nothing to detect and nothing missing" on the strength of the `.RES`
@@ -1336,13 +1335,21 @@ and only the third column settles anything.
 Two the player did not see, found while checking the above, and both change
 the shape of the work:
 
-* **the Instructions text is RE-WRAPPED between the editions.** The shareware
-  has *"will change every 45 seconds."* where the registered has *"change every
-  45 seconds."*, and there are more like it. So `src/instructions.cpp` is
-  **edition-specific**, not shared. `tools/gen_instructions.py` is already
-  parameterised over a disassembly and a string dump, so this costs a second
-  extraction rather than a second tool - but it does mean shareware mode owns a
-  second generated table, not a subset of the first one;
+* ~~**the Instructions text is RE-WRAPPED between the editions.**~~ **WRONG,
+  retracted, and the item is closed with no code.** `1ac3:2d0a` extracts to the
+  same 21 slides and 174 items as `1b2e:2d63`, and the two string pools decode
+  to the same **152 Pascal strings byte-for-byte** - checked through the
+  generator and again without it. The two `45 seconds` strings that started
+  this are in segment `1000`, the game unit: they are **wave briefings**, and
+  the shareware is missing two wrappings because it is missing the two waves
+  that carry them. `src/instructions.cpp` serves both editions.
+
+  **And the waves are shared too**, which nothing here had established.
+  `1000:86b8` and `1000:7fc7` pair 1..25 as an isomorphism - 14 distinct
+  briefing routines, every repeat in the same place, identical text 25 of 25 -
+  so the shareware's 25 ARE the registered's first 25 and one `kWaveTable` is
+  right for both. See `docs/reversing-notes.md`, "The Instructions are NOT
+  re-wrapped";
 * ~~**the backgrounds are split, not merely fewer.**~~ **READ, and the guess
   here was wrong in both halves** - which is why it was written down as a
   guess. Normal shareware play is `Random(5)+1`, so `GAMEBG1..5` rolled with no

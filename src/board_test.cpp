@@ -2480,6 +2480,33 @@ void testGameStartWaveUsesTheEditionAwareObjectiveTable() {
           "Preview wave 1 starts with kCrystals");
 }
 
+// The shareware's twenty-five waves ARE the registered's first twenty-five,
+// which is why one `kWaveTable` serves both and normal shareware play needs no
+// table of its own.
+//
+// Proven off the two dispatches rather than assumed. `1000:86b8` registered and
+// `1000:7fc7` shareware call a briefing routine per arm, and the two arm lists
+// are isomorphic across waves 1..25 - fourteen distinct routines, every repeat
+// in the same place (9=1, 10=3, 11=4, 12=7, 15=3, 16=8, 17=7, 20=8, 22=13,
+// 23=4, 24=2) - with the string set behind each pair identical, 25 of 25. One
+// arm, wave 8's, is even at the same address in both images.
+//
+// This test states the consequence the port relies on. If a future session ever
+// concludes that shareware needs its own wave table, this is the assertion that
+// has to be argued with first.
+void testSharewareWavesAreTheRegisteredFirstTwentyFive() {
+    tubes::EditionState reg{tubes::Edition::kRegistered, false};
+    tubes::EditionState sw{tubes::Edition::kShareware, false};
+    for (int w = 1; w <= tubes::kWaveCountShareware; ++w) {
+        check(tubes::objectiveForWave(w, sw) == tubes::objectiveForWave(w, reg),
+              "shareware wave w is the registered wave w");
+    }
+    // And the sharing stops exactly at the edition's own ending, which is a
+    // different event rather than the same one reached early.
+    check(sw.endingWave() == 25, "shareware ends at wave 25");
+    check(reg.endingWave() == 75, "registered ends at wave 75");
+}
+
 // The wave counts, and the background roll that differs by one operand.
 void testTheEditionsDifferInWaveAndBackgroundCounts() {
     tubes::EditionState reg{tubes::Edition::kRegistered, false};
@@ -3934,6 +3961,7 @@ int main() {
     testSharewareNeverDispensesNineOrTenButStillDispensesFlashium();
     testThePreviewHasItsOwnFiveWaveList();
     testGameStartWaveUsesTheEditionAwareObjectiveTable();
+    testSharewareWavesAreTheRegisteredFirstTwentyFive();
     testTheEditionsDifferInWaveAndBackgroundCounts();
     testTheTwoEditionsHaveDifferentEndScreens();
     testEachEditionEndsOnItsOwnWave();
