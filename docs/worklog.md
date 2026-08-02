@@ -4343,3 +4343,33 @@ measure the machine.**
 Output byte-identical across all five versions: 0 of 256,000 pixels differ.
 
 846 checks / 0 failures, `--demo-trace` md5 unmoved.
+
+## 2026-08-02 - the exit screen flicker, filed unsolved
+
+Six attempts, four inferred causes, one real unrelated bug found, and the
+flicker is still there. Filed in `PLAN.md` as a known issue with the symptom,
+the four dead ends, and the three untried avenues - the first of which is
+simply running it under X11, which would say in one command whether any of this
+was ever in the right layer.
+
+One genuine fix came out of it and is worth keeping on its own: on this
+Wayland/OpenGL target `SDL_RenderSetVSync(1)` **returns success and sets the
+PRESENTVSYNC flag without syncing** - measured at 60 presents in 459 ms. Any
+loop that presents must pace itself and treat vsync as advisory. The hold loop
+had believed that return value and gone unthrottled at 130+ fps.
+
+The lesson is about method and it is expensive enough to be worth stating
+plainly. Every one of the four wrong causes was derived from a TRUE statement
+about the code, and each sounded better than the last. Reading harder produced
+a new wrong answer every round. What actually moved the diagnosis was the
+player describing the artifact precisely - a region, inverted, twice, during
+the hold and not the fade - which killed three theories in one sentence and
+should have been asked for after the first failure rather than the third.
+
+`CLAUDE.md` already says "when a search comes back empty, suspect the search".
+The companion is now written down: **when a fix does not work, suspect the
+symptom description before the next hypothesis.** And for anything visual,
+capture it - four rounds of reasoning were spent on an artifact nobody had
+looked at frame by frame.
+
+No behaviour changed by filing it. 846 checks / 0 failures.

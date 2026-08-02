@@ -353,6 +353,64 @@ Listed first because building on them wastes work.
 
 ## Next
 
+### KNOWN ISSUE: the exit screen flickers, cause not found
+
+**Open, reproducible, and given up on for now** after six attempts. The port's
+own bug - it is in `runExitScreen` in `main.cpp`, not in anything decompiled -
+and it is cosmetic: it affects only the shareware sign-off screen and nothing
+in the game.
+
+**The symptom, as the player describes it and it is the best evidence there
+is:** about **twice**, shortly after the screen appears, **the first quarter of
+the text elements invert colours for a split second**. It then settles and
+stays correct. Reproduces windowed and fullscreen. It is a REGION, it is
+TRANSIENT, and it happens during the hold rather than during the fade.
+
+**What is ruled out**, each tried and each failing to fix it:
+
+1. *Presenting too rarely* - the loop originally presented only on the cursor
+   blink. Presenting every retrace changed nothing.
+2. *Swap chain convergence* - priming with four back-to-back presents so every
+   buffer holds the final frame changed nothing. (That loop was removed; it was
+   uploading a megabyte four times with no delay and may have been making it
+   worse.)
+3. *Unthrottled presenting* - **a real bug, found and fixed, and not this.**
+   `SDL_RenderSetVSync(1)` returns 0 and sets the PRESENTVSYNC flag on this
+   Wayland/OpenGL target **without actually syncing** - measured, 60 presents in
+   459 ms. The loop believed the return value and skipped its delay. Fixed by
+   throttling unconditionally; the flicker survived.
+4. *Mismatched texture access* - the texture was `STREAMING` updated with
+   `SDL_UpdateTexture`, which is the pairing neither mode is for, and at
+   640x400 RGBA it is a megabyte racing the draw. Changed to `STATIC` with
+   uploads only when content changes. The flicker survived that too.
+
+**What has NOT been tried**, in the order worth trying:
+
+* **run it under X11** - `SDL_VIDEODRIVER=x11 ./build/tubes-port --exit-screen`.
+  If it does not happen there, it is the Wayland backend and everything above
+  was looking in the wrong layer. This is the cheapest decisive test and should
+  be first;
+* **the software renderer**, `SDL_RENDER_DRIVER=software`, for the same reason;
+* `SDL_LockTexture` / `SDL_UnlockTexture` with a `STREAMING` texture - the other
+  correct pairing, and the one not yet used;
+* **actually capturing it.** Every diagnosis so far has been reasoning plus the
+  player's description. A recording would settle it in one look, and could not
+  be made: the session is Wayland, `grim` and `wf-recorder` are not installed,
+  and `ffmpeg -f x11grab` on `:1` captures black.
+
+**The method note, which is the part worth keeping.** Four causes were inferred
+before giving up, and *every one of them was reasoned from a true statement
+about the code* - no `PRESENTVSYNC` flag at creation, streaming textures not
+guaranteeing persistence between frames, swap chains needing to converge,
+`UpdateTexture` being the wrong call for `STREAMING`. All four are true. None
+was the cause. Reading harder produced a new wrong answer each time, and the
+one thing that materially advanced the diagnosis was the player describing the
+artifact precisely - *region, inverted, twice, during the hold not the fade* -
+which falsified three of the four in one sentence.
+
+So: **this is a case for a capture, not for another theory.** Do not open it
+again without a recording or an X11 comparison.
+
 ### Player-reported differences, still open
 
 Observed by the player against the original, so **real** - but not yet
