@@ -4146,12 +4146,28 @@ int main(int argc, char** argv) {
     // consecutive waves share a backdrop - and the wave it is loaded for is
     // the one ABOUT TO START, not the briefing being shown, which never blits
     // it. `--gamebg` pins it so a capture can be matched.
-    int lastBackdrop = 0;                 // DS:0x2056
+    int lastBackdrop = tubes::kNoLastBackdrop;      // DS:0x2056, seeded 0xff
     const bool backdropPinned = opt.gameBg != "GAMEBG1.GFX";
     auto rollBackdrop = [&]() {
         if (backdropPinned) return;
-        int n = lastBackdrop;
-        while (n == lastBackdrop) n = game->rollForTest(10) + 1;
+        int n;
+        if (opt.edition.preview) {
+            // The Preview does not roll at all: `1000:7fc7` loads a FIXED
+            // background per wave, which is what the five `GAMEBG` literals in
+            // the shareware image are and why it names them beside the
+            // constructed prefix. Waves outside 1..5 cannot happen here - the
+            // Preview list is five arms - but fall back to the roll rather than
+            // indexing off the end.
+            const int w = game->progress().wave;
+            n = (w >= 1 && w <= tubes::kPreviewWaveCount) ? tubes::kPreviewBackdrop[w] : 1;
+        } else {
+            // `1000:86b8` registered, `1000:7fc7` shareware. The two builds
+            // differ by ONE OPERAND - `PUSH 0xa` against `PUSH 0x5` - so this
+            // is one call with an edition-dependent bound, not two code paths.
+            const int bound = opt.edition.backdropCount();
+            n = lastBackdrop;
+            while (n == lastBackdrop) n = game->rollForTest(bound) + 1;
+        }
         lastBackdrop = n;
         tubes::Image next;
         if (loadImage(res, "GAMEBG" + std::to_string(n) + ".GFX", next, -1)) {
@@ -4997,8 +5013,25 @@ int main(int argc, char** argv) {
                 // The ending's own first act is to set the session's game-over
                 // flag through the static link (`SS:[DI + 0xfe02] := 1`), so
                 // the session is over the moment it is.
+                // Edition-aware: 75 registered, 25 shareware, 5 in the
+                // Preview. See `edition.h` - it is the same test at the same
+                // place in both builds, with a different literal and a
+                // different destination.
+                //
+                // PLACEHOLDER, and marked as one: the shareware's destination
+                // is the registration deck at `1000:8df8`, which is NOT YET
+                // PORTED. Until it is, a shareware session ends here without a
+                // closing screen rather than running the REGISTERED ending,
+                // which would be flatly wrong - that ending's text is not in
+                // the shareware image at all.
+                const bool sharewareEnd =
+                    opt.edition.edition == tubes::Edition::kShareware;
                 if (t.advanceWave &&
-                    game->progress().wave >= tubes::kEndingWave) {
+                    game->progress().wave >= opt.edition.endingWave()) {
+                    if (sharewareEnd) {
+                        flags.gameOver = true;
+                        continue;
+                    }
                     endingPage = 1;
                     endingTimer = tubes::kEndingHoldSeconds;
                     jumpFrame = 1;

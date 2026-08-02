@@ -172,6 +172,20 @@ constexpr bool specialAtomsEnabled(Edition e, bool preview) {
 constexpr bool canSave(bool preview) { return !preview; }
 constexpr bool canEnterHiScore(bool preview) { return !preview; }
 
+// The wave that ends the game, and it is a different EVENT in each edition.
+//
+//   registered   `1000:a657`  CMP 0x4b   wave >= 75 -> the RegisteredEnding
+//                             at `1000:9499`, PRIZE.GFX and the Nobel slides
+//   shareware    `1000:9f56`  CMP 0x19   wave >= 25 -> the registration deck
+//                             at `1000:8df8`, "You can't stop now!"
+//
+// Same shape, same position in the end-of-wave block, different destination -
+// and the shareware image contains none of the registered ending's text, so
+// this is not the same screen shown twice.
+constexpr int endingWaveFor(Edition e) {
+    return e == Edition::kShareware ? kWaveCountShareware : kWaveCountRegistered;
+}
+
 // The session's edition state, together, because every rule above needs both.
 struct EditionState {
     Edition edition = Edition::kRegistered;
@@ -184,6 +198,9 @@ struct EditionState {
     bool specialAtoms() const { return specialAtomsEnabled(edition, preview); }
     int antiMatterChance() const { return specialAtoms() ? kAntiMatterChanceOn : kRateOff; }
     int bonusChance() const { return specialAtoms() ? kBonusChanceOn : kRateOff; }
+    int endingWave() const {
+        return preview ? kPreviewWaveCount : endingWaveFor(edition);
+    }
     bool canSave() const { return tubes::canSave(preview); }
     bool canEnterHiScore() const { return tubes::canEnterHiScore(preview); }
 };

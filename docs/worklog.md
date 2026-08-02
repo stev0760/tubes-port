@@ -4373,3 +4373,32 @@ capture it - four rounds of reasoning were spent on an artifact nobody had
 looked at frame by frame.
 
 No behaviour changed by filing it. 846 checks / 0 failures.
+
+## 2026-08-02 - shareware rules: the backdrop roll and the ending wave
+
+Two more decompiled rules wired up, both small because both were already read.
+
+**The backdrop.** `1000:7fc7` against the registered `1000:86b8` differ by one
+operand - `PUSH 0x5` against `PUSH 0xa` - so `rollBackdrop` takes an
+edition-dependent bound rather than growing a second path. `DS:0x2056`, the
+last-shown backdrop, is now seeded to `0xff` the way `entry` seeds it instead of
+to 0; equivalent in effect, since rolls are 1..N, but it is the original's value.
+
+The Preview does not roll at all: it loads a **fixed background per wave** from
+`kPreviewBackdrop`, which is what the five `GAMEBG` literals in the shareware
+image are for.
+
+**The ending wave.** `1000:a657` is `CMP 0x4b` and `1000:9f56` is `CMP 0x19` -
+the same test at the same point in the end-of-wave block, with a different
+literal and a **different destination**: the registered ending at `1000:9499`
+against the registration deck at `1000:8df8`.
+
+Those destinations are not interchangeable and the port must not treat them as
+such - the shareware image contains none of the registered ending's text, no
+`PRIZE.GFX` and no Nobel slides. So the shareware arm is **explicitly a
+placeholder**: the session ends at wave 25 with no closing screen until
+`1000:8df8` is ported, rather than borrowing the registered one. Marked as a
+placeholder in the code, per the prime directive, rather than shipping a
+plausible substitute.
+
+850 checks / 0 failures, `--demo-trace` md5 unmoved.

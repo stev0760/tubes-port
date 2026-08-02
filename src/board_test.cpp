@@ -27,6 +27,7 @@
 #include "menu.h"
 #include "session.h"
 #include "edition.h"
+#include "ending.h"
 #include "textscreen.h"
 #include "wave.h"
 
@@ -2383,6 +2384,21 @@ void testTheEditionsDifferInWaveAndBackgroundCounts() {
 // Both guards are explicit branches on the Preview flag: `1000:5ed0` for the
 // F2 save prompt and `1000:9fb9` for the high score entry. Neither is a
 // consequence of anything else, so both are asserted.
+// The end-of-game test is the same instruction in the same place in both
+// builds with a different literal - CMP 0x4b registered, CMP 0x19 shareware -
+// and a different destination. The destinations are NOT interchangeable: the
+// shareware image contains none of the registered ending's text.
+void testEachEditionEndsOnItsOwnWave() {
+    tubes::EditionState reg{tubes::Edition::kRegistered, false};
+    tubes::EditionState sw{tubes::Edition::kShareware, false};
+    tubes::EditionState pv{tubes::Edition::kShareware, true};
+    check(reg.endingWave() == 75, "the registered game ends at wave 75");
+    check(sw.endingWave() == 25, "the shareware game ends at wave 25");
+    check(pv.endingWave() == 5, "the Preview ends after its five waves");
+    check(reg.endingWave() == tubes::kEndingWave,
+          "and the registered value still agrees with ending.h");
+}
+
 void testAPreviewRunCanNeitherBeSavedNorPlace() {
     tubes::EditionState pv{tubes::Edition::kShareware, true};
     tubes::EditionState sw{tubes::Edition::kShareware, false};
@@ -3759,6 +3775,7 @@ int main() {
     testSharewareNeverDispensesNineOrTenButStillDispensesFlashium();
     testThePreviewHasItsOwnFiveWaveList();
     testTheEditionsDifferInWaveAndBackgroundCounts();
+    testEachEditionEndsOnItsOwnWave();
     testAPreviewRunCanNeitherBeSavedNorPlace();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
