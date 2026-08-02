@@ -36,15 +36,12 @@ Two consequences that shape every decision here:
 
 ## The next step, in one place
 
-**Every screen of the original is ported and every asset format is decoded.**
-What is left is polish, one unread screen, and the enhancements the player has
-asked for. In the order they are worth doing:
+**Every screen of the original is ported, every asset format is decoded, and
+nothing in the program is unread.** `1000:9499`, the wave-75 ending, was the
+last one and it is done - so what is left is the enhancements the player has
+asked for:
 
-1. **`1000:9499`**, the wave-75 ending. The only screen in the program nobody
-   has seen, and `PRIZE.GFX` sits behind a "RegisteredEnding" error string.
-   Note it is now half-read anyway: it is what sets `DS:0x20e3`, the flag that
-   makes the professor JUMP, and it clears it again on the way out.
-2. Then the enhancements in section 5, which are the player's: a **Graphics
+1. The enhancements in section 5, which are the player's: a **Graphics
    Options screen** (the port cannot even go fullscreen) and **GLDFADE**.
 
 **The three animations that used to head this list are done**, and the two
@@ -104,10 +101,11 @@ Also done since: **every asset format** (`.SPR` and `.ANM` fell in one
 session), both splashes, the opening cutscene with its two-track animation
 player, and the screen fade that was open from the first session.
 
-Still unread:
+Still unread - `.BIN` and nothing else:
 
-- `1000:9499`, reached on clearing wave 75 - the registered ending, and the
-  only screen in the program nobody has seen
+- ~~`1000:9499`, the wave-75 ending~~ - **done**, and it is what set
+  `DS:0x20e3`. `--ending [N]` opens either page, and `--wave 75 --make-save
+  FILE` writes a save to reach it by playing
 - ~~the video page bookkeeping~~ - **done**. Four 16000-byte pages, page 3 the
   clean backdrop everything erases from, `2321:024d` is
   `CopyRect(src, dst, x, y, w, h)`, `1b2e:1188` a three-line restore-from-3,

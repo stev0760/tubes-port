@@ -8278,6 +8278,68 @@ exists to prevent.
 * **ESC** at `1000:3635` jumps straight past all of it to the exit. It abandons
   the save rather than committing what has been typed.
 
+## The wave-75 ending, `1000:9499` - the last unread screen
+
+`PRIZE.GFX` sat in the archive with no consumer and a "RegisteredEnding
+Resource Error!" string beside it, and this was the one screen in the program
+nobody had reached. It is 491 bytes and reads in one pass.
+
+**The trigger is two instructions**, at `1000:a657`, inside the wave loop's
+progression block:
+
+    if wave >= 75 then RegisteredEnding;      { CMP $4b / JC }
+    wave := wave + 1
+
+so it fires on CLEARING wave 75, before the counter moves. The block it sits in
+is reached only when the wave is actually advancing - `1000:a60f` jumps clear
+of it on a replay, and `1000:a5f2`/`a5f9` on endurance and attract - so a
+replayed wave 75 does not re-run it.
+
+**Its first act ends the session.** `1000:94cf` writes `SS:[DI + 0xfe02] := 1`
+through the static link, and that is `BP-0x1fe` in `1000:9e53`'s frame - the
+`gameOver` flag. The high score screen follows as it would from any other game
+over.
+
+**It is the classroom, not a new screen.** `1b2e:0656` and `1b2e:0a11` again,
+with `DS:0x20e3` set at `1000:9508` and cleared at `1000:9676` - and that flag
+is the one `PLAN.md` spent a session looking for. It selects `1b2e:0656`'s
+THIRD arm, the jumping professor, and the ending is the only caller in the
+program that reaches it. (The other flag, `DS:0x20c8`, is written by nothing,
+so the clapping arm stays unreachable.)
+
+Two pages, each held by `1b2e:0b8f(0x1e)` - the jump wait, thirty seconds or a
+key, returning the same codes `1b2e:0e37` does:
+
+| page | contents |
+|---|---|
+| 1 | 'Congratulations' in STARTREK.816 at y 38, its rule at 41, then ten lines of TINY6X8 story text from y 60 |
+| 2 | `1b2e:0a11` again - which wipes the slide - then `PRIZE.GFX` at `((320 - w) div 2, (200 - h) div 2)` |
+
+`PRIZE.GFX` is 52 x 125 and lands at (134, 37); the original computes the
+centring rather than passing a literal, which is what says it is meant to be
+centred rather than placed.
+
+### The hop, `1b2e:0b8f`
+
+`DS:0x20fc` runs 1..3 on a `Delay(10)` clock, the same ten retraces the wave
+uses, and the professor's y is `0x61 - 3 * frame` - so 94, 91, 88 and back to
+94. A hop, not a ping-pong, and the x never moves. His books go somewhere else
+than the idle arm's: `Draw(276, 165, BOOKS)`, where the idle arm draws none at
+all. `JUMP1..3.GFX` are 36/48/44 x 71 against the standing pose's 44 x 79.
+
+The loop erases with `CopyRect(3, DS:0x2376, 267, y, w, h)` - the same
+restore-from-page-3 every other menu-side animation uses.
+
+### Extracted, not transcribed
+
+Twelve strings is few enough that typing them looks harmless, which is exactly
+why `tools/gen_ending.py` exists. The game spells it **"prove the existance of
+the new elements"**, and a silent correction of that is a transcription error
+nobody would ever catch. The generator reads the push sequences and the string
+pool and emits `src/ending.cpp`; `2000:3fab`'s argument names the font, since
+the slot it is handed is `DS:0x2110` for STARTREK.816 and `DS:0x2118` for
+TINY6X8.88.
+
 ## The boot sequence, read out of `1000:aaba`
 
 The entry program's own order, and the two gates are the same test:

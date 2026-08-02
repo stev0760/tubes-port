@@ -24,6 +24,7 @@
 #include "hiscore.h"
 #include "input.h"
 #include "cutscene.h"
+#include "ending.h"
 #include "instructions.h"
 #include "save.h"
 #include "menu.h"
@@ -302,6 +303,8 @@ struct Options {
     int cutsceneTick = -1;      // ... at this tick of it, rather than midway
     int shotAfter = 0;          // present the screenshot after N live frames
     bool joke = false;          // force `1b2e:084e`, which is a 5% roll
+    int ending = -1;            // open `1000:9499` at page 1 or 2
+    std::string makeSave;       // write a TUBES.SAV for --wave N and exit
     bool autoAdvance = false;   // synthesise RETURN whenever a stage waits
     uint32_t seed = 0;          // 0 = clock for play, fixed for the harnesses
     bool help = false;
@@ -479,6 +482,13 @@ Options parseArgs(int argc, char** argv) {
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 o.hsPage = std::atoi(argv[++i]);
             }
+        } else if (a == "--make-save" && i + 1 < argc) {
+            o.makeSave = argv[++i];
+        } else if (a == "--ending") {
+            o.ending = 1;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                o.ending = std::atoi(argv[++i]);
+            }
         } else if (a == "--joke") {
             o.joke = true;
         } else if (a == "--screenshot-after" && i + 1 < argc) {
@@ -547,6 +557,11 @@ void usage() {
         "  --play-demo       replay DEMO.SCR through the live game loop\n"
         "  --demo-trace      run DEMO.SCR headless and print every spawn\n"
         "  --demo-csv FILE   with it, write per-frame state for the rig diff\n"
+        "  --make-save FILE  with --wave N, write a TUBES.SAV holding that\n"
+        "                    wave in Wave slot 1 and exit. Writes ONLY to the\n"
+        "                    path given - never to the game directory.\n"
+        "  --ending [N]      open the wave-75 ending `1000:9499` at page N\n"
+        "                    (1 the text, 2 the prize); implies a session\n"
         "  --joke            force `1b2e:084e`'s joke slide, which is a one in\n"
         "                    twenty roll per slide and fires at most once a run\n"
         "  --wave N          start Wave mode on wave N (1..75) instead of\n"
@@ -704,6 +719,10 @@ struct SceneArt {
     bool haveFlash = false;
     const tubes::Image* pointerT = nullptr;
     bool havePointerT = false;
+    // `JUMP1..3.GFX`, reached only by `1b2e:0656`'s `DS:0x20e3` arm - which
+    // only the wave-75 ending ever sets.
+    const tubes::Image* jump = nullptr;
+    const bool* haveJump = nullptr;
 };
 
 // What the scene is doing right now, as opposed to what it is made of. Three
@@ -719,6 +738,10 @@ struct ScenePose {
     int mouthFrame = 0;               // 0 none, 1..5 TALK1..5 - `1b2e:0cd1`
     bool jokeSlide = false;           // FLASH.GFX is up  - `1b2e:084e`
     bool jokeFace = false;            // and POINTERT with it
+    // `DS:0x20fc`, 1..3, and 0 for "he is not jumping". `1b2e:0656`'s third
+    // arm - the one `DS:0x20e3` selects - stands him on his books somewhere
+    // else and hops him, and the ending is the only caller that reaches it.
+    int jumpFrame = 0;
 
     // Nothing a screen wants to write belongs on the slide in either of these:
     // `1b2e:0510` returns before its caller writes a word, and `1b2e:084e`
@@ -764,12 +787,28 @@ void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
     //
     // No separate BOOKS.GFX draw: the normal arm never reaches one. `BOOKS` is
     // used by the clap and jump arms, where he stands at a different height.
+    if (pose.jumpFrame > 0) {
+        // `1b2e:0656`'s `DS:0x20e3` arm: BOOKS at its own place, then the hop
+        // frame at `(267, 97 - 3 * frame)`. Both masked - the arm uses
+        // `2321:0711` and `1b2e:0b8f` uses `2000:3921`, which is the same
+        // routine. No `POINTER0` here at all; the jump frames are the whole
+        // figure, 71 tall against the standing pose's 79.
+        if (art.haveBooks) {
+            screen.blit(*art.books, tubes::kJumpBooksX, tubes::kJumpBooksY);
+        }
+        const int f = pose.jumpFrame;
+        if (art.haveJump && f >= 1 && f <= tubes::kJumpFrames &&
+            art.haveJump[f - 1]) {
+            screen.blit(art.jump[f - 1], tubes::kJumpX, tubes::jumpY(f));
+        }
+    } else {
     if (art.havePointer && art.havePointer[0]) {
         screen.blit(art.pointer[0], tubes::kProfX, tubes::kProfY);
     }
     if (art.havePointer && profFrame > 0 && profFrame < 4 &&
         art.havePointer[profFrame]) {
         screen.blit(art.pointer[profFrame], tubes::kProfX, tubes::kProfY);
+    }
     }
     // `1b2e:084e` stamps `POINTERT` over whatever pose is up, which is why it
     // comes after both of the draws above and not instead of them.
@@ -984,6 +1023,43 @@ void drawStats(tubes::Screen& screen, const std::vector<tubes::StatsRow>& rows,
         if (!f) continue;
         tubes::drawTextCentred(screen, *f, 0, 319, r.y, r.colour, r.mode,
                                r.text);
+    }
+}
+
+// The wave-75 ending, `1000:9499`. Two screens over the same classroom the
+// stats and briefing use, with `DS:0x20e3` set so the professor hops.
+//
+//     page 1   `1b2e:0656`; `1b2e:0a11`; the heading and the story text
+//     page 2   `1b2e:0a11` again - which wipes the slide - then PRIZE.GFX at
+//              `((320 - w) div 2, (200 - h) div 2)`
+//
+// Each held by `1b2e:0b8f(0x1e)`, the jump wait: thirty seconds or a key.
+void drawEnding(tubes::Screen& screen, int page, const tubes::Image* board,
+                bool haveBoard, const SceneArt& art, const ScenePose& pose,
+                const tubes::Font& heading, bool haveHeading,
+                const tubes::Font& small, bool haveSmall,
+                const tubes::Image* prize, bool havePrize) {
+    drawScene(screen, board, haveBoard, art, pose);
+    if (page >= 2) {
+        // `1000:9644`: centred by size, not by a literal - 52 x 125 lands at
+        // (134, 37), and computing it is what the original does.
+        if (havePrize) {
+            screen.blit(*prize, (tubes::kScreenWidth - prize->width) / 2,
+                        (tubes::kScreenHeight - prize->height) / 2);
+        }
+        return;
+    }
+    for (int i = 0; i < tubes::kEndingLineCount; ++i) {
+        const tubes::EndingLine& l = tubes::kEndingLines[i];
+        const bool big = l.font == tubes::EndingFont::kHeading;
+        if (big ? !haveHeading : !haveSmall) continue;
+        const tubes::Font& f = big ? heading : small;
+        if (l.centred) {
+            tubes::drawTextCentred(screen, f, l.left, l.right, l.y, l.colour,
+                                   l.mode, l.text);
+        } else {
+            tubes::drawText(screen, f, l.left, l.y, l.colour, l.mode, l.text);
+        }
     }
 }
 
@@ -3040,6 +3116,14 @@ int main(int argc, char** argv) {
     tubes::Image flashArt, pointerTArt;
     const bool haveFlash = loadImage(res, "FLASH.GFX", flashArt, -1);
     const bool havePointerT = loadImage(res, "POINTERT.GFX", pointerTArt, -1);
+    // The ending's hop, masked - `1b2e:0b8f` draws through `2000:3921`.
+    tubes::Image jumpFrameArt[tubes::kJumpFrames];
+    bool haveJump[tubes::kJumpFrames] = {false, false, false};
+    for (int i = 0; i < tubes::kJumpFrames; ++i) {
+        haveJump[i] = loadImage(res, tubes::kJumpNames[i], jumpFrameArt[i], 0);
+    }
+    tubes::Image prizeArt;
+    const bool havePrize = loadImage(res, tubes::kPrizeArt, prizeArt, 0);
 
     SceneArt sceneArt;
     sceneArt.corners = slideCorner;
@@ -3056,6 +3140,8 @@ int main(int argc, char** argv) {
     sceneArt.haveFlash = haveFlash;
     sceneArt.pointerT = &pointerTArt;
     sceneArt.havePointerT = havePointerT;
+    sceneArt.jump = jumpFrameArt;
+    sceneArt.haveJump = haveJump;
     bool haveFg = loadImage(res, "GAMEFG.GFX", foreground, 0);
 
     // ONE table, indexed by a beaker cell's raw value. The original's is at
@@ -3211,6 +3297,35 @@ int main(int argc, char** argv) {
     // then loops brief-play-advance. Only the first half of that exists here:
     // there is no briefing screen and no stats blackboard, so the loop below
     // just steps to the next wave when one is cleared.
+    // `--make-save`, a test rig rather than a feature. The progression is
+    // what makes this worth doing in the engine instead of by hand: a record
+    // carries `WaveProgress`, so a save with wave 75 and wave-1 counters is
+    // NOT a wave 75 - it is the warp the reversing notes warn about. Stepping
+    // `advanceWave` is the only way to get the real numbers.
+    //
+    // It writes to the path it is given and nowhere else. `TUBES.SAV` is the
+    // player's file and the game directory is not ours to write to.
+    if (opt.wave > 0 && !opt.makeSave.empty()) {
+        while (game->progress().wave < opt.wave) game->advanceWave();
+        tubes::SaveFile out;
+        tubes::SessionTotals t;
+        t.continuesLeft = 3;
+        tubes::SaveSlot& slot = out[tubes::SaveBank::kWave].slots[0];
+        game->saveInto(slot, t);
+        slot.setDescription("WAVE " + std::to_string(opt.wave) + " TEST");
+        const std::vector<uint8_t> raw = tubes::encodeSaves(out);
+        std::ofstream f(opt.makeSave, std::ios::binary);
+        if (!f) {
+            std::fprintf(stderr, "cannot write %s\n", opt.makeSave.c_str());
+            return 1;
+        }
+        f.write(reinterpret_cast<const char*>(raw.data()),
+                static_cast<std::streamsize>(raw.size()));
+        std::printf("wrote %s: Wave slot 1 = wave %d, %zu bytes\n",
+                    opt.makeSave.c_str(), game->progress().wave, raw.size());
+        return 0;
+    }
+
     if (opt.wave > 0) {
         while (game->progress().wave < opt.wave) game->advanceWave();
         game->startWave();
@@ -3663,6 +3778,14 @@ int main(int argc, char** argv) {
     // `PascalRandom` for what that does and does not change.
     tubes::ProfessorIdle profIdle;
     tubes::PascalRandom sceneRng{bootSeed ? bootSeed : 1u};
+    // `1000:9499`. 0 is off, 1 the text and 2 the prize; `1b2e:0b8f` holds
+    // each for thirty seconds or a key. `DS:0x20fc` is the hop frame, 1..3 on
+    // the same ten-retrace clock the wave uses.
+    int endingPage = opt.ending > 0 ? opt.ending : 0;
+    float endingTimer = tubes::kEndingHoldSeconds;
+    int jumpFrame = 1;
+    float jumpAccum = 0.0f;
+
     // `1b2e:084e`, rolled from every `1b2e:0a11` and good for at most one
     // showing per run. `raiseScene` is where the port calls it, because that
     // is every place the original reaches `1b2e:0a11` from.
@@ -3855,6 +3978,21 @@ int main(int argc, char** argv) {
         playSong("TUBES.MUS");
     };
 
+    // `1b2e:0b8f` returning ends a page; the SECOND one ends the ending, and
+    // `1000:9676` clears `DS:0x20e3` on the way out so the professor stops
+    // hopping. The session is already over - the ending set `gameOver` when it
+    // began - so this goes straight to the finish.
+    auto endEndingPage = [&]() {
+        if (endingPage == 1) {
+            endingPage = 2;
+            endingTimer = tubes::kEndingHoldSeconds;
+            return;
+        }
+        endingPage = 0;
+        sstage = tubes::SessionStage::kFinished;
+        endSession();
+    };
+
     // `1000:5dbb`'s five steps, entered when the wave loop falls out.
     auto raiseBanner = [&](tubes::Banner b) {
         banner = b;
@@ -3996,6 +4134,17 @@ int main(int argc, char** argv) {
                     char c = static_cast<char>(k);
                     if (shift && c >= 'a' && c <= 'z') c = c - 'a' + 'A';
                     hsName.push_back(c);
+                }
+                continue;
+            }
+
+            // `1000:9499`'s two pages, each a `1b2e:0b8f(0x1e)` wait. The
+            // jump wait returns the same codes `1b2e:0e37` does, and the
+            // ending acts on none of them - it just stops waiting - so any of
+            // the three keys turns the page.
+            if (endingPage > 0) {
+                if (k == SDLK_RETURN || k == SDLK_SPACE || k == SDLK_ESCAPE) {
+                    endEndingPage();
                 }
                 continue;
             }
@@ -4371,6 +4520,25 @@ int main(int argc, char** argv) {
             case tubes::SessionStage::kStats: {
                 const tubes::StageTransition t =
                     tubes::advanceStage(sstage, flags, gameMode);
+                // `1000:a657`, and it is two instructions sitting INSIDE the
+                // progression block - so it is reached only when the wave is
+                // being advanced, which is what `t.advanceWave` means here:
+                //
+                //     if wave >= 75 then RegisteredEnding;
+                //     wave := wave + 1
+                //
+                // The ending's own first act is to set the session's game-over
+                // flag through the static link (`SS:[DI + 0xfe02] := 1`), so
+                // the session is over the moment it is.
+                if (t.advanceWave &&
+                    game->progress().wave >= tubes::kEndingWave) {
+                    endingPage = 1;
+                    endingTimer = tubes::kEndingHoldSeconds;
+                    jumpFrame = 1;
+                    jumpAccum = 0.0f;
+                    flags.gameOver = true;
+                    continue;
+                }
                 if (t.advanceWave) game->advanceWave();
                 sstage = t.next;
                 if (sstage == tubes::SessionStage::kContinue) {
@@ -4496,6 +4664,18 @@ int main(int argc, char** argv) {
         if ((instrOpen || rebindOpen) && !joke.active()) {
             profIdle.tick(dt, sceneRng);
         }
+        // `1b2e:0b8f` steps `DS:0x20fc` 1..3 every ten retraces while the
+        // ending waits, and each page gives up after thirty seconds.
+        if (endingPage > 0) {
+            jumpAccum += dt * tubes::kRetraceHz;
+            while (jumpAccum >= tubes::kJumpRetraces) {
+                jumpAccum -= tubes::kJumpRetraces;
+                if (++jumpFrame > tubes::kJumpFrames) jumpFrame = 1;
+            }
+            endingTimer -= dt;
+            if (endingTimer <= 0.0f) endEndingPage();
+        }
+
         // `1b2e:084e` runs to its own three delays and plays `SLIDE.SFX` as it
         // ends. It is held while the screen is still coming down because it
         // lives inside `1b2e:0a11`, and `1b2e:0510` has returned before its
@@ -5009,11 +5189,23 @@ int main(int argc, char** argv) {
                          haveFurn, briefDecor, sceneArt, scenePose(true));
         }
 
+        // `1000:9499` replaces the field the same way the stats screen does,
+        // and comes first because the session it ends is still notionally on
+        // the stats stage when it starts.
+        if (endingPage > 0) {
+            ScenePose p = scenePose(false);
+            p.jumpFrame = jumpFrame;
+            drawEnding(screen, endingPage, &blackboard, haveBlackboard,
+                       sceneArt, p, headingFont, haveHeading, smallFont,
+                       haveSmall, &prizeArt, havePrize);
+        }
+
         // The stats screen replaces the field; the banner, the Continue prompt
         // and the pause overlay go OVER whatever is already drawn, because
         // that is what the original does - none of the three clears first.
-        if (sstage == tubes::SessionStage::kStats ||
-            sstage == tubes::SessionStage::kContinue) {
+        if (endingPage == 0 &&
+            (sstage == tubes::SessionStage::kStats ||
+             sstage == tubes::SessionStage::kContinue)) {
             drawStats(screen, statsRows, &blackboard, haveBlackboard, sceneArt,
                       headingFont, smallFont, bigFont, haveHeading, haveSmall,
                       haveBig, scenePose(false));

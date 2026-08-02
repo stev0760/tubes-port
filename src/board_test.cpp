@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "board.h"
+#include "ending.h"
 #include "font.h"
 #include "game.h"
 #include "screen.h"
@@ -2155,6 +2156,48 @@ void testBindingsCannotBeShared() {
 // `1b2e:0510`'s roll-down. The table is `DS:0xb9c`, array[1..15] of word, and
 // the only two things that can go wrong in porting it are the bounce and the
 // hand-off to rest - so both are what this checks.
+// `1000:9499`. The text is generated, so what is worth testing is the shape
+// around it - the trigger's boundary and the hop's arithmetic.
+void testTheWave75EndingAndItsHop() {
+    using namespace tubes;
+
+    check(kEndingWave == 75, "the ending is wave 75");
+    // `1000:a657` is `CMP ..., 0x4b` then `JC`, i.e. an unsigned >=, and it
+    // runs BEFORE the increment - so it is the wave just cleared that counts.
+    check(74 < kEndingWave, "wave 74 does not reach it");
+    check(75 >= kEndingWave, "wave 75 does");
+
+    // `DS:0x20fc` runs 1..3 and `y := 0x61 - 3 * frame`, so he rises and drops
+    // back rather than ping-ponging - three positions, all distinct.
+    check(jumpY(1) == 94, "hop frame 1 is at y 94");
+    check(jumpY(2) == 91, "frame 2 is three higher");
+    check(jumpY(3) == 88, "and frame 3 three higher again");
+    check(jumpY(1) != jumpY(3), "the hop actually moves");
+
+    // The generated table: twelve lines, two of them the centred heading in
+    // the big font, and every one carrying text.
+    int centred = 0, heading = 0;
+    bool allText = true;
+    for (int i = 0; i < kEndingLineCount; ++i) {
+        const EndingLine& l = kEndingLines[i];
+        if (l.centred) ++centred;
+        if (l.font == EndingFont::kHeading) ++heading;
+        if (!l.text || !*l.text) allText = false;
+    }
+    check(allText, "every ending line has text");
+    check(centred == 2, "two lines are centred - the heading and its rule");
+    check(heading == 2, "and those two are the ones in the heading font");
+    // The game's own spelling, which a hand transcription would have fixed.
+    bool found = false;
+    for (int i = 0; i < kEndingLineCount; ++i) {
+        if (std::string(kEndingLines[i].text).find("existance") !=
+            std::string::npos) {
+            found = true;
+        }
+    }
+    check(found, "the game spells it 'existance' and the port does too");
+}
+
 void testTheProjectorScreenRollsDownAndBouncesOnce() {
     using namespace tubes;
 
@@ -3027,6 +3070,7 @@ int main() {
     testTheContinueCountdownExpiringDeclines();
     testEnduranceSkipsBothWaveScreens();
     testTheFastSongIsAboutDropsNotDifficulty();
+    testTheWave75EndingAndItsHop();
     testTheProjectorScreenRollsDownAndBouncesOnce();
     testTheProfessorTalksBeforeHeWaves();
     testTheJokeSlideFiresAtMostOncePerRun();
