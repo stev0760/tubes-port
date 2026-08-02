@@ -3067,6 +3067,39 @@ void testStatsScreenAccumulatesExactlyOnce() {
     check(t.totalChains == 17, "re-rendering the stats screen cannot re-count");
 }
 
+// `-0x17c` is ONE byte in the original - the HUD's Chains at `1000:5753` and
+// the stats screen's "Molecule Chains" are the same store, and `1000:8ee4`
+// zeroes it. The port holds it twice and only zeroed one of them, so Chains
+// carried across waves and every wave's stats re-counted every wave before it.
+// Reported from play, and this is the crossing point.
+void testChainsResetPerWaveButTheTotalDoesNot() {
+    tubes::SessionTotals t;
+    int live = 0;
+
+    // Wave 1: five chains made in play.
+    live = 5;
+    tubes::enterStatsScreen(t, live, 1, 1000, false);
+    check(live == 0, "the play session's counter is zeroed by the stats screen");
+    check(t.totalChains == 5, "and the wave's chains land in the running total");
+
+    // Wave 2: three more. The wave line must read 3, not 8 - which is exactly
+    // what it read before, because the game's counter had never been cleared.
+    live = 3;
+    std::vector<tubes::StatsRow> rows = tubes::enterStatsScreen(t, live, 2, 1000, false);
+    check(live == 0, "and again after the second wave");
+    check(t.totalChains == 8, "the total accumulates across waves");
+    bool sawThree = false;
+    for (size_t i = 0; i + 1 < rows.size(); ++i) {
+        if (rows[i].text == "Molecule Chains") sawThree = rows[i + 1].text == "3";
+    }
+    check(sawThree, "and wave 2's own line reads 3, not the running 8");
+
+    // A wave with nothing scored moves neither.
+    live = 0;
+    tubes::enterStatsScreen(t, live, 3, 1000, false);
+    check(t.totalChains == 8 && live == 0, "a chainless wave changes nothing");
+}
+
 // `1000:8dfc`: the High Score line sits at y 135, and moves to 151 only when
 // the Perfect Bonus lines are drawn, because they take the row it would use.
 void testHighScoreRowMovesForThePerfectBonus() {
@@ -3356,6 +3389,7 @@ int main() {
     testQuitNeedsConfirming();
     testInformationalItemsReturnTheirNumber();
     testStatsScreenAccumulatesExactlyOnce();
+    testChainsResetPerWaveButTheTotalDoesNot();
     testHighScoreRowMovesForThePerfectBonus();
     testBannerRulesAreNotDerivedFromTheCaption();
     testAttractModeTurnsEveryKeyIntoAnAbort();

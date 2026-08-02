@@ -4195,11 +4195,16 @@ int main(int argc, char** argv) {
     };
 
     // Entering the stats screen is what accumulates the running chain total,
-    // so it happens exactly once per visit - never in the draw path.
+    // so it happens exactly once per visit - never in the draw path. It is
+    // also what RESETS the per-wave count, in the game as well as on the
+    // screen: `-0x17c` is one byte in the original and `enterStatsScreen`
+    // holds both of the port's copies of it together.
     auto enterStats = [&]() {
-        totals.chainsThisWave = game->chains();
-        statsRows = tubes::buildStatsScreen(totals, game->progress().wave,
+        int liveChains = game->chains();
+        statsRows = tubes::enterStatsScreen(totals, liveChains,
+                                            game->progress().wave,
                                             game->score(), false);
+        game->setChains(liveChains);
         playSong(tubes::kStatsMusic);
         // `1000:8da5`: `k := 1b2e:0cd1(10)`, then `1b2e:0e37($1e)`.
         profIdle.restart(tubes::kTalkBurstsStats, sceneRng);

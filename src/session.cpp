@@ -81,6 +81,18 @@ void addRow(std::vector<StatsRow>& out, int y, StatsFont font, uint8_t colour,
 
 }  // namespace
 
+std::vector<StatsRow> enterStatsScreen(SessionTotals& totals, int& liveChains,
+                                       int wave, int score, bool isHighScore) {
+    totals.chainsThisWave = liveChains;
+    std::vector<StatsRow> rows =
+        buildStatsScreen(totals, wave, score, isHighScore);
+    // `1000:8ee4` zeroed the one byte both of these stand for, so the play
+    // session's copy follows the screen's rather than being zeroed separately -
+    // if the two ever disagree, this is the line that is wrong.
+    liveChains = totals.chainsThisWave;
+    return rows;
+}
+
 std::vector<StatsRow> buildStatsScreen(SessionTotals& totals, int wave,
                                        int score, bool isHighScore) {
     std::vector<StatsRow> rows;

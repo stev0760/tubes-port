@@ -3647,3 +3647,49 @@ and requires the wave to COMPLETE rather than just the counter to move. Stubbed
 back out, it fails 11 checks; that check was run rather than assumed.
 
 731 checks / 0 failures, `--demo-trace` unmoved.
+
+## 2026-08-01 - Chains never reset between waves: one byte, held twice
+
+Reported from play: the Chains counts did not make sense as the waves went by,
+and a save carried from the port into the original started a wave with chains
+already on it.
+
+Both halves are one bug. `-0x17c` is a single byte in the original. The HUD
+prints it every frame - `1000:5753` reads it straight into `Str(chains:3)` -
+the stats screen displays the same store as "Molecule Chains", and that screen
+zeroes it at `1000:8ee4` after adding it to `-0x14e`. A full scan of segment
+`1000` for the offset settles the rest: it is written in **exactly three
+places** - zeroed for a new game at `1000:a4e4`, loaded from the save at
+`1000:a553`, and zeroed at `8ee4`. **There is no per-wave reset in the wave
+setup at all. The stats screen is the per-wave reset.**
+
+The port splits the simulation from the screens, so that byte lives twice:
+`Game::chains_` and `SessionTotals::chainsThisWave`. `buildStatsScreen` zeroed
+the screen's copy - correctly, at the faithful position between the two lines,
+with a test asserting it - and nothing ever zeroed the game's. Everything
+downstream followed from that:
+
+* the HUD's Chains carried across waves;
+* each wave's "Molecule Chains" was the session's running count, not the
+  wave's;
+* "Total Molecule Chains" summed those running counts, so it re-counted every
+  earlier wave - wave 3 of 5, 3, 2 chains reported 10 + 5 rather than 10;
+* and `saveTo` writes `chains_` to `+0x28`, so the inflated figure went into
+  the file. The original was reading the field correctly; the number in it was
+  wrong.
+
+The fix is `enterStatsScreen` in `session.h`, the one place the two copies are
+allowed to meet. It takes the live counter **by reference**, so a caller cannot
+take the wave's chains without also clearing them, and the zero still happens
+inside `buildStatsScreen` at the original's position - the reference just
+carries it back.
+
+Worth noting what did NOT catch this. `testStatsScreenAccumulatesExactlyOnce`
+has asserted the accumulate-and-zero for months and passes; it tests the screen
+side, which was right. The bug was entirely in the crossing, and the crossing
+was four lines in a lambda in `main.cpp` that no test could reach. That is the
+same shape as the marked-atom counter earlier today: the rule was read
+correctly and the wiring dropped half of it. Both are now behind a function
+with a test rather than a step someone has to remember.
+
+742 checks / 0 failures, `--demo-trace` unmoved.

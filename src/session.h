@@ -189,6 +189,31 @@ struct StatsRow {
 std::vector<StatsRow> buildStatsScreen(SessionTotals& totals, int wave,
                                        int score, bool isHighScore);
 
+// Entering the stats screen, whole - and the ONE place the port's two copies
+// of the chain count are allowed to meet.
+//
+// In the original there is one byte. `-0x17c` is what the HUD prints every
+// frame (`1000:5753` reads it straight into `Str(chains:3)`), what the stats
+// screen displays as "Molecule Chains", and what that same screen zeroes at
+// `1000:8ee4` after adding it to `-0x14e`. It is written in exactly three
+// places in the whole program: zeroed for a new game at `1000:a4e4`, loaded
+// from the save at `1000:a553`, and zeroed here. **There is no per-wave reset
+// anywhere in the wave setup - the stats screen IS the per-wave reset.**
+//
+// The port has to hold it twice, because `Game` owns the simulation and
+// `SessionTotals` owns the screens, and it got that wrong: the zero was
+// applied to the screen's copy while `Game::chains_` went on accumulating for
+// the whole session. So the HUD's Chains never reset between waves, every
+// wave's "Molecule Chains" was really the session's running count, and "Total
+// Molecule Chains" summed those, double-counting every wave before it. It also
+// went into the save at `+0x28`, which is why a save carried across to the
+// original started a wave with chains already on it. Reported from play.
+//
+// `liveChains` is in-out: it goes in as the play session's counter and comes
+// back zeroed, so a caller cannot take the number without also clearing it.
+std::vector<StatsRow> enterStatsScreen(SessionTotals& totals, int& liveChains,
+                                       int wave, int score, bool isHighScore);
+
 // `1000:8da5`'s music, started after the drawing and before the flip.
 constexpr const char* kStatsMusic = "STAT.MUS";
 

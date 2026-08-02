@@ -2385,8 +2385,8 @@ Clearing a wave shows a blackboard slide before the next briefing:
       Score                  <score>
       High Score!            (shown only when the run beats the table)
 
-Two chain counters, one per-wave and one cumulative, which the port tracks
-neither of. The `Chains` figure in the HUD is the per-wave one.
+Two chain counters, one per-wave and one cumulative. The `Chains` figure in the
+HUD is the per-wave one - **literally the same byte**, see below.
 
 **The slot list is filtered by mode.** Choosing Endurance showed five
 `(UNAVAILABLE)` entries for a save that Wave Mode lists immediately - so saves
@@ -6330,6 +6330,32 @@ Two things are easy to miss and both change what is drawn:
   lines it does `-0x14e := -0x14e + -0x17c; -0x17c := 0`. The per-wave counter
   is zeroed by the screen that displays it, so the stats screen is not a pure
   view - re-rendering it would double-count.
+
+  A full scan of segment `1000` for `-0x17c` (`SS:[DI + 0xfe84]` from the
+  nested frames, `[BP + 0xfe84]` from `1000:9e53`'s own) settles the rest of
+  its life. It is **read** by the HUD every frame at `1000:5753`, which puts it
+  straight into `Str(chains:3)`, and by the save, the briefing and three other
+  sites. It is **written in exactly three places**:
+
+      1000:a4e4   := 0     the new-game arm, beside `-0x14e := 0`
+      1000:a553   := save  the load arm, from `[0x1d10]`
+      1000:8ee4   := 0     here
+
+  so **there is no per-wave reset anywhere in the wave setup - this screen IS
+  the per-wave reset**, and the HUD's Chains and "Molecule Chains" are one
+  store rather than two that agree.
+
+  **The port had this wrong and it was reported from play.** `SessionTotals`
+  and `Game::chains_` are two copies of that one byte, because the port splits
+  the simulation from the screens, and only the screen's copy was ever zeroed.
+  So the HUD's Chains never reset between waves; each wave's "Molecule Chains"
+  was really the session's running count; "Total Molecule Chains" summed those
+  and re-counted every earlier wave; and the inflated number went into the save
+  at `+0x28`, which is why a save carried from the port into the original
+  started a wave with chains already on it - the original was reading the field
+  correctly. `enterStatsScreen` in `session.h` is now the single crossing
+  point, taking the live counter by reference so it cannot be read without
+  being cleared.
 - **`High Score!`'s `y` moves.** It is 135 normally and **151** when the
   Perfect Bonus lines are present, because those occupy the row it would use.
 
