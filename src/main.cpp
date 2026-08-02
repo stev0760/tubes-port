@@ -1694,7 +1694,6 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
     // the cursor scanline registers, not fetched from the character ROM.
     int cursorCol = 0;
     bool cursorOn = false;
-    std::function<void()> drawToWindow;
     auto present = [&](const tubes::Palette& pal) {
         for (size_t i = 0; i < indexed.size(); ++i) {
             const uint8_t* c = pal.rgb[indexed[i]];
@@ -1720,14 +1719,13 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
                 }
             }
         }
+        // UPLOAD EVERY FRAME. A STREAMING texture is not guaranteed to keep
+        // its contents between frames - the backend may cycle internal
+        // buffers - so a RenderCopy without a preceding UpdateTexture can pick
+        // up a stale one. Skipping the upload on unchanged frames was tried as
+        // an optimisation and is what made the whole picture flicker during the
+        // hold while the fade, which uploads every frame, stayed clean.
         SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kTextScreenW * 4);
-        drawToWindow();
-    };
-
-    // Everything below the texture upload, so a frame that only needs the
-    // picture put on the window again does not re-upload 256,000 unchanged
-    // pixels. The screen is static apart from an 8 x 2 cursor.
-    drawToWindow = [&]() {
         int winW = 0, winH = 0;
         SDL_GetRendererOutputSize(ren, &winW, &winH);
         const tubes::DisplayRect r = tubes::presentRect(winW, winH, g_display);
@@ -1761,7 +1759,22 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
     cursorCol = static_cast<int>(std::strlen(kPrompt));
     ts.render(indexed);
     cursorOn = true;
-    present(lit);
+
+    // PRIME THE SWAP CHAIN before the hold begins.
+    //
+    // The content changes here - the prompt appears - and a double or triple
+    // buffered swap chain does not change with it: the first few presents
+    // alternate between buffers still holding the pre-prompt frame and ones
+    // holding the new one, so the picture flips a few times and then settles
+    // once every buffer has been written. That settling was the flicker, and
+    // it was worst when the loop presented only on the cursor blink, which
+    // stretched three flips across most of a second.
+    //
+    // Presenting the finished frame four times back to back fills every buffer
+    // any common backend has while the player is still registering that the
+    // screen changed, so the hold starts already converged. It costs four
+    // retraces.
+    for (int i = 0; i < 4; ++i) present(lit);
 
     if (!screenshot.empty()) {
         SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormatFrom(
@@ -1806,7 +1819,6 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
     bool waiting = true;
     const uint32_t start = SDL_GetTicks();
     const uint32_t blinkMs = kCursorBlinkRetraces * 1000 / 70;
-    bool shown = cursorOn;
     while (waiting) {
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
@@ -1815,17 +1827,12 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
                 waiting = false;
             }
         }
-        const bool want = ((SDL_GetTicks() - start) / blinkMs) % 2 == 0;
-        if (want != shown) {
-            // Only the cursor ever changes, so only the cursor is re-uploaded.
-            shown = want;
-            cursorOn = want;
-            present(lit);
-        } else {
-            // Same picture, put on the window again. With vsync this blocks
-            // until the retrace, which is also what paces the loop.
-            drawToWindow();
-        }
+        // Exactly what the fade above does, with a palette that happens not to
+        // change: rebuild, upload, draw, present. The fade is the control here
+        // - it runs at this rate through this texture and does not flicker -
+        // so the hold does not get to be clever where the fade is not.
+        cursorOn = ((SDL_GetTicks() - start) / blinkMs) % 2 == 0;
+        present(lit);
         if (!hadVSync) SDL_Delay(1000 / 70);
     }
     // Leave the renderer as it was found, in case anything presents after this.

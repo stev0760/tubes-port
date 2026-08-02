@@ -4255,3 +4255,49 @@ The rendered frame is byte-identical throughout: 0 of 256,000 pixels differ
 across all three versions, so none of this ever changed what is drawn.
 
 846 checks / 0 failures, `--demo-trace` md5 unmoved.
+
+### Correction, same day: the flicker was a transient, not a steady state
+
+The entry above is wrong about the symptom and therefore about the cause, and
+the correction came from one sentence of description: *"it's like a cascade
+that flips a few times and then settles."*
+
+A flicker that **stops** is not a presentation-rate problem and not a swap
+timing problem. It is a swap chain warming up. The content changes at the
+fade-to-hold boundary - the prompt appears - and a double or triple buffered
+chain does not change with it: the first few presents alternate between buffers
+still holding the pre-prompt frame and buffers holding the new one, until every
+buffer has been written and it settles permanently.
+
+That explains the whole history, including why each fix seemed to do nothing:
+
+* v1 presented only on the cursor blink, so three flips took most of a second
+  and read as a flicker;
+* v2 presented every retrace, so the same three flips took 42 ms - better, and
+  still visible as a flash, which is why it was reported as unchanged;
+* v3 skipped the upload on unchanged frames, which is separately wrong -
+  `SDL_TEXTUREACCESS_STREAMING` does not guarantee contents survive between
+  frames - and could only have made it worse.
+
+Two things landed. The hold now does **exactly what the fade does** - rebuild,
+upload, draw, present, every frame - because the fade was the control all
+along: same texture, same rate, no flicker, and the only difference was the
+cleverness added to the hold. And the swap chain is **primed** with four
+back-to-back presents of the finished frame before the hold begins, so it
+starts already converged.
+
+**The method lesson, and it is the third one today.** Two wrong causes were
+inferred before the right one, and neither could have been reached by more
+reading - the code supported all three readings equally. What settled it was
+the user describing the symptom precisely: *whole picture, during the hold not
+the fade, a few flips then settles*. "During the hold not the fade" alone
+falsified both earlier theories, because the fade presents at the same rate
+through the same texture. **Ask what the artifact looks like before theorising
+about what causes it** - a transient and a steady state have completely
+different suspect lists, and everything up to that point had been reasoning
+about the wrong one.
+
+Output byte-identical throughout: 0 of 256,000 pixels differ across all four
+versions.
+
+846 checks / 0 failures, `--demo-trace` md5 unmoved.
