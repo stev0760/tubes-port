@@ -3541,3 +3541,65 @@ Four bugs, all from the player and none reachable from a harness flag:
 
 The last two came out of a real wave-75 clear. Nothing in the program is unread
 now except `.BIN`; what is left is the player's enhancements.
+
+## 2026-08-01 - the Graphics Options screen, on the rebinding screen's terms
+
+The first of the two enhancements in `PLAN.md` section 5, and the second screen
+in this port that is **not** a transliteration. The argument is `input.h`'s,
+one layer over: the original picks an input DRIVER because DOS gave it no
+abstraction over an XT keyboard and a gameport, and SDL *is* that abstraction -
+so the display is the same case, since Mode X was the only mode the original
+had and `SETUP.EXE` owned whatever choice existed.
+
+Five rows: Display (windowed / fullscreen desktop), Window Size (Fit, or 1x..6x
+pinned), Pixels (square, or the 4:3 a 1994 monitor showed), Vertical Sync and
+Scanlines. Every change applies and saves the instant it is made, because the
+point of a display option is seeing what it does and nothing here can leave the
+game in a state the player cannot get out of. `--graphics` opens it.
+
+### The transliterated table stays the image's
+
+The one thing that needed deciding was where the menu item goes, and the answer
+is that `kMenuPages` does not change. It is the DGROUP 0x00ca data and it still
+reads four items ending in Exit. The port's page is `kOptionsPagePort`, a
+separate object with the Graphics row inserted before Exit, and `menuPage()` is
+what every layout, navigation and selection path reads. A test asserts both:
+the image's row is untouched, and every OTHER page comes back as the image's
+own object rather than a copy.
+
+**It costs a layout shift and that is recorded rather than glossed.** Five rows
+at the same 26-pixel pitch give `(180 - 26*6) div 2` = 12 where four gave 25,
+so page 6 is the one menu page the port no longer renders pixel-identically.
+Pages 1 and 3, which measure 0.00%, are untouched.
+
+### Where the options actually live
+
+All of it is render-side, which is the rule the frame-rate item in section 5
+sets: a display option changes how a frame is PRESENTED and never how one is
+computed, because the fixed 16.11 Hz step is load bearing. The scale and
+letterbox arithmetic went into `input.cpp` with no SDL in it, so
+`presentRect(winW, winH, g)` is unit-tested over 6800 window sizes for the
+invariant that the picture is always a whole number of units - `tubes-tests`
+links no SDL at all, and that is the whole reason it could be tested.
+
+Two limitations, written down rather than discovered later:
+
+* **4:3 does not give clean pixel rectangles.** 200 source rows over
+  `240 * scale` is 1.2 rows per source row, so at 3x they come out three and
+  four pixels tall in a repeating pattern. Inherent to nearest neighbour on a
+  320x200 image, and the reason square stays the default. A first draft of the
+  comment claimed the opposite and was corrected before it could read as
+  settled;
+* **scanlines are drawn over the presented image, not into the framebuffer**,
+  so `--screenshot` never shows them. Deliberate: a capture has to stay
+  comparable with the original.
+
+`--scale N` is also no longer written into the saved settings. It sizes the
+window for one run - a capture script must be able to pin a size without
+changing what the player chose - and since the screen saves on every keystroke,
+a flag that landed in the struct would have become permanent the moment the
+player toggled anything. Leaving the setting at Fit inside a window sized to N
+costs nothing, because Fit picks the largest whole multiple that fits, which
+is N.
+
+714 checks / 0 failures, `--demo-trace` unmoved.

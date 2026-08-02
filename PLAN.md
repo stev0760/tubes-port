@@ -39,10 +39,16 @@ Two consequences that shape every decision here:
 **Every screen of the original is ported, every asset format is decoded, and
 nothing in the program is unread.** `1000:9499`, the wave-75 ending, was the
 last one and it is done - so what is left is the enhancements the player has
-asked for:
+asked for, and then publishing:
 
-1. The enhancements in section 5, which are the player's: a **Graphics
-   Options screen** (the port cannot even go fullscreen) and **GLDFADE**.
+1. ~~a **Graphics Options screen**~~ - **DONE**, see section 5. Fullscreen,
+   window size, 4:3, vsync and scanlines, on the port's own screen beside the
+   rebinding one, all render-side.
+2. **GLDFADE**, the remaining enhancement in section 5.
+3. **Publishing**, which is the last section of this file and is gated on a
+   comment and documentation pass, a repository check and a final code review.
+   The licence is decided: **MIT** for this project's own code, with
+   `third_party/nuked-opl3` keeping its LGPL-2.1 notices.
 
 **The three animations that used to head this list are done**, and the two
 leads it carried were both pointing at the wrong routine:
@@ -1019,38 +1025,48 @@ optional extras are wanted, and the architecture should not preclude them:
   frames rather than by running the simulation faster. The fixed step is load
   bearing - every speed is a whole number of pixels per frame - so anything
   here has to be a *render-side* interpolation with the simulation untouched.
-- **a Graphics Options screen**, the player's request, and it is the same kind
-  of thing as the control rebinding: a screen the port OWNS rather than
-  transliterates. The reasoning transfers exactly, and `src/input.h` already
-  writes it down for the input half - the original chooses a DRIVER because
-  DOS gave it no abstraction, SDL *is* that abstraction, so porting the DOS
-  chooser would be transliterating the absence of SDL. The display is the same
-  story one layer over: Mode X was the only mode the original had, and
-  `SETUP.EXE` owned whatever choice there was.
+- ~~**a Graphics Options screen**~~ - **DONE.** The player's request, and it
+  went in on the rebinding screen's terms: a screen the port OWNS rather than
+  transliterates, for the reason `src/input.h` gives for the input half. The
+  original chooses a DRIVER because DOS gave it no abstraction, SDL *is* that
+  abstraction; the display is the same story one layer over, since Mode X was
+  the only mode the original had and `SETUP.EXE` owned whatever choice existed.
 
-  Right now the port cannot even go fullscreen. Candidates, all render-side:
+  Five rows, all render-side: **Display** (windowed / fullscreen desktop),
+  **Window Size** (Fit, or 1x..6x pinned), **Pixels** (square, or the 4:3 a
+  1994 monitor showed), **Vertical Sync**, and **Scanlines**. Every change
+  applies and saves the instant it is made. `--graphics` opens the screen for
+  capture.
 
-  * fullscreen / windowed, and remembering which;
-  * the integer scale, which `--scale` already does from the command line and
-    which nothing exposes in the game;
-  * aspect - square pixels versus the 4:3 the original was seen on;
-  * vsync, and a scanline or CRT filter for people who want one.
+  What it cost, stated plainly because it is the one thing here that is not
+  free: **page 6 is now the only menu page the port does not render
+  pixel-identically.** A fifth row at the same 26-pixel pitch starts the block
+  13 pixels higher. `kMenuPages` still holds the image's own four-item page and
+  always will - the port's version is `kOptionsPagePort`, a separate object,
+  and `menuPage()` is what every layout and navigation path reads.
 
-  Three things make this cheap and one makes it a rule:
+  Three things made it cheap and one is a rule that held:
 
-  * `Settings` (`src/input.h`) already persists through `SDL_GetPrefPath`, and
-    graphics options ride the same file. It is NOT `SETUP.CFG` - that is the
+  * `Settings` (`src/input.h`) already persisted through `SDL_GetPrefPath`, so
+    the display options ride the same file. It is NOT `SETUP.CFG`, which is the
     DOS install's hardware config and belongs to `SETUP.EXE`;
-  * the menu page already exists - "Game Options" is `1b2e:4d80`'s own page and
-    the port added `Redefine Input Device` to it, so a `Graphics` entry goes
-    beside it the same way;
+  * the menu page already existed, so the row went beside `Redefine Input
+    Device` rather than onto a key nobody would find;
   * `screen.cpp` is a plain indexed framebuffer and only `main.cpp` and
-    `opl.cpp` include SDL, so every one of these lives at the platform edge and
-    touches nothing that was reverse engineered.
-  * **and the rule: none of it may touch the SIMULATION.** The fixed 16.11 Hz
+    `opl.cpp` include SDL, so all of it lives at the platform edge and touches
+    nothing that was reverse engineered. The scale and letterbox arithmetic is
+    in `input.cpp`, with no SDL in it, which is why the tests can check it;
+  * **and the rule: none of it touches the SIMULATION.** The fixed 16.11 Hz
     step is load bearing - every speed in the game is a whole number of pixels
-    per frame - so a graphics option changes how a frame is PRESENTED and
-    never how one is computed. Same constraint as the frame-rate item above.
+    per frame - so a graphics option changes how a frame is PRESENTED and never
+    how one is computed. Same constraint as the frame-rate item above.
+
+  Two honest limitations. The 4:3 stretch spreads 200 source rows over
+  `240 * scale`, so rows come out three and four pixels tall in a repeating
+  pattern at 3x - inherent to nearest-neighbour on a 320x200 image, and the
+  reason square is the default. And scanlines are drawn over the presented
+  image rather than into the framebuffer, so `--screenshot` never shows them,
+  which is deliberate: a capture must stay comparable to the original.
 
 - small quality-of-life tweaks, each behind a switch that defaults to off.
 - **give `GLDFADE` its animation back.** The player's idea, and it is the best
@@ -1169,7 +1185,11 @@ work. What identifies it is not yet known.
 The repository has never contained game data and `.gitignore` is aggressive
 about keeping it that way, so publishing is mostly a matter of paperwork:
 
-- **Choose a licence.** There is none yet. `third_party/nuked-opl3` is
+- **The licence is chosen: MIT**, for this project's own code. The `LICENSE`
+  file is still to be written. The reasoning below is what the choice was made
+  against and is kept because it is what a reader will want to check.
+
+  **Choose a licence.** `third_party/nuked-opl3` is
   **LGPL-2.1-or-later** - checked in the file, not from memory: `opl3.c` says
   "either version 2.1 of the License, or (at your option) any later version".
   That is **weak** copyleft and does **not** relicense this project. Any of

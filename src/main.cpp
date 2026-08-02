@@ -285,6 +285,7 @@ struct Options {
     int hsPage = -1;            // -1 off; 0 Endurance, 1 Wave in the viewer
     bool f2 = false;            // open the F2 save screen, for capture
     bool rebind = false;        // open the rebinding screen, for capture
+    bool graphics = false;      // open the graphics screen, for capture
     int instr = -1;             // open the Instructions on slide N, for capture
     bool credits = false;       // open the Credits, for capture
     // Harness only. `--screenshot` captures the first frame drawn, which can
@@ -469,6 +470,8 @@ Options parseArgs(int argc, char** argv) {
             o.f2 = true;
         } else if (a == "--rebind") {
             o.rebind = true;
+        } else if (a == "--graphics") {
+            o.graphics = true;
         } else if (a == "--credits") {
             o.credits = true;
         } else if (a == "--instructions") {
@@ -527,7 +530,9 @@ void usage() {
         "tubes-port - SDL reimplementation of Tubes\n"
         "\n"
         "  --gamedir DIR     directory holding your TUBES.RES (default: .)\n"
-        "  --scale N         integer scale factor (default: fit the display)\n"
+        "  --scale N         integer scale factor for this run, overriding the\n"
+        "                    saved one (default: fit the display)\n"
+        "  --graphics        open the port's Graphics Options screen\n"
         "  --screenshot FILE render one frame to a BMP and exit\n"
         "  --screenshot-after N  with it, capture after N frames of the LIVE\n"
         "                    loop at a fixed step - the only way to reach a\n"
@@ -1513,11 +1518,96 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
     }
 }
 
+// The display options. ALSO THE PORT'S OWN SCREEN, and for the same reason the
+// rebinding screen is - see `input.h`. It is deliberately the rebinding
+// screen's twin: the same blackboard, the same chalk panel, the same professor
+// standing in front of it, the same two fonts doing the same two jobs, and the
+// same hint on the black floor. Two screens the original never had should at
+// least look like each other, and like the game.
+//
+// The only structural difference is that a row here has a VALUE that changes
+// in place rather than a binding captured from a keypress, so Left and Right
+// work the row and Enter is a synonym for Right. That is also why there is no
+// armed state: nothing here waits on a second press.
+void drawGraphicsScreen(tubes::Screen& screen, const tubes::GraphicsOptions& g,
+                        int row, const tubes::Image* board, bool haveBoard,
+                        const SceneArt& art, const tubes::Font& big,
+                        bool haveBig, const tubes::Font& script,
+                        bool haveScript, const tubes::Font& small,
+                        bool haveSmall, int profFrame) {
+    screen.clear(0);
+    if (haveBoard) screen.blit(*board, 0, tubes::kBoardY);
+
+    constexpr int kPanelY = 30;
+    constexpr int kPanelH = 126;
+    constexpr int kPanelRight = tubes::kHsPanelX + tubes::kHsPanelW;
+    uint8_t* px = screen.pixelsMutable();
+    for (int y = kPanelY; y < kPanelY + kPanelH; ++y) {
+        if (y < 0 || y >= tubes::kScreenHeight) continue;
+        for (int x = tubes::kHsPanelX; x < kPanelRight; ++x) {
+            if (x < 0 || x >= tubes::kScreenWidth) continue;
+            px[static_cast<size_t>(y) * tubes::kScreenWidth + x] =
+                tubes::kHsPanelColour;
+        }
+    }
+
+    if (art.havePointer && art.havePointer[0]) {
+        screen.blit(art.pointer[0], tubes::kProfX, tubes::kProfY);
+    }
+    if (art.havePointer && profFrame > 0 && profFrame < 4 &&
+        art.havePointer[profFrame]) {
+        screen.blit(art.pointer[profFrame], tubes::kProfX, tubes::kProfY);
+    }
+    if (art.haveBar) {
+        screen.blit(*art.bar, tubes::kHsViewBarX, tubes::kBoardY + 1);
+    }
+
+    if (haveBig) {
+        tubes::drawTextCentred(screen, big, tubes::kHsPanelX, kPanelRight, 32,
+                               tubes::kHsTitleColour, tubes::textmode::kPeak,
+                               "Graphics Options");
+    }
+
+    // Five rows against the rebinding screen's six, so they start lower and
+    // sit on the same pitch - the two screens should not appear to jump when
+    // the player moves between them.
+    constexpr int kRow0 = 60;
+    constexpr int kPitch = 15;
+    constexpr int kNameX = 22;
+    constexpr int kValueX = 150;
+    for (int i = 0; i < tubes::kGraphicsRows; ++i) {
+        const int y = kRow0 + i * kPitch;
+        const uint8_t colour = (i == row) ? tubes::kHsTitleColour
+                                          : tubes::kHsRowColour;
+        if (haveScript) {
+            tubes::drawText(screen, script, kNameX, y, colour,
+                            tubes::textmode::kPeak, tubes::kGraphicsRowNames[i]);
+        }
+        if (haveBig) {
+            tubes::drawText(
+                screen, big, kValueX, y, colour, tubes::textmode::kPeak,
+                tubes::graphicsValueLabel(g, static_cast<tubes::GraphicsRow>(i))
+                    .c_str());
+        }
+    }
+    if (haveSmall) {
+        tubes::drawTextCentred(screen, small, 0, 319, tubes::kInstrNavY,
+                               tubes::kInstrNavColour, tubes::textmode::kFadeUp,
+                               "Left and Right change - Esc exits");
+    }
+}
+
 // The pause overlay, `1000:3916`. Same two rows as a banner, and the loop is
 // blocked entirely while it is up.
-// Upload the indexed framebuffer and put it on the window, letterboxed at an
-// integer scale. A free function because the blocking screens - the splashes
-// and the fades - present without going round the frame loop.
+// How the framebuffer gets put on the window. THE PORT'S, entirely - see the
+// display options in `input.h` - and file-scope rather than a parameter
+// because the blocking screens (both splashes, every fade) present without
+// going round the frame loop, and threading one struct through all ten call
+// sites would say nothing that this comment does not.
+//
+// It is written once, from the settings, and then only by the graphics screen.
+tubes::GraphicsOptions g_display;
+
 void presentScreen(SDL_Renderer* ren, SDL_Texture* tex,
                    const tubes::Screen& screen, const tubes::Palette& pal,
                    std::vector<uint8_t>& rgba) {
@@ -1526,16 +1616,46 @@ void presentScreen(SDL_Renderer* ren, SDL_Texture* tex,
 
     int winW = 0, winH = 0;
     SDL_GetRendererOutputSize(ren, &winW, &winH);
-    const int s = std::max(1, std::min(winW / tubes::kScreenWidth,
-                                       winH / tubes::kScreenHeight));
-    SDL_Rect dst{(winW - tubes::kScreenWidth * s) / 2,
-                 (winH - tubes::kScreenHeight * s) / 2,
-                 tubes::kScreenWidth * s, tubes::kScreenHeight * s};
+    // The arithmetic is in `input.cpp`, with no SDL in it, so the tests get at
+    // the scaling and letterbox rules directly.
+    const tubes::DisplayRect r = tubes::presentRect(winW, winH, g_display);
+    const SDL_Rect dst{r.x, r.y, r.w, r.h};
 
     SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
     SDL_RenderClear(ren);
     SDL_RenderCopy(ren, tex, nullptr, &dst);
+
+    // Scanlines: one dark line per OUTPUT row pair, drawn over the image
+    // rather than baked into it, so the framebuffer a screenshot captures is
+    // untouched. Skipped below 2x, where every second row would be half the
+    // picture.
+    if (g_display.scanlines && dst.h >= tubes::kScreenHeight * 2) {
+        SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 64);
+        for (int y = dst.y + 1; y < dst.y + dst.h; y += 2) {
+            SDL_Rect line{dst.x, y, dst.w, 1};
+            SDL_RenderFillRect(ren, &line);
+        }
+    }
     SDL_RenderPresent(ren);
+}
+
+// Push the display options at the window and the renderer. Everything else in
+// `GraphicsOptions` is read at present time; these two are state SDL holds.
+void applyDisplayOptions(SDL_Window* win, SDL_Renderer* ren,
+                         const tubes::GraphicsOptions& g) {
+    g_display = g;
+    if (!win || !ren) return;
+    // Desktop fullscreen, not a mode set: the port has no business changing
+    // the display's resolution for a 320x200 image it is going to letterbox
+    // anyway, and a borderless desktop window alt-tabs cleanly.
+    SDL_SetWindowFullscreen(win, g.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP
+                                              : 0);
+    if (!g.fullscreen && g.scale > 0) {
+        SDL_SetWindowSize(win, tubes::kScreenWidth * g.scale,
+                          tubes::displayUnitHeight(g) * g.scale);
+    }
+    SDL_RenderSetVSync(ren, g.vsync ? 1 : 0);
 }
 
 void saveBmp(std::vector<uint8_t>& rgba, const std::string& path) {
@@ -2286,7 +2406,9 @@ void drawTitle(tubes::Screen& screen, const tubes::Image& bg,
     if (!menu.up() || !haveBig) return;
 
     const tubes::Page p = menu.page();
-    const tubes::MenuPage& page = tubes::kMenuPages[static_cast<int>(p)];
+    // `menuPage`, not `kMenuPages`: page 6 carries the port's extra row and
+    // every layout call below already goes through the same accessor.
+    const tubes::MenuPage& page = tubes::menuPage(p);
 
     // `1b2e:4743`. The title is drawn only when the page has one - page 1's is
     // empty - with its rule two rows below.
@@ -3363,20 +3485,29 @@ int main(int argc, char** argv) {
         }
     }
 
-    int scale = opt.scale;
+    // `--scale` sizes the WINDOW for this run and is deliberately not written
+    // into `settings.graphics`: a capture script must be able to pin a size
+    // without changing what the player chose in the game, and the graphics
+    // screen saves on every keystroke, so a flag that landed in the struct
+    // would become permanent the moment the player toggled anything. Leaving
+    // the setting at Fit inside a window sized to N costs nothing - Fit picks
+    // the largest whole multiple that fits, which is N.
+    int scale = opt.scale > 0 ? opt.scale : settings.graphics.scale;
     if (scale <= 0) {
         SDL_DisplayMode dm;
         scale = 3;
         if (SDL_GetCurrentDisplayMode(0, &dm) == 0) {
             int fit = std::min(dm.w / tubes::kScreenWidth,
-                               dm.h / tubes::kScreenHeight);
-            scale = std::max(1, std::min(fit - 1, 6));
+                               dm.h / tubes::displayUnitHeight(settings.graphics));
+            scale = std::max(1, std::min(fit - 1,
+                                         tubes::GraphicsOptions::kMaxScale));
         }
     }
 
     SDL_Window* win = SDL_CreateWindow(
         "Tubes", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        tubes::kScreenWidth * scale, tubes::kScreenHeight * scale,
+        tubes::kScreenWidth * scale,
+        tubes::displayUnitHeight(settings.graphics) * scale,
         SDL_WINDOW_RESIZABLE);
     SDL_Renderer* ren =
         win ? SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED) : nullptr;
@@ -3387,7 +3518,13 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // Nearest neighbour, always: this is an indexed 320x200 image and a
+    // filtered upscale of one is a blur, not a picture. The 4:3 option
+    // stretches the destination rectangle instead - see `presentRect`.
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+    // Fullscreen, vsync and the rest of the saved display options, now that
+    // there is a window and a renderer to put them on.
+    applyDisplayOptions(win, ren, settings.graphics);
     SDL_Texture* tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32,
                                          SDL_TEXTUREACCESS_STREAMING,
                                          tubes::kScreenWidth,
@@ -3877,6 +4014,8 @@ int main(int argc, char** argv) {
     bool instrCredits = opt.credits;
     int rebindRow = 0;                 // 0..5, the control being pointed at
     bool rebindWaiting = false;        // armed, waiting for the press
+    bool graphicsOpen = opt.graphics;  // the port's display options
+    int graphicsRow = 0;               // 0..kGraphicsRows-1
 
     // `1b2e:0a11`'s slide drop, gated on `DS:0x210e` - it runs the FIRST time
     // the scene is shown and never again, so this is a program-lifetime flag
@@ -4214,6 +4353,33 @@ int main(int argc, char** argv) {
                 continue;
             }
 
+            // The graphics screen, on the same terms. Left and Right work the
+            // row, Enter is a synonym for Right so a player who only ever
+            // presses Enter still gets round every value, and each change is
+            // applied and saved AT ONCE - the point of a display option is
+            // seeing what it does, and there is nothing here that can leave
+            // the game in a state the player cannot get out of.
+            if (graphicsOpen) {
+                const auto r = static_cast<tubes::GraphicsRow>(graphicsRow);
+                if (k == SDLK_UP) {
+                    graphicsRow = graphicsRow == 0 ? tubes::kGraphicsRows - 1
+                                                   : graphicsRow - 1;
+                } else if (k == SDLK_DOWN) {
+                    graphicsRow = graphicsRow == tubes::kGraphicsRows - 1
+                                      ? 0 : graphicsRow + 1;
+                } else if (k == SDLK_LEFT || k == SDLK_RIGHT ||
+                           k == SDLK_RETURN) {
+                    tubes::cycleGraphics(settings.graphics, r,
+                                         k == SDLK_LEFT ? -1 : 1);
+                    applyDisplayOptions(win, ren, settings.graphics);
+                    writeSettings();
+                } else if (k == SDLK_ESCAPE) {
+                    graphicsOpen = false;
+                    changeScreen();
+                }
+                continue;
+            }
+
             // `1b2e:6423`. The first page treats ESC specially - it leaves at
             // once - and any other key advances to the second. On the second
             // page every key leaves, ESC included.
@@ -4368,6 +4534,13 @@ int main(int argc, char** argv) {
                         rebindOpen = true;
                         rebindRow = 0;
                         rebindWaiting = false;
+                        changeScreen();
+                        break;
+                    case tubes::MenuResult::kGraphics:
+                        // The port's own row AND its own screen - input.h
+                        // again, one layer over.
+                        graphicsOpen = true;
+                        graphicsRow = 0;
                         changeScreen();
                         break;
                     case tubes::MenuResult::kQuit:
@@ -4678,7 +4851,7 @@ int main(int argc, char** argv) {
         // And the professor's idle with it. Same reason it sits outside the
         // stage dispatch: these two screens are reachable with `stage` set to
         // either, and the session's own clock below is the briefing's.
-        if ((instrOpen || rebindOpen) && !joke.active()) {
+        if ((instrOpen || rebindOpen || graphicsOpen) && !joke.active()) {
             profIdle.tick(dt, sceneRng);
         }
         // `1b2e:0b8f` steps `DS:0x20fc` 1..3 every ten retraces while the
@@ -4735,7 +4908,8 @@ int main(int argc, char** argv) {
             // which is not running while any of them is up. The port ran it
             // regardless, so a player halfway through binding a key could be
             // dropped into the demo. Reported from play.
-            const bool onTitleProper = !instrOpen && !rebindOpen && !hsViewing;
+            const bool onTitleProper =
+                !instrOpen && !rebindOpen && !graphicsOpen && !hsViewing;
             for (int k = 0; k < steps; ++k) {
                 titleAtom.step();
                 if (menu.up()) menu.tick();
@@ -4838,7 +5012,7 @@ int main(int argc, char** argv) {
 
             // The professor waves while any of the three screens is up -
             // `1b2e:0e37` steps `DS:0x20b0` every ten retraces, 1..5.
-            if (instrOpen || rebindOpen) {
+            if (instrOpen || rebindOpen || graphicsOpen) {
                 // Already ticked above - the screen on top owns him.
             } else if (joke.active()) {
                 // `1b2e:084e` blocks - nothing else on the screen moves.
@@ -4965,6 +5139,16 @@ int main(int argc, char** argv) {
                              sceneArt, headingFont, haveHeading, scriptFont,
                              haveScript, smallFont, haveSmall,
                              tubes::pointerFrameFor(profIdle.wave));
+            presentFrame();
+            continue;
+        }
+
+        if (graphicsOpen) {
+            drawGraphicsScreen(screen, settings.graphics, graphicsRow,
+                               &blackboard, haveBlackboard, sceneArt,
+                               headingFont, haveHeading, scriptFont,
+                               haveScript, smallFont, haveSmall,
+                               tubes::pointerFrameFor(profIdle.wave));
             presentFrame();
             continue;
         }

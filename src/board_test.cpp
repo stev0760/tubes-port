@@ -2053,7 +2053,10 @@ void testMainMenuRemembersItsRow() {
     m.select();
     check(m.page() == tubes::Page::kOptions, "on Game Options");
     check(m.item() == 1, "a submenu starts at item 1");
-    for (int i = 0; i < 3; ++i) m.moveDown();
+    // Exit is the LAST row, wherever the port's extra row has pushed it - it
+    // was item 4 before the graphics row went in and is item 5 now.
+    const int exitRow = tubes::menuPage(tubes::Page::kOptions).count;
+    for (int i = 1; i < exitRow; ++i) m.moveDown();
     m.select();                         // Exit
     check(m.page() == tubes::Page::kMain, "back on the main menu");
     check(m.item() == 3, "and back on the row we left from");
@@ -2491,6 +2494,168 @@ void testSettingsRoundTrip() {
     check(older.bindings[GameButton::kUp].key == 5 &&
               older.bindings[GameButton::kUp].pad == 6,
           "and the lines around it still load");
+
+    // The display options ride the same file. A settings file written before
+    // they existed has no line for any of them, so every one must land on the
+    // default the port has always behaved as - a player who upgrades must not
+    // find the game fullscreen.
+    Settings before;
+    decodeSettings("music 1\nsound 1\n", before);
+    check(!before.graphics.fullscreen && before.graphics.scale == 0 &&
+              !before.graphics.aspect43 && before.graphics.vsync &&
+              !before.graphics.scanlines,
+          "an older settings file leaves the display defaults alone");
+
+    Settings disp;
+    disp.graphics.fullscreen = true;
+    disp.graphics.scale = 4;
+    disp.graphics.aspect43 = true;
+    disp.graphics.vsync = false;
+    disp.graphics.scanlines = true;
+    Settings dispBack;
+    decodeSettings(encodeSettings(disp), dispBack);
+    check(dispBack.graphics.fullscreen && dispBack.graphics.scale == 4 &&
+              dispBack.graphics.aspect43 && !dispBack.graphics.vsync &&
+              dispBack.graphics.scanlines,
+          "and every display option round-trips");
+
+    // A hand-edited scale outside the ring becomes Fit rather than being
+    // honoured - a window larger than the display is one the player cannot
+    // reach the menu in to fix.
+    Settings wild;
+    decodeSettings("scale 40\n", wild);
+    check(wild.graphics.scale == 0, "an out-of-range scale falls back to Fit");
+}
+
+// The port's display options. None of this is transliterated - see input.h -
+// so what is checked is the arithmetic and the invariant that matters: the
+// framebuffer is never scaled by a fraction.
+void testDisplayOptions() {
+    using namespace tubes;
+    GraphicsOptions g;
+
+    // Fit, square pixels, on a 1280x720 window: 720/200 is 3, 1280/320 is 4,
+    // so 3 is the largest that fits both and the leftovers are a border.
+    DisplayRect r = presentRect(1280, 720, g);
+    check(r.w == 320 * 3 && r.h == 200 * 3, "fit takes the smaller axis");
+    check(r.x == (1280 - 960) / 2 && r.y == (720 - 600) / 2, "and centres it");
+
+    // The 4:3 stretch makes the unit 240 tall, so the same window only takes
+    // 3 there too, but the picture is 720 tall rather than 600.
+    g.aspect43 = true;
+    r = presentRect(1280, 720, g);
+    check(r.h == 240 * 3 && r.w == 320 * 3, "4:3 shows 200 rows as 240");
+    check(r.h * 4 == r.w * 3, "which is a 4:3 rectangle");
+    g.aspect43 = false;
+
+    // A pinned scale is honoured while it fits and ignored when it does not,
+    // so a 6x setting on a small display still leaves a visible picture.
+    g.scale = 2;
+    check(presentRect(1280, 720, g).w == 640, "a pinned scale is honoured");
+    g.scale = 6;
+    check(presentRect(1280, 720, g).w == 320 * 3,
+          "and is dropped when the window cannot take it");
+    g.scale = 0;
+
+    // The invariant: the picture is always a whole number of UNITS, at every
+    // window size the arithmetic can be asked about, so columns never come
+    // out uneven. Rows are exact under square pixels only - the 4:3 stretch
+    // spreads 200 source rows over 240 * s, which is the point of it.
+    bool whole = true;
+    for (int w = 320; w <= 4000; w += 37) {
+        for (int h = 200; h <= 2200; h += 29) {
+            for (int a = 0; a < 2; ++a) {
+                g.aspect43 = a != 0;
+                const DisplayRect q = presentRect(w, h, g);
+                const int unit = displayUnitHeight(g);
+                whole = whole && q.w % 320 == 0 && q.h % unit == 0 &&
+                        q.w / 320 == q.h / unit && q.w > 0;
+            }
+        }
+    }
+    check(whole, "every present rect is a whole multiple, at 6800 window sizes");
+    g.aspect43 = false;
+
+    // The rows cycle and wrap, in both directions - a player who only finds
+    // one of Left and Right still reaches every value.
+    g.scale = 0;
+    cycleGraphics(g, GraphicsRow::kScale, -1);
+    check(g.scale == GraphicsOptions::kMaxScale, "Fit wraps back to the largest");
+    for (int i = 0; i < GraphicsOptions::kMaxScale + 1; ++i) {
+        cycleGraphics(g, GraphicsRow::kScale, 1);
+    }
+    check(g.scale == GraphicsOptions::kMaxScale, "and a full ring returns");
+    check(graphicsValueLabel(g, GraphicsRow::kScale) == "6x", "labelled 6x");
+    g.scale = 0;
+    check(graphicsValueLabel(g, GraphicsRow::kScale) == "Fit",
+          "and 0 reads as Fit rather than as a number");
+
+    cycleGraphics(g, GraphicsRow::kDisplay, 1);
+    check(g.fullscreen &&
+              graphicsValueLabel(g, GraphicsRow::kDisplay) == "Fullscreen",
+          "the display row toggles");
+    cycleGraphics(g, GraphicsRow::kVsync, 1);
+    check(!g.vsync, "vsync toggles off");
+    cycleGraphics(g, GraphicsRow::kVsync, -1);
+    check(g.vsync, "and back on from the other direction");
+
+    // Every row has a label. An empty one would be an unlabelled row on the
+    // screen, which is the kind of thing only a look would otherwise catch.
+    for (int i = 0; i < kGraphicsRows; ++i) {
+        check(!graphicsValueLabel(g, static_cast<GraphicsRow>(i)).empty(),
+              "every row has a value label");
+        check(kGraphicsRowNames[i] && kGraphicsRowNames[i][0],
+              "and a name");
+    }
+}
+
+// The port's extra menu row. `kMenuPages` is the image's data and must stay
+// that way; `menuPage` is what the port draws.
+void testPortGraphicsMenuRow() {
+    using tubes::Page;
+    // The transliterated table is untouched: four items, ending in Exit.
+    const tubes::MenuPage& orig =
+        tubes::kMenuPages[static_cast<int>(Page::kOptions)];
+    check(orig.count == 4, "the image's Game Options page still has four rows");
+    check(std::string(orig.items[3]) == "Exit", "and still ends in Exit");
+
+    const tubes::MenuPage& port = tubes::menuPage(Page::kOptions);
+    check(port.count == 5, "the port's has five");
+    check(std::string(port.items[tubes::Menu::kGraphicsItem - 1]) ==
+              "Graphics Options",
+          "with the graphics row before Exit");
+    check(std::string(port.items[4]) == "Exit", "and Exit still last");
+    check(port.rowHeight == orig.rowHeight, "at the original's 26-pixel pitch");
+    // Every other page comes back unchanged, so nothing else moved.
+    for (int p = 1; p <= tubes::kPageCount; ++p) {
+        if (p == static_cast<int>(Page::kOptions)) continue;
+        check(&tubes::menuPage(static_cast<Page>(p)) == &tubes::kMenuPages[p],
+              "every other page is the image's own");
+    }
+
+    // The extra row costs a layout shift, and this is where that is recorded:
+    // `(180 - 26*6) div 2` is 12 where four rows gave 25, so every row on the
+    // page sits 13 pixels higher than the original's. This is the ONE menu
+    // page the port does not render pixel-identically.
+    check(tubes::menuYBase(Page::kOptions) == 12, "five rows start 13px higher");
+    check(tubes::menuItemY(Page::kOptions, 1) == 38, "so row 1 is at 38");
+    check(tubes::menuItemY(Page::kOptions, 2) -
+              tubes::menuItemY(Page::kOptions, 1) == 26,
+          "the pitch is still 26");
+
+    tubes::Menu m;
+    m.raise();
+    m.moveDown();
+    m.moveDown();
+    m.select();                              // Game Options
+    check(m.page() == Page::kOptions, "on Game Options");
+    for (int i = 1; i < tubes::Menu::kGraphicsItem; ++i) m.moveDown();
+    check(m.select() == tubes::MenuResult::kGraphics,
+          "the graphics row opens the graphics screen");
+    check(m.page() == Page::kOptions, "and does not leave the page");
+    // The three rows above it still do what they did.
+    m.moveUp();
+    check(m.select() == tubes::MenuResult::kRedefine, "rebinding still row 3");
 }
 
 // `TUBES.SAV`. The record is sixteen stores in `1000:2dd0`'s save arm, so this
@@ -3080,6 +3245,8 @@ int main() {
     testAnmFramesAreRunsOfChangedPixels();
     testBindingsCannotBeShared();
     testSettingsRoundTrip();
+    testDisplayOptions();
+    testPortGraphicsMenuRow();
     testSaveFileLayout();
     testTheTwoBanksAreLabelledDifferently();
     testASavedGameRoundTripsThroughTheSession();

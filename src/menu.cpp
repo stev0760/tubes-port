@@ -144,20 +144,34 @@ const MenuPage kMenuPages[kPageCount + 1] = {
     {"Exit Tubes?", {"Yes", "No"}, 2, 16},
 };
 
+// The port's Game Options page. See `menu.h` for why this is a separate object
+// rather than an edit to the table above.
+const MenuPage kOptionsPagePort = {
+    "Game Options",
+    {"Toggle Music", "Toggle Sound FX", "Redefine Input Device",
+     "Graphics Options", "Exit"},
+    5, 26,
+};
+
+const MenuPage& menuPage(Page p) {
+    if (p == Page::kOptions) return kOptionsPagePort;
+    return kMenuPages[static_cast<int>(p)];
+}
+
 int menuYBase(Page p) {
-    const MenuPage& mp = kMenuPages[static_cast<int>(p)];
+    const MenuPage& mp = menuPage(p);
     return (kMenuBlockHeight - mp.rowHeight * (mp.count + 1)) / 2;
 }
 
 int menuItemY(Page p, int item) {
-    return menuYBase(p) + item * kMenuPages[static_cast<int>(p)].rowHeight;
+    return menuYBase(p) + item * menuPage(p).rowHeight;
 }
 
 int menuTitleY(Page p) { return menuYBase(p); }
 int menuRuleY(Page p) { return menuYBase(p) + 2; }
 
 std::string menuRule(Page p) {
-    const char* t = kMenuPages[static_cast<int>(p)].title;
+    const char* t = menuPage(p).title;
     int n = 0;
     while (t[n]) ++n;
     n -= 2;
@@ -170,7 +184,7 @@ StarPlacement placeStars(Page p, int item, const char* text) {
     // puts the stars at 16 and 287 instead of 88 and 215. Measuring the page's
     // own string was wrong for exactly the two pages whose text is replaced at
     // runtime, which is why it went unnoticed until the slots were filled in.
-    const char* s = text ? text : kMenuPages[static_cast<int>(p)].items[item - 1];
+    const char* s = text ? text : menuPage(p).items[item - 1];
     int len = 0;
     while (s && s[len]) ++len;
     return {140 - 4 * len, 163 + 4 * len, menuItemY(p, item) + 2};
@@ -189,13 +203,13 @@ void Menu::setPage(Page p) {
 }
 
 void Menu::moveUp() {
-    const int n = kMenuPages[static_cast<int>(page_)].count;
+    const int n = menuPage(page_).count;
     item_ = (item_ <= 1) ? n : item_ - 1;
     if (page_ == Page::kMain) mainItem_ = item_;
 }
 
 void Menu::moveDown() {
-    const int n = kMenuPages[static_cast<int>(page_)].count;
+    const int n = menuPage(page_).count;
     item_ = (item_ >= n) ? 1 : item_ + 1;
     if (page_ == Page::kMain) mainItem_ = item_;
 }
@@ -232,7 +246,7 @@ void Menu::setSaveSlotText(int mode, int slot, const std::string& text) {
 }
 
 void Menu::setOptionText(int item, const std::string& text) {
-    if (item < 1 || item > 4) return;
+    if (item < 1 || item > menuPage(Page::kOptions).count) return;
     optionText_[item] = text;
 }
 
@@ -245,11 +259,11 @@ const char* Menu::itemText(int i) const {
         const std::string& t = slotText_[choice_.mode][i];
         if (!t.empty()) return t.c_str();
     }
-    if (page_ == Page::kOptions && i >= 1 && i <= 4 &&
-        !optionText_[i].empty()) {
+    if (page_ == Page::kOptions && i >= 1 &&
+        i <= menuPage(Page::kOptions).count && !optionText_[i].empty()) {
         return optionText_[i].c_str();
     }
-    return kMenuPages[static_cast<int>(page_)].items[i - 1];
+    return menuPage(page_).items[i - 1];
 }
 
 void Menu::tick() {
@@ -318,13 +332,14 @@ MenuResult Menu::select() {
 
     case Page::kOptions:
         // Toggling music and sound effects is the caller's business, and so is
-        // rebinding; only the Exit arm changes page. The original leaves this
-        // page by writing SETUP.CFG, which the port deliberately does not do -
-        // see input.h.
+        // rebinding and the port's own graphics row; only the Exit arm changes
+        // page. The original leaves this page by writing SETUP.CFG, which the
+        // port deliberately does not do - see input.h.
         switch (item_) {
         case 1: return MenuResult::kToggleMusic;
         case 2: return MenuResult::kToggleSound;
         case 3: return MenuResult::kRedefine;
+        case kGraphicsItem: return MenuResult::kGraphics;
         default: setPage(Page::kMain); return MenuResult::kNone;
         }
 

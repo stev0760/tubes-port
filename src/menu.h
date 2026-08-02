@@ -64,7 +64,32 @@ struct MenuPage {
 };
 
 // Indexed 1..7; element 0 is unused, matching the original's own table.
+// **This is the image's data and stays that way** - read it to know what the
+// original's menu said. Everything else in this file goes through `menuPage`
+// below, which is where the port's one addition lives.
 extern const MenuPage kMenuPages[kPageCount + 1];
+
+// Game Options with the port's own `Graphics Options` row inserted before
+// Exit - THE PORT'S PAGE, not the original's, which is why it is a separate
+// object rather than an edit to `kMenuPages`.
+//
+// The argument for adding a row at all is `input.h`'s: the original's Game
+// Options page ends in `Redefine Input Device`, which chooses a DOS input
+// driver, and SDL makes that item meaningless as written. The port already
+// keeps the row and gives it a modern meaning. Display settings are the same
+// case one layer over - Mode X was the only display the original had - so
+// they get a row beside it rather than a key nobody would find.
+//
+// It costs a layout shift and that is worth stating plainly: a five-item page
+// at the same 26-pixel pitch starts 13 pixels higher than the original's
+// four-item one, so page 6 is the ONE menu page the port does not render
+// pixel-identically. Pages 1 and 3 measure 0.00% and are untouched by this.
+extern const MenuPage kOptionsPagePort;
+
+// The page as the port draws it: `kOptionsPagePort` for page 6, the image's
+// own row for every other page. Every layout, navigation and selection path
+// goes through here.
+const MenuPage& menuPage(Page p);
 
 // ---------------------------------------------------------------------------
 // Layout, `1b2e:467a` and `1b2e:4607`
@@ -138,6 +163,9 @@ enum class MenuResult : uint8_t {
     kToggleMusic = 20,
     kToggleSound = 21,
     kRedefine = 22,
+    // The port's added row - see `kOptionsPagePort`. Nothing in the original
+    // returns this because the original had nothing to return it for.
+    kGraphics = 23,
 };
 
 // The globals the game session reads. All four are set HERE and nowhere else,
@@ -191,6 +219,9 @@ public:
     // "Toggle Music <yes/no>" - so they are built at runtime like the slot
     // rows rather than being fixed strings.
     void setOptionText(int item, const std::string& text);
+    // The Graphics row is the port's, so what page 6 does about it is the
+    // port's too: `select()` returns `kGraphics` for whichever row it is on.
+    static constexpr int kGraphicsItem = 4;
     const char* itemText(int i) const;
 
     // The turning star, advanced once per frame.
@@ -208,7 +239,7 @@ private:
     MenuChoice choice_;
     bool slotLive_[3][6] = {};      // [mode][slot], 1-based
     std::string slotText_[3][6];    // the live row, empty when the slot is
-    std::string optionText_[5];     // page 6, 1-based
+    std::string optionText_[kMaxItems + 1];   // page 6, 1-based
     int starTick_ = 1;              // `DS:0x1d78`, 1..3
     int starFrame_ = 1;             // `DS:0x1d79`, 1..4
 };
