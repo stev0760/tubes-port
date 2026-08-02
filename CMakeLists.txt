@@ -33,6 +33,7 @@ add_executable(tubes-port
     src/wave.cpp
     src/wave_text.cpp
     src/game.cpp
+    src/ordering.cpp
     src/textscreen.cpp
     src/cp437_font.cpp
     src/mus.cpp
@@ -48,7 +49,8 @@ endif()
 
 add_executable(tubes-tests src/board_test.cpp src/board.cpp src/menu.cpp src/session.cpp src/hiscore.cpp src/save.cpp src/input.cpp src/instructions.cpp src/cutscene.cpp src/ending.cpp src/credits.cpp src/wave.cpp src/wave_text.cpp src/game.cpp
                             src/font.cpp src/screen.cpp src/gfx.cpp
-                            src/textscreen.cpp src/cp437_font.cpp
+                            src/ordering.cpp
+    src/textscreen.cpp src/cp437_font.cpp
                             src/sfx.cpp src/scr.cpp)
 target_include_directories(tubes-tests PRIVATE src)
 enable_testing()

@@ -4402,3 +4402,46 @@ placeholder in the code, per the prime directive, rather than shipping a
 plausible substitute.
 
 850 checks / 0 failures, `--demo-trace` md5 unmoved.
+
+## 2026-08-02 - the Ordering Info deck, extracted not transcribed
+
+`1ac3:4889` is ported: four pages, 36 items, and **not one line of it typed by
+hand**. `tools/gen_instructions.py` did it, the same tool that produced the
+Instructions and the Credits, which is the rule this repo has for anything that
+is a list in the binary.
+
+Getting it there took three fixes to the generator, and all three were the tool
+being narrower than the finding it now has to serve:
+
+* the four text-unit entry points were **string literals** for the registered
+  image. They are now numbers plus a `--shift`, because the shareware's are at
+  `registered + 0x120` - the uniform segment shift already in the notes. Passing
+  `--shift 0x120` is the finding being used rather than restated;
+* the instruction regex was anchored to **`1b2e:`**, so it silently matched
+  nothing on a `1ac3:` disassembly and produced "0 slides, 0 items" rather than
+  an error. Now any segment;
+* the page table's name and the file's header comment were hardcoded, which is
+  why `src/credits.cpp` carries the Instructions' header verbatim - the lint
+  item `PLAN.md` has been holding. Both are parameters now, so the third deck
+  needed no hand-editing at all and a regenerated Credits could fix that
+  comment for free.
+
+The deck is text only: it never calls the sprite routine, unlike the other two.
+The page separator is `CALL 0x1000:b8a8`, which is `1ac3:0c78` - the same key
+wait every screen in that unit uses.
+
+**The Exit path is now the original's.** `1000:abf7` shows the shareware's Exit
+is menu item 10 and does not quit: it calls the deck, and only then Halts, which
+is where the banner comes from. So the port opens the deck, defers the quit, and
+runs music-stop, fade and banner when the deck closes. Registered still exits
+outright - its arm quits directly and its executable never names `TUBESEND`.
+
+One capture lesson worth keeping. The first two screenshots of the new deck came
+back **byte-identical to an Instructions page**, which looked like the wiring
+had failed. It had not: `drawInstructionSlide` returns early while
+`pose.slideIsBusy()`, so both captures were of the projector roll-down, before
+any text draws. `--screenshot-after 400` gets past it. A screen that is
+mid-animation is not a screen that is wrong, and 0 differing pixels was the
+clue - two different decks cannot agree exactly unless neither had drawn yet.
+
+850 checks / 0 failures, `--demo-trace` md5 unmoved, game directory untouched.

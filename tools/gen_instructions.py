@@ -8,13 +8,23 @@ illustration indexes the game's own ball table at `DS:0x1da6 + 4 * type`.
 
 Run from ~/Dev/tubes-tooling with disasm-2d63.txt and strings-2d63.txt present.
 """
+import argparse
 import re
 import sys
 
 BALL_TABLE = 0x1DA6            # DS:0x1da6 + 4*type - see board.h
-WRITE_AT, WRITE_MID, DRAW = "0x2000:36ab", "0x2000:37ea", "0x2000:3b15"
-SET_FONT = "0x2000:3fab"
-INSN = re.compile(r"^1b2e:([0-9a-f]{4})\s+(.*?)\s*$")
+# The four text-unit entry points, as Ghidra prints far targets - on a
+# normalised 0x2000 base, so these are flat addresses wearing a segment.
+#
+# THEY MOVE BETWEEN EDITIONS. The shareware image's interface unit is larger,
+# which pushes every segment after it up by 0x12 paragraphs - 0x120 bytes - so
+# the same four routines sit at `registered + 0x120` there. A uniform shift
+# with no exceptions, which is what `--shift` applies rather than four separate
+# lookups. See docs/reversing-notes.md, "The segment layout shifted".
+WRITE_AT, WRITE_MID, DRAW = 0x36AB, 0x37EA, 0x3B15
+SET_FONT = 0x3FAB
+# Any interface-unit segment: `1b2e` registered, `1ac3` shareware.
+INSN = re.compile(r"^[0-9a-f]{4}:([0-9a-f]{4})\s+(.*?)\s*$")
 
 
 def load_disasm(path):
@@ -28,7 +38,7 @@ def load_disasm(path):
 
 def load_strings(path):
     data = {}
-    row = re.compile(r"1b2e:([0-9a-f]{4})\s+((?:[0-9a-f]{2} )+)")
+    row = re.compile(r"[0-9a-f]{4}:([0-9a-f]{4})\s+((?:[0-9a-f]{2} )+)")
     for line in open(path):
         m = row.search(line)
         if not m:
@@ -49,10 +59,33 @@ def cstr(s):
 
 
 def main():
-    ins = load_disasm(sys.argv[1])
-    strs = load_strings(sys.argv[2])
-    name = sys.argv[3]
-    sep_insn = sys.argv[4] if len(sys.argv) > 4 else "CMP byte ptr [BP + -0x3],0x2"
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("disasm")
+    ap.add_argument("strings")
+    ap.add_argument("name", help="prefix for the per-page arrays, e.g. Credit")
+    ap.add_argument("sep_insn", nargs="?",
+                    default="CMP byte ptr [BP + -0x3],0x2",
+                    help="the instruction that separates one page from the next")
+    ap.add_argument("--shift", type=lambda v: int(v, 0), default=0,
+                    help="added to the four text-routine addresses; 0x120 for "
+                         "the shareware image, whose segments sit that much higher")
+    ap.add_argument("--array", default="kInstructionSlides",
+                    help="name of the emitted page table")
+    ap.add_argument("--count", default="kInstructionSlideCount",
+                    help="name of the constant giving its length")
+    ap.add_argument("--header", default="", help="path to a file whose contents "
+                    "become the generated file's leading comment")
+    ap.add_argument("--include", default="instructions.h")
+    args = ap.parse_args()
+
+    ins = load_disasm(args.disasm)
+    strs = load_strings(args.strings)
+    name = args.name
+    sep_insn = args.sep_insn
+    write_at = f"0x2000:{WRITE_AT + args.shift:04x}"
+    write_mid = f"0x2000:{WRITE_MID + args.shift:04x}"
+    draw = f"0x2000:{DRAW + args.shift:04x}"
+    set_font = f"0x2000:{SET_FONT + args.shift:04x}"
     seps = [a for a, t in ins if t == sep_insn]
 
     events = []          # (addr, kind, payload)
@@ -61,7 +94,7 @@ def main():
         if not text.startswith("CALLF"):
             continue
         target = text.split()[-1]
-        if target == SET_FONT:
+        if target == set_font:
             # `2000:3fab(advance, height, peak, ...)`. Advance 6 is TINY6X8 and
             # 8 is the heading font; the credits alternate between them.
             imm = []
@@ -79,7 +112,7 @@ def main():
             # 4 for TINY6X8 and 8 for the heading font.
             font = 1 if (imm and imm[0] == 8) else 0
             continue
-        if target not in (WRITE_AT, WRITE_MID, DRAW):
+        if target not in (write_at, write_mid, draw):
             continue
         imm, slot, stroff = [], None, None
         j = i - 1
@@ -103,10 +136,10 @@ def main():
                 break
             j -= 1
         imm.reverse()
-        if target == DRAW:
+        if target == draw:
             events.append((addr, "draw", (imm, slot), font))
         else:
-            events.append((addr, "mid" if target == WRITE_MID else "at",
+            events.append((addr, "mid" if target == write_mid else "at",
                            (imm, pascal(strs, stroff)), font))
 
     slides = {}
@@ -121,14 +154,13 @@ def main():
 
     out = []
     w = out.append
-    w("// GENERATED from `1b2e:2d63` by tools/gen_instructions.py - do not edit")
-    w("// by hand. 21 slides, 152 strings and 22 illustrations: data, not")
-    w("// logic, and extracted rather than transcribed so that no line of the")
-    w("// game's own documentation can be quietly mistyped.")
-    w("//")
-    w("// The illustrations index the ball table at `DS:0x1da6 + 4 * type`, so")
-    w("// they are atom TYPES and the port already has every sprite.")
-    w('#include "instructions.h"')
+    if args.header:
+        w(open(args.header).read().rstrip("\n"))
+    else:
+        w("// GENERATED by tools/gen_instructions.py - do not edit by hand.")
+        w("// Text and layout are data in the binary, extracted rather than")
+        w("// transcribed so no line of the game's own words can be mistyped.")
+    w(f'#include "{args.include}"')
     w("")
     w("namespace tubes {")
     w("namespace {")
@@ -157,7 +189,7 @@ def main():
         w("};")
     w("}  // namespace")
     w("")
-    w("const InstructionSlide kInstructionSlides[kInstructionSlideCount] = {")
+    w(f"const InstructionSlide {args.array}[{args.count}] = {{")
     for n in sorted(slides):
         w(f"    {{k{name}{n}, sizeof(k{name}{n}) / sizeof(k{name}{n}[0])}},")
     w("};")

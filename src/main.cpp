@@ -26,6 +26,7 @@
 #include "input.h"
 #include "cutscene.h"
 #include "ending.h"
+#include "ordering.h"
 #include "instructions.h"
 #include "save.h"
 #include "menu.h"
@@ -287,6 +288,8 @@ struct Options {
     // Open the shareware exit screen directly, for capture. Like every other
     // harness flag it must never write to the game directory.
     bool exitScreen = false;
+    // Open the shareware's Ordering Info deck at page N, for capture.
+    int ordering = -1;
     double renderSeconds = 0;   // 0 = one pass, songs loop forever
     int wave = 0;               // 0 = Endurance; 1..75 starts Wave mode there
     int titlePage = -1;         // -1 off; 0 the bare title; 1..7 a menu page
@@ -519,6 +522,10 @@ Options parseArgs(int argc, char** argv) {
             o.splash2Step = std::atoi(argv[++i]);
         } else if (a == "--splash" && i + 1 < argc) {
             o.splashFrame = std::atoi(argv[++i]);
+        } else if (a == "--ordering") {
+            o.ordering = (i + 1 < argc && argv[i + 1][0] != '-')
+                             ? std::atoi(argv[++i]) : 0;
+            o.edition.edition = tubes::Edition::kShareware;
         } else if (a == "--exit-screen") {
             o.exitScreen = true;
             o.edition.edition = tubes::Edition::kShareware;
@@ -565,6 +572,7 @@ void usage() {
         "  --no-splash       go straight to the title screen\n"
         "  --shareware       play the 25-wave shareware edition\n"
         "  --exit-screen     show TUBESEND.BIN, the shareware sign-off\n"
+        "  --ordering [N]    open the shareware Ordering Info deck at page N\n"
         "  --preview         its Preview Registered mode (implies --shareware)\n"
         "  --splash N        run the first splash and, with --screenshot,\n"
         "                    capture its Nth animation frame\n"
@@ -4269,7 +4277,7 @@ int main(int argc, char** argv) {
 
     // The Instructions slideshow, `1b2e:2d63` - a straight run of 21 slides
     // rather than a dispatch, so the state is just which one is up.
-    bool instrOpen = opt.instr >= 0 || opt.credits;
+    bool instrOpen = opt.instr >= 0 || opt.credits || opt.ordering >= 0;
     // `--instructions` / `--credits` open the screen the way the menu does,
     // roll-down and all, so a capture of the animation needs no other flag.
     if (instrOpen) {
@@ -4278,9 +4286,29 @@ int main(int argc, char** argv) {
         if (opt.joke) joke.phase = 1;   // harness: show it without the roll
         else joke.maybeStart(sceneRng);
     }
-    int instrSlide = opt.instr > 0 ? opt.instr : 0;
+    int instrSlide = opt.ordering > 0 ? opt.ordering
+                                     : (opt.instr > 0 ? opt.instr : 0);
     // The Credits, `1b2e:411b`: the same screen with a different table.
-    bool instrCredits = opt.credits;
+    // Which of the three decks is up. They differ only in their page table -
+    // Instructions `1b2e:2d63`, Credits `1b2e:411b`, and the shareware's
+    // Ordering Info `1ac3:4889` - so the screen is one code path with a
+    // different table rather than three screens.
+    const tubes::InstructionSlide* instrPages = tubes::kInstructionSlides;
+    int instrPageCount = tubes::kInstructionSlideCount;
+    auto openDeck = [&](const tubes::InstructionSlide* pages, int count) {
+        instrPages = pages;
+        instrPageCount = count;
+        instrSlide = 0;
+    };
+    if (opt.credits) { instrPages = tubes::kCreditPages;
+                       instrPageCount = tubes::kCreditPageCount; }
+    if (opt.ordering >= 0) { instrPages = tubes::kOrderingPages;
+                             instrPageCount = tubes::kOrderingPageCount; }
+    // `1000:ac01`: the shareware's Exit does not exit. It runs the Ordering
+    // Info deck first and only then Halts, at which point the exit banner is
+    // dumped over the text screen. So a quit that has been asked for waits for
+    // the deck to finish, and the deck is an ordinary screen in the frame loop.
+    bool quitAfterOrdering = false;
     int rebindRow = 0;                 // 0..5, the control being pointed at
     bool rebindWaiting = false;        // armed, waiting for the press
     bool graphicsOpen = opt.graphics;  // the port's display options
@@ -4582,9 +4610,7 @@ int main(int argc, char** argv) {
                     instrOpen = false;
                 } else if (k == SDLK_UP) {
                     if (instrSlide > 0) --instrSlide;
-                } else if (++instrSlide >= (instrCredits
-                                               ? tubes::kCreditPageCount
-                                               : tubes::kInstructionSlideCount)) {
+                } else if (++instrSlide >= instrPageCount) {
                     instrOpen = false;
                 }
                 // Each slide is its own `1b2e:0cd1(35)` / `1b2e:0e37(30)`
@@ -4596,7 +4622,23 @@ int main(int argc, char** argv) {
                 // Only LEAVING fades. Moving between slides does not - the
                 // original changes the slide inside one screen function and
                 // its fade-out is at the very end, on the way back.
-                if (!instrOpen) changeScreen();
+                if (!instrOpen) {
+                    if (quitAfterOrdering) {
+                        // `1000:ac06` onward: the deck has returned, so the
+                        // program ends. Music first - it is going down with
+                        // everything else on the Halt - then the fade, then
+                        // the banner the shell would have been left holding.
+                        music.stop();
+                        runFade(false);
+                        if (exitBanner.rowsLoaded() > 0) {
+                            runExitScreen(win, ren, exitBanner, fadeSteps,
+                                          std::string());
+                        }
+                        running = false;
+                        continue;
+                    }
+                    changeScreen();
+                }
                 continue;
             }
 
@@ -4767,7 +4809,8 @@ int main(int argc, char** argv) {
                     }
                     case tubes::MenuResult::kInstructions:
                         instrOpen = true;
-                        instrCredits = false;
+                        openDeck(tubes::kInstructionSlides,
+                                 tubes::kInstructionSlideCount);
                         instrSlide = 0;
                         profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
                         joke.maybeStart(sceneRng);
@@ -4780,7 +4823,7 @@ int main(int argc, char** argv) {
                     case tubes::MenuResult::kCredits:
                         // `1000:b280`. Same screen, same keys, four pages.
                         instrOpen = true;
-                        instrCredits = true;
+                        openDeck(tubes::kCreditPages, tubes::kCreditPageCount);
                         instrSlide = 0;
                         profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
                         joke.maybeStart(sceneRng);
@@ -4829,18 +4872,25 @@ int main(int argc, char** argv) {
                         // arm quits outright, and its executable never names
                         // TUBESEND. So this is gated on the edition, not
                         // offered to everyone.
-                        if (opt.edition.edition == tubes::Edition::kShareware &&
-                            exitBanner.rowsLoaded() > 0) {
-                            // The program is ENDING. `[DS:0x22da]` is
-                            // StopMusic, and the original reaches it by the
-                            // bluntest route available - it Halts, and the
-                            // driver is torn down with everything else. There
-                            // is no world in which a DOS box keeps playing the
-                            // title theme over the shell prompt.
-                            music.stop();
-                            runFade(false);
-                            runExitScreen(win, ren, exitBanner, fadeSteps,
-                                          std::string());
+                        // `1000:abf7`: the shareware's Exit is menu item 10,
+                        // and it does not quit. It calls the Ordering Info
+                        // deck and only then Halts, which is where the banner
+                        // comes from. So the port opens the deck and defers
+                        // the quit until it closes - see `quitAfterOrdering`.
+                        //
+                        // The registered build has no such path: its exit arm
+                        // quits outright and its executable never names
+                        // TUBESEND, so this is gated on the edition.
+                        if (opt.edition.edition == tubes::Edition::kShareware) {
+                            instrOpen = true;
+                            openDeck(tubes::kOrderingPages,
+                                     tubes::kOrderingPageCount);
+                            quitAfterOrdering = true;
+                            profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
+                            joke.maybeStart(sceneRng);
+                            screenRoll.restart();
+                            changeScreen();
+                            break;
                         }
                         running = false;
                         break;
@@ -5433,12 +5483,7 @@ int main(int argc, char** argv) {
         // rebinding screen each REPLACE the title while they are up, so each
         // ends the frame with its own `continue` before the title is drawn.
         if (instrOpen) {
-            const bool cr = instrCredits;
-            drawInstructionSlide(screen,
-                                 cr ? tubes::kCreditPages
-                                    : tubes::kInstructionSlides,
-                                 cr ? tubes::kCreditPageCount
-                                    : tubes::kInstructionSlideCount,
+            drawInstructionSlide(screen, instrPages, instrPageCount,
                                  instrSlide, &blackboard, haveBlackboard,
                                  sceneArt, scenePose(false),
                                  smallFont, haveSmall, headingFont,
