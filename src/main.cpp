@@ -4627,13 +4627,44 @@ int main(int argc, char** argv) {
                 continue;
             }
 
-            // `1b2e:2f27`: ESC leaves, Up goes back a slide - clamped at the
-            // first, whose own arm jumps to its own wait - and anything else
-            // goes forward. Running off the end leaves too.
+            // `1b2e:0c78` is the paging wait, and it maps a SIX-BUTTON input
+            // byte - it does not react to "any key". Decompiled:
+            //
+            //     driver 0x01 Up   -> 5     scancode 0xc8/0xc9 Up/PgUp -> 5
+            //     driver 0x02 Down -> 4     scancode 0xd0/0xd1 Dn/PgDn -> 4
+            //     driver 0x10 A    -> 1     Enter or Space             -> 1
+            //     driver 0x20 B    -> 2     Esc                        -> 2
+            //                                 timeout                  -> 3
+            //
+            // and the deck then does: 2 leaves, 5 goes back, 1 and 4 advance.
+            // **Left and Right produce no code at all**, so the wait simply
+            // keeps waiting and the original ignores them.
+            //
+            // The port used to advance on anything that was not Esc or Up,
+            // which is that six-button byte over-generalised to a whole
+            // keyboard - so Left, reached for as "go back", turned the page
+            // forward. Reported from play, and it was the port's bug rather
+            // than the original's awkwardness.
+            //
+            // The pad still works: `menuKeyForPad` already translates its A to
+            // RETURN, its B to ESCAPE and its Up/Down to the arrows, all of
+            // which are handled below - and its Left and Right now correctly
+            // do nothing, which is what the original's driver byte does.
+            //
+            // The ordering deck's own last page says as much in the game's
+            // words: "Press Button A, Button B, ENTER, or SPACE to exit." On
+            // the final page code 1 advances past the end and leaves, and code
+            // 2 leaves outright, so all four do exit.
             if (instrOpen) {
-                if (k == SDLK_ESCAPE) {
+                const bool leave = k == SDLK_ESCAPE;               // code 2
+                const bool prev = k == SDLK_UP || k == SDLK_PAGEUP;   // code 5
+                const bool next = k == SDLK_DOWN || k == SDLK_PAGEDOWN ||
+                                  k == SDLK_RETURN || k == SDLK_KP_ENTER ||
+                                  k == SDLK_SPACE;                 // codes 4, 1
+                if (!leave && !prev && !next) continue;   // the wait ignores it
+                if (leave) {
                     instrOpen = false;
-                } else if (k == SDLK_UP) {
+                } else if (prev) {
                     if (instrSlide > 0) --instrSlide;
                 } else if (++instrSlide >= instrPageCount) {
                     instrOpen = false;

@@ -4522,3 +4522,41 @@ would be inventing an ending for an edition that does not have one.
 
 889 checks / 0 failures, up from 886. `--registration` opens it for capture.
 `--demo-trace` md5 unmoved, game directory untouched.
+
+## 2026-08-02 - the slide decks ignored Left in the original, and the port did not
+
+Reported from play: in a slide deck any button advances but only Up reverses,
+so reaching for Left as "go back" turns the page forward instead. Written up as
+awkwardness. **It is a port bug**, and the original does not do it.
+
+`1ac3:0c78` is the paging wait, and decompiling it gives the whole map. It
+translates a SIX-BUTTON input byte, not a keyboard:
+
+    driver 0x01 Up   -> 5      scancode 0xc8/0xc9 Up/PgUp -> 5
+    driver 0x02 Down -> 4      scancode 0xd0/0xd1 Dn/PgDn -> 4
+    driver 0x10 A    -> 1      Enter or Space             -> 1
+    driver 0x20 B    -> 2      Esc                        -> 2
+                                 timeout                  -> 3
+
+and the deck body then does: 2 leaves, 5 goes back, 1 and 4 advance. **Left and
+Right produce no code at all** - the wait loops until something it recognises
+arrives - so pressing Left in the original does nothing whatsoever.
+
+The port had `if (Esc) leave; else if (Up) back; else advance`, which is that
+six-button byte over-generalised to a whole keyboard. Every key that is not Esc
+or Up turned the page, Left included.
+
+Now the port ignores anything the wait would have ignored. The pad is
+unaffected because `menuKeyForPad` already translates its A to RETURN, its B to
+ESCAPE and its Up/Down to the arrows; its Left and Right now correctly do
+nothing.
+
+**Worth noting how this was resolved, because it is the good case.** The
+complaint was about feel, and the honest options looked like "keep it faithful
+and awkward" or "depart from the original for comfort". Reading the routine
+dissolved the choice: the awkwardness was never the original's, and being MORE
+faithful is what fixes it. The port's own comment had said "anything else goes
+forward" for months, sourced to `1b2e:2f27` - true of the deck body, and wrong
+about what could reach it.
+
+889 checks / 0 failures, `--demo-trace` md5 unmoved.
