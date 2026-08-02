@@ -44,11 +44,42 @@ asked for, and then publishing:
 1. ~~a **Graphics Options screen**~~ - **DONE**, see section 5. Fullscreen,
    window size, 4:3, vsync and scanlines, on the port's own screen beside the
    rebinding one, all render-side.
-2. **GLDFADE**, the remaining enhancement in section 5.
-3. **Publishing**, which is the last section of this file and is gated on a
+2. **A FULL PLAYTHROUGH on Tubes 101** - the player's, and it is the item that
+   matters most, because it is the only thing that exercises all 25 objective
+   templates in sequence. It has already paid for itself: wave 8 asked for
+   marked atoms and could not be passed, and neither could the other **eight**
+   mode-6 waves, because the objective counter was decremented by nothing. See
+   the worklog. Every live mode now has a test that carries a wave to COMPLETE
+   rather than merely to counter-zero, which is the assertion that would have
+   caught it.
+3. **GLDFADE**, the remaining enhancement in section 5. **Open, and not on the
+   Bonus atom** - the player's call, and it is the right one: converting the
+   Bonus on catch is the original's rule and bending it to make a gold fade
+   happen is a worse trade than leaving the animation unshown. Where else it
+   could live is undecided. This is a "think about it" item, not a queued one.
+4. **A new Credits slide.** The port's own, added to `1b2e:411b`'s four pages.
+   `src/credits.cpp` is GENERATED - by `tools/gen_instructions.py`, which is
+   parameterised and emits both screens - so the addition has to survive a
+   regeneration. That means a fifth page **appended by the port**, not an edit
+   to the four that are extracted: the same shape as `kOptionsPagePort` beside
+   `kMenuPages`, and for the same reason.
+
+   Noted while checking this, and left for the lint pass rather than fixed in
+   passing: **`src/credits.cpp`'s header comment is the Instructions' header**,
+   verbatim - it names `1b2e:2d63` and "21 slides, 152 strings and 22
+   illustrations", which describes the other screen. The Credits are 4 pages
+   and 36 strings out of `1b2e:411b`.
+5. **Shareware edition support**, which the "Supporting both editions" section
+   below already scopes. It is a preservation goal rather than a port goal:
+   the shareware `TUBES.EXE` is on archive.org, the cheap decisive test is
+   counting the wave table's arms in it, and the engine should DETECT the
+   edition rather than be told.
+6. **Publishing**, which is the last section of this file and is gated on a
    comment and documentation pass, a repository check and a final code review.
-   The licence is decided: **MIT** for this project's own code, with
-   `third_party/nuked-opl3` keeping its LGPL-2.1 notices.
+   **The player has a specific method in mind for the review and lint pass, so
+   do not start one unprompted.** The licence is decided: **MIT** for this
+   project's own code, with `third_party/nuked-opl3` keeping its LGPL-2.1
+   notices.
 
 **The three animations that used to head this list are done**, and the two
 leads it carried were both pointing at the wrong routine:
