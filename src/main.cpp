@@ -299,6 +299,10 @@ struct Options {
     bool f2 = false;            // open the F2 save screen, for capture
     bool rebind = false;        // open the rebinding screen, for capture
     bool graphics = false;      // open the graphics screen, for capture
+    // MOCKUP ONLY, and temporary: render candidate look N for the first-run
+    // edition prompt so the choice can be made by looking rather than by
+    // description. The chosen one becomes real and this flag goes.
+    int editionPrompt = -1;
     int instr = -1;             // open the Instructions on slide N, for capture
     bool credits = false;       // open the Credits, for capture
     // Harness only. `--screenshot` captures the first frame drawn, which can
@@ -485,6 +489,11 @@ Options parseArgs(int argc, char** argv) {
             o.rebind = true;
         } else if (a == "--graphics") {
             o.graphics = true;
+        } else if (a == "--edition-prompt") {
+            o.editionPrompt = 0;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                o.editionPrompt = std::atoi(argv[++i]);
+            }
         } else if (a == "--credits") {
             o.credits = true;
         } else if (a == "--instructions") {
@@ -2700,6 +2709,125 @@ void drawTitle(tubes::Screen& screen, const tubes::Image& bg,
     }
 }
 
+// ---------------------------------------------------------------------------
+// MOCKUP: candidate looks for the first-run edition prompt
+// ---------------------------------------------------------------------------
+//
+// TEMPORARY. The port has to ask which edition the player owns, because it
+// cannot detect it - `TUBES.RES` is byte-identical between the two. The
+// question is the port's own, so the only thing keeping it from feeling bolted
+// on is that it borrows the ORIGINAL'S vocabulary rather than inventing one.
+//
+// Three candidates, each lifted from a screen the game already has:
+//
+//   0  the MENU PAGE, in page 7's exact idiom - `Exit Tubes?` with Yes and No.
+//      That is the original's own two-way question: centred title in the
+//      heading font, an underline rule two rows below, items in one colour,
+//      and the selection marked by the animated stars alone.
+//   1  the CLASSROOM, in the Instructions' idiom - the professor, the
+//      blackboard, the projector screen and a slide with the question on it.
+//      The game's own way of explaining something to the player.
+//   2  the TEXT SCREEN, in `TUBESEND.BIN`'s idiom - CP437 with attribute
+//      colours, before the graphics come up at all, the way a 1994 installer
+//      would have asked.
+//
+// Only one of these survives; the other two and this whole function go with
+// the flag.
+void drawEditionPromptMock(tubes::Screen& screen, int variant,
+                           const tubes::Image& titleBgArt,
+                           const tubes::Image& titleFgArt, bool haveTitleArt,
+                           const tubes::Image* board, bool haveBoard,
+                           const SceneArt& art, const ScenePose& pose,
+                           const tubes::Font& big, bool haveBig,
+                           const tubes::Font& small, bool haveSmall,
+                           const tubes::Image* stars, const bool* haveStar,
+                           int starFrame, int selected) {
+    // The two answers, in the game's own words for them. The shareware build
+    // calls the other edition `Preview Registered` and its deck `Ordering
+    // Info`; the exit banner says `Register`. So "Registered" is the game's
+    // term, and "Shareware" is what the release itself is called.
+    const char* kAnswersLong[2] = {"Registered Version", "Shareware Version"};
+    const char* kAnswersShort[2] = {"Registered", "Shareware"};
+    // Variant 3 is variant 0 with the short labels. Row length is not a detail
+    // on this page: `placeStars` flanks the ROW'S OWN width, so the answers
+    // decide how far apart the stars sit, and `Exit Tubes?` sets the house
+    // style with `Yes` and `No`.
+    const char* const* kAnswers = (variant == 3) ? kAnswersShort : kAnswersLong;
+    if (variant == 3) variant = 0;
+
+    if (variant == 0) {
+        // Page 7's idiom exactly. `menuYBase` centres `count + 1` rows in the
+        // 180-pixel block, so a two-item page lands where `Exit Tubes?` does.
+        screen.clear(0);
+        if (haveTitleArt) {
+            screen.blit(titleBgArt);
+            screen.blit(titleFgArt);
+        }
+        if (!haveBig) return;
+        // Page 7's own layout, used verbatim rather than reconstructed: it is
+        // a titled page with two items at a 16-pixel pitch, which is exactly
+        // the shape this question needs. If the numbers match `Exit Tubes?`
+        // it is because they ARE `Exit Tubes?`'s.
+        const tubes::Page p = tubes::Page::kQuit;
+        const tubes::Edition e = tubes::Edition::kRegistered;
+        tubes::drawTextCentred(screen, big, 0, 319, tubes::menuTitleY(p, e),
+                               tubes::kMenuTitleColour, tubes::kMenuTitleMode,
+                               "Which Tubes?");
+        tubes::drawTextCentred(screen, big, 0, 319, tubes::menuRuleY(p, e),
+                               tubes::kMenuTitleColour, tubes::kMenuTitleMode,
+                               "__________");
+        for (int i = 1; i <= 2; ++i) {
+            tubes::drawTextCentred(screen, big, 0, 319,
+                                   tubes::menuItemY(p, i, e),
+                                   tubes::kMenuItemColour, tubes::kMenuItemMode,
+                                   kAnswers[i - 1]);
+        }
+        // The stars flank the SELECTED row's own text width, which is what
+        // `placeStars` measures - not the page's widest item.
+        const tubes::StarPlacement s =
+            tubes::placeStars(p, selected + 1, kAnswers[selected], e);
+        if (starFrame >= 1 && starFrame <= tubes::kStarFrames &&
+            haveStar[starFrame]) {
+            screen.blit(stars[starFrame], s.xLeft, s.y);
+            screen.blit(stars[starFrame], s.xRight, s.y);
+        }
+        return;
+    }
+
+    if (variant == 1) {
+        // The classroom, with the question on the slide. Same geometry the
+        // Instructions use - text at x 76, ten pixels a line, colour 150.
+        drawScene(screen, board, haveBoard, art, pose);
+        if (pose.slideIsBusy() || !haveSmall) return;
+        const char* kLines[] = {
+            "Tubes came in two editions and",
+            "this one cannot tell them apart",
+            "- the game files are identical.",
+            "So Lanny would like to ask:",
+            "which copy of Tubes  do  you",
+            "have?",
+        };
+        int y = 40;
+        for (const char* line : kLines) {
+            tubes::drawText(screen, small, 76, y, 150, 2, line);
+            y += 10;
+        }
+        for (int i = 0; i < 2; ++i) {
+            tubes::drawText(screen, small, 90, 118 + i * 12,
+                            i == selected ? 38 : 150, 2, kAnswers[i]);
+        }
+        // The slideshow's own navigation colour and rows, so the screen says
+        // how to work it in the place every other deck says it.
+        tubes::drawTextCentred(screen, small, 0, 319, tubes::kInstrNavY,
+                               tubes::kInstrNavColour, 2, "Up / Down - Choose");
+        tubes::drawTextCentred(screen, small, 0, 319, tubes::kInstrNavY2,
+                               tubes::kInstrNavColour, 2, "Button A - Continue");
+        return;
+    }
+
+    // variant 2 is drawn on the text screen, not here.
+}
+
 void drawTaskDisplay(tubes::Screen& screen, const tubes::Game& game,
                      const tubes::Font& big, bool haveBig,
                      const tubes::Sprite* atoms, const bool* haveAtom,
@@ -4136,6 +4264,44 @@ int main(int argc, char** argv) {
         if (res.read("TUBESEND.BIN", blob, berr)) exitBanner.loadBin(blob);
     }
 
+    // MOCKUP, temporary: variant 2 of the edition prompt is a text screen, so
+    // it goes through the same renderer `TUBESEND.BIN` does rather than the
+    // 320x200 one. Everything it draws is the port's - this is a candidate
+    // look, not a resource.
+    if (opt.editionPrompt == 2) {
+        tubes::TextScreen ts;
+        auto say = [&](int col, int row, const char* s, uint8_t attr) {
+            for (int i = 0; s[i]; ++i) {
+                ts.put(col + i, row, static_cast<uint8_t>(s[i]), attr);
+            }
+        };
+        const uint8_t kBright = 0x0f, kNormal = 0x07, kPick = 0x0e;
+        // A double-line box in CP437, the way a 1994 installer would draw one.
+        const int x0 = 14, y0 = 5, w = 52, h = 13;
+        for (int i = 1; i < w - 1; ++i) {
+            ts.put(x0 + i, y0, 205, kNormal);
+            ts.put(x0 + i, y0 + h - 1, 205, kNormal);
+        }
+        for (int j = 1; j < h - 1; ++j) {
+            ts.put(x0, y0 + j, 186, kNormal);
+            ts.put(x0 + w - 1, y0 + j, 186, kNormal);
+        }
+        ts.put(x0, y0, 201, kNormal);
+        ts.put(x0 + w - 1, y0, 187, kNormal);
+        ts.put(x0, y0 + h - 1, 200, kNormal);
+        ts.put(x0 + w - 1, y0 + h - 1, 188, kNormal);
+        say(x0 + 19, y0, " Tubes Setup ", kBright);
+        say(x0 + 3, y0 + 2, "Tubes shipped in two editions, and this", kNormal);
+        say(x0 + 3, y0 + 3, "one cannot tell which you have: the game", kNormal);
+        say(x0 + 3, y0 + 4, "files are identical in both.", kNormal);
+        say(x0 + 3, y0 + 6, "Which copy of Tubes do you have?", kBright);
+        say(x0 + 6, y0 + 8, "\020 Registered Version", kPick);
+        say(x0 + 6, y0 + 9, "  Shareware Version", kNormal);
+        say(x0 + 3, y0 + 11, "Up/Down to choose, Enter to accept.", kNormal);
+        runExitScreen(win, ren, ts, fadeSteps, opt.screenshot);
+        return 0;
+    }
+
     // `--exit-screen` opens it directly and leaves, so a capture never has to
     // walk a whole session to reach the one screen that ends one.
     if (opt.exitScreen) {
@@ -5412,6 +5578,7 @@ int main(int argc, char** argv) {
         // are consecutive, not concurrent.
         const bool classroomUp =
             briefingUp || instrOpen || endingPage > 0 ||
+            opt.editionPrompt == 1 ||     // MOCKUP, temporary
             sstage == tubes::SessionStage::kStats ||
             sstage == tubes::SessionStage::kContinue;
         if (classroomUp && !screenRoll.rolling() && !slideDropped) {
@@ -5711,6 +5878,18 @@ int main(int argc, char** argv) {
                               tubes::kHsViewTitle[hsViewPage], &blackboard,
                               haveBlackboard, &slideBar, haveBar, headingFont,
                               haveHeading, scriptFont, haveScript);
+            presentFrame();
+            continue;
+        }
+
+        // MOCKUP, temporary: candidate looks 0 and 1 for the edition prompt.
+        if (opt.editionPrompt == 0 || opt.editionPrompt == 1 ||
+            opt.editionPrompt == 3) {
+            drawEditionPromptMock(
+                screen, opt.editionPrompt, titleBg, titleFg,
+                haveTitleBg && haveTitleFg, &blackboard, haveBlackboard,
+                sceneArt, scenePose(), headingFont, haveHeading, smallFont,
+                haveSmall, stars, haveStar, menu.starFrame(), 0);
             presentFrame();
             continue;
         }
