@@ -2456,6 +2456,30 @@ void testThePreviewHasItsOwnFiveWaveList() {
     check(!anyShared, "no Preview wave is the wave that number gives normally");
 }
 
+// `Game::startWave` must consult `edition_` when picking the objective, not the
+// registered-only overload. This caught a real bug: `--shareware` and
+// `--preview` were applying the edition to the rates but then starting every wave
+// against the registered 75-arm table.
+void testGameStartWaveUsesTheEditionAwareObjectiveTable() {
+    tubes::Game reg(6, 5, tubes::Difficulty::k101, 1);
+    reg.applyEdition({tubes::Edition::kRegistered, false});
+    reg.startWave();
+    check(reg.objective().mode == tubes::WaveMode::kColour,
+          "registered wave 1 starts with kColour (kAnyAtom objective)");
+
+    tubes::Game sw(6, 5, tubes::Difficulty::k101, 1);
+    sw.applyEdition({tubes::Edition::kShareware, false});
+    sw.startWave();
+    check(sw.objective().mode == tubes::WaveMode::kColour,
+          "shareware wave 1 starts with the same kColour");
+
+    tubes::Game pv(6, 5, tubes::Difficulty::k101, 1);
+    pv.applyEdition({tubes::Edition::kShareware, true});
+    pv.startWave();
+    check(pv.objective().mode == tubes::WaveMode::kCrystals,
+          "Preview wave 1 starts with kCrystals");
+}
+
 // The wave counts, and the background roll that differs by one operand.
 void testTheEditionsDifferInWaveAndBackgroundCounts() {
     tubes::EditionState reg{tubes::Edition::kRegistered, false};
@@ -3891,6 +3915,7 @@ int main() {
     testTheDemoRunsWithTheSameRatesInBothEditions();
     testSharewareNeverDispensesNineOrTenButStillDispensesFlashium();
     testThePreviewHasItsOwnFiveWaveList();
+    testGameStartWaveUsesTheEditionAwareObjectiveTable();
     testTheEditionsDifferInWaveAndBackgroundCounts();
     testTheTwoEditionsHaveDifferentEndScreens();
     testEachEditionEndsOnItsOwnWave();

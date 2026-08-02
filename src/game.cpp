@@ -251,8 +251,8 @@ Game::Game(int cols, int rows, Difficulty diff, uint32_t seed,
 
 // `1000:86b8` without the drawing, then `1000:3a67`'s prologue at `1000:3ac7`.
 void Game::startWave(bool replay) {
-    applyBriefing(objectiveForWave(progress_.wave), progress_, objective_,
-                  [this](int n) { return random(n); }, replay);
+    applyBriefing(objectiveForWave(progress_.wave, edition_), progress_,
+                  objective_, [this](int n) { return random(n); }, replay);
     task_ = seedTaskDisplay(objective_);
     waveComplete_ = false;              // 1000:3a6b
 

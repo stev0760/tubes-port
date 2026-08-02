@@ -942,8 +942,8 @@ void drawBriefing(tubes::Screen& screen, const tubes::Game& game,
     }
     if (!haveSmallF) return;
 
-    const tubes::Briefing& b =
-        tubes::briefingFor(tubes::objectiveForWave(game.progress().wave));
+    const tubes::Briefing& b = tubes::briefingFor(
+        tubes::objectiveForWave(game.progress().wave, game.edition()));
     for (int i = 0; i < b.lineCount; ++i) {
         const tubes::BriefLine& l = b.lines[i];
         std::string s;
@@ -3665,9 +3665,11 @@ int main(int argc, char** argv) {
     // Game Over has to build a new one, not reset the old one in place.
     // `harness` is computed above, where the high score table is loaded.
     std::unique_ptr<tubes::Game> game;
-    auto newSession = [&](tubes::Difficulty diff, uint32_t seed) {
+    auto newSession = [&](tubes::Difficulty diff, uint32_t seed,
+                          const tubes::EditionState& ed) {
         game = std::make_unique<tubes::Game>(kCols, kRows, diff, seed);
         game->setFallHeight(kFallHeight);
+        game->applyEdition(ed);
     };
     // The original's `Randomize` at startup. Without it the title screen's
     // `Random(7)` returns the same colour every run - the atom in the
@@ -3679,7 +3681,7 @@ int main(int argc, char** argv) {
     }
     if (opt.seed) bootSeed = opt.seed;   // reproduce a specific run
     newSession(opt.playDemo ? kDemoDifficulty : tubes::Difficulty::k101,
-               opt.playDemo ? demo.seed : bootSeed);
+               opt.playDemo ? demo.seed : bootSeed, opt.edition);
     // `1000:9e53`'s new-game arm seeds the wave number from `DS:0x1d50` and
     // then loops brief-play-advance. Only the first half of that exists here:
     // there is no briefing screen and no stats blackboard, so the loop below
@@ -4500,7 +4502,15 @@ int main(int argc, char** argv) {
     // the demo at 101 desynchronises it within a few spawns.
     auto startDemo = [&]() {
         if (!haveDemo) return false;
-        newSession(kDemoDifficulty, demo.seed);   // DS:0x1d4f := 2
+        // `1000:abf7` arm 7 (View Demo) and arm 11 (attract timeout) both set
+        // the Preview flag in the shareware build, restoring the registered
+        // special-atom rates so the single byte-identical DEMO.SCR stays in
+        // sync. The registered build has no Preview path, so its demo runs as
+        // registered.
+        newSession(kDemoDifficulty, demo.seed,
+                   opt.edition.edition == tubes::Edition::kShareware
+                       ? tubes::EditionState{tubes::Edition::kShareware, true}
+                       : tubes::EditionState{tubes::Edition::kRegistered, false});
         gameMode = 0;                             // DS:0x1d4e := 0
         flags = tubes::SessionFlags{};
         totals = tubes::SessionTotals{};
@@ -4802,7 +4812,8 @@ int main(int argc, char** argv) {
                             tubes::Difficulty::k101, tubes::Difficulty::k201,
                             tubes::Difficulty::k301};
                         const tubes::MenuChoice& c = menu.choice();
-                        newSession(kDiff[c.difficulty], bootSeed ^ 0x5bf03635u);
+                        newSession(kDiff[c.difficulty], bootSeed ^ 0x5bf03635u,
+                                   opt.edition);
                         // `DS:0x1d4e`: 2 is Wave mode, which starts at wave 1
                         // and briefs before playing. Endurance has no wave
                         // structure and no briefing.
@@ -4840,7 +4851,7 @@ int main(int argc, char** argv) {
                         // are all restored below. k101 is only what the Game
                         // is built with before they are overwritten.
                         newSession(tubes::Difficulty::k101,
-                                   bootSeed ^ 0x5bf03635u);
+                                   bootSeed ^ 0x5bf03635u, opt.edition);
                         gameMode = c.mode;
                         flags = tubes::SessionFlags{};
                         totals = tubes::SessionTotals{};
@@ -4898,8 +4909,12 @@ int main(int argc, char** argv) {
                             tubes::Difficulty::k101, tubes::Difficulty::k201,
                             tubes::Difficulty::k301};
                         const tubes::MenuChoice& c = menu.choice();
-                        newSession(kDiff[c.difficulty], bootSeed ^ 0x5bf03635u);
-                        game->applyEdition({tubes::Edition::kShareware, true});
+                        // `1000:ab52` sets mode 2 and difficulty 0 as
+                        // immediates, which `Menu::select()` already stored in
+                        // `c`, so the Preview runs those values just like a
+                        // normal Start Game arm would.
+                        newSession(kDiff[c.difficulty], bootSeed ^ 0x5bf03635u,
+                                   {tubes::Edition::kShareware, true});
                         gameMode = c.mode;
                         flags = tubes::SessionFlags{};
                         totals = tubes::SessionTotals{};
