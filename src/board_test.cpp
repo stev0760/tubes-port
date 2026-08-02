@@ -2231,6 +2231,101 @@ void testTheBoxAndBlockGlyphsTile() {
     }
 }
 
+// The shareware title screen: the same page with TWO items inserted, at 3 and
+// at 8, so everything below each insertion shifts down.
+void testTheSharewareMenuInsertsTwoItems() {
+    using namespace tubes;
+    const MenuPage& reg = menuPage(Page::kMain, Edition::kRegistered);
+    const MenuPage& sw = menuPage(Page::kMain, Edition::kShareware);
+    check(reg.count == 8, "the registered main page is eight items");
+    check(sw.count == 10, "the shareware main page is ten");
+    const char* expect[10] = {
+        "Start Game", "Continue Saved Game", "Preview Registered",
+        "Game Options", "High Scores", "Instructions", "View Demo",
+        "Ordering Info", "Credits", "Exit Tubes"};
+    for (int i = 0; i < 10; ++i) {
+        check(std::string(sw.items[i]) == expect[i], "the shareware row reads right");
+    }
+    // Everything ABOVE the first insertion is untouched, which is what makes
+    // this an insertion rather than a different page.
+    for (int i = 0; i < 2; ++i) {
+        check(std::string(sw.items[i]) == std::string(reg.items[i]),
+              "the rows above the first insertion are the same");
+    }
+    // Only page 1 differs. Every other page is identical in both images.
+    for (int p = 2; p <= kPageCount; ++p) {
+        if (static_cast<Page>(p) == Page::kOptions) continue;   // the port's own
+        check(&menuPage(static_cast<Page>(p), Edition::kShareware) ==
+              &menuPage(static_cast<Page>(p), Edition::kRegistered),
+              "no page but the first differs between editions");
+    }
+}
+
+// A ten-item page is centred differently from an eight-item one - `SetMenuPage`
+// lays out count+1 rows - so the layout must follow the edition or every row
+// lands in the wrong place.
+void testTheSharewareMenuIsLaidOutForTenRows() {
+    using namespace tubes;
+    const int regBase = menuYBase(Page::kMain, Edition::kRegistered);
+    const int swBase = menuYBase(Page::kMain, Edition::kShareware);
+    check(regBase == (kMenuBlockHeight - 16 * 9) / 2, "eight items plus a title");
+    check(swBase == (kMenuBlockHeight - 16 * 11) / 2, "ten items plus a title");
+    check(swBase < regBase, "the longer page starts higher");
+    check(menuItemY(Page::kMain, 1, Edition::kShareware) !=
+          menuItemY(Page::kMain, 1, Edition::kRegistered),
+          "and its first row is not where the registered one's is");
+}
+
+// `1000:ab3d`'s dispatch, arm for arm. The codes below each insertion shift,
+// which is why this cannot be the registered switch with two cases added.
+void testTheSharewareMenuDispatchesByItsOwnNumbering() {
+    using namespace tubes;
+    auto pick = [](int item) {
+        Menu m;
+        m.setEdition(Edition::kShareware);
+        m.raise();
+        while (m.item() < item) m.moveDown();
+        return m.select();
+    };
+    check(pick(kSwPreviewRegistered) == MenuResult::kPreview, "item 3 is the Preview");
+    check(pick(kSwOrderingInfo) == MenuResult::kOrdering, "item 8 is Ordering Info");
+    check(pick(kSwHighScores) == MenuResult::kHighScores, "item 5 is High Scores");
+    check(pick(kSwInstructions) == MenuResult::kInstructions, "item 6 is Instructions");
+    check(pick(kSwViewDemo) == MenuResult::kViewDemo, "item 7 is View Demo");
+    check(pick(kSwCredits) == MenuResult::kCredits, "item 9 is Credits");
+
+    // Exit opens the confirm page rather than returning, in both editions.
+    Menu m;
+    m.setEdition(Edition::kShareware);
+    m.raise();
+    while (m.item() < kSwExitTubes) m.moveDown();
+    check(m.select() == MenuResult::kNone && m.page() == Page::kQuit,
+          "item 10 opens the quit confirm");
+
+    // The registered numbering is untouched by any of this.
+    Menu r;
+    r.raise();
+    while (r.item() < kHighScores) r.moveDown();
+    check(r.select() == MenuResult::kHighScores,
+          "the registered High Scores is still item 4");
+}
+
+// `1000:ab52` stores mode 2 and difficulty 0 beside the Preview flag, so the
+// Preview never asks for either - it is a Wave session on Tubes 101.
+void testThePreviewChoosesItsOwnModeAndDifficulty() {
+    using namespace tubes;
+    Menu m;
+    m.setEdition(Edition::kShareware);
+    m.raise();
+    while (m.item() < kSwPreviewRegistered) m.moveDown();
+    check(m.select() == MenuResult::kPreview, "the Preview returns straight away");
+    check(m.choice().mode == 2, "it is a Wave-mode session");
+    check(m.choice().difficulty == 0, "on Tubes 101");
+    check(m.choice().newGame, "and a new game, not a Continue");
+    check(m.page() == Page::kMain,
+          "it does not route through the Game Mode page");
+}
+
 // ---------------------------------------------------------------------------
 // The shareware edition
 // ---------------------------------------------------------------------------
@@ -3767,6 +3862,11 @@ int main() {
     testTheBlinkBitDoesNotBecomeABrightBackground();
     testTheTextPaletteIsTheEgaOneIncludingBrown();
     testTheBoxAndBlockGlyphsTile();
+
+    testTheSharewareMenuInsertsTwoItems();
+    testTheSharewareMenuIsLaidOutForTenRows();
+    testTheSharewareMenuDispatchesByItsOwnNumbering();
+    testThePreviewChoosesItsOwnModeAndDifficulty();
 
     testSharewareWithholdsTheTwoSpecialAtoms();
     testTheEditionsDivergeExactlyWhereTheSpecialsAre();

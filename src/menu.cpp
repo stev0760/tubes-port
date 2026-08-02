@@ -146,6 +146,16 @@ const MenuPage kMenuPages[kPageCount + 1] = {
 
 // The port's Game Options page. See `menu.h` for why this is a separate object
 // rather than an edit to the table above.
+// The shareware's page 1, ten items - its own table, read off the `0x24`
+// stride in `SW_UNP.EXE` and agreeing arm for arm with `entry`'s dispatch.
+const MenuPage kMainPageShareware = {
+    "",
+    {"Start Game", "Continue Saved Game", "Preview Registered", "Game Options",
+     "High Scores", "Instructions", "View Demo", "Ordering Info", "Credits",
+     "Exit Tubes"},
+    10, 16,
+};
+
 const MenuPage kOptionsPagePort = {
     "Game Options",
     {"Toggle Music", "Toggle Sound FX", "Redefine Input Device",
@@ -153,41 +163,44 @@ const MenuPage kOptionsPagePort = {
     5, 26,
 };
 
-const MenuPage& menuPage(Page p) {
+const MenuPage& menuPage(Page p, Edition e) {
     if (p == Page::kOptions) return kOptionsPagePort;
+    // Only page 1 differs between the editions. Every other page - Game Mode,
+    // Difficulty, the two save lists, Quit - is identical in both images.
+    if (p == Page::kMain && e == Edition::kShareware) return kMainPageShareware;
     return kMenuPages[static_cast<int>(p)];
 }
 
-int menuYBase(Page p) {
-    const MenuPage& mp = menuPage(p);
+int menuYBase(Page p, Edition e) {
+    const MenuPage& mp = menuPage(p, e);
     return (kMenuBlockHeight - mp.rowHeight * (mp.count + 1)) / 2;
 }
 
-int menuItemY(Page p, int item) {
-    return menuYBase(p) + item * menuPage(p).rowHeight;
+int menuItemY(Page p, int item, Edition e) {
+    return menuYBase(p, e) + item * menuPage(p, e).rowHeight;
 }
 
-int menuTitleY(Page p) { return menuYBase(p); }
-int menuRuleY(Page p) { return menuYBase(p) + 2; }
+int menuTitleY(Page p, Edition e) { return menuYBase(p, e); }
+int menuRuleY(Page p, Edition e) { return menuYBase(p, e) + 2; }
 
-std::string menuRule(Page p) {
-    const char* t = menuPage(p).title;
+std::string menuRule(Page p, Edition e) {
+    const char* t = menuPage(p, e).title;
     int n = 0;
     while (t[n]) ++n;
     n -= 2;
     return n > 0 ? std::string(static_cast<size_t>(n), '_') : std::string();
 }
 
-StarPlacement placeStars(Page p, int item, const char* text) {
+StarPlacement placeStars(Page p, int item, const char* text, Edition e) {
     // The width is the TEXT'S, and on a save-slot page that is the live row
     // rather than the "(Unavailable)" the page ships - a 31-character save row
     // puts the stars at 16 and 287 instead of 88 and 215. Measuring the page's
     // own string was wrong for exactly the two pages whose text is replaced at
     // runtime, which is why it went unnoticed until the slots were filled in.
-    const char* s = text ? text : menuPage(p).items[item - 1];
+    const char* s = text ? text : menuPage(p, e).items[item - 1];
     int len = 0;
     while (s && s[len]) ++len;
-    return {140 - 4 * len, 163 + 4 * len, menuItemY(p, item) + 2};
+    return {140 - 4 * len, 163 + 4 * len, menuItemY(p, item, e) + 2};
 }
 
 // ---------------------------------------------------------------------------
@@ -203,13 +216,13 @@ void Menu::setPage(Page p) {
 }
 
 void Menu::moveUp() {
-    const int n = menuPage(page_).count;
+    const int n = menuPage(page_, edition_).count;
     item_ = (item_ <= 1) ? n : item_ - 1;
     if (page_ == Page::kMain) mainItem_ = item_;
 }
 
 void Menu::moveDown() {
-    const int n = menuPage(page_).count;
+    const int n = menuPage(page_, edition_).count;
     item_ = (item_ >= n) ? 1 : item_ + 1;
     if (page_ == Page::kMain) mainItem_ = item_;
 }
@@ -263,7 +276,7 @@ const char* Menu::itemText(int i) const {
         i <= menuPage(Page::kOptions).count && !optionText_[i].empty()) {
         return optionText_[i].c_str();
     }
-    return menuPage(page_).items[i - 1];
+    return menuPage(page_, edition_).items[i - 1];
 }
 
 void Menu::tick() {
@@ -277,6 +290,41 @@ MenuResult Menu::select() {
     switch (page_) {
     case Page::kMain:
         mainItem_ = item_;
+        if (edition_ == Edition::kShareware) {
+            // `1000:ab3d` onward, arm for arm. Two items inserted, so every
+            // code below each insertion is shifted - which is why this cannot
+            // be the registered switch with two extra cases bolted on.
+            switch (item_) {
+            case kSwStartGame:
+                choice_.newGame = true;
+                setPage(Page::kGameMode);
+                return MenuResult::kNone;
+            case kSwContinueSaved:
+                choice_.newGame = false;
+                setPage(Page::kGameMode);
+                return MenuResult::kNone;
+            case kSwGameOptions:
+                setPage(Page::kOptions);
+                return MenuResult::kNone;
+            case kSwExitTubes:
+                setPage(Page::kQuit);
+                return MenuResult::kNone;
+            // `1000:ab52` sets mode 2 and difficulty 0 alongside the Preview
+            // flag, so the Preview is a WAVE-mode session on Tubes 101 and
+            // never asks the player for either.
+            case kSwPreviewRegistered:
+                choice_.newGame = true;
+                choice_.mode = 2;
+                choice_.difficulty = 0;
+                return MenuResult::kPreview;
+            case kSwOrderingInfo:  return MenuResult::kOrdering;
+            case kSwHighScores:    return MenuResult::kHighScores;
+            case kSwInstructions:  return MenuResult::kInstructions;
+            case kSwViewDemo:      return MenuResult::kViewDemo;
+            case kSwCredits:       return MenuResult::kCredits;
+            default:               return MenuResult::kNone;
+            }
+        }
         switch (item_) {
         case kStartGame:
             choice_.newGame = true;

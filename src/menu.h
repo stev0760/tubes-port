@@ -15,6 +15,8 @@
 #include <cstdint>
 #include <string>
 
+#include "edition.h"
+
 namespace tubes {
 
 // ---------------------------------------------------------------------------
@@ -56,6 +58,29 @@ enum MainItem {
     kExitTubes = 8,
 };
 
+// The SHAREWARE main page, which is the same page with TWO ITEMS INSERTED -
+// `Preview Registered` at 3 and `Ordering Info` at 8 - so everything below each
+// insertion shifts down and Exit ends up at 10 where the registered build has
+// it at 8.
+//
+// This is not a guess at a layout: the labels are data at a `0x24` stride in
+// both images, which is why no function references them and why an early
+// string search for `Start Game` came back empty in BOTH editions. `entry`'s
+// dispatch agrees arm for arm - `1000:abf7` compares the selection against
+// `0xa` where the registered `1000:b2ba` compares against 8.
+enum SharewareMainItem {
+    kSwStartGame = 1,
+    kSwContinueSaved = 2,
+    kSwPreviewRegistered = 3,   // `1000:ab4e`, sets DS:0x1d4b
+    kSwGameOptions = 4,
+    kSwHighScores = 5,
+    kSwInstructions = 6,
+    kSwViewDemo = 7,            // `1000:ab87`, ALSO sets DS:0x1d4b
+    kSwOrderingInfo = 8,        // `1000:aba9`
+    kSwCredits = 9,
+    kSwExitTubes = 10,          // `1000:abf7  CMP ...,0xa`
+};
+
 struct MenuPage {
     const char* title;                 // entry 0; empty on page 1
     const char* items[kMaxItems];      // nullptr-terminated
@@ -86,10 +111,15 @@ extern const MenuPage kMenuPages[kPageCount + 1];
 // pixel-identically. Pages 1 and 3 measure 0.00% and are untouched by this.
 extern const MenuPage kOptionsPagePort;
 
+// The shareware main page. Unlike `kOptionsPagePort` this is NOT the port's
+// invention - it is the other edition's own table, so it sits beside
+// `kMenuPages` as data rather than as an addition.
+extern const MenuPage kMainPageShareware;
+
 // The page as the port draws it: `kOptionsPagePort` for page 6, the image's
 // own row for every other page. Every layout, navigation and selection path
 // goes through here.
-const MenuPage& menuPage(Page p);
+const MenuPage& menuPage(Page p, Edition e = Edition::kRegistered);
 
 // ---------------------------------------------------------------------------
 // Layout, `1b2e:467a` and `1b2e:4607`
@@ -101,10 +131,10 @@ const MenuPage& menuPage(Page p);
 // row six pixels out, and only a capture of the original caught it.
 constexpr int kMenuBlockHeight = 180;   // `0xb4`
 
-int menuYBase(Page p);                  // (180 - rowH*(count+1)) div 2
-int menuItemY(Page p, int item);        // yBase + item*rowH
-int menuTitleY(Page p);                 // yBase
-int menuRuleY(Page p);                  // yBase + 2
+int menuYBase(Page p, Edition e = Edition::kRegistered);                  // (180 - rowH*(count+1)) div 2
+int menuItemY(Page p, int item, Edition e = Edition::kRegistered);        // yBase + item*rowH
+int menuTitleY(Page p, Edition e = Edition::kRegistered);                 // yBase
+int menuRuleY(Page p, Edition e = Edition::kRegistered);                  // yBase + 2
 
 // `1b2e:4607`, PlaceStars. `L` is the item's length; the stars bracket the
 // centred text and move outward four pixels a character - half a glyph each
@@ -115,7 +145,8 @@ struct StarPlacement {
     int y;
 };
 // `text` is what is actually on the row; pass null for the page's own.
-StarPlacement placeStars(Page p, int item, const char* text = nullptr);
+StarPlacement placeStars(Page p, int item, const char* text = nullptr,
+                         Edition e = Edition::kRegistered);
 
 // `1b2e:4743`, the render. All items share one colour: the SELECTION is marked
 // by the stars alone, not by recolouring the text.
@@ -126,7 +157,7 @@ constexpr uint8_t kMenuItemMode = 0x82;     // shadow | fade-up
 
 // The rule under a page title is `length(title) - 2` underscores, built by
 // `2000:5ec6` from `'_'` = 0x5f.
-std::string menuRule(Page p);
+std::string menuRule(Page p, Edition e = Edition::kRegistered);
 
 // The star sprite: four frames on a three-frame divider, 12 x 10, packed and
 // masked, pointers at `DGROUP:0x1d76 + f*8`.
@@ -166,6 +197,13 @@ enum class MenuResult : uint8_t {
     // The port's added row - see `kOptionsPagePort`. Nothing in the original
     // returns this because the original had nothing to return it for.
     kGraphics = 23,
+
+    // The shareware's two extra items. They cannot reuse the original's own
+    // codes for them - 3 and 8 - because this enum is keyed to the REGISTERED
+    // dispatch, where those already mean Game Options and Quit. The shareware
+    // numbering is recorded on `SharewareMainItem` instead.
+    kPreview = 30,         // `1000:ab4e`, menu item 3
+    kOrdering = 31,        // `1000:aba9`, menu item 8
 };
 
 // The globals the game session reads. All four are set HERE and nowhere else,
@@ -179,6 +217,12 @@ struct MenuChoice {
 
 class Menu {
 public:
+    // Which edition's menu this is. It changes the main page's contents, its
+    // length, and therefore its layout - a ten-item page is centred
+    // differently from an eight-item one.
+    void setEdition(Edition e) { edition_ = e; }
+    Edition edition() const { return edition_; }
+
     // `DS:0x1d42`. The title loop swallows the press that raises the menu, so
     // it cannot also select an item - the two-key protocol.
     bool up() const { return up_; }
@@ -229,6 +273,7 @@ public:
     int starFrame() const { return starFrame_; }
 
 private:
+    Edition edition_ = Edition::kRegistered;
     void setPage(Page p);
 
     bool up_ = false;

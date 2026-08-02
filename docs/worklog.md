@@ -4445,3 +4445,36 @@ mid-animation is not a screen that is wrong, and 0 differing pixels was the
 clue - two different decks cannot agree exactly unless neither had drawn yet.
 
 850 checks / 0 failures, `--demo-trace` md5 unmoved, game directory untouched.
+
+## 2026-08-02 - the shareware menu: two items inserted, and the numbering moves
+
+The title screen is now edition-aware, which makes the Preview and the Ordering
+Info deck reachable in play rather than only behind harness flags.
+
+`kMainPageShareware` sits beside `kMenuPages` as **data, not as an addition** -
+unlike `kOptionsPagePort`, which is the port's own invention. This is the other
+edition's own table, read off the `0x24` stride in `SW_UNP.EXE`.
+
+Two items go in - `Preview Registered` at 3 and `Ordering Info` at 8 - and
+everything below each insertion shifts, so Exit is item 10 where the registered
+build has it at 8. **That is why the dispatch could not be the registered switch
+with two cases bolted on**: every code below an insertion means something
+different. `SharewareMainItem` names them and `select()` branches on the edition
+before anything else.
+
+The layout has to follow too. `SetMenuPage` lays out `count + 1` rows, so a
+ten-item page is centred higher than an eight-item one and every row moves.
+`menuPage`, `menuYBase`, `menuItemY`, `menuTitleY`, `menuRuleY`, `menuRule` and
+`placeStars` all take an edition now, defaulted to registered so the fifteen
+existing callers were untouched.
+
+`1000:ab52` also settles something about the Preview that would have been easy
+to invent: it stores **mode 2 and difficulty 0** beside the flag, as immediates
+in the menu arm. So the Preview is a Wave-mode session on Tubes 101 and asks
+the player for neither - it does not route through the Game Mode page at all.
+There is a test on that, because "it probably uses the current settings" is
+exactly the sort of plausible thing a port invents.
+
+886 checks / 0 failures, up from 850. `--demo-trace` md5 unmoved, game
+directory untouched, and the registered menu's own layout tests still measure
+what they did.

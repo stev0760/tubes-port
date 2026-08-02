@@ -2647,29 +2647,30 @@ void drawTitle(tubes::Screen& screen, const tubes::Image& bg,
     const tubes::Page p = menu.page();
     // `menuPage`, not `kMenuPages`: page 6 carries the port's extra row and
     // every layout call below already goes through the same accessor.
-    const tubes::MenuPage& page = tubes::menuPage(p);
+    const tubes::Edition ed = menu.edition();
+    const tubes::MenuPage& page = tubes::menuPage(p, ed);
 
     // `1b2e:4743`. The title is drawn only when the page has one - page 1's is
     // empty - with its rule two rows below.
     if (page.title[0]) {
-        tubes::drawTextCentred(screen, big, 0, 319, tubes::menuTitleY(p),
+        tubes::drawTextCentred(screen, big, 0, 319, tubes::menuTitleY(p, ed),
                                tubes::kMenuTitleColour, tubes::kMenuTitleMode,
                                page.title);
-        tubes::drawTextCentred(screen, big, 0, 319, tubes::menuRuleY(p),
+        tubes::drawTextCentred(screen, big, 0, 319, tubes::menuRuleY(p, ed),
                                tubes::kMenuTitleColour, tubes::kMenuTitleMode,
-                               tubes::menuRule(p));
+                               tubes::menuRule(p, ed));
     }
 
     // Every item in one colour: the SELECTION is marked by the stars alone,
     // which is why there is no highlight colour here.
     for (int i = 1; i <= page.count; ++i) {
-        tubes::drawTextCentred(screen, big, 0, 319, tubes::menuItemY(p, i),
+        tubes::drawTextCentred(screen, big, 0, 319, tubes::menuItemY(p, i, ed),
                                tubes::kMenuItemColour, tubes::kMenuItemMode,
                                menu.itemText(i));
     }
 
     const tubes::StarPlacement s =
-        tubes::placeStars(p, menu.item(), menu.itemText(menu.item()));
+        tubes::placeStars(p, menu.item(), menu.itemText(menu.item()), ed);
     const int f = menu.starFrame();
     if (f >= 1 && f <= tubes::kStarFrames && haveStar[f]) {
         screen.blit(stars[f], s.xLeft, s.y);
@@ -4006,6 +4007,9 @@ int main(int argc, char** argv) {
     // the flags keep working exactly as they did.
     Stage stage = (harness && opt.titlePage < 0) ? Stage::kPlay : Stage::kTitle;
     tubes::Menu menu;
+    // The title screen is the one place the two editions' menus differ, and
+    // they differ by two inserted items - see `SharewareMainItem`.
+    menu.setEdition(opt.edition.edition);
     // `1b2e:5427` onward: the slot pages are built from the file every time the
     // title screen is entered, which is why a game saved this session shows up
     // without a restart.
@@ -4820,6 +4824,44 @@ int main(int argc, char** argv) {
                         screenRoll.restart();
                         changeScreen();
                         break;
+                    case tubes::MenuResult::kOrdering:
+                        // `1000:abad`. The same deck the Exit path runs, but
+                        // reached from the menu, so it comes back to the title
+                        // instead of ending the program.
+                        instrOpen = true;
+                        openDeck(tubes::kOrderingPages,
+                                 tubes::kOrderingPageCount);
+                        profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
+                        joke.maybeStart(sceneRng);
+                        screenRoll.restart();
+                        changeScreen();
+                        break;
+                    case tubes::MenuResult::kPreview: {
+                        // `1000:ab52`: mode 2, difficulty 0, `DS:0x1d4c` = 1
+                        // and the Preview flag on, then the ORDINARY session.
+                        // It asks for neither mode nor difficulty, which is why
+                        // this does not route through the Game Mode page - the
+                        // three stores are immediates in the menu arm.
+                        static const tubes::Difficulty kDiff[3] = {
+                            tubes::Difficulty::k101, tubes::Difficulty::k201,
+                            tubes::Difficulty::k301};
+                        const tubes::MenuChoice& c = menu.choice();
+                        newSession(kDiff[c.difficulty], bootSeed ^ 0x5bf03635u);
+                        game->applyEdition({tubes::Edition::kShareware, true});
+                        gameMode = c.mode;
+                        flags = tubes::SessionFlags{};
+                        totals = tubes::SessionTotals{};
+                        banner = tubes::Banner::kNone;
+                        paused = false;
+                        briefingUp = false;
+                        game->startWave();
+                        raiseBriefing(false);
+                        sstage = tubes::firstStage(gameMode);
+                        playSong(tubes::kBriefingMusic);
+                        stage = Stage::kPlay;
+                        changeScreen();
+                        break;
+                    }
                     case tubes::MenuResult::kCredits:
                         // `1000:b280`. Same screen, same keys, four pages.
                         instrOpen = true;
