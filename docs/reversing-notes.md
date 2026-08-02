@@ -9019,3 +9019,119 @@ recorded when `.BIN` was decoded is answered: the exit screen is a real screen
 of the shareware edition, shown on the way out, and rendering it would be
 faithful **for that edition**. It stays unported while the port targets the
 registered ruleset, because the registered executable never shows it.
+
+## The shareware program is a DIFFERENT program, not a subset
+
+Recorded 2026-08-02. The section above concluded that "the edition lives
+entirely in the executable" and drew consequence (2) from it: that supporting
+shareware could only mean offering the 25-wave progression as a mode. **That
+consequence was wrong.** The premise was right - the data really is identical -
+but "the difference is all in the executable" was read as "the difference is
+small", and those are not the same statement. Reading the conclusion back to
+its evidence would have shown that nothing in the measurement bounded the size
+of the difference at all; it only located it.
+
+What corrected it was the player running the shareware build. Everything below
+is **player-reported and string-corroborated. None of it is decompiled yet**,
+and by `CLAUDE.md`'s order of authority none of it is settled. It is recorded
+here as a set of leads with the evidence that makes each one worth chasing,
+which is the role measurement is allowed to play.
+
+### What the shareware build does that the registered one does not
+
+* **an extra main-menu item, "Preview Registered"**, which plays waves drawn
+  from the registered additions - the first of them the Mischief Crystal wave;
+* **no Bonus and no AntiMatter atoms in normal play**, though both sprites ship
+  in its `.RES`. They appear in the Preview;
+* **an "Ordering Info" slide deck**, reachable from the menu;
+* **a registration deck on the way out** - quitting does not quit, it shows
+  the pitch first;
+* **and then `TUBESEND.BIN` is dumped to the DOS screen** as the program
+  exits;
+* **no wave-75 ending**, which follows from there being 25 waves.
+
+### The strings, which are the corroboration
+
+`strings SW_UNP.EXE` minus `strings TUBES_UNP.EXE` (the registered image in
+`..`) is 666 unique against 635, and the shareware-only set names every stage
+above in the program's own words:
+
+    Preview Registered                Ordering Info
+    Preview                           Order by Phone
+                                      Order by Fax
+    This Preview allows  you  to      Order by BBS (OPEN Door 5)
+    play some of the new  waves,      order online!
+    use the new atoms,  and  see      Down - Next Slide  Register!
+    the other  five  backgrounds
+    version of Tubes.                 You can't stop now!
+                                      Lanny is 1/3 of the  way  to
+    2 helpful new Atoms:              his goal and he still  needs
+    Anti-Matter And Bonus             your help.
+    50 more exciting Waves!
+    5 gorgeous new Backgrounds!       TUBESEND.BIN
+                                      ExitText Resource Error!
+
+The registered-only set is the mirror image and is almost entirely the wave-75
+ending: `PRIZE.GFX RegisteredEnding Resource Error!`, `You've done it!  Lanny
+now`, `prove the existance of  the`, `His  discovery  has  earned`. The
+shareware image contains none of it.
+
+**`Lanny is 1/3 of the way to his goal`** is worth pulling out on its own. 25
+of 75 is one third, so the game's own text agrees with a count taken off
+`1000:86b8`'s dispatch arms by a completely independent route. That is the
+fourth time this project's second-rank authority has held an answer that was
+being derived the hard way.
+
+### Two differences the player did not see, found while checking
+
+Both change the shape of the porting work rather than the gameplay.
+
+**The Instructions text is re-wrapped between editions.** The shareware has
+`will change every 45 seconds.` where the registered has `change every 45
+seconds.`, and it is not the only one. The content is the same game's
+documentation; the line breaks are not. So `src/instructions.cpp` is
+**edition-specific and cannot be shared**. `tools/gen_instructions.py` already
+takes a disassembly and a string dump as arguments, so this is a second
+extraction rather than a second tool - but shareware mode owns a second
+generated table, and any assumption that its Instructions are a truncation of
+the registered ones is false.
+
+**The background lists are split, not merely shorter.** The registered image
+names only the prefix `GAMEBG` and constructs each filename numerically. The
+shareware image names the prefix **and** five literals:
+
+    GAMEBG5   GAMEBG6   GAMEBG7   GAMEBG9   GAMEBG10
+
+which is exactly the *"other five backgrounds"* its Preview blurb advertises.
+The obvious reading is that normal shareware play draws from `{1,2,3,4,8}` and
+the Preview from `{5,6,7,9,10}`. **The obvious reading is not established** -
+the literals could be either list, and only reading the routine says which.
+Noting it explicitly because a five-and-five split that matches a marketing
+line is exactly the kind of coincidence this project has been caught by before.
+
+### What this means for the save formats
+
+Unresolved and now load-bearing. `TUBES.SAV` is two banks by game mode in the
+registered image; whether the shareware layout matches is unknown, and a
+Preview mode with its own progression is a plausible third thing to store. The
+shareware ships a 792-byte `TUBES.HSC`, the same size as the registered one,
+which is suggestive and is not proof - the earlier `GAMEBG`/atom/wave count
+that "confirmed" the registered edition was three counts that all agreed and
+all counted the wrong thing.
+
+This has to be read before any shareware write path exists, because it is the
+one part of this work that can damage files a player owns. See `PLAN.md`.
+
+### Images on disk
+
+| | registered | shareware | Impulse re-release |
+|---|---|---|---|
+| install | `..` | `~/Dev/tubes-tooling/editions/sw/` | `~/Dev/tubes-tooling/editions/reg/Tubes93/` |
+| unpacked | `assets-extracted/TUBES_UNP.EXE` | `editions/SW_UNP.EXE` | `editions/REG_UNP.EXE` |
+| waves | 75 | 25 | 25 |
+
+The `reg/` and `REG_UNP` names are a **misnomer kept from the archive.org item
+title**, which advertises `msdos_Tubes_1993` as the registered version. It is
+not; it is a 25-wave shareware build with an Impulse splash. Renaming them is
+worth doing before the shareware decompilation starts, since "REG" meaning
+"shareware" is a trap laid for a later session.

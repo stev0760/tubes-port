@@ -3795,3 +3795,74 @@ all. The sprites are in every archive, so that is the only place a shareware
 run could differ in RULES rather than presentation. Also confirmed: both
 shareware images name `TUBESEND`, so the exit screen is a real screen of that
 edition, and the registered one is not.
+
+## 2026-08-02 - the shareware build is a different program, and yesterday's conclusion was too small
+
+The player ran the shareware edition to remember how it differed, and it
+differs a great deal more than this log claimed 24 hours ago.
+
+Yesterday's measurement was right and its conclusion was wrong. `TUBES.RES` is
+byte-identical between the editions - that held - and from it came "the edition
+lives entirely in the executable, so there is nothing to detect and nothing
+missing; supporting shareware can only mean offering the 25-wave progression as
+a mode". The premise bounded *where* the difference was. It said nothing about
+**how big** it was, and it was read as though it had. All of the work being in
+the executable turns out to mean exactly that: **all** of it.
+
+What the shareware build actually has, reported from play and then corroborated
+against `SW_UNP.EXE`'s strings:
+
+* an extra main-menu item, **Preview Registered**, playing waves from the
+  registered additions with the **Mischief Crystal wave first**;
+* **no Bonus and no AntiMatter in normal play**, though both sprites are in its
+  identical `.RES`. They appear in the Preview;
+* an **Ordering Info slide deck**;
+* a **registration deck on the way out** - quitting shows the pitch first;
+* **`TUBESEND.BIN` dumped to the DOS screen** on exit;
+* no wave-75 ending, which follows from 25 waves.
+
+Every one of those names itself in the binary: `Preview Registered`, `Ordering
+Info`, `Order by BBS (OPEN Door 5)`, `You can't stop now!`, `TUBESEND.BIN`,
+`ExitText Resource Error!`. 666 unique strings against the registered image's
+635, and the registered-only set is almost entirely the wave-75 ending.
+
+**`Lanny is 1/3 of the way to his goal`** - 25 of 75, stated by the game, in
+agreement with a count taken off `1000:86b8`'s dispatch arms by an entirely
+independent route. Fourth time the game's own text has held an answer this
+project was deriving the hard way.
+
+Two more found while checking the reports, neither of them visible from play,
+and both change the shape of the work:
+
+* **the Instructions are re-wrapped between editions** (`will change every 45
+  seconds.` against `change every 45 seconds.`), so `src/instructions.cpp` is
+  edition-specific rather than shared. `gen_instructions.py` is already
+  parameterised, so it is a second extraction and not a second tool;
+* **the background lists are split rather than shortened**. The registered
+  image names only the `GAMEBG` prefix and builds names numerically; the
+  shareware names the prefix plus `GAMEBG5/6/7/9/10` - the *"other five
+  backgrounds"* of the Preview blurb. Which list the literals are is
+  **written down as a guess**, because a five-and-five split matching a
+  marketing line is the kind of coincidence this project has been burned by.
+
+Decided: a `--shareware` switch, and **savegames and high scores separated
+between the modes** - the player's call and the right one. In 1994 the editions
+were separate installs and could not collide; one binary that can be either
+creates a hazard the original never had, and it is the only part of this work
+that can damage a player's own files. So the save and high-score routines get
+read before any write path exists, and a mismatched save is refused rather than
+reinterpreted.
+
+Also settled, for the exit screen the registered edition never shows: the
+mechanism should be to write the banner **to the real terminal** on exit, which
+is what 80 x **23** rows are for - the DOS prompt lands in the gap. For
+registered it cannot be faithful, but it need not be an invention either, since
+the identical `.RES` means the banner is sitting in that player's own files
+unreferenced. It goes behind a port-owned affordance, same category as the
+planned fifth Credits page. **The port may show the player their own data; it
+may not claim the original showed it.**
+
+Nothing ported yet. `PLAN.md` carries the order of work, which starts with
+importing `SW_UNP.EXE` into its own Ghidra project and running `MapProgram`
+over it the way the registered image was mapped. No code changed, so the test
+count is unmoved at 742.

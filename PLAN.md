@@ -69,13 +69,23 @@ asked for, and then publishing:
    verbatim - it names `1b2e:2d63` and "21 slides, 152 strings and 22
    illustrations", which describes the other screen. The Credits are 4 pages
    and 36 strings out of `1b2e:411b`.
-5. **Shareware edition support** - and it turned out to be far smaller than
-   this list assumed. Both editions have now been measured: shareware is **25**
-   waves against the registered **75**, and the `.RES` is **byte-identical**,
-   so there is nothing to detect and nothing missing. What is left is a
-   choice - offer the 25-wave progression as a MODE - plus the shareware exit
-   screen and one unread question about the two special atoms. See "Supporting
-   both editions" below.
+5. **Shareware edition support**, via a `--shareware` switch - and it turned
+   out to be far LARGER than this list assumed, twice over. It was written up
+   as "nothing to detect and nothing missing" on the strength of the `.RES`
+   being byte-identical; then the player ran the shareware build. It has an
+   extra menu item (**Preview Registered**, with its own wave list starting on
+   the Mischief Crystal wave), no Bonus or AntiMatter in normal play, an
+   **Ordering Info slide deck**, a registration deck on the way out, and it
+   dumps `TUBESEND.BIN` to the DOS screen as it quits. Its Instructions text is
+   even re-wrapped differently. **So this is a second program to decompile, not
+   a flag over the first**, and it is now the largest remaining item in this
+   file. Savegames and high scores must be kept separate between the modes -
+   the one part of it that can damage a player's own files. See "What shareware
+   mode actually is" below, which carries the full plan and the order of work.
+
+   The payoff is worth the size: it makes the port playable by someone who only
+   ever had the shareware disc, which is a fitting thing for an abandonware
+   preservation project to be able to do.
 6. **Publishing**, which is the last section of this file and is gated on a
    comment and documentation pass, a repository check and a final code review.
    **The player has a specific method in mind for the review and lint pass, so
@@ -1190,6 +1200,14 @@ shareware and the registered editions are on archive.org, and running against
 either is a goal - it is what makes this a preservation project rather than a
 port of one person's disc.
 
+**The scope of this changed on 2026-08-02, and it grew.** The player ran the
+shareware build and it is not the registered game with fifty waves removed: it
+has **an extra menu item, an extra slide deck, an extra ending path and its own
+Instructions layout**. So "shareware support" is no longer a mode flag over
+shared code - it is a second program to decompile, the same way the registered
+one was. See "What shareware mode actually is" below; the measurements in this
+section still stand and are what that work builds on.
+
 **MEASURED, against both editions.** Two real images have now been pulled from
 archive.org and compared with the copy in `..`, and the answer is smaller than
 this section assumed. `docs/reversing-notes.md` has the table.
@@ -1215,27 +1233,162 @@ this section assumed. `docs/reversing-notes.md` has the table.
 5. **`TUBES.SAV`.** Two banks by game mode, decoded. Whether the layout matches
    across editions is still unknown and is now the only open item here.
 
-**So there is nothing to detect, and nothing missing.** The edition lives
-entirely in the executable, and the port IS the executable. Reading a shareware
-install already works, because there is nothing different in it to read.
+**So there is nothing to detect in the DATA, and nothing missing from it.** The
+edition lives entirely in the executable. That part held up: the assets a
+shareware player has on disk are byte-for-byte the ones a registered player
+has, which is what makes the plan below possible at all.
 
-That reduces "shareware support" to one honest question: **should the port
-offer the 25-wave progression as a choice?** It is a mode, not a compatibility
-layer - the first 25 waves of the table are the same 25 either way, so it means
-ending the game at 25 and showing whatever the shareware build shows there.
-Worth doing for preservation, cheap to do, and it needs one thing read first:
-what `1000:a657`'s equivalent is in the shareware image, since the registered
-one calls the wave-75 ending there.
+What did **not** hold up is the sentence that followed it - "and the port IS the
+executable, so reading a shareware install already works". It works in the
+sense that nothing crashes. It does not work in the sense that matters, because
+running the port against a shareware install currently gives the player the
+**registered** game: 75 waves, both special atoms, no Preview, no ordering
+slides, no exit screen. The edition living in the executable does not mean
+there is nothing to do; it means **all** of the work is in the executable.
 
-Two other differences are already known and belong to that work:
+---
 
-* **the shareware build shows the exit screen.** Both shareware images name
-  `TUBESEND`; the registered one does not. So rendering `TUBESEND.BIN` is
-  faithful for that edition and only that edition;
-* **the two special atoms.** The sprites are in every archive, so the question
-  is whether the shareware executable's spawn distribution rolls types 9 and
-  10 at all. Not yet read - and it is the one place a shareware run could
-  differ in RULES rather than in presentation.
+## What shareware mode actually is
+
+**Decided:** the port gets a `--shareware` switch - a flag for now, with where
+it eventually belongs (auto-detect from the install, a menu choice, or both)
+left open until the behaviour is in. The goal is that **a player who only ever
+had the shareware disc can play the game they remember**, which is a fitting
+thing for an abandonware preservation port to be able to do, and it is the
+first time this port will reproduce a program other than the one in `..`.
+
+### What is different, and what says so
+
+Player-reported from a real shareware run on 2026-08-02, then checked against
+the strings in `SW_UNP.EXE`. **None of it is decompiled yet.** The evidence
+column is what authority currently backs each row - `CLAUDE.md`'s order applies
+and only the third column settles anything.
+
+| Difference | Reported | Corroborated by the binary's own text |
+|---|---|---|
+| 25 waves, not 75 | yes | 25 dispatch arms at `1000:86b8`; *"50 more exciting Waves!"* |
+| **No Bonus and no AntiMatter in normal play** | yes | *"2 helpful new Atoms:"* / *"Anti-Matter And Bonus"* |
+| **An extra menu item, "Preview Registered"** | yes | `Preview Registered`, `Preview` |
+| Preview has **its own wave list**, first wave the **Mischief Crystal** one | yes | *"This Preview allows you to play some of the new waves, use the new atoms, and see the other five backgrounds"* |
+| **An "Ordering Info" slide deck** | yes | `Ordering Info`, `Order by Phone`, `Order by Fax`, `Order by BBS (OPEN Door 5)`, `Down - Next Slide  Register!` |
+| **Quitting goes to the registration deck first** | yes | *"You can't stop now!"*, *"Lanny is 1/3 of the way to his goal and he still needs your help."* |
+| Then `TUBESEND.BIN` is dumped to the **DOS screen** | yes | `TUBESEND.BIN`, `ExitText Resource Error!` |
+| No wave-75 ending | - | `PRIZE.GFX`, `existance` and the whole ending text are **absent** from the shareware image |
+
+Two the player did not see, found while checking the above, and both change
+the shape of the work:
+
+* **the Instructions text is RE-WRAPPED between the editions.** The shareware
+  has *"will change every 45 seconds."* where the registered has *"change every
+  45 seconds."*, and there are more like it. So `src/instructions.cpp` is
+  **edition-specific**, not shared. `tools/gen_instructions.py` is already
+  parameterised over a disassembly and a string dump, so this costs a second
+  extraction rather than a second tool - but it does mean shareware mode owns a
+  second generated table, not a subset of the first one;
+* **the backgrounds are split, not merely fewer.** The registered image names
+  only the prefix `GAMEBG` and builds each name numerically. The shareware
+  image names the prefix **and** five literals - `GAMEBG5`, `6`, `7`, `9`,
+  `10` - which is exactly *"the other five backgrounds"* the Preview blurb
+  promises. Strongly suggests normal shareware play draws from `{1,2,3,4,8}`
+  and the Preview from `{5,6,7,9,10}`, but **which list is the literal one is
+  a guess until the routine is read** - it could as easily be the other way
+  round.
+
+Also worth recording because the game says it about itself: *"Lanny is 1/3 of
+the way to his goal"*. 25 of 75. The game's own text agreeing with a count
+taken off the dispatch arms is the fourth time this project's second-rank
+authority has confirmed something derived the hard way.
+
+### Savegames and high scores must be separated
+
+**The player's call, and it is right.** The two editions must not share save
+state. In 1994 they could not - they were separate installs with separate
+directories - so a single port binary that can be either one has a hazard the
+original never had: a 25-wave shareware save loaded into a 75-wave registered
+session, or the reverse, silently reinterpreted.
+
+This is the **highest-risk item in the whole plan**, because it is the only one
+that can damage files the player owns. `CLAUDE.md`'s second rule - do not write
+to the player's game directory - is about accidents; this is about a write that
+looks entirely intentional and lands in the wrong schema.
+
+So, in order:
+
+1. **Read the shareware save and high-score routines before writing anything.**
+   Whether `TUBES.SAV`'s two-bank-by-mode layout is even the same shape across
+   editions is still unknown, and it was already the last open item in this
+   section before any of this came up. A Preview mode with its own progression
+   is a third thing that might need a bank. The shareware ships a 792-byte
+   `TUBES.HSC`, the same size as the registered one, which is suggestive and
+   not proof.
+2. **Refuse rather than reinterpret.** Whatever the layouts turn out to be, a
+   save whose edition does not match the running mode is not loaded. The
+   failure mode to design out is a plausible misread, not an error message.
+3. **Decide the filenames from what the original does.** Writing `TUBES.SAV`
+   into a shareware install is faithful, because that is what the shareware
+   build does. The combination that has no original behaviour to copy is
+   `--shareware` pointed at a **registered** install - a port-side affordance -
+   and that one must not touch the registered `TUBES.SAV` or `TUBES.HSC`. A
+   port-owned filename for the non-native combination is the obvious answer;
+   settle it once both formats are read.
+
+### The exit screen, and the registered edition
+
+`TUBESEND.BIN` is 80 x **23** character/attribute pairs, and the two missing
+rows are the whole answer to how it is presented: the program `Move`s it to
+`0xB800` and **quits**, leaving the banner on the shell with the DOS prompt
+landing in the gap underneath. It is not a screen the game displays. It is a
+screen the game leaves behind.
+
+For **shareware mode that is straightforwardly faithful**, and the mechanism
+should follow the original rather than approximate it: on exit, write the
+decoded banner to the **real terminal** the port was launched from, in CP437
+with the attribute bytes as ANSI colour, and let the shell prompt land under
+it. That is the same effect by the same means. Fall back to rendering it in the
+window as a final frame when there is no tty - and only then, since the fallback
+is the part that is invented.
+
+For **the registered edition the honest answer is that it cannot be faithful**,
+because the registered executable never names `TUBESEND` and never showed it.
+But it does not have to be an invention either, and this is the useful part:
+the `.RES` is byte-identical, so **the banner is genuinely sitting in the
+registered player's own game files**, unreferenced. Showing it is displaying a
+resource they have, not fabricating one. So it belongs behind a **port-owned
+affordance** that does not pretend to be the original - the same category as
+the fifth Credits page in section 4 of this file, and for the same reason. An
+explicit `--exit-screen`, or a Credits-side item, is fine; the registered
+game's own quit path stays silent, as it is.
+
+The rule that keeps this straight: **the port may show the player their own
+data, but it may not claim the original showed it.**
+
+### The work, in order
+
+1. **Import `SW_UNP.EXE` into its own Ghidra project** - separate from
+   `../ghidra-project`, because two programs with the same segment layout in
+   one project is a confusion waiting to happen. Run
+   `ghidra_scripts/MapProgram.java` over it exactly as the registered image was
+   mapped: the call graph plus the strings each function references is what
+   identified every interface stage the first time, and the string table above
+   means the new stages will name themselves.
+2. **Diff the two maps.** Most of this program is the program already
+   decompiled. What matters is which functions are new, which are missing, and
+   which shifted - and the last group is the trap, since a shifted address that
+   still decompiles is the easiest way to write down a wrong finding.
+3. **Read the new stages**: the menu with its extra arm, the Preview's wave
+   list and background list, the Ordering Info deck, the quit path, and the
+   `TUBESEND.BIN` load and dump.
+4. **Read the spawn distribution** and settle whether types 9 and 10 are rolled
+   in normal play, which is the one rules-level difference rather than a
+   presentational one.
+5. **Read the save and high-score routines** - see above; this gates any write
+   path.
+6. **Then port it**, behind `--shareware`, with the generated tables extracted
+   mechanically rather than transcribed.
+
+The `.RES` being identical is what makes this tractable: every asset the
+shareware program needs is already decoded, already loadable, and already
+rendering. The work is entirely code.
 
 ---
 
