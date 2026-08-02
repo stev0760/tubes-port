@@ -138,7 +138,7 @@ Also done since: **every asset format** (`.SPR` and `.ANM` fell in one
 session), both splashes, the opening cutscene with its two-track animation
 player, and the screen fade that was open from the first session.
 
-Still unread - `.BIN` and nothing else:
+**Nothing in the program or the archive is unread.** The three that were:
 
 - ~~`1000:9499`, the wave-75 ending~~ - **done**, and it is what set
   `DS:0x20e3`. Verified from play: a real wave-75 clear runs the ending, the
@@ -151,7 +151,12 @@ Still unread - `.BIN` and nothing else:
   `1b2e:0f46`'s second toggle is what pins a lone track to the shown page, and
   `DS:0x2058` was `BLACKBRD.GFX` all along. It was NOT the cause of the
   cutscene's 144 pixels - see the notes
-- `.BIN` - one resource, and nothing decompiled reads it
+- ~~`.BIN`~~ - **done**, and it was the last one. `TUBESEND.BIN` is a raw DOS
+  text-mode screen dump (80 x 23 character/attribute pairs) and it is the
+  **shareware exit screen**. Nothing reads it: "TUBESEND" appears exactly once
+  in the whole game directory, in the archive's own directory entry. It is the
+  shareware build's sign-off carried in a shared archive. `tools/bin_decode.py`
+  renders it; see the notes for what it settles
 
 ### The engine: ~90%
 
@@ -268,8 +273,9 @@ frame *sequence* is identical - only the real-time speed.
 | Playfield geometry: 6 x 5 grid, pitch 18 x 13, origin (107, 134) | done |
 | Beaker rendering | done |
 
-Never examined: `.SPR` (2), `.BIN` (1). `.ANM` (1) is known to belong to the
-developer splash but is not decoded.
+**Every format in the archive is now decoded**, `.BIN` included - it was the
+last, and it turned out to be a text-mode screen the shipped executable never
+opens.
 
 ---
 
@@ -1184,22 +1190,30 @@ port of one person's disc.
 
 What would have to become version-aware, in rough order of likely pain:
 
-1. **The wave table.** `1000:86b8`'s dispatch has **75 arms** in the image
-   analysed here. Published notes say the registered version "adds 50 waves".
-   **Hypothesis, untested:** shareware is **25** waves and registered **75**,
-   which is what "adds 50" would mean - a much better fit than the 50/100 that
-   was assumed earlier. The test is cheap and decisive: unpack a shareware
+**Two of the five below are now answered, and `TUBESEND.BIN` answered both.**
+The last undecoded resource turned out to be the **shareware exit screen** - a
+DOS text-mode dump nothing in this build opens - and its registration pitch
+lists what registering buys: *50 more exciting waves, 2 helpful new atoms, 5
+gorgeous new backgrounds*. See `docs/reversing-notes.md`.
+
+1. **The wave table.** ~~Hypothesis, untested~~ - **corroborated by the game's
+   own text.** `1000:86b8`'s dispatch has **75 arms** in this image and the
+   pitch says registering adds **50**, so shareware is **25**. The cheap
+   decisive confirmation is unchanged and still worth doing: unpack a shareware
    `TUBES.EXE` and count the arms.
-2. **Which edition is in `..`.** Unknown, and worth settling first. The image
-   references `PRIZE.GFX` behind a "RegisteredEnding" resource error string,
-   and `1000:9499` - reached on clearing wave 75 - is the obvious place it is
-   shown. That points at this being the **registered** image, but a string is
-   not proof; find the gate that reads it.
-3. **The resource sets.** The registered edition is documented as adding five
-   backgrounds and the AntiMatter and Bonus atoms. The port already loads by
-   name and tolerates a missing sprite, so this may cost nothing - but the
-   spawn distribution rolls types 9 and 10 unconditionally, and a shareware
-   `.RES` without them would need that checked rather than assumed.
+2. **Which edition is in `..`.** ~~Unknown~~ - **it is the REGISTERED one**,
+   and no longer on the strength of one `RegisteredEnding` string. All three
+   advertised additions are present and counted: 75 waves decompiled arm by
+   arm, `AFADE*` and `GLDFADE*` for the two atoms, and `GAMEBG1..10` for the
+   backgrounds. The shareware exit screen is in the archive because the archive
+   is shared between the two builds; the registered executable never opens it.
+3. **The resource sets.** Now quantified rather than "documented as": shareware
+   should have **5** backgrounds against this copy's 10, and **no** AntiMatter
+   or Bonus. The port already loads by name and tolerates a missing sprite, so
+   this may cost nothing - but the spawn distribution rolls types 9 and 10
+   unconditionally, and a shareware `.RES` without them needs that checked
+   rather than assumed. That is the one place a shareware run would misbehave
+   rather than merely look different.
 4. **`tools/vercheck.py`** already exists to decide whether two MZ images came
    off the same toolchain; point it at the two editions before anything else.
 5. **`TUBES.SAV`.** Two banks by game mode, decoded. Whether the layout is the
@@ -1207,7 +1221,18 @@ What would have to become version-aware, in rough order of likely pain:
 
 The engine should end up **detecting** the edition rather than being told,
 since a user with either copy should be able to run `--gamedir` and have it
-work. What identifies it is not yet known.
+work. Three candidate tells are now on the table, all readable from the
+`.RES` alone without touching the executable: **how many `GAMEBG*` there are**
+(5 or 10), **whether `AFADE*` and `GLDFADE*` exist**, and whether the archive
+carries `TUBESEND.BIN` at all. The first two are what the game itself would
+notice; the third is not a reliable tell on its own, since the registered
+archive here carries the shareware screen too.
+
+And one lead worth following when a shareware copy is in hand: **does the
+shareware `TUBES.EXE` name `TUBESEND.BIN`?** If it does, the exit screen is a
+real screen of that edition and porting it becomes faithful rather than
+invented - the only reason not to render it today is that nothing in this
+build ever does.
 
 ---
 

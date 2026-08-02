@@ -8877,3 +8877,77 @@ produced it. This is that failure exactly: "no breakpoint fired" was reported
 by an instrument that had never been checked against the run it was measuring.
 **Read `CS` at an entry breakpoint for the run in hand; never carry a load
 address across configurations.**
+
+## `.BIN` decoded - the last format, and it is an orphan
+
+`TUBESEND.BIN` was the one resource nothing had ever read. It is not code, not
+a bitmap and not a table: it is a **raw DOS text-mode screen dump**, the thing
+a Pascal program `Move`s straight to segment `0xB800` when it wants to print a
+full-screen banner and exit.
+
+    u8[2] per cell, row-major:  [character (CP437), attribute]
+
+    attribute:  bit 7    blink
+                bits 6-4 background
+                bits 3-0 foreground
+
+3,680 bytes is 1,840 cells, and for an 80-column screen the only sensible
+factorisation is **80 x 23** - not 25, because the bottom two rows are left for
+the shell prompt to land under the art instead of scrolling it. The dump's own
+last row is the drop-shadow of the boxes above it, which would look wrong
+anywhere but the bottom. 12 attributes, none blinking, almost all on blue: the
+ordinary DOS sign-off screen. `tools/bin_decode.py` renders it, in CP437 or in
+colour.
+
+### Nothing loads it, and that is the finding
+
+"TUBESEND" appears **exactly once in the entire game directory** - in the
+archive's own directory entry. Not in `TUBES.EXE`, not in the unpacked image,
+not in `SETUP.EXE`, not in the drivers. The unpacked image names 112 resources
+and **not one of them has a `.BIN` extension**. So the file is carried in the
+archive and never opened by the program that ships with it.
+
+That is exactly what it should be, because of what it says.
+
+### It is the SHAREWARE exit screen, and it settles two open questions
+
+The screen is a registration pitch - order address, phone, fax and the
+Software Creations BBS - and the middle box lists what registering buys:
+
+        50 more exciting waves
+         2 helpful new atoms
+     5 gorgeous new backgrounds
+
+**First: shareware is 25 waves and registered is 75.** `PLAN.md` has carried
+that as "Hypothesis, untested: shareware is 25 and registered 75, which is what
+'adds 50' would mean". Here is the game's own text saying "50 more", against a
+decompiled table of **75 arms** in this image. 75 - 50 = 25. The hypothesis is
+now corroborated from the binary's own documentation, which is the second-rank
+authority `CLAUDE.md` describes - and this is the **fourth** time that has held
+an answer the project was deriving the hard way.
+
+**Second: the copy in `..` is the REGISTERED edition**, and this is no longer
+inferred from a single `RegisteredEnding` string. All three advertised
+additions are present and counted:
+
+| the pitch says | this copy has |
+|---|---|
+| 50 more exciting waves | 75 waves, decompiled arm by arm at `1000:86b8` |
+| 2 helpful new atoms | `AFADE*` and `GLDFADE*` - AntiMatter and the Bonus |
+| 5 gorgeous new backgrounds | `GAMEBG1..10`, ten of them |
+
+So the shareware edition is 25 waves, 5 backgrounds and no AntiMatter or Bonus,
+and this archive is the registered one **with the shareware build's exit screen
+still in it** - which is why nothing here opens it. A resource that no
+executable names is not a mystery once you know it belongs to a different
+executable.
+
+### What the port should do with it: nothing, for now
+
+Rendering it would invent a screen the original never shows, which is the one
+thing this port does not do. It is recorded here as a preservation finding and
+as a lead for the shareware work in `PLAN.md`: if the shareware `TUBES.EXE`
+turns out to name `TUBESEND.BIN`, then the exit screen is a real screen of that
+edition and porting it becomes a faithful thing to do rather than an invention.
+That is also a second cheap test of which edition an image is, beside counting
+the wave table's arms.

@@ -3693,3 +3693,48 @@ correctly and the wiring dropped half of it. Both are now behind a function
 with a test rather than a step someone has to remember.
 
 742 checks / 0 failures, `--demo-trace` unmoved.
+
+## 2026-08-01 - `.BIN`, the last undecoded resource, is the shareware exit screen
+
+`TUBESEND.BIN` was the one thing left in the archive that nothing had read. It
+is a **raw DOS text-mode screen dump** - 80 x 23 character/attribute pairs, the
+format a Pascal program `Move`s to `0xB800` to print a banner and quit. 3,680
+bytes is 1,840 cells and 23 rows rather than 25, because the bottom two are
+left for the shell prompt to land under the art. `tools/bin_decode.py` renders
+it in CP437 or in colour.
+
+The content is a registration pitch: the Software Creations order address,
+phone, fax and BBS, and a box listing what registering buys - *50 more exciting
+waves, 2 helpful new atoms, 5 gorgeous new backgrounds*.
+
+**Nothing loads it**, and that is the finding rather than a loose end. The
+string "TUBESEND" appears exactly once in the entire game directory - in the
+archive's own directory entry. Not in `TUBES.EXE`, not in the unpacked image,
+not in `SETUP.EXE` or the drivers, and the unpacked image names 112 resources
+of which none has a `.BIN` extension. It is the SHAREWARE build's sign-off,
+carried in an archive shared between the two editions. A resource no executable
+names stops being a mystery once you work out it belongs to a different
+executable.
+
+It settles two things `PLAN.md` had carried as open:
+
+* **shareware is 25 waves.** The table here has 75 arms and the pitch says
+  registering adds 50. The port had this written down as "Hypothesis, untested"
+  - it is now corroborated by the binary's own documentation, which is the
+  second-rank authority `CLAUDE.md` names. That file says the game's own text
+  has three times held an answer being derived the hard way; this is the
+  fourth;
+* **the copy in `..` is the REGISTERED edition**, and not on the strength of
+  one `RegisteredEnding` string any more. All three advertised additions are
+  present and counted: 75 waves, `AFADE*` and `GLDFADE*` for the two atoms,
+  `GAMEBG1..10` for the backgrounds.
+
+The port renders none of it. Nothing in this build shows the screen, so drawing
+it would invent a screen the original never displays - the one thing this port
+does not do. It is recorded as a preservation finding and as a lead: if the
+shareware `TUBES.EXE` names `TUBESEND.BIN`, then it is a real screen of that
+edition and porting it becomes faithful.
+
+Also noted for the edition-detection work: the count of `GAMEBG*` and the
+presence of `AFADE*`/`GLDFADE*` are both readable from the `.RES` alone, which
+is a better tell than anything in the executable.
