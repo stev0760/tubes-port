@@ -186,6 +186,52 @@ constexpr int endingWaveFor(Edition e) {
     return e == Edition::kShareware ? kWaveCountShareware : kWaveCountRegistered;
 }
 
+// ---------------------------------------------------------------------------
+// Which files a session may write - THE PORT'S OWN RULE, not the original's
+// ---------------------------------------------------------------------------
+//
+// Everything else in this file is transliterated. This is not, and it is the
+// one place in the edition work that has no original behaviour to copy, so it
+// is set out at length rather than looking like a finding.
+//
+// Both original builds write `TUBES.SAV` and `TUBES.HSC`. They could, because
+// in 1994 they were separate installs in separate directories - the shareware
+// player and the registered player never shared a folder. One port binary that
+// can be either edition breaks that, and the formats make it dangerous rather
+// than merely untidy: they are IDENTICAL. Same 960-byte file, same two 396-byte
+// banks, same 36-byte records - `1ac3:00ac` / `1ac3:0243` against `1b2e:00ac` /
+// `1b2e:0243` are the same code, differing in 22 string-literal addresses. So a
+// 25-wave shareware save is a structurally VALID registered save. Nothing about
+// a mismatched load looks wrong; it just quietly means something else.
+//
+// And the port cannot detect its way out of this. `TUBES.RES` is byte-identical
+// between the editions, so pointing `--gamedir` at an install says nothing
+// about which edition it came from - there is no "native" combination to
+// recognise at runtime. The edition is only ever the port's own flag, so the
+// separation has to be the port's own too.
+//
+// The player's call, and it keeps the faithful case exactly as it was:
+//
+//     registered   TUBES.SAV / TUBES.HSC     what both originals write
+//     shareware    TUBESSW.SAV / TUBESSW.HSC port-owned, so a shareware run
+//                                            can never touch a registered file
+//
+// Distinct names make a cross-load impossible by construction, which beats
+// detecting one: there is no tag to add, no format to break, and no failure
+// mode where the check is what is broken. The cost is a filename the original
+// never wrote, and that is the honest trade - see PLAN.md, "the port may show
+// the player their own data, but it may not claim the original showed it".
+//
+// The Preview writes NOTHING either way; that part IS the original's, guarded
+// at `1000:5ed0` and `1000:9fb9`. See `canSave` / `canEnterHiScore` above.
+constexpr const char* saveFileName(Edition e) {
+    return e == Edition::kShareware ? "TUBESSW.SAV" : "TUBES.SAV";
+}
+
+constexpr const char* hiScoreFileName(Edition e) {
+    return e == Edition::kShareware ? "TUBESSW.HSC" : "TUBES.HSC";
+}
+
 // The session's edition state, together, because every rule above needs both.
 struct EditionState {
     Edition edition = Edition::kRegistered;
@@ -203,6 +249,10 @@ struct EditionState {
     }
     bool canSave() const { return tubes::canSave(preview); }
     bool canEnterHiScore() const { return tubes::canEnterHiScore(preview); }
+    const char* saveFileName() const { return tubes::saveFileName(edition); }
+    const char* hiScoreFileName() const {
+        return tubes::hiScoreFileName(edition);
+    }
 };
 
 }  // namespace tubes

@@ -2507,6 +2507,49 @@ void testSharewareWavesAreTheRegisteredFirstTwentyFive() {
     check(reg.endingWave() == 75, "registered ends at wave 75");
 }
 
+// The one edition rule that is the PORT'S and not the original's: the two
+// editions must never write the same file.
+//
+// Both original builds write `TUBES.SAV` and `TUBES.HSC`, and could, being
+// separate installs. One binary that is either edition cannot, and the formats
+// make it dangerous rather than untidy - they are identical, so a 25-wave
+// shareware save is a structurally valid registered save and a cross-load looks
+// like nothing at all. `TUBES.RES` is byte-identical between the editions too,
+// so there is nothing to detect: the edition is the port's flag and so is the
+// separation.
+//
+// What this test protects is the registered side staying EXACTLY as it was. A
+// registered install must see the files the original wrote, unchanged and
+// unrenamed; only the shareware names are the port's invention.
+void testTheEditionsNeverWriteTheSameFile() {
+    using tubes::Edition;
+    check(std::string(tubes::saveFileName(Edition::kRegistered)) == "TUBES.SAV",
+          "registered saves stay in the original's own TUBES.SAV");
+    check(std::string(tubes::hiScoreFileName(Edition::kRegistered)) ==
+              "TUBES.HSC",
+          "and registered scores in the original's own TUBES.HSC");
+    check(std::string(tubes::saveFileName(Edition::kShareware)) !=
+              std::string(tubes::saveFileName(Edition::kRegistered)),
+          "a shareware save can never land in the registered file");
+    check(std::string(tubes::hiScoreFileName(Edition::kShareware)) !=
+              std::string(tubes::hiScoreFileName(Edition::kRegistered)),
+          "nor a shareware score in the registered table");
+    // And the two shareware names must differ from each other, or the save
+    // would overwrite the scores.
+    check(std::string(tubes::saveFileName(Edition::kShareware)) !=
+              std::string(tubes::hiScoreFileName(Edition::kShareware)),
+          "the shareware save and score files are two files");
+
+    // The Preview picks up the shareware names but must never reach a write:
+    // that guard is the ORIGINAL's, at `1000:5ed0` and `1000:9fb9`.
+    tubes::EditionState pv{Edition::kShareware, true};
+    check(!pv.canSave() && !pv.canEnterHiScore(),
+          "a Preview run writes neither file");
+    check(std::string(pv.saveFileName()) ==
+              tubes::saveFileName(Edition::kShareware),
+          "the Preview is shareware for naming purposes even so");
+}
+
 // The wave counts, and the background roll that differs by one operand.
 void testTheEditionsDifferInWaveAndBackgroundCounts() {
     tubes::EditionState reg{tubes::Edition::kRegistered, false};
@@ -3962,6 +4005,7 @@ int main() {
     testThePreviewHasItsOwnFiveWaveList();
     testGameStartWaveUsesTheEditionAwareObjectiveTable();
     testSharewareWavesAreTheRegisteredFirstTwentyFive();
+    testTheEditionsNeverWriteTheSameFile();
     testTheEditionsDifferInWaveAndBackgroundCounts();
     testTheTwoEditionsHaveDifferentEndScreens();
     testEachEditionEndsOnItsOwnWave();

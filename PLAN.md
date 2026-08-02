@@ -68,23 +68,34 @@ asked for, and then publishing:
    header comment is the Instructions' header**, verbatim.~~ **FIXED.** It now
    names `1b2e:411b`, its 4 pages and 36 strings, and its own regenerate command
    line - as does `src/instructions.cpp`, which had none.
-5. **Shareware edition support**, via a `--shareware` switch - and it turned
-   out to be far LARGER than this list assumed, twice over. It was written up
-   as "nothing to detect and nothing missing" on the strength of the `.RES`
-   being byte-identical; then the player ran the shareware build. It has an
-   extra menu item (**Preview Registered**, with its own wave list starting on
-   the Mischief Crystal wave), no Bonus or AntiMatter in normal play, an
-   **Ordering Info slide deck**, a registration deck on the way out, and it
-   dumps `TUBESEND.BIN` to the DOS screen as it quits. Its Instructions text is
-   even re-wrapped differently. **So this is a second program to decompile, not
-   a flag over the first**, and it is now the largest remaining item in this
-   file. Savegames and high scores must be kept separate between the modes -
-   the one part of it that can damage a player's own files. See "What shareware
-   mode actually is" below, which carries the full plan and the order of work.
+5. ~~**Shareware edition support**, via a `--shareware` switch~~ - **DONE.** It
+   turned out far LARGER than this list assumed, twice over, and then smaller
+   than the corrected estimate once the last two claims were checked.
 
-   The payoff is worth the size: it makes the port playable by someone who only
+   Shipped: the **Preview Registered** menu item with its own five-wave list
+   and fixed backgrounds, the second inserted item and the renumbering under
+   both, no Bonus or AntiMatter in normal play, the **Ordering Info** deck, the
+   wave-25 registration screen, the Exit path that runs the deck before halting,
+   `TUBESEND.BIN` dumped to the terminal, the `Random(5)` backdrop roll, and
+   separate save and high-score files. `--shareware` and `--preview` are the
+   switches; `edition.h` is the whole model.
+
+   **Two things this item claimed that were wrong**, both retracted with the
+   evidence in `docs/reversing-notes.md`. The Instructions are **not**
+   re-wrapped - the deck is byte-identical between the editions, and the strings
+   that started that were wave briefings in a different segment. And the
+   shareware's 25 waves **are** the registered's first 25, proven off the two
+   dispatches, so one wave table serves both.
+
+   The payoff is what it promised: the port is now playable by someone who only
    ever had the shareware disc, which is a fitting thing for an abandonware
    preservation project to be able to do.
+
+   Still open, and deliberately: **where `--shareware` eventually belongs.** It
+   is a command-line flag, and auto-detection is impossible - `TUBES.RES` is
+   byte-identical between the editions, so an install carries no evidence of
+   which one it is. That leaves a menu choice or a settings entry, and neither
+   is urgent.
 6. **Publishing**, which is the last section of this file and is gated on a
    comment and documentation pass, a repository check and a final code review.
    **The player has a specific method in mind for the review and lint pass, so
@@ -1392,19 +1403,38 @@ So, in order:
    **And Preview writes nothing** - two explicit guards on `[0x1d4b]`, at
    `1000:5ed0` (the F2 save prompt) and `1000:9fb9` (the high score entry). So
    no third bank, no extra file.
-2. **Refuse rather than reinterpret** - and note the formats being **identical**
-   makes this MORE important, not less. A 25-wave shareware save is a
-   structurally valid registered save, so nothing in a mismatched file will
-   look wrong. This is the port's own hazard, from one binary running either
-   edition against either install; the original never had it, so the edition
-   tag has to be the port's own and cannot be derived.
-3. **Decide the filenames from what the original does.** Writing `TUBES.SAV`
-   into a shareware install is faithful, because that is what the shareware
-   build does. The combination that has no original behaviour to copy is
-   `--shareware` pointed at a **registered** install - a port-side affordance -
-   and that one must not touch the registered `TUBES.SAV` or `TUBES.HSC`. A
-   port-owned filename for the non-native combination is the obvious answer;
-   settle it once both formats are read.
+2. ~~**Refuse rather than reinterpret.**~~ **DONE, and by a better mechanism
+   than refusing** - the two editions simply never open the same file, so there
+   is no cross-load to detect. See below.
+3. ~~**Decide the filenames from what the original does.**~~ **DONE - the
+   player's call, and it went the other way from what this item assumed.**
+
+   The assumption was that `--shareware` at a *shareware* install is the native
+   combination and should write `TUBES.SAV` faithfully, with a port-owned name
+   only for the mismatched case. **The port cannot tell the two apart.**
+   `TUBES.RES` is byte-identical between the editions, so `--gamedir` says
+   nothing about which edition an install came from; there is no native
+   combination to recognise. The edition is only ever the port's flag.
+
+   So the split is on the flag, unconditionally:
+
+   | | save | high scores |
+   |---|---|---|
+   | registered | `TUBES.SAV` | `TUBES.HSC` |
+   | shareware | `TUBESSW.SAV` | `TUBESSW.HSC` |
+   | Preview | writes nothing - `1000:5ed0`, `1000:9fb9` | nothing |
+
+   Distinct names beat a tag-and-refuse scheme on every count: nothing is added
+   to a 960-byte format that currently matches the original's byte-for-byte,
+   there is no check that can itself be wrong, and the registered side is left
+   *exactly* as it was. `tubes::saveFileName` / `hiScoreFileName` in
+   `edition.h` carry the reasoning, and
+   `testTheEditionsNeverWriteTheSameFile` pins it - including that the
+   registered names are still the original's own.
+
+   Verified against a scratch install as well as in the unit tests: a
+   `--shareware` run with malformed `TUBES.SAV` and `TUBES.HSC` sitting beside
+   it reads neither, and a registered run is unchanged.
 
 ### The exit screen, and the registered edition
 

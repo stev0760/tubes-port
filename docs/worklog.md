@@ -4620,3 +4620,49 @@ Both generated files now carry their own regenerate command line.
 924 checks / 0 failures, up from 897. `--demo-trace` md5 unmoved at
 `dc4f5e6a`, Instructions slide 1 and the Credits re-captured, game directory
 untouched.
+
+## 2026-08-02 - the editions get separate files, and it is the port's own rule
+
+The last shareware item, and `PLAN.md` called it the highest-risk one in the
+file because it is the only one that can damage files the player owns. Until
+now `src/main.cpp` built `gameDir + "/TUBES.SAV"` and `"/TUBES.HSC"`
+unconditionally, so a `--shareware` run read and wrote a registered player's own
+saves.
+
+**The plan's own framing had to be corrected first.** It assumed `--shareware`
+at a shareware install is the "native" combination and should faithfully write
+`TUBES.SAV`, reserving a port-owned name for the mismatched case. The port
+cannot tell the two apart: `TUBES.RES` is byte-identical between the editions,
+so `--gamedir` carries no evidence of which edition an install came from. There
+is no native combination to recognise. The edition is only ever the port's own
+flag, so the separation has to be too.
+
+The player chose distinct filenames, split on the flag:
+
+    registered   TUBES.SAV / TUBES.HSC       unchanged, the original's own
+    shareware    TUBESSW.SAV / TUBESSW.HSC   port-owned
+    Preview      neither - 1000:5ed0, 1000:9fb9
+
+That beats the tag-and-refuse alternative on every count. The formats are
+IDENTICAL between the editions - `1ac3:00ac` / `1ac3:0243` are the same code as
+`1b2e:00ac` / `1b2e:0243`, differing in 22 string-literal addresses - so a
+25-wave shareware save is a structurally valid registered save and a cross-load
+would look like nothing at all. A tag would have to go somewhere in a 960-byte
+file that currently matches the original's byte-for-byte, and then a check could
+itself be the thing that is broken. Distinct names make the collision impossible
+by construction and leave the registered side untouched.
+
+This is the port's own rule and the comment in `edition.h` says so at length,
+because everything else in that file is transliterated and this must not read as
+a finding.
+
+Verified twice. `testTheEditionsNeverWriteTheSameFile` asserts the registered
+names are still the original's, that no shareware name collides with a
+registered one or with the other shareware one, and that a Preview writes
+neither. And against a scratch install: with malformed `TUBES.SAV` and
+`TUBES.HSC` sitting in it, a `--shareware` run reports nothing - it opens
+neither - while a registered run names both, and with `TUBESSW.*` present the
+shareware run names those instead.
+
+931 checks / 0 failures, up from 924. The player's own `TUBES.SAV` is unmoved at
+md5 `91af6b84`.

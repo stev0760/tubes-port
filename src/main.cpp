@@ -3401,7 +3401,16 @@ int main(int argc, char** argv) {
     // table the game SHIPS one, zero-filled, and the reader zero-fills the
     // banks before reading anyway - so a missing or malformed file is simply
     // five empty slots per bank rather than an error.
-    const std::string savePath = opt.gameDir + "/TUBES.SAV";
+    // The NAME is edition-dependent and the port's own rule - `TUBES.SAV`
+    // registered, `TUBESSW.SAV` shareware. The two files have identical
+    // formats, so a cross-load would be silent; distinct names make it
+    // impossible instead of detectable. `edition.h` carries the reasoning.
+    //
+    // `opt.edition` is right here and `game->edition()` would not be: this runs
+    // before any session exists, and it is the EDITION that picks the file, not
+    // the Preview flag - a Preview run writes nothing at all.
+    const std::string savePath =
+        opt.gameDir + "/" + opt.edition.saveFileName();
     tubes::SaveFile saves;
     {
         std::ifstream sf(savePath, std::ios::binary);
@@ -3410,14 +3419,16 @@ int main(int argc, char** argv) {
                                       std::istreambuf_iterator<char>());
             if (!tubes::decodeSaves(raw, saves)) {
                 std::fprintf(stderr,
-                             "TUBES.SAV is malformed (%zu bytes); starting "
-                             "with no saved games\n", raw.size());
+                             "%s is malformed (%zu bytes); starting "
+                             "with no saved games\n",
+                             opt.edition.saveFileName(), raw.size());
                 saves = tubes::SaveFile{};
             }
         }
     }
 
-    const std::string hiScorePath = opt.gameDir + "/TUBES.HSC";
+    const std::string hiScorePath =
+        opt.gameDir + "/" + opt.edition.hiScoreFileName();
     tubes::HiScoreFile hiScores = tubes::defaultHiScores();
     {
         std::ifstream hf(hiScorePath, std::ios::binary);
@@ -3426,8 +3437,9 @@ int main(int argc, char** argv) {
                                       std::istreambuf_iterator<char>());
             if (!tubes::decodeHiScores(raw, hiScores)) {
                 std::fprintf(stderr,
-                             "TUBES.HSC is malformed (%zu bytes); using the "
-                             "shipped table\n", raw.size());
+                             "%s is malformed (%zu bytes); using the "
+                             "shipped table\n",
+                             opt.edition.hiScoreFileName(), raw.size());
                 hiScores = tubes::defaultHiScores();
             }
         }
