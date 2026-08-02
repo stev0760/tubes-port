@@ -1267,7 +1267,7 @@ and only the third column settles anything.
 | Difference | Reported | Corroborated by the binary's own text |
 |---|---|---|
 | 25 waves, not 75 | yes | 25 dispatch arms at `1000:86b8`; *"50 more exciting Waves!"* |
-| **No Bonus and no AntiMatter in normal play** | yes | *"2 helpful new Atoms:"* / *"Anti-Matter And Bonus"* |
+| ~~**No Bonus and no AntiMatter in normal play**~~ **DECOMPILED** | yes | two rate bytes zeroed at `1000:9e63`; see below |
 | **An extra menu item, "Preview Registered"** | yes | `Preview Registered`, `Preview` |
 | Preview has **its own wave list**, first wave the **Mischief Crystal** one | yes | *"This Preview allows you to play some of the new waves, use the new atoms, and see the other five backgrounds"* |
 | **An "Ordering Info" slide deck** | yes | `Ordering Info`, `Order by Phone`, `Order by Fax`, `Order by BBS (OPEN Door 5)`, `Down - Next Slide  Register!` |
@@ -1378,9 +1378,22 @@ data, but it may not claim the original showed it.**
 3. **Read the new stages**: the menu with its extra arm, the Preview's wave
    list and background list, the Ordering Info deck, the quit path, and the
    `TUBESEND.BIN` load and dump.
-4. **Read the spawn distribution** and settle whether types 9 and 10 are rolled
-   in normal play, which is the one rules-level difference rather than a
-   presentational one.
+4. ~~**Read the spawn distribution**~~ - **DONE**, and it is the smallest
+   possible difference. The spawn code is **byte-identical** between the
+   editions, at the same addresses (`1000:4a28` Bonus, `1000:4a64`
+   AntiMatter). The whole change is what the session setup writes into two rate
+   bytes: registered sets `[0x1d49]=50` and `[0x1d4a]=25` unconditionally,
+   shareware zeroes both and restores **those same two values** only when the
+   Preview flag `[0x1d4b]` is set. With a rate of 0 the roll is still made and
+   always rejected, so **the RNG sequence does not diverge between editions** -
+   shareware mode is two constants, not a code path, and Flashium is unaffected
+   because the fallback `Random(8)+1` includes it.
+
+   The control comparison settles the design: **the registered build contains
+   the Preview path too**, reads `[0x1d4b]` at addresses identical to the
+   shareware's, and writes it exactly once - to zero, at startup. So the two
+   builds are one source, and `preview = false` in registered mode is not the
+   port approximating anything; it is what the original does.
 5. **Read the save and high-score routines** - see above; this gates any write
    path.
 6. **Then port it**, behind `--shareware`, with the generated tables extracted

@@ -9314,3 +9314,104 @@ Still open from this pass: which arm is the menu item the player saw, what
 `0x1d4e`/`0x1d4f` mean, and the spawn distribution. `1000:5ed0` is a text draw
 and **not** the spawn check - noting that explicitly, because it was reached
 while looking for the spawn and would have been easy to write down as one.
+
+### The spawn distribution: two rate bytes, and the code is byte-identical
+
+**Settled, and it closes the last rules-level question about the shareware
+edition.** `PLAN.md` had it as "whether the shareware executable's spawn
+distribution rolls types 9 and 10 at all - the one place a shareware run could
+differ in RULES rather than in presentation". It does roll them. It rejects
+them.
+
+The registered distribution is already transliterated in `src/game.cpp` from
+`1000:49fd`: one roll of `Random(11)+1` picks a class, and types 9 and 10 take
+a second roll against two rate bytes, `DS:0x1d49` for AntiMatter and
+`DS:0x1d4a` for Bonus. The shareware code for that is at **exactly the same
+addresses** - `1000:4a28` and `1000:4a64` in both images, same instructions:
+
+    type := Random(11) + 1
+    if type = 10 then begin                        { 1000:4a14 }
+        r := Random(100) + 1
+        if r < [0x1d4a] then type := 10 else type := Random(8) + 1 end
+    if type = 9 then begin                         { 1000:4a50 }
+        r := Random(100) + 1
+        if r < [0x1d49] then type := 9  else type := Random(8) + 1 end
+
+`JNC` is unsigned `>=`, so the special is taken only while `r < rate`.
+
+**The whole difference is what the session setup writes into those two bytes.**
+
+Registered, `1000:9e53` at `a59e` - unconditional, one write each:
+
+    [0x1d49] := 0x32      { 50 }
+    [0x1d4a] := 0x19      { 25 }
+
+Shareware, `1000:9718` at `9e63` - zeroed, then restored only under the Preview
+flag:
+
+    [0x1d49] := 0                                  { 1000:9e63 }
+    [0x1d4a] := 0
+    [BP-0x16f] := 7
+    if [0x1d4b] <> 0 then begin                    { 1000:9e72, the Preview flag }
+        [0x1d49] := 0x32                           { the registered values, exactly }
+        [0x1d4a] := 0x19
+        [BP-0x16f] := 5 end
+
+So in shareware normal play both rates are **0**, and since `r` is
+`Random(100)+1` and therefore at least 1, `r < 0` is never true: every roll of
+9 or 10 falls through to `Random(8)+1`. The player's report - no Bonus and no
+AntiMatter in normal play, both present in the Preview - is exactly this, and
+the Preview restores the registered rates *unchanged* rather than using reduced
+ones.
+
+**Two consequences that matter for the port.**
+
+* The random numbers are **still consumed either way**. The `Random(100)+1` is
+  rolled and then discarded, and the `Random(8)+1` fallback is rolled too. So
+  the RNG sequence does not diverge between the editions - a shareware session
+  and a registered session from the same seed make the same calls in the same
+  order. Shareware mode is **two constants**, not a second code path, and the
+  `DEMO.SCR` oracle's determinism argument survives intact.
+* Because `Random(8)+1` includes 8, Flashium is still dispensed normally in
+  shareware. Only 9 and 10 are suppressed. The specials family at 11 is
+  untouched.
+
+#### The registered build has the Preview flag too, and never sets it
+
+The control comparison is the good part. `FindScalarRefs` for `0x1d4b` over the
+**registered** image:
+
+    1000:2dd0  CMP byte ptr [0x1d4b],0x0
+    1000:3a67  CMP byte ptr [0x1d4b],0x0     @ 1000:5ed0 - the same address as shareware
+    1000:9e53  CMP byte ptr [0x1d4b],0x0
+    entry      MOV byte ptr [0x1d4b],0x0     @ 1000:b1e4 - written ONCE, to zero
+
+So the registered executable reads the flag in the same three places, at
+addresses identical to the shareware's, and writes it exactly once - to 0, at
+startup, never again. **The two builds are the same Pascal source compiled with
+the Preview path present in both**; the registered one simply has no menu arm
+that turns it on. That is why `1000:5ed0`'s save-prompt gate and the rate
+branch both exist over there as unreachable code.
+
+Which is a useful thing to know for the port: registered mode is `preview =
+false` everywhere, and that is not an approximation of the original - it is
+what the original does.
+
+**And it is a second, independent confirmation of the reading**, arrived at by
+a different route than the strings: a flag whose only registered write is a
+zero, in a build with no Preview, is not a coincidence.
+
+#### One dead store, recorded rather than explained
+
+`[BP-0x16f]` - written 7 in normal play and 5 in Preview, right beside the rate
+writes - is **written twice and read nowhere**. `FindScalarRefs` for `0xfe91`
+over the whole shareware image returns those two writes and nothing else, and
+the offset does not appear among `1000:3a67`'s static-link reads either (it uses
+`0xfe8f` and `0xfe92`, not `0xfe91`).
+
+Not explained. It is recorded because a value computed and never consumed is
+the exact shape of the marked-atom bug fixed on 2026-08-01 - except that here
+it is the **original** doing it, so it is a fact about the game rather than a
+defect to fix. 7 and 5 are suggestive next to "the other five backgrounds", and
+that suggestion is deliberately not being turned into a finding: the background
+lists are still unread.

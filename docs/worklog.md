@@ -3866,3 +3866,50 @@ Nothing ported yet. `PLAN.md` carries the order of work, which starts with
 importing `SW_UNP.EXE` into its own Ghidra project and running `MapProgram`
 over it the way the registered image was mapped. No code changed, so the test
 count is unmoved at 742.
+
+## 2026-08-02 - the shareware spawn: two rate bytes, and both builds are one source
+
+`PLAN.md` carried "whether the shareware executable's spawn distribution rolls
+types 9 and 10 at all" as the one place a shareware run could differ in RULES
+rather than presentation. Answered: it rolls them and rejects them.
+
+The spawn is **byte-identical between the editions, at the same addresses** -
+`1000:4a28` for Bonus and `1000:4a64` for AntiMatter in both images. Each takes
+a second roll of `Random(100)+1` and compares it against a rate byte, `0x1d4a`
+and `0x1d49`. The entire edition difference is what the session setup stores
+there:
+
+* registered `1000:9e53` writes `0x32` and `0x19` unconditionally;
+* shareware `1000:9718` zeroes both, then restores **exactly those two values**
+  under the Preview flag `[0x1d4b]`.
+
+A rate of 0 can never be reached by `Random(100)+1`, so every 9 and 10 falls
+through to `Random(8)+1`. Two things follow that make the port trivial: the
+random numbers are consumed either way, so **the RNG sequence does not diverge
+between the editions** and the `DEMO.SCR` determinism argument is untouched;
+and `Random(8)+1` includes 8, so Flashium is dispensed normally and only 9 and
+10 are suppressed.
+
+**The good part is the control comparison.** `FindScalarRefs` for `0x1d4b` over
+the REGISTERED image finds it read in the same three functions, at addresses
+identical to the shareware's - `1000:5ed0` is the same instruction in both -
+and written exactly once, to zero, in `entry`. So the registered build carries
+the whole Preview path as unreachable code, and the two executables are one
+Pascal source with no menu arm to turn it on over there. `preview = false` in
+the port's registered mode is therefore the original's behaviour rather than an
+approximation of it, and that conclusion arrived by a completely different
+route than the string evidence did.
+
+Recorded and not explained: `[BP-0x16f]`, written 7 in normal play and 5 in
+Preview right beside the rate writes, is **written twice and read nowhere** in
+the whole image. That is the same shape as the marked-atom counter bug fixed
+yesterday, except it is the original doing it. 7 and 5 sit temptingly close to
+"the other five backgrounds" and that temptation is being left alone until the
+background lists are actually read.
+
+Method note worth keeping: the whole finding came from starting at the PORT's
+own transliteration of `1000:49fd`, taking the two DS offsets out of it, and
+running one scalar scan per edition. Four Ghidra invocations. Reading the
+shareware spawn from scratch would have been an afternoon.
+
+No code changed; 742 checks unmoved.
