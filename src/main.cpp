@@ -787,10 +787,18 @@ struct ScenePose {
     // else and hops him, and the ending is the only caller that reaches it.
     int jumpFrame = 0;
 
-    // Nothing a screen wants to write belongs on the slide in either of these:
-    // `1b2e:0510` returns before its caller writes a word, and `1b2e:084e`
-    // runs inside `1b2e:0a11` before the caller is reached at all.
-    bool slideIsBusy() const { return frameH < tubes::kFrameH || jokeSlide; }
+    // True while `1b2e:0a11`'s six-frame drop is still moving the slide.
+    bool slideDropping = false;
+
+    // Nothing a screen wants to write belongs on the slide in any of these.
+    // `1b2e:0510` returns before its caller writes a word; `1b2e:084e` and the
+    // slide drop both run INSIDE `1b2e:0a11`, which is itself blocking and
+    // returns before the caller is reached. So a screen's text arrives only
+    // once the slide has stopped moving - the port used to draw the briefing's
+    // text over a slide still wobbling under it.
+    bool slideIsBusy() const {
+        return frameH < tubes::kFrameH || jokeSlide || slideDropping;
+    }
 };
 
 void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
@@ -4357,24 +4365,37 @@ int main(int argc, char** argv) {
     bool graphicsOpen = opt.graphics;  // the port's display options
     int graphicsRow = 0;               // 0..kGraphicsRows-1
 
-    // `1b2e:0a11`'s slide drop, gated on `DS:0x210e` - it runs the FIRST time
-    // the scene is shown and never again, so this is a program-lifetime flag
-    // and not a per-briefing one.
+    // `1b2e:0a11`'s slide drop, gated on `DS:0x210e`. The flag is cleared in
+    // exactly one place - `entry`, at `1000:b1c6` - and set by `1b2e:0a11`
+    // itself at `1b2e:0a44`, so the drop plays on the **first classroom scene
+    // of the program run** and never again, whichever screen that happens to
+    // be. It is a program-lifetime flag, not a per-briefing one.
+    //
+    // The port used to arm it from the briefing alone, which is right only when
+    // a briefing is what the player reaches first. It is not the only caller:
+    // the Instructions `CALL 1b2e:0a11` twenty-one times, once a slide, and the
+    // Credits four - counted in the disassembly, not assumed - so opening
+    // either from a cold start IS the first call, and the port showed a slide
+    // already at rest. Reported from play.
     bool slideDropped = false;
     int slideFrame = 0;          // index into kSlideDrop while dropping
     float slideAccum = 0.0f;
+    auto slideIsDropping = [&]() {
+        return !slideDropped && slideFrame < tubes::kSlideDropFrames;
+    };
     auto slidePos = [&]() {
-        if (slideDropped || slideFrame >= tubes::kSlideDropFrames) {
+        if (!slideIsDropping()) {
             return tubes::SlideFrame{tubes::kSlideX, tubes::kSlideY};
         }
         return tubes::kSlideDrop[slideFrame];
     };
     // Everything about the classroom that moves, gathered once a frame. The
-    // briefing is the only screen that also wobbles the slide, so the other
-    // callers take the pose with the slide left at rest.
-    auto scenePose = [&](bool wobble) {
+    // slide's own position is in here rather than being a caller's business,
+    // because `1b2e:0a11` is the same routine on every screen that shows it.
+    auto scenePose = [&]() {
         ScenePose p;
         p.frameH = screenRoll.height();
+        p.slideDropping = slideIsDropping();
         p.profFrame = tubes::pointerFrameFor(profIdle.wave);
         // `1b2e:084e` is a blocking routine called from inside `1b2e:0a11`,
         // which itself runs BEFORE the key wait - so while the gag is up the
@@ -4383,11 +4404,9 @@ int main(int argc, char** argv) {
         p.mouthFrame = joke.active() ? 0 : profIdle.mouthFrame();
         p.jokeSlide = joke.showFlash();
         p.jokeFace = joke.showFace();
-        if (wobble) {
-            const tubes::SlideFrame s = slidePos();
-            p.slideX = s.x;
-            p.slideY = s.y;
-        }
+        const tubes::SlideFrame s = slidePos();
+        p.slideX = s.x;
+        p.slideY = s.y;
         return p;
     };
 
@@ -5380,6 +5399,32 @@ int main(int argc, char** argv) {
             music.playSound(&slideSound);
         }
 
+        // `1b2e:0a11`'s slide drop: six frames, ten vertical retraces each, and
+        // then done for the whole run. This sits OUTSIDE the stage dispatch for
+        // the same reason `DS:0x210e` is a program-lifetime flag - the routine
+        // does not care which screen called it, and the briefing is only one of
+        // five callers. Whichever classroom the player reaches first is the one
+        // that drops the slide.
+        //
+        // It waits for the roll-down for the same reason the joke does:
+        // `1b2e:0510` returns before its caller reaches `1b2e:0a11`, so there
+        // is no slide to move while the screen is still coming down. The two
+        // are consecutive, not concurrent.
+        const bool classroomUp =
+            briefingUp || instrOpen || endingPage > 0 ||
+            sstage == tubes::SessionStage::kStats ||
+            sstage == tubes::SessionStage::kContinue;
+        if (classroomUp && !screenRoll.rolling() && !slideDropped) {
+            slideAccum += dt * tubes::kRetraceHz;
+            while (slideAccum >= tubes::kSlideDropRetraces) {
+                slideAccum -= tubes::kSlideDropRetraces;
+                if (++slideFrame >= tubes::kSlideDropFrames) {
+                    slideDropped = true;
+                    break;
+                }
+            }
+        }
+
         // --demo drives the REAL loop with the scripted player, so the render
         // path gets exercised on every frame of a whole session rather than
         // only on the one frame --auto screenshots. That distinction matters:
@@ -5572,19 +5617,6 @@ int main(int argc, char** argv) {
             // `1b2e:0656`.
             if (briefingUp) screenRoll.tick(dt);
 
-            // `1b2e:0a11`'s slide drop: six frames, each held for ten
-            // vertical retraces, and then it is done for the whole run.
-            if (briefingUp && !slideDropped) {
-                slideAccum += dt * tubes::kRetraceHz;
-                while (slideAccum >= tubes::kSlideDropRetraces) {
-                    slideAccum -= tubes::kSlideDropRetraces;
-                    if (++slideFrame >= tubes::kSlideDropFrames) {
-                        slideDropped = true;
-                        break;
-                    }
-                }
-            }
-
             // `1000:8c38`'s countdown ticks on its own, so the prompt expires
             // whether or not the player touches anything.
             if (sstage == tubes::SessionStage::kContinue &&
@@ -5624,7 +5656,7 @@ int main(int argc, char** argv) {
         if (instrOpen) {
             drawInstructionSlide(screen, instrPages, instrPageCount,
                                  instrSlide, instrNav, &blackboard, haveBlackboard,
-                                 sceneArt, scenePose(false),
+                                 sceneArt, scenePose(),
                                  smallFont, haveSmall, headingFont,
                                  haveHeading, atoms, haveAtom, testTube,
                                  haveTube, furn, haveFurn);
@@ -5886,14 +5918,14 @@ int main(int argc, char** argv) {
         if (briefingUp) {
             drawBriefing(screen, *game, &blackboard, haveBlackboard, headingFont,
                          smallFont, haveBig, haveSmall, atoms, haveAtom, furn,
-                         haveFurn, briefDecor, sceneArt, scenePose(true));
+                         haveFurn, briefDecor, sceneArt, scenePose());
         }
 
         // `1000:9499` replaces the field the same way the stats screen does,
         // and comes first because the session it ends is still notionally on
         // the stats stage when it starts.
         if (endingPage > 0) {
-            ScenePose p = scenePose(false);
+            ScenePose p = scenePose();
             p.jumpFrame = jumpFrame;
             drawEnding(screen, endingPage, &blackboard, haveBlackboard,
                        sceneArt, p, headingFont, haveHeading, smallFont,
@@ -5908,7 +5940,7 @@ int main(int argc, char** argv) {
              sstage == tubes::SessionStage::kContinue)) {
             drawStats(screen, statsRows, &blackboard, haveBlackboard, sceneArt,
                       headingFont, smallFont, bigFont, haveHeading, haveSmall,
-                      haveBig, scenePose(false));
+                      haveBig, scenePose());
         }
         if (sstage == tubes::SessionStage::kBanner) {
             // `1000:5ec9`: the F2 hint appears only on the abort arm, and only

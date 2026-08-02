@@ -91,11 +91,8 @@ asked for, and then publishing:
    ever had the shareware disc, which is a fitting thing for an abandonware
    preservation project to be able to do.
 
-   Still open, and deliberately: **where `--shareware` eventually belongs.** It
-   is a command-line flag, and auto-detection is impossible - `TUBES.RES` is
-   byte-identical between the editions, so an install carries no evidence of
-   which one it is. That leaves a menu choice or a settings entry, and neither
-   is urgent.
+   **One item left open, and it is the next shareware decision: where
+   `--shareware` belongs.** See "Where the edition switch should live" below.
 6. **Publishing**, which is the last section of this file and is gated on a
    comment and documentation pass, a repository check and a final code review.
    **The player has a specific method in mind for the review and lint pass, so
@@ -1465,6 +1462,53 @@ game's own quit path stays silent, as it is.
 
 The rule that keeps this straight: **the port may show the player their own
 data, but it may not claim the original showed it.**
+
+### Where the edition switch should live - OPEN, and the next shareware item
+
+Everything else in this section is done. `--shareware` and `--preview` are
+command-line flags, which is fine for a developer and wrong for a player: a
+shareware owner should not have to know a flag exists to play the game they
+own. This is the last shareware decision and it is a **design** one, so it is
+written down rather than guessed at.
+
+**Auto-detection is impossible, and that is settled rather than assumed.**
+`TUBES.RES` is byte-identical between the editions - same md5 - so an install
+directory carries no evidence of which edition it came from. The edition lives
+only in the executable, and the port IS the executable. There is nothing to
+sniff, and any heuristic dressed up as detection would be inventing evidence.
+(`SETUP.CFG` is not a way out either: it is the DOS install's hardware config,
+`SETUP.EXE` owns it, and the port deliberately does not write it.)
+
+That leaves three candidates, and they are not exclusive:
+
+1. **A settings entry**, in the file `src/input.cpp` already writes for the
+   control bindings. Cheapest, persists across runs, and it is the port's own
+   file rather than the player's game directory - so it breaks no rule. It is
+   also invisible: a player who never opens the file never finds it.
+2. **A menu item**, on the port's own Game Options page beside the rebinding
+   and graphics screens. Discoverable, and it is where a player would look.
+   The cost is that it changes the game *mid-run*, and the edition currently
+   picks the save filenames at start-up - `savePath` and `hiScorePath` are
+   built once, before the loop. Switching editions live means rebuilding both
+   and re-reading them, which is real work and exactly the write path that
+   `edition.h` warns about. **Do not do this one casually.**
+3. **A first-run prompt**, asked once and remembered in the settings file.
+   Honest about the fact that the port cannot know, and it puts the question
+   where the answer is cheap - before any session exists, so nothing has to be
+   rebuilt.
+
+**The recommendation is 1 + 3**: the settings file is the storage, a first-run
+prompt is the discovery, and the flags stay as the override that the harness
+and the developer use. That gets a shareware owner into their own game without
+a flag, keeps the edition fixed for the lifetime of a run, and needs no live
+switch at all.
+
+Whichever way it goes, two things must hold. The edition must be **fixed before
+the first file is opened**, since it names them. And the flags must keep
+working unchanged: every capture script and every harness invocation passes
+them, and `--preview` implies `--shareware` on purpose.
+
+**This is the player's call to make, not one to take in passing.**
 
 ### The work, in order
 

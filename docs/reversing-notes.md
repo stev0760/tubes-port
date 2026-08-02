@@ -6532,7 +6532,10 @@ all five numbers. It is now derived, and the marking is gone.
 ### The slide DROPS, once per program run
 
 `1b2e:0a11` gates a six-frame animation on `DS:0x210e`, which it then sets - so
-this plays the first time any of the three screens is shown and never again.
+this plays the first time any screen showing the classroom is shown and never
+again. **"Any screen" is wider than the three named above**, and the port got
+this wrong for months by reading it narrowly - see "The slide drop belongs to
+the program, not to the briefing" below.
 `1b2e:097a(y, x)` redraws frame, slide and corners at a moving origin, each
 frame held for **10 vertical retraces**:
 
@@ -9817,3 +9820,58 @@ The rendering is unaffected: the two sprites' drawn pixels are disjoint -
 glass outline and the shading inside it - so the capture is 0 pixels different
 either way. The order was still wrong, and a position in a frame is part of the
 transliteration.
+
+### The slide drop belongs to the program, not to the briefing
+
+Reported from play: the projector's adjustment animation is missing from the
+slide decks. It was, and the cause was a reading of `DS:0x210e` that was too
+narrow rather than a missing routine.
+
+`FindScalarRefs` over the flag gives the whole lifetime in five instructions:
+
+    entry          1000:b1c6   MOV byte ptr [0x210e],0x0
+    FUN_1b2e_0a11  1b2e:0a3a   CMP byte ptr [0x210e],0x0
+                   1b2e:0a44   MOV byte ptr [0x210e],0x1
+
+Cleared **once**, at start-up, and set by the classroom scene itself. Nothing
+else touches it. So the drop is a **program-lifetime one-shot on the first call
+to `1b2e:0a11`** - and `1b2e:0a11` has more callers than the three this file
+named. Counted in the disassembly rather than assumed:
+
+| caller | `CALL 1b2e:0a11` |
+|---|---|
+| Instructions `1b2e:2d63` | **21** - one per slide |
+| Credits `1b2e:411b` | **4** - one per page |
+| briefing `1000:86b8`, stats `1000:8da5`, Continue `1000:8c38`, ending `1000:9499` | one each |
+
+A player who opens the Instructions or the Credits from a cold start therefore
+makes the **first** call there, and the original drops the slide on that screen.
+The port armed the drop from the briefing alone, so it only ever appeared if a
+game was started first - and the decks, which the player actually looks at,
+never showed it.
+
+Ported by making the flag what the binary says it is: one boolean for the run,
+ticked whenever a classroom screen is up and the roll-down has finished, with
+the slide's position moved out of the caller's hands and into the scene pose,
+since `1b2e:0a11` is the same routine wherever it is called from.
+
+**And the drop blocks the caller's text, which the port was also missing.**
+`1b2e:0a11` runs its six frames inline, before returning to the screen that
+called it, so no text can be on the slide while it is still moving. The port
+drew the briefing's text over a wobbling slide for about 0.86 s. `slideIsBusy`
+now covers the drop as well as the roll-down and the joke slide - the three
+things that all run inside a blocking call before the caller writes a word.
+
+Measured on the Instructions from a cold start, one capture per two simulation
+frames, and it walks `DS:0xb9c`'s successor table exactly:
+
+    frames  8..10   (62, 30)      kSlideDrop[0]
+    frame  12       (66, 32)      [1]
+    frame  14       (72, 30)      [2]
+    frames 16..18   (79, 29)      [3]
+    frame  20       (75, 37)      [4]
+    frame  22       (71, 33)      [5]
+    frame  24 on    (74, 31)      rest, and text appears
+
+The briefing measures the same table and settles on the same rest, so nothing
+regressed where it already worked.

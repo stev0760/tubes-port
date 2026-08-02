@@ -4666,3 +4666,53 @@ shareware run names those instead.
 
 931 checks / 0 failures, up from 924. The player's own `TUBES.SAV` is unmoved at
 md5 `91af6b84`.
+
+## 2026-08-02 - the projector's adjustment animation, missing from the decks
+
+Reported from play: the slide decks never show the projector adjusting its
+slide. They did not, and the animation was ported - it was armed from the wrong
+place.
+
+`DS:0x210e` has five instructions in the whole program. `entry` clears it at
+`1000:b1c6`; `1b2e:0a11` tests it at `0a3a` and sets it at `0a44`. Nothing else
+touches it, so the six-frame drop is a **program-lifetime one-shot on the first
+call to `1b2e:0a11`** - and that routine has more callers than the notes named.
+Counted, not assumed: the Instructions `CALL 1b2e:0a11` **21** times, one a
+slide, and the Credits **4**, one a page, on top of the briefing, the stats
+screen, the Continue screen and the ending.
+
+So opening the Instructions or the Credits from a cold start IS the first call,
+and the original drops the slide there. The port armed it from `briefingUp`, so
+it only ever appeared after a game had been started - and never on the screens
+the player actually looks at from the menu.
+
+The fix is to make the flag what the binary says: one boolean for the run,
+ticked whenever a classroom screen is up and the roll-down has finished. The
+slide's position also moved out of the callers' hands - `scenePose` took a
+`wobble` argument that only the briefing passed true, which was the narrow
+reading written into the API. `1b2e:0a11` is the same routine wherever it is
+called from, so the pose owns the slide now and the argument is gone.
+
+**A second bug fell out of it.** `1b2e:0a11` runs its six frames inline and
+returns before the caller writes a word, so no text can sit on a slide that is
+still moving. `slideIsBusy` covered the roll-down and the joke slide but not the
+drop, so the briefing drew its text over a wobbling slide for about 0.86 s. All
+three are now what they have in common: things that run inside a blocking call.
+
+Measured from a cold start on the Instructions, one capture per two simulation
+frames, and it walks the table exactly - (62,30) (66,32) (72,30) (79,29)
+(75,37) (71,33), rest at (74,31) from frame 24, with the text arriving there and
+not before. The briefing measures the same table and the same rest, so the
+screen that already worked did not regress.
+
+`PLAN.md` also gains the section the flags have been missing: **where the
+edition switch should live**. Auto-detection is impossible and now says so with
+its reason - `TUBES.RES` is byte-identical between the editions, so an install
+carries no evidence of which one it is. Three candidates are written up with the
+recommendation (settings file for storage, first-run prompt for discovery, flags
+kept as the override) and with the trap named: a live menu switch would have to
+rebuild the save and high-score paths, which are chosen at start-up because the
+edition names them.
+
+931 checks / 0 failures, `--demo-trace` md5 unmoved at `dc4f5e6a`, game
+directory untouched.
