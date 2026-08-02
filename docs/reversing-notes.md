@@ -758,6 +758,42 @@ scanline, and index $0f is the top of its grey ramp, so the walk went straight
 out of the greys into whatever follows them. Flat and $0f renders as pure
 white; walked and $0f renders as a mess.
 
+### There is no way to DELETE a save - and an empty name will not do it either
+
+Asked from play, and worth recording as a proven absence rather than a shrug,
+because a negative is only as good as the search that produced it. Five,
+pointing the same way:
+
+* **no menu item.** The seven pages at DGROUP `0x00ca` are transcribed in full
+  and pages 4 and 5 are five slots and `Exit`;
+* **no in-game key.** `1000:2dd0` dispatches `ESC` and `$bb`..`$bf` only, and
+  every one is accounted for - help, save, music, sound, pause;
+* **nothing writes an empty record.** Exactly five sites in the whole program
+  reach the two banks at `0x18d8` and `0x1ab8`, found by scanning both game
+  segments for the literals: the in-game slot list (`1000:315f` / `31f0`), the
+  F2 editor's copy-in (`3457` / `3473`), the F2 store (`36f4` / `3710`), and
+  the menu's two Continue arms (`1b2e:4f5e` / `4fc0`). Four of the five only
+  READ, and the fifth writes a full 0x50-byte record;
+* **no string for it.** 666 strings in the `MapProgram` dump, and nothing
+  matching delete, erase, clear, remove or wipe outside the wave objectives'
+  own prose;
+* **and the one loophole is explicitly closed.** A slot counts as live when
+  its first byte - the description's ShortString length - is non-zero, so a
+  blank name would read as an empty slot and would be a delete in all but
+  name. Backspace at `1000:35e9` does let the buffer reach length 0. But on
+  Enter, `1000:3638` tests the length and substitutes a `CS` literal for it:
+
+      1000:3638  CMP byte ptr [BP + -0x20],0x0
+      1000:363c  JNZ 0x1000:364f
+      1000:363e  MOV DI,0x2d92          { 0b 'Undescribed' }
+      1000:364a  CALLF 0x2000:727a      { assign into the edit buffer }
+
+  so an empty name becomes **"Undescribed"** and the slot stays occupied.
+
+**Overwriting the slot is the design.** The port already matches on all of it,
+including the `Undescribed` substitution, which it applies at the same point -
+on Enter, before the record is built (`main.cpp`, beside `kSaveUndescribed`).
+
 ### The abort banner's F2 is a real offer
 
 `1000:5ed7` draws "F2 to Save Game, ESC for Main Menu!" and then `1000:5eec`
