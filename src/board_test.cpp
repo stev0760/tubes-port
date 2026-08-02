@@ -200,18 +200,41 @@ void testMarkerTravelsWithTheAtom() {
 void testObjectivePlane() {
     // Plane C is inert unless the wave enables it; then clearing a marked
     // objective cell consumes the marker and ticks the wave target down.
+    // The observer is what carries that second half - `1000:2533` reaches the
+    // wave counter through two static links, and the port had no equivalent
+    // at all, so every marked wave was unfinishable.
+    int cleared = 0;
     tubes::Board b = make({"....", "....", "111."});
+    b.setObjectiveClearedObserver([&cleared]() { ++cleared; });
     b.setObjective(1, 2, true);
     check(b.isObjective(1, 2), "objective marker set");
     b.step();
-    check(b.objectivesCleared() == 0, "inert while the wave mode is off");
+    check(cleared == 0, "inert while the wave mode is off");
+    check(b.isObjective(1, 2), "and the marker survives, mode 6 being off");
 
+    cleared = 0;
     tubes::Board w = make({"....", "....", "111."});
+    w.setObjectiveClearedObserver([&cleared]() { ++cleared; });
     w.setObjective(1, 2, true);
     w.setObjectiveMode(true);
     w.step();
-    check(w.objectivesCleared() == 1, "counted once the wave mode is on");
+    check(cleared == 1, "counted once the wave mode is on");
     check(!w.isObjective(1, 2), "and the marker is consumed");
+
+    // Once only. The cell keeps fading for eight frames and the pass revisits
+    // it every one of them; the marker being cleared at `1000:251f` is what
+    // stops it counting again, so a run of three marked atoms must tick the
+    // counter exactly three times and not twenty-four.
+    settle(w);
+    check(cleared == 1, "and only once, over the whole fade");
+
+    cleared = 0;
+    tubes::Board t = make({"....", "....", "111."});
+    t.setObjectiveClearedObserver([&cleared]() { ++cleared; });
+    t.setObjectiveMode(true);
+    for (int c = 0; c < 3; ++c) t.setObjective(c, 2, true);
+    settle(t);
+    check(cleared == 3, "three marked atoms in one run tick it three times");
 }
 
 void testDisabledElement() {
@@ -1893,6 +1916,78 @@ void testHiddenAtomsConcealButDoNotChangeAnything() {
     check(!plain.objective().hiddenAtoms, "wave 2 hides nothing");
 }
 
+// Wave 8, and this is the bug the player hit: the marked atoms cleared on
+// screen and the objective never moved, so the wave could not be finished.
+// `1000:2533` decrements `[BP-0x1f4]` out of the fade pass and the port had
+// nothing wired to it - `Board` counted into a member that nothing read.
+//
+// Played end to end rather than asserted on the counter alone, because the
+// unfinishable half is what was actually wrong: the wave has to COMPLETE.
+void testMarkedWaveCanBeFinished() {
+    using namespace tubes;
+
+    // Clear every marker on the board by forming a run through it, then run
+    // the frame tail out. The board is driven directly rather than through the
+    // dispenser: what is being tested is whether clearing a marked atom ends
+    // the wave, not whether an atom can be aimed.
+    auto playOut = [](Game& g) {
+        Board& b = g.boardMutable();
+        for (int pass = 0; pass < 60 && g.objective().counter > 0; ++pass) {
+            int mc = -1, mr = -1;
+            for (int r = 0; r < b.rows() && mc < 0; ++r) {
+                for (int c = 0; c < b.cols(); ++c) {
+                    if (b.isObjective(c, r)) { mc = c; mr = r; break; }
+                }
+            }
+            if (mc < 0) break;
+            // Three of the marked atom's own colour along its row is a run
+            // that takes it with them. The columns under the two new atoms are
+            // packed with Xenon first - an atom placed over a hole falls
+            // before the matcher ever sees it, and Xenon is inert, so it
+            // cannot join the run it is holding up.
+            const int8_t want = b.typeAt(mc, mr);
+            int start = mc;
+            if (start > b.cols() - 3) start = b.cols() - 3;
+            for (int c = start; c < start + 3; ++c) {
+                for (int r = mr + 1; r < b.rows(); ++r) {
+                    if (b.at(c, r) == kEmpty) b.set(c, r, kXenon);
+                }
+                if (c != mc) b.set(c, mr, static_cast<Cell>(want));
+            }
+            for (int f = 0; f < 30 && b.isObjective(mc, mr); ++f) g.stepOnce(0);
+        }
+        for (int f = 0; f < 200 && !g.waveComplete(); ++f) g.stepOnce(0);
+    };
+
+    // Wave 8 by name, because that is the one the player reported.
+    Game g(6, 5, Difficulty::k101, 20250730u);
+    while (g.progress().wave < 8) g.advanceWave();
+    g.startWave();
+    check(g.waveMode() == WaveMode::kMarked, "wave 8 is a marked-atom wave");
+    check(g.objective().counter == g.progress().marked &&
+              g.objective().counter > 0,
+          "and its counter is the marked-atom count");
+    playOut(g);
+    check(g.objective().counter == 0, "clearing the markers empties the counter");
+    check(g.waveComplete(), "and wave 8 completes - it never could before");
+
+    // Then every OTHER marked wave in the table, plain, covered and
+    // Xenon-ringed alike: 8, 16, 20, 28, 38, 41, 51, 58 and 64. The bug was
+    // one dead counter, so it took out all nine at once, and a fix checked on
+    // one of them would not have said so.
+    int played = 0;
+    for (int wave = 1; wave <= kWaveCount; ++wave) {
+        Game w(6, 5, Difficulty::k101, 4000u + static_cast<unsigned>(wave));
+        while (w.progress().wave < wave) w.advanceWave();
+        w.startWave();
+        if (w.waveMode() != WaveMode::kMarked) continue;
+        ++played;
+        playOut(w);
+        check(w.waveComplete(), "every marked wave in the table completes");
+    }
+    check(played == 9, "and there are nine of them");
+}
+
 
 // ---------------------------------------------------------------------------
 // The title screen and the menu, 1b2e:52bf / 1b2e:4d80
@@ -3212,6 +3307,7 @@ int main() {
     testCrystalRecordFollowsItsCellDown();
     testTaskDisplayCyclesWhenNothingIsRequired();
     testHiddenAtomsConcealButDoNotChangeAnything();
+    testMarkedWaveCanBeFinished();
     testTitlePathClosesAndVisitsEveryLeg();
     testTitleLegTwentyThreeDoesNotCurve();
     testCornersCurveTowardTheNextLeg();

@@ -241,6 +241,12 @@ Game::Game(int cols, int rows, Difficulty diff, uint32_t seed,
     board_.setCrystalBlastedObserver([this](int c, int r) {
         removeCrystalAt(crystals_, objective_, c, r);
     });
+    // `1000:2533`, reached from the fade pass through two static links. The
+    // guard is the original's `JBE`: the counter is unsigned and never goes
+    // below zero.
+    board_.setObjectiveClearedObserver([this]() {
+        if (objective_.counter > 0) --objective_.counter;
+    });
 }
 
 // `1000:86b8` without the drawing, then `1000:3a67`'s prologue at `1000:3ac7`.

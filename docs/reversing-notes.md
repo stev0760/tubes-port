@@ -4832,6 +4832,37 @@ objective marker clears the marker and decrements a wave counter at
 `9e53`'s `[BP-0x1f4]`. `MARKER.CSP` is drawn over flagged cells at
 `(x + 2, y + 1)`.
 
+The listing, because the order in it turns out to matter:
+
+    1000:24d1  CMP byte ptr SS:[DI + -0x43],0x1   { marked[r,c] = 1 }
+    1000:24d6  JZ  24db  /  JMP 25aa              { else skip the cell }
+    1000:24db  CMP byte ptr [0x1d4e],0x6          { wave mode 6 only }
+    1000:24e0  JNZ 2538
+    1000:24fd  CMP byte ptr SS:[DI + -0x61],0x1   { objective[r,c] = 1 }
+    1000:2502  JNZ 2538
+    1000:251f  MOV byte ptr SS:[DI + -0x61],0x0   { consume the marker }
+    1000:2524  MOV DI,[BP+4]                      { static link ... }
+    1000:2527  MOV DI,SS:[DI+4]                   { ... and again }
+    1000:252b  CMP byte ptr SS:[DI + 0xfe0c],0x0  { 0xfe0c = -0x1f4 }
+    1000:2531  JBE 2538
+    1000:2533  DEC byte ptr SS:[DI + 0xfe0c]      { counter := counter - 1 }
+
+Three things it settles. The marker is consumed **unconditionally**, before the
+counter is looked at, so a marker cleared once the count already reads zero
+still disappears. The counter is unsigned and guarded with `JBE`, so it never
+wraps. And the reach is **two** static links deep - out of the fade pass,
+through `1000:3a67`, into `1000:9e53`'s frame - because the beaker planes and
+the objective block are in different frames even in the original.
+
+**This is where the port was broken, and it made nine waves unfinishable.**
+`Board::fadePass` consumed the marker and then counted into a member that
+*nothing read*, so `objective.counter` never came down and the wave-complete
+test at `1000:5cff` could never fire. Waves 8, 16, 20, 28, 38, 41, 51, 58 and
+64 - every mode-6 wave in the table, plain, covered and Xenon-ringed alike -
+could be played but not passed. Reported from play on wave 8. The port now
+carries an observer for the same reach the two static links make, matching
+the Crystal's two.
+
 `1000:192f`, called by every matcher with its orientation code, is the rest of
 that system: in mode 2 it decrements the wave counter when the orientation
 matches the wave's required one, and in mode 3 when the matched colour matches

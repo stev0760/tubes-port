@@ -183,8 +183,23 @@ public:
     void setDisabledType(int8_t t) { disabledType_ = t; }
 
     // Wave mode 6 gates the objective plane; outside it the plane is inert.
+    // `1000:24db` is the gate itself - `CMP byte ptr [0x1d4e], 0x6`.
     void setObjectiveMode(bool on) { objectiveMode_ = on; }
-    int objectivesCleared() const { return objectivesCleared_; }
+
+    // `1000:251f`..`2533`, and this is the whole of what clearing a marked
+    // atom DOES. The original reaches the wave counter through TWO static
+    // links - `MOV DI,[BP+4]` then `MOV DI,SS:[DI+4]`, out of the fade pass,
+    // through `1000:3a67`, into `1000:9e53`'s frame at `[BP-0x1f4]` - because
+    // Board and the objective live in the same Pascal frame there and do not
+    // here. An observer is the honest translation of that reach; the Crystal's
+    // two use the same pattern for the same reason.
+    //
+    // Board counted these into a member instead and NOTHING READ IT, so the
+    // counter never came down and every marked wave was unfinishable. Reported
+    // from play on wave 8, which is the first of eleven in the table.
+    void setObjectiveClearedObserver(std::function<void()> f) {
+        onObjectiveCleared_ = std::move(f);
+    }
 
     // `DS:0x1d48` gates the Blocker here and the Multiplier, EvilMultiplier
     // and Filler at catch time in `1000:0f80`. The Bonus atom is NOT gated by
@@ -257,7 +272,7 @@ private:
     int8_t disabledType_ = kEmpty;
     bool objectiveMode_ = false;
     bool specialsEnabled_ = true;
-    int objectivesCleared_ = 0;
+    std::function<void()> onObjectiveCleared_;
     std::function<void(RunKind, int8_t)> onRun_;
     std::function<void(int, int, int)> onCrystalFell_;
     std::function<void(int, int)> onCrystalBlasted_;

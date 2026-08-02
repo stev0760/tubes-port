@@ -193,11 +193,18 @@ void Board::fadePass() {
         for (int c = 0; c < cols_; ++c) {
             if (!marked_[idx(c, r)]) continue;
 
-            // Wave mode 6: clearing a marked objective cell ticks the wave's
-            // target down and consumes the marker.
+            // `1000:24db`..`2533`. Wave mode 6 only: a clearing cell that also
+            // carries an objective marker consumes the marker and ticks the
+            // wave's counter down.
+            //
+            // The ORDER is the original's and it matters at the end of a wave:
+            // the marker is cleared unconditionally at `1000:251f`, and only
+            // then is the counter tested (`CMP ...,0` / `JBE`) and decremented
+            // at `2533`. So a marker cleared while the counter already reads
+            // zero still disappears - it just cannot take the count below it.
             if (objectiveMode_ && objective_[idx(c, r)]) {
                 objective_[idx(c, r)] = 0;
-                ++objectivesCleared_;
+                if (onObjectiveCleared_) onObjectiveCleared_();
             }
 
             int v = cells_[idx(c, r)] + kFadeStride;

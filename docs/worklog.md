@@ -3603,3 +3603,47 @@ costs nothing, because Fit picks the largest whole multiple that fits, which
 is N.
 
 714 checks / 0 failures, `--demo-trace` unmoved.
+
+## 2026-08-01 - wave 8 could not be passed: one counter, read by nothing
+
+Reported from play: wave 8 asks for marked atoms, they clear on screen, and the
+objective never moves. It was real, and it was worse than one wave - **every
+mode-6 wave in the table was unfinishable**: 8, 16, 20, 28, 38, 41, 51, 58 and
+64, plain, covered and Xenon-ringed alike.
+
+`1000:24db` onward is the whole rule and the listing is in the notes now. A
+marked cell that also carries an objective marker consumes the marker at
+`1000:251f` and then, through **two** static links - out of the fade pass,
+through `1000:3a67`, into `1000:9e53`'s frame - decrements `[BP-0x1f4]`, the
+live objective counter, guarded by a `JBE` so it never wraps.
+
+The port did the first half and dropped the second. `Board::fadePass` cleared
+the marker and incremented `objectivesCleared_`, and **nothing anywhere read
+that member** - one test asserted on it and that was all. So the counter never
+reached zero, and `1000:5cff`'s wave-complete test could not fire.
+
+Three things worth keeping from how it was found and fixed:
+
+* **the note was already right.** `docs/reversing-notes.md` had said "clears
+  the marker and decrements a wave counter at `9e53`'s `[BP-0x1f4]`" for
+  months. The rule was read correctly and then not wired up, which is a
+  different failure from a misreading and needs a different guard: a value
+  computed and never consumed;
+* a sweep for exactly that - every member declared in the four gameplay
+  headers, counted across `src/` - turns up only `fallHeight_` (documented as
+  retained for callers) and `moveTimer_` (written in `startWave`, read
+  nowhere). Neither is a rule. So this was the only dead one;
+* and the other four modes were checked rather than assumed. Mode 2 and 3
+  decrement in `creditRun`, mode 4 in the dispenser at `1000:4b31`, mode 5 in
+  `removeCrystalAt`. A probe over all 75 waves also confirms none starts with
+  a counter already at zero, so no wave is trivially complete either.
+
+The fix is an observer, matching the Crystal's two, because that is the honest
+translation of a reach the original makes through static links between frames
+that the port does not share.
+
+The test plays all nine waves out - finds each marker, forms a run through it,
+and requires the wave to COMPLETE rather than just the counter to move. Stubbed
+back out, it fails 11 checks; that check was run rather than assumed.
+
+731 checks / 0 failures, `--demo-trace` unmoved.
