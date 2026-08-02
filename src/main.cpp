@@ -20,6 +20,7 @@
 
 #include "font.h"
 #include "game.h"
+#include "textscreen.h"
 #include "gfx.h"
 #include "hiscore.h"
 #include "input.h"
@@ -283,6 +284,9 @@ struct Options {
     // `--preview` opens its Preview Registered mode - menu arm 3, and the same
     // flag View Demo and the attract loop set. See edition.h.
     tubes::EditionState edition{};
+    // Open the shareware exit screen directly, for capture. Like every other
+    // harness flag it must never write to the game directory.
+    bool exitScreen = false;
     double renderSeconds = 0;   // 0 = one pass, songs loop forever
     int wave = 0;               // 0 = Endurance; 1..75 starts Wave mode there
     int titlePage = -1;         // -1 off; 0 the bare title; 1..7 a menu page
@@ -515,6 +519,9 @@ Options parseArgs(int argc, char** argv) {
             o.splash2Step = std::atoi(argv[++i]);
         } else if (a == "--splash" && i + 1 < argc) {
             o.splashFrame = std::atoi(argv[++i]);
+        } else if (a == "--exit-screen") {
+            o.exitScreen = true;
+            o.edition.edition = tubes::Edition::kShareware;
         } else if (a == "--shareware") {
             o.edition.edition = tubes::Edition::kShareware;
         } else if (a == "--preview") {
@@ -557,6 +564,7 @@ void usage() {
         "                    tools/anm_decode.py RUNS\n"
         "  --no-splash       go straight to the title screen\n"
         "  --shareware       play the 25-wave shareware edition\n"
+        "  --exit-screen     show TUBESEND.BIN, the shareware sign-off\n"
         "  --preview         its Preview Registered mode (implies --shareware)\n"
         "  --splash N        run the first splash and, with --screenshot,\n"
         "                    capture its Nth animation frame\n"
@@ -1620,6 +1628,114 @@ void drawGraphicsScreen(tubes::Screen& screen, const tubes::GraphicsOptions& g,
 //
 // It is written once, from the settings, and then only by the graphics screen.
 tubes::GraphicsOptions g_display;
+
+// The shareware exit screen, `TUBESEND.BIN`, presented at 640 x 400.
+//
+// The ONE screen this port presents that the original does not: the shareware
+// build `Move`s this dump to 0xB800 and quits, leaving the banner on the shell
+// with the DOS prompt landing in the two rows the file deliberately omits. A
+// windowed port has no shell to leave it on, so it draws it and holds it until
+// a key. That hold is the invented part and the only one - see textscreen.h.
+//
+// It goes through the SAME `presentRect` as everything else, and gets fullscreen,
+// window scale, 4:3 correction and scanlines for free, because 640 x 400 and
+// 320 x 200 have the identical 1.6 aspect and therefore the identical
+// destination rectangle. Only the source texture differs.
+//
+// The reveal is `23e7:0097`'s fade, run on the text palette rather than a
+// game one - the fade is a graphics-unit routine that every screen calls, so
+// using it here is reusing the original's own mechanism rather than imitating
+// it.
+void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& ts,
+                   int fadeSteps, const std::string& screenshot) {
+    std::vector<uint8_t> indexed;
+    ts.render(indexed);
+
+    // The text palette in the raw 6-bit form `fadePalette` expects, so the
+    // ramp arithmetic is the game's and not a second implementation of it.
+    tubes::Bytes raw(768, 0);
+    for (int i = 0; i < 16; ++i) {
+        raw[i * 3 + 0] = tubes::kTextPalette[i][0];
+        raw[i * 3 + 1] = tubes::kTextPalette[i][1];
+        raw[i * 3 + 2] = tubes::kTextPalette[i][2];
+    }
+
+    SDL_Texture* tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32,
+                                         SDL_TEXTUREACCESS_STREAMING,
+                                         tubes::kTextScreenW, tubes::kTextScreenH);
+    if (!tex) return;
+    SDL_SetTextureScaleMode(tex, SDL_ScaleModeNearest);
+
+    std::vector<uint8_t> rgba(static_cast<size_t>(tubes::kTextScreenW) *
+                              tubes::kTextScreenH * 4);
+    auto present = [&](const tubes::Palette& pal) {
+        for (size_t i = 0; i < indexed.size(); ++i) {
+            const uint8_t* c = pal.rgb[indexed[i]];
+            // 6-bit DAC to 8-bit, the same `v * 255 / 63` the rest of the port
+            // uses - see the grey-tolerance note in docs/debug-rig.md for why
+            // that expansion and not `v << 2`.
+            rgba[i * 4 + 0] = static_cast<uint8_t>(c[0] * 255 / 63);
+            rgba[i * 4 + 1] = static_cast<uint8_t>(c[1] * 255 / 63);
+            rgba[i * 4 + 2] = static_cast<uint8_t>(c[2] * 255 / 63);
+            rgba[i * 4 + 3] = 255;
+        }
+        SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kTextScreenW * 4);
+        int winW = 0, winH = 0;
+        SDL_GetRendererOutputSize(ren, &winW, &winH);
+        const tubes::DisplayRect r = tubes::presentRect(winW, winH, g_display);
+        const SDL_Rect dst{r.x, r.y, r.w, r.h};
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+        SDL_RenderClear(ren);
+        SDL_RenderCopy(ren, tex, nullptr, &dst);
+        if (g_display.scanlines && dst.h >= tubes::kScreenHeight * 2) {
+            SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(ren, 0, 0, 0, 64);
+            for (int y = dst.y + 1; y < dst.y + dst.h; y += 2) {
+                SDL_Rect line{dst.x, y, dst.w, 1};
+                SDL_RenderFillRect(ren, &line);
+            }
+        }
+        SDL_RenderPresent(ren);
+    };
+
+    for (int i = 0; i <= fadeSteps; ++i) {
+        present(tubes::fadePalette(raw, i, fadeSteps ? fadeSteps : 1));
+        if (fadeSteps > 0) SDL_Delay(14);          // one 70 Hz retrace
+    }
+    const tubes::Palette lit = tubes::textPalette();
+    present(lit);
+
+    if (!screenshot.empty()) {
+        SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormatFrom(
+            rgba.data(), tubes::kTextScreenW, tubes::kTextScreenH, 32,
+            tubes::kTextScreenW * 4, SDL_PIXELFORMAT_RGBA32);
+        if (surf) {
+            SDL_SaveBMP(surf, screenshot.c_str());
+            SDL_FreeSurface(surf);
+            std::printf("wrote %s\n", screenshot.c_str());
+        }
+        SDL_DestroyTexture(tex);
+        return;
+    }
+
+    // Hold until a key. The original does not wait - it has already exited and
+    // the banner simply persists - so this is the port's substitute for a
+    // screen that outlives the program.
+    bool waiting = true;
+    while (waiting) {
+        SDL_Event ev;
+        while (SDL_PollEvent(&ev)) {
+            if (ev.type == SDL_QUIT || ev.type == SDL_KEYDOWN ||
+                ev.type == SDL_MOUSEBUTTONDOWN || ev.type == SDL_CONTROLLERBUTTONDOWN) {
+                waiting = false;
+            }
+            if (ev.type == SDL_WINDOWEVENT) present(lit);
+        }
+        SDL_Delay(16);
+    }
+    SDL_DestroyTexture(tex);
+    (void)win;
+}
 
 void presentScreen(SDL_Renderer* ren, SDL_Texture* tex,
                    const tubes::Screen& screen, const tubes::Palette& pal,
@@ -3859,6 +3975,28 @@ int main(int argc, char** argv) {
         // nothing is visible and only its own fade-in reveals it.
         shownPal = in ? pal : tubes::fadePalette(palRaw, 0, tubes::kFadeSteps);
     };
+    // `TUBESEND.BIN`, the shareware sign-off. Loaded once - it is 3,680 bytes,
+    // and 23 rows of an 80 x 25 screen. Present in the REGISTERED archive too,
+    // because `TUBES.RES` is byte-identical between the editions, but that
+    // build never names it and the port does not show it there either.
+    tubes::TextScreen exitBanner;
+    {
+        tubes::Bytes blob;
+        std::string berr;
+        if (res.read("TUBESEND.BIN", blob, berr)) exitBanner.loadBin(blob);
+    }
+
+    // `--exit-screen` opens it directly and leaves, so a capture never has to
+    // walk a whole session to reach the one screen that ends one.
+    if (opt.exitScreen) {
+        if (exitBanner.rowsLoaded() == 0) {
+            std::fprintf(stderr, "TUBESEND.BIN not in this archive\n");
+            return 1;
+        }
+        runExitScreen(win, ren, exitBanner, fadeSteps, opt.screenshot);
+        return 0;
+    }
+
     // Set at a screen change; the next composed frame is revealed rather than
     // cut to. `presentFrame` consumes it, so every one of the loop's present
     // sites gets this without repeating the call.
@@ -4562,6 +4700,23 @@ int main(int argc, char** argv) {
                         changeScreen();
                         break;
                     case tubes::MenuResult::kQuit:
+                        // `1000:abf7`: the shareware's Exit is menu item 10,
+                        // and it does not quit - it calls the Ordering Info
+                        // deck and only then Halts, at which point a Turbo
+                        // Pascal exit procedure dumps TUBESEND.BIN over the
+                        // text screen. The port fades to that screen and holds
+                        // it, because it has no shell to leave it on.
+                        //
+                        // The registered build has no such path: `1b2e`'s exit
+                        // arm quits outright, and its executable never names
+                        // TUBESEND. So this is gated on the edition, not
+                        // offered to everyone.
+                        if (opt.edition.edition == tubes::Edition::kShareware &&
+                            exitBanner.rowsLoaded() > 0) {
+                            runFade(false);
+                            runExitScreen(win, ren, exitBanner, fadeSteps,
+                                          std::string());
+                        }
                         running = false;
                         break;
                     case tubes::MenuResult::kHighScores:

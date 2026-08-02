@@ -27,6 +27,7 @@
 #include "menu.h"
 #include "session.h"
 #include "edition.h"
+#include "textscreen.h"
 #include "wave.h"
 
 namespace {
@@ -2074,6 +2075,144 @@ void testTitleLegTwentyThreeDoesNotCurve() {
 // them, so they are pinned here.
 
 // ---------------------------------------------------------------------------
+// The text-mode exit screen
+// ---------------------------------------------------------------------------
+//
+// Built from constants, never from the archive: `TUBESEND.BIN` is game data
+// and may not enter this repository. The cells below are hand-made so the
+// renderer is tested on its own terms.
+
+void testTheTextScreenIsEightyByTwentyFiveOfEightBySixteen() {
+    check(tubes::kTextScreenW == 640 && tubes::kTextScreenH == 400,
+          "80 x 25 cells of 8 x 16 is 640 x 400");
+    // The reason the exit screen inherits every display setting for free: the
+    // aspect is identical to the game's, so `presentRect` returns the same
+    // destination rectangle and nothing in the display path has to change.
+    check(tubes::kTextScreenW * tubes::kScreenHeight ==
+          tubes::kTextScreenH * tubes::kScreenWidth,
+          "640 x 400 has exactly the aspect of 320 x 200");
+}
+
+// 3,680 bytes is 23 rows, not 25 - the bottom two are what DOS leaves for the
+// shell prompt, and they must come back blank rather than as garbage.
+void testABinDumpLoadsItsRowsAndLeavesTheRestBlank() {
+    tubes::TextScreen ts;
+    std::vector<uint8_t> blob(static_cast<size_t>(80) * 23 * 2, 0);
+    for (size_t i = 0; i < blob.size(); i += 2) {
+        blob[i] = 'X';
+        blob[i + 1] = 0x1f;
+    }
+    check(ts.loadBin(blob), "a whole number of 80-cell rows loads");
+    check(ts.rowsLoaded() == 23, "3,680 bytes is 23 rows");
+    check(ts.at(0, 22).ch == 'X', "the last loaded row is there");
+    check(ts.at(0, 23).ch == ' ' && ts.at(0, 24).ch == ' ',
+          "rows 24 and 25 are left for the prompt");
+    check(ts.at(0, 23).attr == 0, "and are left black, not inheriting an attribute");
+
+    // A torn dump is refused rather than rendered short.
+    tubes::TextScreen bad;
+    check(!bad.loadBin(std::vector<uint8_t>(101, 0)), "a partial row is refused");
+    check(!bad.loadBin(std::vector<uint8_t>{}), "an empty blob is refused");
+    check(!bad.loadBin(std::vector<uint8_t>(static_cast<size_t>(80) * 26 * 2, 0)),
+          "more than 25 rows is refused");
+}
+
+// Foreground where the glyph has a bit, background where it does not, MSB
+// leftmost - the order the character generator shifts pixels out. Checked on
+// 0xDB, the solid block, and on 0x20, which has no bits at all.
+void testGlyphsRenderForegroundOverBackground() {
+    tubes::TextScreen ts;
+    ts.put(0, 0, 0xDB, 0x1E);        // fg 14 yellow on bg 1 blue
+    ts.put(1, 0, ' ', 0x1E);
+    std::vector<uint8_t> px;
+    ts.render(px);
+    bool blockAllFg = true, spaceAllBg = true;
+    for (int y = 0; y < 16; ++y) {
+        for (int x = 0; x < 8; ++x) {
+            if (px[static_cast<size_t>(y) * 640 + x] != 14) blockAllFg = false;
+            if (px[static_cast<size_t>(y) * 640 + 8 + x] != 1) spaceAllBg = false;
+        }
+    }
+    check(blockAllFg, "0xDB is solid foreground across all sixteen rows");
+    check(spaceAllBg, "a space is entirely background");
+
+    // MSB leftmost, on a glyph with a known asymmetric row.
+    ts.put(0, 0, 0xDA, 0x0F);        // the top-left box corner
+    ts.render(px);
+    // Its row 7 is `...#####` - three background pixels then five foreground.
+    const size_t row7 = static_cast<size_t>(7) * 640;
+    check(px[row7 + 0] == 0 && px[row7 + 2] == 0,
+          "the corner's left three pixels are background");
+    check(px[row7 + 3] == 15 && px[row7 + 7] == 15,
+          "and its right five are foreground - MSB is leftmost");
+}
+
+// Attribute bit 7 is BLINK, not a fifth background bit. Nothing in
+// `TUBESEND.BIN` sets it, but honouring it would silently pick a background
+// from the bright eight and change colours that are not supposed to move.
+void testTheBlinkBitDoesNotBecomeABrightBackground() {
+    tubes::TextScreen ts;
+    ts.put(0, 0, 0xDB, 0x1F);        // bg 1
+    ts.put(1, 0, 0xDB, 0x9F);        // bg 1 + blink set
+    std::vector<uint8_t> px;
+    ts.render(px);
+    check(px[0] == 15 && px[8] == 15, "the blink bit does not touch the foreground");
+    ts.put(0, 0, ' ', 0x1F);
+    ts.put(1, 0, ' ', 0x9F);
+    ts.render(px);
+    check(px[0] == 1 && px[8] == 1,
+          "and both backgrounds are colour 1, not 1 and 9");
+}
+
+// The palette is the standard text one, and index 6 is the irregular member:
+// brown, not dark yellow. Getting that wrong is invisible until something
+// actually uses it.
+void testTheTextPaletteIsTheEgaOneIncludingBrown() {
+    const tubes::Palette p = tubes::textPalette();
+    check(p.rgb[0][0] == 0 && p.rgb[0][1] == 0 && p.rgb[0][2] == 0, "0 is black");
+    check(p.rgb[15][0] == 63 && p.rgb[15][1] == 63 && p.rgb[15][2] == 63, "15 is white");
+    check(p.rgb[1][2] == 42 && p.rgb[1][0] == 0, "1 is blue");
+    check(p.rgb[6][0] == 42 && p.rgb[6][1] == 21 && p.rgb[6][2] == 0,
+          "6 is brown, not dark yellow");
+    check(p.rgb[14][0] == 63 && p.rgb[14][1] == 63 && p.rgb[14][2] == 21,
+          "14 is yellow");
+}
+
+// The nine glyphs the art is built from have to tile, or the boxes and their
+// drop shadows come apart. Verified in the vendored font rather than assumed,
+// which is what let the plan to generate them procedurally be dropped.
+void testTheBoxAndBlockGlyphsTile() {
+    // The full block is solid on every row.
+    for (int y = 0; y < 16; ++y) {
+        check(tubes::kCp437Font8x16[0xDB][y] == 0xFF, "0xDB is solid");
+    }
+    // The two half blocks between them cover every row, with no gap.
+    for (int y = 0; y < 16; ++y) {
+        const bool covered = tubes::kCp437Font8x16[0xDF][y] == 0xFF ||
+                             tubes::kCp437Font8x16[0xDC][y] == 0xFF;
+        check(covered, "the upper and lower half blocks leave no uncovered row");
+    }
+    // The vertical stem sits in the same columns in the bar and all four
+    // corners, so a run of them joins.
+    const uint8_t stem = tubes::kCp437Font8x16[0xB3][0];
+    check(stem != 0, "the vertical bar has a stem");
+    check((tubes::kCp437Font8x16[0xDA][15] & stem) == stem, "0xDA's stem lines up");
+    check((tubes::kCp437Font8x16[0xBF][15] & stem) == stem, "0xBF's stem lines up");
+    check((tubes::kCp437Font8x16[0xC0][0] & stem) == stem, "0xC0's stem lines up");
+    check((tubes::kCp437Font8x16[0xD9][0] & stem) == stem, "0xD9's stem lines up");
+    // The horizontal bar's row is the row all four corners put their arm on.
+    int barRow = -1;
+    for (int y = 0; y < 16; ++y) {
+        if (tubes::kCp437Font8x16[0xC4][y] == 0xFF) barRow = y;
+    }
+    check(barRow >= 0, "the horizontal bar has a row");
+    for (int cp : {0xDA, 0xBF, 0xC0, 0xD9}) {
+        check(tubes::kCp437Font8x16[cp][barRow] != 0,
+              "each corner has its arm on the bar's row");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // The shareware edition
 // ---------------------------------------------------------------------------
 
@@ -3586,6 +3725,13 @@ int main() {
     testNameIsCappedAtTwentyFive();
     testTheSentinelTailSurvivesPastTheName();
     testAMalformedTableIsRefused();
+
+    testTheTextScreenIsEightyByTwentyFiveOfEightBySixteen();
+    testABinDumpLoadsItsRowsAndLeavesTheRestBlank();
+    testGlyphsRenderForegroundOverBackground();
+    testTheBlinkBitDoesNotBecomeABrightBackground();
+    testTheTextPaletteIsTheEgaOneIncludingBrown();
+    testTheBoxAndBlockGlyphsTile();
 
     testSharewareWithholdsTheTwoSpecialAtoms();
     testTheEditionsDivergeExactlyWhereTheSpecialsAre();

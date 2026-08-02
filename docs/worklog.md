@@ -4120,3 +4120,92 @@ this file's earlier entry, rather than deleted.
 
 778 checks / 0 failures, up from 742. `--demo-trace` md5 unmoved and still 71
 spawns / score 13,000, which is the recorded oracle.
+
+## 2026-08-02 - the shareware exit screen, and a licence question worth asking
+
+`TUBESEND.BIN` now renders. It is the port's **one invented presentation**, and
+the invention is precisely one thing: the hold.
+
+The original does not display this screen, it **leaves** it - `Move` to
+`0xB800`, quit, banner stays on the shell, DOS prompt lands in the two rows the
+dump deliberately omits, which is why 3,680 bytes is 23 rows of a 25-row
+screen. A windowed port has no shell to leave anything on, so it draws it and
+waits for a key. Everything else - cells, attributes, palette, geometry - is
+the file's.
+
+**Writing it to the real terminal was the first plan and it was wrong.** That
+suggestion was made before looking at the data. Decoding it settles it: this is
+not text, it is ANSI art - 80 x 23, twelve attributes, a blue field, the TUBES
+logo and both order boxes drawn in box and half-block glyphs with drop shadows.
+It needs the 8x16 cell, the CP437 shapes and the 16-colour palette; a terminal
+with its own font metrics or a themed palette breaks the tiling, and under 80
+columns it wraps and is destroyed. Dumping to a shell reproduces the mechanism
+and loses the picture. **Look at the data before choosing the presentation.**
+
+### The geometry is why it costs nothing
+
+80 x 25 cells of 8 x 16 is 640 x 400 - exactly twice 320 x 200 in both axes, so
+the aspect is identical and `presentRect` returns the **same destination
+rectangle**. Fullscreen, window scale, 4:3 correction and scanlines all apply
+unchanged without the display path learning a second resolution. Only the
+source texture differs. There is a test on that equality, because it is the
+whole reason the screen inherits the player's settings.
+
+The reveal is `23e7:0097`'s fade run on the text palette - the original's own
+routine, not an imitation of it, since the fade is a graphics-unit routine
+every screen calls.
+
+### The font, and a trap avoided
+
+Vendored **Modern DOS 8x16** (Jayvee Enaguas, via `susam/pcface`), **MIT or
+CC0**, generated into `src/cp437_font.cpp` by `tools/gen_cp437_font.py` - the
+same extract-never-transcribe rule the Instructions, Credits and cutscene
+follow, with 4,096 more chances to make a typo nobody would spot.
+
+The obvious choice was the wrong one. VileR's *Ultimate Oldschool PC Font Pack*
+is the best-known CP437 recreation and `pcface` ships it - as GPL-3 or
+CC BY-SA 4.0. ShareAlike on a data file compiled into an MIT binary is an
+ambiguity this project does not need before publishing.
+
+On the underlying IBM font: US law almost certainly does not protect it at all
+- 37 CFR 202.1(e) excludes typefaces, and the Copyright Office's 1992 policy
+decision holds that a bitmap depiction of one creates no work of authorship
+(the line is at font *programs*, per *Adobe v. Southern Software*). None of
+that is relied on. A permissive licence costs nothing and removes the question,
+which is the same instinct as preferring an oracle to an opinion everywhere
+else.
+
+**And the fidelity objection dissolves on inspection: Tubes never rendered
+these glyphs.** It wrote character codes; the video card's font drew them, so a
+player with a different VGA BIOS or a font-loading TSR saw different pixels
+from the same file. There is no single correct bitmap - "faithful" here means a
+period-correct VGA text font.
+
+### One plan dropped after checking
+
+The nine glyphs the art is built from were going to be generated procedurally,
+to guarantee they tile. Checked in the vendored font instead: the vertical stem
+is at columns 3-4, the horizontal at row 7, all four corners join those exactly,
+and 0xDB is solid on all sixteen rows. **They already tile**, so the generator
+was dropped - one fewer bespoke part is worth more than the guarantee, and
+there is now a test asserting the tiling rather than a routine enforcing it.
+
+Recorded so it is not later read as a bug: Modern DOS splits the half blocks at
+row 7 where IBM splits at row 8, so `0xDC` is nine rows tall rather than eight.
+One pixel on a drop shadow, no broken join.
+
+### Checked by looking
+
+Rendered and inspected, per the standard - a size check is not a correctness
+check. Rows 368..399 come back pure black, which is the two rows left for the
+prompt; the dominant colour is exactly `(0,0,170)`, background 1; the bright
+blue and white land on their palette entries. `--exit-screen` opens it directly
+and `--screenshot` writes it, so it is capturable without walking a session.
+
+Gated on the edition: the registered build's exit arm quits outright and its
+executable never names `TUBESEND`, so the port does not show it there either -
+even though the byte-identical `.RES` means the file is sitting in a registered
+player's own game directory.
+
+841 checks / 0 failures, up from 778. `--demo-trace` md5 unmoved, nothing
+written to the game directory.
