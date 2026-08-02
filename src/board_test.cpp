@@ -1817,6 +1817,38 @@ void testCrystalGoesOnlyToAntiMatter() {
     b.set(col, row - 1 < 0 ? row + 1 : row - 1, kAntiMatter);
     for (int i = 0; i < 4; ++i) g.stepOnce(0);
     check(g.objective().counter == 0, "AntiMatter is the only thing that removes one");
+
+    // And the wave then ENDS. Asserted because the marked-atom bug was exactly
+    // this gap - a counter that moved with nothing behind it - and a mode is
+    // only proved passable by the wave completing, not by the count reaching
+    // zero.
+    for (int i = 0; i < 200 && !g.waveComplete(); ++i) g.stepOnce(0);
+    check(g.waveComplete(), "and the crystal wave completes");
+}
+
+// Mode 3, the colour-and-chain waves - much the commonest kind, 40 of the 75.
+// Here for the same reason as the two above: each of the five live modes needs
+// one test that carries a wave all the way to complete.
+void testColourWaveCompletes() {
+    using namespace tubes;
+    Game g(6, 5, Difficulty::k101, 909u);
+    g.startWave();                       // wave 1: any atom, any orientation
+    check(g.waveMode() == WaveMode::kColour, "wave 1 is mode 3");
+    const int target = g.objective().counter;
+    check(target > 0, "and asks for some chains");
+
+    Board& b = g.boardMutable();
+    for (int done = 0; done < target + 2 && g.objective().counter > 0; ++done) {
+        // One horizontal three along the floor, which is a run in any
+        // orientation-free wave whatever colour comes up.
+        for (int c = 0; c < 3; ++c) b.set(c, b.rows() - 1, kCyanium);
+        for (int i = 0; i < 15 && b.at(0, b.rows() - 1) == kCyanium; ++i) {
+            g.stepOnce(0);
+        }
+    }
+    check(g.objective().counter == 0, "forming them spends the counter");
+    for (int i = 0; i < 200 && !g.waveComplete(); ++i) g.stepOnce(0);
+    check(g.waveComplete(), "and the colour wave completes");
 }
 
 void testCrystalRecordFollowsItsCellDown() {
@@ -3304,6 +3336,7 @@ int main() {
     testCrystalsArePlacedWithStaggeredClocks();
     testCrystalTeleportsOutAndBackIn();
     testCrystalGoesOnlyToAntiMatter();
+    testColourWaveCompletes();
     testCrystalRecordFollowsItsCellDown();
     testTaskDisplayCyclesWhenNothingIsRequired();
     testHiddenAtomsConcealButDoNotChangeAnything();
