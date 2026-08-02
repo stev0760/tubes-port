@@ -1681,8 +1681,32 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
         raw[i * 3 + 2] = tubes::kTextPalette[i][2];
     }
 
+    // STATIC, NOT STREAMING - and this is what the flicker was.
+    //
+    // The reported symptom was precise and is what identified it: about twice,
+    // the first quarter of the picture inverted for a split second. That is not
+    // a swap or a present-rate artifact, which is what three earlier attempts
+    // assumed; it is a PARTIAL TEXTURE UPLOAD. Part of the image is drawn from
+    // the new upload and part from what was there before, so a region of it
+    // shows the previous frame's colours.
+    //
+    // The cause is a mismatched pairing. SDL's two texture access modes each
+    // have their own update path:
+    //
+    //     STATIC     + SDL_UpdateTexture              - changes rarely
+    //     STREAMING  + SDL_LockTexture / Unlock       - changes every frame
+    //
+    // This texture was STREAMING and updated with `SDL_UpdateTexture`, which is
+    // the combination neither is for. The main loop does the same thing and
+    // gets away with it at 320 x 200; this one is 640 x 400 RGBA - a megabyte,
+    // four times the data - which is four times the window for an upload to
+    // race the draw still sampling from it.
+    //
+    // STATIC is the right mode on the merits anyway: this screen is a fixed
+    // picture with an 8 x 2 cursor on it. It is uploaded when it CHANGES, not
+    // once a frame.
     SDL_Texture* tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32,
-                                         SDL_TEXTUREACCESS_STREAMING,
+                                         SDL_TEXTUREACCESS_STATIC,
                                          tubes::kTextScreenW, tubes::kTextScreenH);
     if (!tex) return;
     SDL_SetTextureScaleMode(tex, SDL_ScaleModeNearest);
@@ -1694,7 +1718,11 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
     // the cursor scanline registers, not fetched from the character ROM.
     int cursorCol = 0;
     bool cursorOn = false;
-    auto present = [&](const tubes::Palette& pal) {
+
+    // Build the pixels and hand them to the texture. Called only when something
+    // has actually changed: once per fade step, once when the prompt appears,
+    // and once per cursor blink.
+    auto upload = [&](const tubes::Palette& pal) {
         for (size_t i = 0; i < indexed.size(); ++i) {
             const uint8_t* c = pal.rgb[indexed[i]];
             // 6-bit DAC to 8-bit, the same `v * 255 / 63` the rest of the port
@@ -1719,13 +1747,12 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
                 }
             }
         }
-        // UPLOAD EVERY FRAME. A STREAMING texture is not guaranteed to keep
-        // its contents between frames - the backend may cycle internal
-        // buffers - so a RenderCopy without a preceding UpdateTexture can pick
-        // up a stale one. Skipping the upload on unchanged frames was tried as
-        // an optimisation and is what made the whole picture flicker during the
-        // hold while the fade, which uploads every frame, stayed clean.
         SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kTextScreenW * 4);
+    };
+
+    // Put the texture on the window. No upload, so this is safe to call as
+    // often as the loop likes.
+    auto draw = [&]() {
         int winW = 0, winH = 0;
         SDL_GetRendererOutputSize(ren, &winW, &winH);
         const tubes::DisplayRect r = tubes::presentRect(winW, winH, g_display);
@@ -1744,9 +1771,13 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
         SDL_RenderPresent(ren);
     };
 
+    // `23e7:0097`. One upload and one draw per step, throttled to the retrace -
+    // never faster, because a vsync request is advisory on this port's targets
+    // and cannot be relied on to pace anything. See the note in the hold below.
     for (int i = 0; i <= fadeSteps; ++i) {
-        present(tubes::fadePalette(raw, i, fadeSteps ? fadeSteps : 1));
-        if (fadeSteps > 0) SDL_Delay(14);          // one 70 Hz retrace
+        upload(tubes::fadePalette(raw, i, fadeSteps ? fadeSteps : 1));
+        draw();
+        if (fadeSteps > 0) SDL_Delay(1000 / 70);
     }
     const tubes::Palette lit = tubes::textPalette();
 
@@ -1759,22 +1790,8 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
     cursorCol = static_cast<int>(std::strlen(kPrompt));
     ts.render(indexed);
     cursorOn = true;
-
-    // PRIME THE SWAP CHAIN before the hold begins.
-    //
-    // The content changes here - the prompt appears - and a double or triple
-    // buffered swap chain does not change with it: the first few presents
-    // alternate between buffers still holding the pre-prompt frame and ones
-    // holding the new one, so the picture flips a few times and then settles
-    // once every buffer has been written. That settling was the flicker, and
-    // it was worst when the loop presented only on the cursor blink, which
-    // stretched three flips across most of a second.
-    //
-    // Presenting the finished frame four times back to back fills every buffer
-    // any common backend has while the player is still registering that the
-    // screen changed, so the hold starts already converged. It costs four
-    // retraces.
-    for (int i = 0; i < 4; ++i) present(lit);
+    upload(lit);
+    draw();
 
     if (!screenshot.empty()) {
         SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormatFrom(
@@ -1793,26 +1810,14 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
     // the banner simply persists - so this is the port's substitute for a
     // screen that outlives the program.
     //
-    // THROTTLE UNCONDITIONALLY. Do not trust vsync.
-    //
-    // Measured on this machine rather than assumed, after three wrong theories:
-    //
-    //     SDL video driver: wayland      renderer: opengl
-    //     SDL_RenderSetVSync(1) -> 0 (ok), and the PRESENTVSYNC flag is set
-    //     60 presents took 459 ms = 130.7 fps
-    //
-    // So `SDL_RenderSetVSync` REPORTS SUCCESS AND DOES NOT SYNC. An earlier
-    // version of this loop believed that return value and skipped its delay,
-    // which left it presenting unthrottled at 130+ fps into a Wayland
-    // compositor - and that is the flicker. It is also exactly why the fade
-    // never flickered: the fade delays every iteration unconditionally.
-    //
-    // The rule this leaves behind is worth more than the fix: on this port's
-    // targets a vsync request is advisory, so anything that presents in a loop
-    // paces itself and treats vsync as a bonus if it happens to be real.
+    // Throttled unconditionally. Measured on a Wayland/OpenGL target:
+    // `SDL_RenderSetVSync(1)` returns 0, sets the PRESENTVSYNC flag, and does
+    // not sync - 60 presents in 459 ms. So a vsync request is advisory here and
+    // anything presenting in a loop paces itself.
     bool waiting = true;
     const uint32_t start = SDL_GetTicks();
     const uint32_t blinkMs = kCursorBlinkRetraces * 1000 / 70;
+    bool shown = cursorOn;
     while (waiting) {
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
@@ -1821,10 +1826,13 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
                 waiting = false;
             }
         }
-        // Structurally identical to the fade loop above, which is the control:
-        // rebuild, upload, draw, present, delay one retrace. No cleverness.
-        cursorOn = ((SDL_GetTicks() - start) / blinkMs) % 2 == 0;
-        present(lit);
+        const bool want = ((SDL_GetTicks() - start) / blinkMs) % 2 == 0;
+        if (want != shown) {
+            shown = want;
+            cursorOn = want;
+            upload(lit);           // the only thing on this screen that changes
+        }
+        draw();
         SDL_Delay(1000 / 70);
     }
     SDL_DestroyTexture(tex);
