@@ -3963,3 +3963,56 @@ coincidence on purpose. Two numbers that agree can still be counting different
 things, which this project has already been wrong about once this week.
 
 No code changed; 742 checks unmoved.
+
+## 2026-08-02 - the Preview's five waves, and the background guess was wrong
+
+Both remaining lists read out of `1000:7fc7`, the shareware's counterpart of the
+registered wave setup `1000:86b8`.
+
+**The backgrounds first, because the guess recorded this morning was wrong in
+both halves.** It said normal play drew from `{1,2,3,4,8}` and the Preview from
+`{5,6,7,9,10}`, reasoning from five `GAMEBG` literals beside the constructed
+prefix - and it was written up as a guess precisely because a five-and-five
+split matching a marketing line was too neat. It is neither list. Normal
+shareware play is
+
+    repeat n := Random(N)+1 until n <> [0x2056];  Load('GAMEBG'+Str(n)+'.GFX')
+
+with **N = 5 shareware against N = 10 registered** - one operand, `1000:86d0
+PUSH 0xa` against `PUSH 0x5`. The five literals are the Preview, and they are
+**fixed per wave**: 10, 5, 9, 6, 7 for waves 1..5. So `GAMEBG8` is never shown
+by the shareware at all, and `GAMEBG5` is shown by both paths. Given the pitch
+promises five new backgrounds and the new ones are 6..10, that reads like
+`GAMEBG5` where `GAMEBG8` was meant - recorded as a guess about intent, since
+what is established is the table.
+
+**The Preview wave list** is the `else` side of the dispatch, five arms against
+the normal 25, and every one of them named by its own briefing text:
+
+    1  1000:6591   Mischief Crystals, cleared with Anti-Matter
+    2  1000:6458   marked atoms inside Xenon rings, Anti-Matter first
+    3  1000:6c32   hidden atoms
+    4  1000:729e   colour-and-chain from the Task Display, changing every 45s
+    5  1000:7cad   Mystery Wave
+
+Arm 1 is the player's *"the first level is the mischief crystal one"*, exactly.
+And **none of the five occurs anywhere in the normal 25-arm chain** - checked
+per function rather than assumed, zero hits each. They are registered-only
+waves carried in the shareware binary and reachable only through the Preview.
+
+The satisfying part: **the wave list and the spawn branch are each other's
+reason.** Preview waves 1 and 2 cannot be completed without Anti-Matter, which
+is why `1000:9718` restores the rate bytes to the registered 50 and 25 under
+the Preview flag instead of leaving them zeroed. Those two facts were read
+hours apart by different routes and neither was looking for the other.
+
+It also confirms the `wave = 5` test at `1000:9f4b` that was written up as
+unconfirmed this afternoon: the list has exactly five arms.
+
+`[BP-0x16f]` is now closed for practical purposes rather than explained. Its
+Preview value of 5 matches the arm count, the background count and the prompt
+test, and that is still not evidence of what it is for, because **nothing reads
+it**. The shipped program does not consult it, so the port has nothing to
+transliterate.
+
+No code changed; 742 checks unmoved.

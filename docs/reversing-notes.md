@@ -9520,3 +9520,92 @@ is the byte **immediately after** the wave number, and its Preview value is
 also 5. That is exactly the kind of coincidence this file has been wrong about
 before - two counts that agree can still be counting different things - so it
 stays a coincidence until the Preview's wave list is read.
+
+### The Preview's five waves and both background lists
+
+`1000:7fc7` is the shareware's counterpart of the registered `1000:86b8` - the
+wave setup, which picks the background, dispatches to the per-wave
+briefing-and-objective arm, and waits for a key. 1133 bytes against the
+registered 1392, and `tools/count_waves.py` counts its arms.
+
+#### The backgrounds, and the earlier guess was wrong
+
+The map pass recorded a guess: *"normal shareware play draws from {1,2,3,4,8}
+and the Preview from {5,6,7,9,10}"*, on the strength of the shareware naming
+five `GAMEBG` literals beside the constructed prefix, and it was written up
+explicitly as **not established**. Good, because it is wrong in both halves.
+
+Normal play, `1000:7fc7`, and the registered `1000:86b8` differ by one operand:
+
+    repeat  n := Random(N) + 1  until n <> LastBackground     { DS:0x2056 }
+    LastBackground := n
+    Load('GAMEBG' + Str(n) + '.GFX')
+
+with **N = 10 registered** (`1000:86d0  PUSH 0xa`) and **N = 5 shareware**. So
+normal shareware play uses `GAMEBG1..5` at random, never the same one twice
+running - not a hand-picked set. `DS:0x2056` is the last-shown background and
+`entry` seeds it to `0xff` at `1000:ab0c` so the first roll can never match.
+
+The five literals are the **Preview**, and they are fixed per wave rather than
+rolled:
+
+| Preview wave | background |
+|---|---|
+| 1 | `GAMEBG10.GFX` |
+| 2 | `GAMEBG5.GFX` |
+| 3 | `GAMEBG9.GFX` |
+| 4 | `GAMEBG6.GFX` |
+| 5 | `GAMEBG7.GFX` |
+
+Two things fall out of that table that no amount of guessing would have got:
+
+* **`GAMEBG8` is never shown by the shareware at all** - not in normal play,
+  which only rolls 1..5, and not in the Preview;
+* **`GAMEBG5` is shown by both** - it is inside the normal roll AND is Preview
+  wave 2's fixed background.
+
+Since the registration pitch promises *"5 gorgeous new Backgrounds!"* and the
+new five are plainly 6..10, a Preview advertising *"see the other five
+backgrounds"* that shows 10, 5, 9, 6, 7 is showing four new ones and repeating
+an old one. It reads like `GAMEBG5` where `GAMEBG8` was meant. **That is a
+guess about intent and nothing more** - what is established is the table above.
+
+#### The Preview's wave list
+
+The dispatch in `1000:7fc7` is one `if/else` on the Preview flag with a
+25-arm chain on one side and a **5-arm chain** on the other:
+
+| Preview wave | arm | what its briefing says it is |
+|---|---|---|
+| 1 | `1000:6591` | **Mischief Crystals** - *"Using Anti-Matter remove all the Mischief Crystals that are contaminating the beaker"* |
+| 2 | `1000:6458` | **Marked atoms inside Xenon rings** - *"…first you'll have to use Anti-Matter to remove the Xenons surrounding them"* |
+| 3 | `1000:6c32` | **Hidden atoms** - *"…atoms that are hidden until they leave a tube"* |
+| 4 | `1000:729e` | **Colour-and-chain from the Task Display**, *"will change every 45 seconds"* |
+| 5 | `1000:7cad` | **Mystery Wave** - *"you are not told what the task is until you complete it once"* |
+
+**None of these five appears anywhere in the normal 25-arm chain.** Checked
+rather than assumed: each of `6591`, `6458`, `6c32`, `729e`, `7cad` occurs zero
+times among arms 1..25. They are registered-only waves, carried in the
+shareware binary and reachable only through the Preview.
+
+The player's report - *"the first level is the mischief crystal one"* - is arm
+1 exactly.
+
+**And the list explains the spawn branch.** Preview waves 1 and 2 both require
+AntiMatter to complete; they are literally unplayable without type 9. That is
+why `1000:9718` restores `[0x1d49]` and `[0x1d4a]` to the registered 50 and 25
+under the Preview flag rather than leaving them zeroed. The rate branch and the
+wave list were read hours apart, by different routes, and each is the other's
+reason - which is the strongest kind of confirmation this project gets.
+
+It also confirms the five-wave reading of `1000:9f4b`'s `wave = 5` test that was
+recorded as unconfirmed: the Preview list has exactly five arms.
+
+#### The dead store, still dead
+
+`[BP-0x16f]` = 7 normal / 5 Preview remains written-twice-read-nowhere. The
+Preview value 5 now matches three separate things - the arm count, the
+background count and the `wave = 5` prompt test - and it is **still** not
+evidence of what the byte is for, because nothing reads it. Recorded as closed
+for practical purposes: whatever it was meant to be, the shipped program does
+not consult it, so the port has nothing to transliterate.

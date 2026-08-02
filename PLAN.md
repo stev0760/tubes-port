@@ -1269,7 +1269,7 @@ and only the third column settles anything.
 | 25 waves, not 75 | yes | 25 dispatch arms at `1000:86b8`; *"50 more exciting Waves!"* |
 | ~~**No Bonus and no AntiMatter in normal play**~~ **DECOMPILED** | yes | two rate bytes zeroed at `1000:9e63`; see below |
 | **An extra menu item, "Preview Registered"** | yes | `Preview Registered`, `Preview` |
-| Preview has **its own wave list**, first wave the **Mischief Crystal** one | yes | *"This Preview allows you to play some of the new waves, use the new atoms, and see the other five backgrounds"* |
+| ~~Preview has **its own wave list**, first wave the **Mischief Crystal** one~~ **DECOMPILED** | yes | a 5-arm chain in `1000:7fc7`; arm 1 is Mischief Crystals, and none of the five occurs in the normal 25 |
 | **An "Ordering Info" slide deck** | yes | `Ordering Info`, `Order by Phone`, `Order by Fax`, `Order by BBS (OPEN Door 5)`, `Down - Next Slide  Register!` |
 | **Quitting goes to the registration deck first** | yes | *"You can't stop now!"*, *"Lanny is 1/3 of the way to his goal and he still needs your help."* |
 | Then `TUBESEND.BIN` is dumped to the **DOS screen** | yes | `TUBESEND.BIN`, `ExitText Resource Error!` |
@@ -1285,14 +1285,14 @@ the shape of the work:
   parameterised over a disassembly and a string dump, so this costs a second
   extraction rather than a second tool - but it does mean shareware mode owns a
   second generated table, not a subset of the first one;
-* **the backgrounds are split, not merely fewer.** The registered image names
-  only the prefix `GAMEBG` and builds each name numerically. The shareware
-  image names the prefix **and** five literals - `GAMEBG5`, `6`, `7`, `9`,
-  `10` - which is exactly *"the other five backgrounds"* the Preview blurb
-  promises. Strongly suggests normal shareware play draws from `{1,2,3,4,8}`
-  and the Preview from `{5,6,7,9,10}`, but **which list is the literal one is
-  a guess until the routine is read** - it could as easily be the other way
-  round.
+* ~~**the backgrounds are split, not merely fewer.**~~ **READ, and the guess
+  here was wrong in both halves** - which is why it was written down as a
+  guess. Normal shareware play is `Random(5)+1`, so `GAMEBG1..5` rolled with no
+  immediate repeat, against the registered `Random(10)+1`: **one operand**, not
+  a hand-picked set. The five literals are the **Preview**, fixed per wave -
+  wave 1 `GAMEBG10`, 2 `GAMEBG5`, 3 `GAMEBG9`, 4 `GAMEBG6`, 5 `GAMEBG7`. So
+  `GAMEBG8` is never shown by the shareware at all and `GAMEBG5` is shown by
+  both paths.
 
 Also worth recording because the game says it about itself: *"Lanny is 1/3 of
 the way to his goal"*. 25 of 75. The game's own text agreeing with a count
