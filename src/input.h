@@ -39,6 +39,8 @@
 #include <string>
 #include <vector>
 
+#include "edition.h"
+
 namespace tubes {
 
 // The six the driver reports, in the mask's own bit order - see
@@ -177,6 +179,23 @@ struct Settings {
     bool sound = true;      // `DS:0x215e`
     Bindings bindings = defaultBindings();
     GraphicsOptions graphics;
+
+    // Which edition the player owns - THE PORT'S OWN SETTING, and the only one
+    // here that the original has no counterpart for at all.
+    //
+    // It has to be asked rather than detected. `TUBES.RES` is byte-identical
+    // between the editions, so an install directory carries no evidence of
+    // which one it came from; the edition lives only in the executable, and
+    // the port IS the executable. Anything calling itself detection would be
+    // inventing evidence. See PLAN.md, "Where the edition switch should live".
+    //
+    // `editionChosen` is what makes the question a FIRST-RUN one: it is false
+    // until either the player answers or a `--shareware` / `--preview` flag is
+    // made sticky, and the key is simply absent from the file until then. So a
+    // fresh install asks once and never again, and deleting the line asks
+    // again - which is the whole recovery path for answering it wrongly.
+    Edition edition = Edition::kRegistered;
+    bool editionChosen = false;
 };
 
 std::string encodeSettings(const Settings& s);

@@ -3215,6 +3215,33 @@ void testSettingsRoundTrip() {
     Settings wild;
     decodeSettings("scale 40\n", wild);
     check(wild.graphics.scale == 0, "an out-of-range scale falls back to Fit");
+
+    // The edition. Its ABSENCE is the first-run state, so a settings file that
+    // predates the setting - which is every file written so far - must come
+    // back unanswered rather than defaulting quietly to registered and never
+    // asking.
+    Settings noEd;
+    decodeSettings("music 1\nsound 1\n", noEd);
+    check(!noEd.editionChosen, "a file with no edition line has not answered");
+    check(encodeSettings(noEd).find("edition") == std::string::npos,
+          "and writing it back does not invent an answer");
+
+    for (const Edition e : {Edition::kRegistered, Edition::kShareware}) {
+        Settings chose;
+        chose.edition = e;
+        chose.editionChosen = true;
+        Settings choseBack;
+        decodeSettings(encodeSettings(chose), choseBack);
+        check(choseBack.editionChosen && choseBack.edition == e,
+              "an answered edition round-trips and stays answered");
+    }
+
+    // A hand-edited typo must ask again rather than pick one. The edition is
+    // the single setting that reaches for a different save file, so guessing
+    // at a value nobody wrote is the one failure worth avoiding here.
+    Settings typo;
+    decodeSettings("edition sharewear\n", typo);
+    check(!typo.editionChosen, "an unrecognised edition is not an answer");
 }
 
 // The port's display options. None of this is transliterated - see input.h -

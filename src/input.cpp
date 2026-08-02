@@ -144,6 +144,15 @@ std::string encodeSettings(const Settings& s) {
     o << "aspect43 " << (s.graphics.aspect43 ? 1 : 0) << "\n";
     o << "vsync " << (s.graphics.vsync ? 1 : 0) << "\n";
     o << "scanlines " << (s.graphics.scanlines ? 1 : 0) << "\n";
+    // Written only once it has been answered, so its ABSENCE is what says the
+    // question has not been asked yet. That keeps the first-run state in the
+    // one place a player can see and undo it: delete the line to be asked
+    // again.
+    if (s.editionChosen) {
+        o << "edition "
+          << (s.edition == Edition::kShareware ? "shareware" : "registered")
+          << "\n";
+    }
     return o.str();
 }
 
@@ -186,6 +195,20 @@ void decodeSettings(const std::string& text, Settings& out) {
                 // unbind whatever was read a line earlier.
                 out.bindings.b[i].key = key;
                 out.bindings.b[i].pad = pad;
+            }
+        } else if (word == "edition") {
+            std::string which;
+            if (!(ls >> which)) continue;
+            // An unrecognised value is NOT an answer. Leaving `editionChosen`
+            // false there means a hand-edited typo asks again rather than
+            // silently playing the wrong edition - and the wrong edition is
+            // the one thing here that reaches for a different save file.
+            if (which == "shareware") {
+                out.edition = Edition::kShareware;
+                out.editionChosen = true;
+            } else if (which == "registered") {
+                out.edition = Edition::kRegistered;
+                out.editionChosen = true;
             }
         }
         // Anything else is from a version that knew more than this one.
