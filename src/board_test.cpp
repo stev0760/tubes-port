@@ -2545,6 +2545,24 @@ void testAPreviewRunCanNeitherBeSavedNorPlace() {
     check(reg.canSave() && reg.canEnterHiScore(), "the registered game can do both");
 }
 
+// `1000:5ed0` and `1000:9fb9` read `DS:0x1d4b` in the live session, not a
+// startup constant, so the port must consult `Game::edition()` once the
+// session is running. This caught a bug where Preview started from the menu
+// (without `--preview` on the CLI) still allowed saving and could run past
+// wave 5.
+void testGameEditionReflectsPreviewForSessionGates() {
+    tubes::Game pv(6, 5, tubes::Difficulty::k101, 1);
+    pv.applyEdition({tubes::Edition::kShareware, true});
+    check(!pv.edition().canSave(), "a Preview session reports saving disabled");
+    check(!pv.edition().canEnterHiScore(), "a Preview session reports hi-score disabled");
+    check(pv.edition().endingWave() == 5, "a Preview session ends at wave 5");
+
+    tubes::Game sw(6, 5, tubes::Difficulty::k101, 1);
+    sw.applyEdition({tubes::Edition::kShareware, false});
+    check(sw.edition().canSave(), "ordinary shareware session reports saving enabled");
+    check(sw.edition().endingWave() == 25, "ordinary shareware session ends at wave 25");
+}
+
 
 void testMenuLayoutMatchesTheCaptures() {
     using tubes::Page;
@@ -3920,6 +3938,7 @@ int main() {
     testTheTwoEditionsHaveDifferentEndScreens();
     testEachEditionEndsOnItsOwnWave();
     testAPreviewRunCanNeitherBeSavedNorPlace();
+    testGameEditionReflectsPreviewForSessionGates();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

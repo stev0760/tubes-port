@@ -4179,7 +4179,11 @@ int main(int argc, char** argv) {
     auto rollBackdrop = [&]() {
         if (backdropPinned) return;
         int n;
-        if (opt.edition.preview) {
+        // Edition state is read from the session, not the CLI option, because
+        // the Preview flag is set by the menu arm and `--preview` is only one
+        // way to reach it.
+        const tubes::EditionState& ed = game->edition();
+        if (ed.preview) {
             // The Preview does not roll at all: `1000:7fc7` loads a FIXED
             // background per wave, which is what the five `GAMEBG` literals in
             // the shareware image are and why it names them beside the
@@ -4192,7 +4196,7 @@ int main(int argc, char** argv) {
             // `1000:86b8` registered, `1000:7fc7` shareware. The two builds
             // differ by ONE OPERAND - `PUSH 0xa` against `PUSH 0x5` - so this
             // is one call with an edition-dependent bound, not two code paths.
-            const int bound = opt.edition.backdropCount();
+            const int bound = ed.backdropCount();
             n = lastBackdrop;
             while (n == lastBackdrop) n = game->rollForTest(bound) + 1;
         }
@@ -4428,7 +4432,7 @@ int main(int argc, char** argv) {
         hsBank = (gameMode == 1) ? tubes::HiScoreBank::kEndurance
                                  : tubes::HiScoreBank::kWave;
         const uint32_t sc = static_cast<uint32_t>(game->score());
-        if (!flags.aborted && gameMode != 0 &&
+        if (!flags.aborted && gameMode != 0 && game->edition().canEnterHiScore() &&
             tubes::qualifies(hiScores[hsBank], sc)) {
             // Seeded with the sentinel and typed over, exactly as the original
             // does - which is why the sentinel's tail survives in the file.
@@ -5141,7 +5145,7 @@ int main(int argc, char** argv) {
                 if (banner == tubes::Banner::kAborted &&
                     bannerPhase == tubes::BannerPhase::kWait &&
                     code == tubes::gamekey::kF2 && gameMode != 0 &&
-                    !tubes::kSaveDisabled) {
+                    game->edition().canSave()) {
                     saveScreen = true;
                     saveTyping = false;
                     saveWritten = 0.0f;
@@ -5183,10 +5187,14 @@ int main(int argc, char** argv) {
                 // ending at `1000:9499`. Neither image contains the other's
                 // text, so the port shows each edition its own screen and
                 // never substitutes one for the other.
-                const bool sharewareEnd =
-                    opt.edition.edition == tubes::Edition::kShareware;
+                //
+                // Read the edition from the SESSION, not the CLI option:
+                // Preview is set by the menu arm even when `--preview` was
+                // not given on the command line.
+                const tubes::EditionState& ed = game->edition();
+                const bool sharewareEnd = ed.edition == tubes::Edition::kShareware;
                 if (t.advanceWave &&
-                    game->progress().wave >= opt.edition.endingWave()) {
+                    game->progress().wave >= ed.endingWave()) {
                     if (sharewareEnd) {
                         // One page, and `1000:8df8` waits with `1ac3:0b8f` -
                         // the terminal wait, not the paging one - so it is
@@ -5278,7 +5286,7 @@ int main(int argc, char** argv) {
             // came. The port hard-coded `true` here while the save screen did
             // not exist, which quietly made F2 dead once it did.
             switch (tubes::classifyGameKey(code, gameMode == 0,
-                                           tubes::kSaveDisabled)) {
+                                           !game->edition().canSave())) {
             case tubes::GameAction::kAbort:
                 flags.aborted = true;
                 break;
@@ -5895,8 +5903,8 @@ int main(int argc, char** argv) {
             // when the mode is not attract and saving is enabled.
             drawBanner(screen, banner, headingFont, haveHeading, smallFont,
                        haveSmall,
-                       banner == tubes::Banner::kAborted && gameMode != 0 &&
-                           !tubes::kSaveDisabled);
+                        banner == tubes::Banner::kAborted && gameMode != 0 &&
+                            game->edition().canSave());
         }
         if (sstage == tubes::SessionStage::kContinue) {
             drawContinue(screen, continuePrompt.ticksLeft(), headingFont,
