@@ -8926,21 +8926,14 @@ now corroborated from the binary's own documentation, which is the second-rank
 authority `CLAUDE.md` describes - and this is the **fourth** time that has held
 an answer the project was deriving the hard way.
 
-**Second: the copy in `..` is the REGISTERED edition**, and this is no longer
-inferred from a single `RegisteredEnding` string. All three advertised
-additions are present and counted:
-
-| the pitch says | this copy has |
-|---|---|
-| 50 more exciting waves | 75 waves, decompiled arm by arm at `1000:86b8` |
-| 2 helpful new atoms | `AFADE*` and `GLDFADE*` - AntiMatter and the Bonus |
-| 5 gorgeous new backgrounds | `GAMEBG1..10`, ten of them |
-
-So the shareware edition is 25 waves, 5 backgrounds and no AntiMatter or Bonus,
-and this archive is the registered one **with the shareware build's exit screen
-still in it** - which is why nothing here opens it. A resource that no
-executable names is not a mystery once you know it belongs to a different
-executable.
+**Second: the copy in `..` is the REGISTERED edition.** That is now settled
+against real shareware images - see the section below, which also **corrects
+the argument this paragraph originally made**. The first version of this note
+reasoned that all three advertised additions were present in the archive, so
+the archive must be the registered one. Two of those three premises are false:
+a genuine shareware `TUBES.RES` carries all ten backgrounds and both atoms
+too. What actually distinguishes the editions is the executable, and nothing
+else.
 
 ### What the port should do with it: nothing, for now
 
@@ -8951,3 +8944,78 @@ turns out to name `TUBESEND.BIN`, then the exit screen is a real screen of that
 edition and porting it becomes a faithful thing to do rather than an invention.
 That is also a second cheap test of which edition an image is, beside counting
 the wave table's arms.
+
+## Both editions, measured - shareware is 25 waves and the archive is identical
+
+Two real images, off archive.org and analysed side by side with the copy in
+`..`:
+
+| | `..` | `msdos_TUBES_shareware` | `msdos_Tubes_1993` |
+|---|---|---|---|
+| `TUBES.EXE` | 46,037 | 46,389 | 47,328 |
+| unpacked | 108,432 | 108,720 | 110,672 |
+| **wave arms at `86b8`** | **75** | **25** | **25** |
+| names `PRIZE.GFX` | **yes** | no | no |
+| names `TUBESEND` | no | **yes** | **yes** |
+| publisher splash | `SOFT.*` | `SOFT.*` | `IMPULSE.DAT` |
+| `TUBES.RES` md5 | `39ef6920…` | **`39ef6920…`** | `d6e3d178…` |
+
+### Shareware is 25 waves - confirmed, not inferred
+
+`tools/count_waves.py` counts the dispatch arms in an unpacked image without
+disassembling it. `1000:86b8`'s objective dispatch is a linear if-else chain,
+one arm per wave, every arm the same shape:
+
+    3c NN        CMP AL, wave
+    75 dd        JNZ  the next arm
+    55           PUSH BP
+    e8 lo hi     CALL the objective routine
+    e9 lo hi     JMP  the common tail          (11 bytes)
+      or  eb dd  short, once the tail is near  (10 bytes)
+      or  nothing at all, on the LAST arm      (8 bytes, JNZ dd = 4)
+
+**75 in `..`, 25 in both shareware images.** The pitch on the exit screen says
+registering adds 50, and 75 - 50 = 25. Hypothesis closed.
+
+Two false counts came out of this before the right one, both from the filter
+rather than the binary, and both worth keeping since the tool is now in `tools/`:
+
+* a flat 11-byte stride reported **62** arms for the image known to hold 75.
+  The arms nearest the tail reach it with a 2-byte `EB`, so the run broke at
+  the first short jump;
+* allowing both jumps reported **74**. The last arm has no `JMP` at all - the
+  tail follows it directly - so it is 8 bytes with `JNZ 4`.
+
+Both numbers were plausible enough to accept. The only reason they were not is
+that the image's true count was already known from decompiling it arm by arm.
+**Validate a scanner against the one input whose answer you already have.**
+
+### The `.RES` does NOT distinguish the editions - it is byte-identical
+
+`..`'s `TUBES.RES` and the shareware download's have **the same md5**. Ten
+`GAMEBG`, `AFADE*` and `GLDFADE*`, `TUBESEND.BIN`: all of it is in the
+shareware archive too. The `msdos_Tubes_1993` archive differs from both only by
+its publisher splash - `IMPULSE.DAT` in place of `SOFT.ANM`/`SOFT.GFX`/
+`SOFT.PAL` - and is itself a 25-wave shareware build, an Impulse-branded
+re-release rather than the registered edition.
+
+So **the edition lives entirely in the executable**, and three consequences
+follow:
+
+1. the port already reads a shareware install's data correctly, because there
+   is nothing different in it to read;
+2. there is nothing for the engine to *detect*. "Supporting the shareware
+   edition" can only mean offering its 25-wave progression as a choice, which
+   is a mode and not a compatibility layer;
+3. the earlier reading of `..` as registered - "all three additions are
+   present in the archive" - was **wrong in its premises** and right only by
+   luck. What actually says registered is `PRIZE.GFX`, the ending text with
+   its `existance` misspelling, and 75 arms. Corrected above.
+
+### The shareware build DOES show the exit screen
+
+Both shareware images name `TUBESEND`; the registered one does not. So the lead
+recorded when `.BIN` was decoded is answered: the exit screen is a real screen
+of the shareware edition, shown on the way out, and rendering it would be
+faithful **for that edition**. It stays unported while the port targets the
+registered ruleset, because the registered executable never shows it.

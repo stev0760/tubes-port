@@ -69,11 +69,13 @@ asked for, and then publishing:
    verbatim - it names `1b2e:2d63` and "21 slides, 152 strings and 22
    illustrations", which describes the other screen. The Credits are 4 pages
    and 36 strings out of `1b2e:411b`.
-5. **Shareware edition support**, which the "Supporting both editions" section
-   below already scopes. It is a preservation goal rather than a port goal:
-   the shareware `TUBES.EXE` is on archive.org, the cheap decisive test is
-   counting the wave table's arms in it, and the engine should DETECT the
-   edition rather than be told.
+5. **Shareware edition support** - and it turned out to be far smaller than
+   this list assumed. Both editions have now been measured: shareware is **25**
+   waves against the registered **75**, and the `.RES` is **byte-identical**,
+   so there is nothing to detect and nothing missing. What is left is a
+   choice - offer the 25-wave progression as a MODE - plus the shareware exit
+   screen and one unread question about the two special atoms. See "Supporting
+   both editions" below.
 6. **Publishing**, which is the last section of this file and is gated on a
    comment and documentation pass, a repository check and a final code review.
    **The player has a specific method in mind for the review and lint pass, so
@@ -1188,51 +1190,52 @@ shareware and the registered editions are on archive.org, and running against
 either is a goal - it is what makes this a preservation project rather than a
 port of one person's disc.
 
-What would have to become version-aware, in rough order of likely pain:
+**MEASURED, against both editions.** Two real images have now been pulled from
+archive.org and compared with the copy in `..`, and the answer is smaller than
+this section assumed. `docs/reversing-notes.md` has the table.
 
-**Two of the five below are now answered, and `TUBESEND.BIN` answered both.**
-The last undecoded resource turned out to be the **shareware exit screen** - a
-DOS text-mode dump nothing in this build opens - and its registration pitch
-lists what registering buys: *50 more exciting waves, 2 helpful new atoms, 5
-gorgeous new backgrounds*. See `docs/reversing-notes.md`.
+1. **The wave table.** ~~Hypothesis, untested~~ - **confirmed by counting.**
+   `tools/count_waves.py` counts `1000:86b8`'s dispatch arms straight out of an
+   unpacked image: **75 in `..`, 25 in both shareware images.** The exit
+   screen's "50 more exciting waves" is exactly that difference.
+2. **Which edition is in `..`.** ~~Unknown~~ - **REGISTERED**, and it is the
+   only one of the three that is. What says so is `PRIZE.GFX`, the ending text
+   with its `existance` misspelling, and the 75 arms. (An earlier reading of
+   this from the archive's contents was wrong - see the correction in the
+   notes.)
+3. **The resource sets.** ~~Would have to become version-aware~~ - **they do
+   not differ.** `..`'s `TUBES.RES` is **byte-identical** to the shareware
+   download's, same md5. Ten `GAMEBG`, both special-atom fade families,
+   `TUBESEND.BIN`: all present in the shareware archive too. The second
+   archive, `msdos_Tubes_1993`, differs from both only by its publisher splash
+   (`IMPULSE.DAT` for `SOFT.*`) and is itself a 25-wave shareware build - an
+   Impulse re-release, not the registered edition.
+4. **`tools/vercheck.py`** can still say whether the three images came off one
+   toolchain, which is worth knowing but no longer blocks anything.
+5. **`TUBES.SAV`.** Two banks by game mode, decoded. Whether the layout matches
+   across editions is still unknown and is now the only open item here.
 
-1. **The wave table.** ~~Hypothesis, untested~~ - **corroborated by the game's
-   own text.** `1000:86b8`'s dispatch has **75 arms** in this image and the
-   pitch says registering adds **50**, so shareware is **25**. The cheap
-   decisive confirmation is unchanged and still worth doing: unpack a shareware
-   `TUBES.EXE` and count the arms.
-2. **Which edition is in `..`.** ~~Unknown~~ - **it is the REGISTERED one**,
-   and no longer on the strength of one `RegisteredEnding` string. All three
-   advertised additions are present and counted: 75 waves decompiled arm by
-   arm, `AFADE*` and `GLDFADE*` for the two atoms, and `GAMEBG1..10` for the
-   backgrounds. The shareware exit screen is in the archive because the archive
-   is shared between the two builds; the registered executable never opens it.
-3. **The resource sets.** Now quantified rather than "documented as": shareware
-   should have **5** backgrounds against this copy's 10, and **no** AntiMatter
-   or Bonus. The port already loads by name and tolerates a missing sprite, so
-   this may cost nothing - but the spawn distribution rolls types 9 and 10
-   unconditionally, and a shareware `.RES` without them needs that checked
-   rather than assumed. That is the one place a shareware run would misbehave
-   rather than merely look different.
-4. **`tools/vercheck.py`** already exists to decide whether two MZ images came
-   off the same toolchain; point it at the two editions before anything else.
-5. **`TUBES.SAV`.** Two banks by game mode, decoded. Whether the layout is the
-   same across editions is unknown.
+**So there is nothing to detect, and nothing missing.** The edition lives
+entirely in the executable, and the port IS the executable. Reading a shareware
+install already works, because there is nothing different in it to read.
 
-The engine should end up **detecting** the edition rather than being told,
-since a user with either copy should be able to run `--gamedir` and have it
-work. Three candidate tells are now on the table, all readable from the
-`.RES` alone without touching the executable: **how many `GAMEBG*` there are**
-(5 or 10), **whether `AFADE*` and `GLDFADE*` exist**, and whether the archive
-carries `TUBESEND.BIN` at all. The first two are what the game itself would
-notice; the third is not a reliable tell on its own, since the registered
-archive here carries the shareware screen too.
+That reduces "shareware support" to one honest question: **should the port
+offer the 25-wave progression as a choice?** It is a mode, not a compatibility
+layer - the first 25 waves of the table are the same 25 either way, so it means
+ending the game at 25 and showing whatever the shareware build shows there.
+Worth doing for preservation, cheap to do, and it needs one thing read first:
+what `1000:a657`'s equivalent is in the shareware image, since the registered
+one calls the wave-75 ending there.
 
-And one lead worth following when a shareware copy is in hand: **does the
-shareware `TUBES.EXE` name `TUBESEND.BIN`?** If it does, the exit screen is a
-real screen of that edition and porting it becomes faithful rather than
-invented - the only reason not to render it today is that nothing in this
-build ever does.
+Two other differences are already known and belong to that work:
+
+* **the shareware build shows the exit screen.** Both shareware images name
+  `TUBESEND`; the registered one does not. So rendering `TUBESEND.BIN` is
+  faithful for that edition and only that edition;
+* **the two special atoms.** The sprites are in every archive, so the question
+  is whether the shareware executable's spawn distribution rolls types 9 and
+  10 at all. Not yet read - and it is the one place a shareware run could
+  differ in RULES rather than in presentation.
 
 ---
 

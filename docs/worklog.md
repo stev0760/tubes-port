@@ -3738,3 +3738,60 @@ edition and porting it becomes faithful.
 Also noted for the edition-detection work: the count of `GAMEBG*` and the
 presence of `AFADE*`/`GLDFADE*` are both readable from the `.RES` alone, which
 is a better tell than anything in the executable.
+
+## 2026-08-01 - both editions, measured: shareware is 25 waves, and the archive is the same
+
+The player supplied both archive.org items, so the "Supporting both editions"
+section stopped being a plan and became a measurement.
+
+**Shareware is 25 waves.** `tools/count_waves.py` counts `1000:86b8`'s dispatch
+arms out of an unpacked image without disassembling it - the objective dispatch
+is a linear if-else chain, one arm per wave, all the same shape. **75 in `..`,
+25 in both shareware images**, and the exit screen's "50 more exciting waves"
+is exactly that difference. The hypothesis this project has carried for months
+is closed.
+
+**The `.RES` does not distinguish the editions at all.** `..`'s `TUBES.RES` is
+**byte-identical** to the shareware download's - same md5. Ten `GAMEBG`, both
+special-atom fade families, `TUBESEND.BIN`: the shareware archive has all of
+it. So the edition lives entirely in the executable, and since the port IS the
+executable there is nothing to detect and nothing missing. Reading a shareware
+install already works today.
+
+That also **corrects yesterday's reading**, written up here a few hours ago:
+"the copy in `..` is registered, and all three advertised additions are present
+and counted". Two of those three premises are false - a shareware archive
+carries the backgrounds and the atoms too. The conclusion happened to be right;
+the argument was not. What actually says registered is `PRIZE.GFX`, the ending
+text with its `existance` misspelling, and 75 arms. Corrected in the notes
+rather than quietly deleted, because the shape of the error is the point: three
+counts that all agreed, and all three were counting the wrong thing.
+
+`msdos_Tubes_1993`, listed as the registered version, is **not** - it is a
+25-wave shareware build with `IMPULSE.DAT` in place of the Software Creations
+splash. An Impulse re-release. The player's own disc is the only registered
+image of the three.
+
+### Two wrong counts before the right one, both from the tool
+
+Worth keeping, since the scanner is now in `tools/`:
+
+* a flat 11-byte arm stride reported **62** arms for the image known to hold
+  75. The arms nearest the tail reach it with a 2-byte `EB` rather than a
+  3-byte `E9`, so the run broke at the first short jump;
+* allowing both jump encodings reported **74**. The last arm has no `JMP` at
+  all, the tail following it directly, so it is 8 bytes with `JNZ 4`.
+
+Both were plausible. The only reason neither was believed is that this image's
+true count was already known from decompiling it arm by arm - **validate a
+scanner against the one input whose answer you already have**, and read the
+disagreement rather than adjusting the number.
+
+### What is left of shareware support
+
+One choice - offer the 25-wave progression as a MODE - and one thing unread:
+whether the shareware executable's spawn distribution rolls types 9 and 10 at
+all. The sprites are in every archive, so that is the only place a shareware
+run could differ in RULES rather than presentation. Also confirmed: both
+shareware images name `TUBESEND`, so the exit screen is a real screen of that
+edition, and the registered one is not.
