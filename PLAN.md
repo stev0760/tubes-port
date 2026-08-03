@@ -1520,14 +1520,24 @@ value is not an answer either.
 
 #### What the prompt looks like, and why
 
-**A text screen, in `TUBESEND.BIN`'s idiom** - CP437 box art at 80 x 25, before
-the graphics come up, and drawn in the banner's **own panel grammar** rather
-than a generic DOS dialogue. That distinction is the difference between looking
-period and looking like it belongs to this game, and it was settled by dumping
-the banner's panels cell by cell: a blue field, TWO single-line boxes of the
-same size with the outer offset by `(+2, -1)`, black-on-blue borders,
-grey-on-blue body text, white headings, and a bright-blue block shadow down the
-right and along the bottom. Four candidates were built and rendered rather than
+**A text screen in `SETUP.EXE`'s own look** - the game's INSTALLER, not its
+sign-off. The first attempt copied `TUBESEND.BIN`, which was the wrong reference
+twice over: the banner is the game saying goodbye, the installer is the game
+asking the player a question, and this screen asks a question. They look nothing
+alike either - the banner is blue panels with doubled outlines, the installer is
+a light-grey field with raised bevels.
+
+It was not taken from a screenshot. `SETUP.EXE` was run under DOSBox-X and its
+text memory read back from `0xB8000`, so every attribute is a byte the original
+writes: a light-grey field (`0x70`), bevels lit white on top and left and black
+on bottom and right (`0x7f` / `0x70`), black drop shadows offset `(+1, +1)`, a
+blue title block capped with half blocks (`0x71` / `0x01`, text `0x1b`),
+bright-cyan headings (`0x7b`), white values (`0x7f`), yellow key hints (`0x7e`),
+and a button label white when chosen and dark grey (`0x78`) when not. The
+two-pane layout is the installer's too - buttons left, `Current Set-Up` summary
+right, here saying what the highlighted version actually gives you.
+`testTheEditionPromptStaysInsideSetupsPalette` stops the styling drifting off
+that palette. Four candidates were built and rendered rather than
 argued about, which is this project's own standard for anything visual:
 
 | | |

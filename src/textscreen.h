@@ -157,13 +157,24 @@ private:
 // belongs - and it is still period-honest, being what `SETUP.EXE` would have
 // looked like.
 //
-// IT IS DRAWN IN `TUBESEND.BIN`'S OWN GRAMMAR rather than a generic DOS
-// dialogue, which is the difference between looking period and looking like it
-// belongs to this game. The banner's panels were dumped cell by cell and the
-// construction copied: a blue field, TWO single-line boxes of the same size
-// with the outer offset by (+2, -1), black-on-blue borders, grey-on-blue body
-// text, white headings, and a bright-blue block shadow down the right and along
-// the bottom. `textscreen.cpp` carries the attribute-by-attribute derivation.
+// IT IS DRAWN IN `SETUP.EXE`'S OWN LOOK, and that is the game's INSTALLER, not
+// its sign-off. An earlier version of this screen copied `TUBESEND.BIN` - blue
+// panels, doubled outlines - which was the wrong reference twice over: the
+// banner is the game saying goodbye, `SETUP.EXE` is the game asking the player
+// a question, and this screen asks a question.
+//
+// The look was not taken from a screenshot either. `SETUP.EXE` was run under
+// DOSBox-X and its text memory read back from 0xB8000, so every attribute is
+// the byte the original writes: a light-grey field, raised bevels with white
+// top-and-left edges and black bottom-and-right, black drop shadows offset by
+// (+1, +1), a blue title block capped with half blocks, bright-cyan headings,
+// white values, yellow key hints, and a button label that is white when chosen
+// and dark grey when not. `textscreen.cpp` carries the table, and
+// `testTheEditionPromptStaysInsideSetupsPalette` stops it drifting.
+//
+// The two-pane layout is the installer's as well: its buttons on the left, its
+// `Current Set-Up` summary on the right, here saying what the highlighted
+// version actually gives you.
 //
 // It shares the exit screen's renderer, so it needs no display code of its own
 // and inherits window scaling, 4:3 correction, fullscreen and the fade.
@@ -182,7 +193,6 @@ void buildEditionPrompt(TextScreen& ts, int selected);
 // Where the answers land, so a test can read them back off the screen without
 // knowing the box's geometry.
 int editionAnswerRow(int index);
-constexpr int kEditionAnswerCol = 18;
 
 // The row an edition sits on, and back again. Two functions rather than a bare
 // `== kShareware ? 1 : 0` at each site: the picker preselects the remembered

@@ -4863,3 +4863,60 @@ the row an edition names is the row the screen draws it on.
 953 checks / 0 failures, up from 948. `--demo-trace` md5 unmoved at `dc4f5e6a`.
 Verified that a harness capture with no settings file still does not block, and
 that `--shareware` still bypasses the picker entirely.
+
+## 2026-08-02 - the picker is SETUP.EXE's screen, dumped rather than eyeballed
+
+Corrected on review: the version picker was drawn in `TUBESEND.BIN`'s look and
+should have been drawn in `SETUP.EXE`'s. **The wrong reference twice over** -
+the banner is the game saying goodbye, the installer is the game asking the
+player a question, and this screen asks a question. And they look nothing alike:
+the banner is blue panels with doubled single-line outlines, the installer is a
+light-grey field with raised bevels and a two-pane layout.
+
+The previous entry's reasoning was sound and its premise was wrong, which is
+worth naming: "copy the game's own text screen" is right, and there were two of
+them, and the one that matched the *purpose* was not the one already decoded.
+
+**`SETUP.EXE` was run under DOSBox-X and 0xB8000 read back**, so the styling is
+a byte table rather than an impression of a screenshot. Eleven attributes on
+that screen, ten of them design:
+
+    0x70  black on light grey    the field, and the body of everything
+    0x7f  white on light grey    a bevel's LIT edge, and value text
+    0x78  dark grey on grey      a button label that is not selected
+    0x7b  bright cyan on grey    a heading
+    0x7e  yellow on grey         the key hints along the bottom
+    0x1b  bright cyan on blue    text in the blue title block
+    0x71  blue on light grey     the half-blocks capping that block
+    0x01  blue on black          the same, where its shadow falls
+    0x00  black on black         the drop shadow itself
+    0x10  black on blue          blank cells inside the title block
+
+The eleventh, `0x07`, is a single cell left over from the DOS screen underneath
+and is not part of the design, so the port does not use it.
+
+The bevel is the signature and it is what a screenshot would not have settled:
+a box's top and left are drawn WHITE and its bottom and right BLACK, so it
+reads as raised. Shadows are black cells offset `(+1, +1)`. The blue title block
+is capped top and bottom with `0xdc` / `0xdf` half blocks, the bottom row's
+lower halves black so the block appears lifted off the field.
+
+The port's screen now uses the installer's own geometry - a 26-column pane on
+the left with 22-wide three-row buttons stacked touching at column 2, a
+53-column pane on the right, one shadow column between them - with the buttons
+being the two versions and the right pane mirroring `Current Set-Up` to say what
+the highlighted one gives you: waves, special atoms, extras. It updates as the
+selection moves, which is the whole point of that pane in the original.
+
+It says `SetUp!` / `Tubes Port` / `Choose Version` in the title block rather than
+the installer's `Absolute Magic, Inc` / `Copyright 1994`. Borrowing the look is
+fine; signing the publisher's name to the port's own screen is not.
+
+`testTheEditionPromptStaysInsideSetupsPalette` pins the styling to that byte
+table - every cell must use an attribute the installer uses - and it is
+aggregated to one check per screen rather than one per cell, because 4,000
+identical assertions would drown a suite count this project actually reads. The
+reference dump is filed at `~/Dev/tubes-tooling/setup-b8000.hex`, outside the
+repo, being game-derived.
+
+956 checks / 0 failures, up from 953. `--demo-trace` md5 unmoved at `dc4f5e6a`.

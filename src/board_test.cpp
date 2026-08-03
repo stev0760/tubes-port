@@ -2123,63 +2123,60 @@ void testABinDumpLoadsItsRowsAndLeavesTheRestBlank() {
 // which answer is marked, and whether the marking agrees with the argument.
 void testTheEditionPromptMarksExactlyTheChosenAnswer() {
     using tubes::kEditionAnswers;
+    // The labels are CENTRED in a bevelled button now, not written at a fixed
+    // column, so a test reads the row back rather than indexing into it.
+    auto rowText = [](const tubes::TextScreen& ts, int row) {
+        std::string out;
+        for (int c = 0; c < tubes::kTextCols; ++c) {
+            out += static_cast<char>(ts.at(c, row).ch);
+        }
+        return out;
+    };
+
     for (int sel = 0; sel < kEditionAnswers; ++sel) {
         tubes::TextScreen ts;
         tubes::buildEditionPrompt(ts, sel);
 
         for (int i = 0; i < kEditionAnswers; ++i) {
-            const int row = tubes::editionAnswerRow(i);
-            // The answer's text is where the header says it is, so a caller
-            // reading it back does not have to know the box's geometry.
-            const char* want = tubes::kEditionAnswerText[i];
-            bool matches = true;
-            for (int c = 0; want[c]; ++c) {
-                if (ts.at(tubes::kEditionAnswerCol + c, row).ch !=
-                    static_cast<uint8_t>(want[c])) {
-                    matches = false;
-                }
-            }
-            check(matches, "each answer is written at its own row and column");
+            const std::string row = rowText(ts, tubes::editionAnswerRow(i));
+            check(row.find(tubes::kEditionAnswerText[i]) != std::string::npos,
+                  "each answer is on the row its index names");
         }
 
-        // Exactly one pointer, on the selected row. Two would be a screen that
-        // cannot be answered; none would be a screen with no cursor at all.
-        int pointers = 0, pointerRow = -1;
-        for (int row = 0; row < tubes::kTextRows; ++row) {
-            for (int col = 0; col < tubes::kTextCols; ++col) {
-                if (ts.at(col, row).ch == 0x10) {
-                    ++pointers;
-                    pointerRow = row;
-                }
+        // The selection is carried by the label's ATTRIBUTE - `SETUP.EXE` lights
+        // the chosen button's text and dims the rest, rather than moving a
+        // cursor glyph. So exactly one label must be lit.
+        int lit = 0, litRow = -1;
+        for (int i = 0; i < kEditionAnswers; ++i) {
+            const int row = tubes::editionAnswerRow(i);
+            const std::string text = rowText(ts, row);
+            const size_t at = text.find(tubes::kEditionAnswerText[i]);
+            if (at == std::string::npos) continue;
+            if (ts.at(static_cast<int>(at), row).attr == 0x7F) {
+                ++lit;
+                litRow = row;
             }
         }
-        check(pointers == 1, "exactly one answer is pointed at");
-        check(pointerRow == tubes::editionAnswerRow(sel),
+        check(lit == 1, "exactly one button label is lit");
+        check(litRow == tubes::editionAnswerRow(sel),
               "and it is the one that was asked for");
 
-        // The chosen row is also brighter, so the answer reads without the
-        // glyph - which matters on a screen whose only cursor IS a glyph.
-        const uint8_t chosen =
-            ts.at(tubes::kEditionAnswerCol, tubes::editionAnswerRow(sel)).attr;
-        const uint8_t other = ts.at(tubes::kEditionAnswerCol,
-                                    tubes::editionAnswerRow(1 - sel)).attr;
-        check(chosen != other, "the chosen answer is a different attribute");
-    }
-
-    // The prompt must not collide with the DOS prompt row the exit screen
-    // draws in: both are text screens and a future session may well show them
-    // in sequence.
-    tubes::TextScreen ts;
-    tubes::buildEditionPrompt(ts, 0);
-    for (int i = 0; i < kEditionAnswers; ++i) {
-        check(tubes::editionAnswerRow(i) < tubes::kPromptRow,
-              "the answers sit above the row a DOS prompt would take");
+        // The right pane must agree with the left. It is the only thing on the
+        // screen that says what the choice MEANS, so a pane describing the
+        // other edition would be worse than no pane at all.
+        std::string pane;
+        for (int row = 0; row < tubes::kTextRows; ++row) pane += rowText(ts, row);
+        check(pane.find(sel == 1 ? "Shareware Version" : "Registered Version") !=
+                  std::string::npos,
+              "the summary names the highlighted edition");
+        check(pane.find(sel == 1 ? "25" : "75") != std::string::npos,
+              "and its wave count");
     }
 
     // Row and edition must agree in both directions. The picker preselects the
     // remembered answer, so a mapping that disagreed with itself would start
-    // the cursor on the wrong line - quietly, and only for the edition that is
-    // not the default, which is the shape of bug that survives a demo.
+    // the cursor on the wrong button - quietly, and only for the edition that
+    // is not the default, which is the shape of bug that survives a demo.
     for (int i = 0; i < kEditionAnswers; ++i) {
         check(tubes::editionAnswerIndex(tubes::editionForAnswer(i)) == i,
               "row -> edition -> row is the identity");
@@ -2189,15 +2186,72 @@ void testTheEditionPromptMarksExactlyTheChosenAnswer() {
         check(tubes::editionForAnswer(tubes::editionAnswerIndex(e)) == e,
               "and edition -> row -> edition is too");
     }
-    // The row an edition names must be one the screen actually draws it on, or
-    // the cursor and the label part company.
     tubes::TextScreen sw;
     tubes::buildEditionPrompt(
         sw, tubes::editionAnswerIndex(tubes::Edition::kShareware));
-    const int swRow =
-        tubes::editionAnswerRow(tubes::editionAnswerIndex(tubes::Edition::kShareware));
-    check(sw.at(tubes::kEditionAnswerCol, swRow).ch == 'S',
-          "the shareware row is the one that starts with Shareware");
+    check(rowText(sw, tubes::editionAnswerRow(
+                          tubes::editionAnswerIndex(tubes::Edition::kShareware)))
+                  .find("Shareware") != std::string::npos,
+          "the row an edition names is the row it is drawn on");
+}
+
+// The picker borrows `SETUP.EXE`'s look, and this is what stops that claim from
+// drifting: every attribute it writes must be one the installer itself writes.
+//
+// The reference set is not a judgement call - `SETUP.EXE` was run under
+// DOSBox-X and its text memory read back from 0xB8000, and these eleven are all
+// it uses on that screen. A new colour appearing here means either the styling
+// has wandered off the original's palette or the reference needs re-taking, and
+// both are worth stopping for. It is the same standard the rest of the port
+// holds: the game data settles it, not taste.
+void testTheEditionPromptStaysInsideSetupsPalette() {
+    // 0x07 is in the installer's dump too, on a single cell it leaves behind
+    // from the DOS screen underneath; it is not part of the design, so the port
+    // deliberately does not use it and it is not listed.
+    const uint8_t kSetupAttrs[] = {
+        0x70,  // black on light grey   - the field
+        0x7F,  // white on grey         - a bevel's lit edge, and value text
+        0x78,  // dark grey on grey     - an idle button label
+        0x7B,  // bright cyan on grey   - a heading
+        0x7E,  // yellow on grey        - the key hints
+        0x1B,  // bright cyan on blue   - text in the title block
+        0x71,  // blue on grey          - the block's top half-blocks
+        0x01,  // blue on black         - the same where its shadow falls
+        0x00,  // black on black        - the drop shadow
+        0x10,  // black on blue         - blank cells inside the title block
+    };
+    // Aggregated to ONE check per screen rather than one per cell: 4,000
+    // identical assertions would drown the suite's count without saying more
+    // than "some cell is wrong", and the count is a number this project reads.
+    for (int sel = 0; sel < tubes::kEditionAnswers; ++sel) {
+        tubes::TextScreen ts;
+        tubes::buildEditionPrompt(ts, sel);
+        bool allKnown = true;
+        for (int row = 0; row < tubes::kTextRows; ++row) {
+            for (int col = 0; col < tubes::kTextCols; ++col) {
+                const uint8_t a = ts.at(col, row).attr;
+                bool known = false;
+                for (const uint8_t s : kSetupAttrs) if (a == s) known = true;
+                if (!known) allKnown = false;
+            }
+        }
+        check(allKnown, "every cell uses one of SETUP.EXE's own attributes");
+    }
+    // And the reference must still be exercised: a palette nobody draws from
+    // would pass the test above vacuously.
+    tubes::TextScreen ts;
+    tubes::buildEditionPrompt(ts, 0);
+    int used = 0;
+    for (const uint8_t s : kSetupAttrs) {
+        for (int row = 0; row < tubes::kTextRows && used >= 0; ++row) {
+            bool found = false;
+            for (int col = 0; col < tubes::kTextCols; ++col) {
+                if (ts.at(col, row).attr == s) found = true;
+            }
+            if (found) { ++used; break; }
+        }
+    }
+    check(used >= 8, "and most of that palette is actually drawn with");
 }
 
 // Foreground where the glyph has a bit, background where it does not, MSB
@@ -4097,6 +4151,7 @@ int main() {
     testTheTextScreenIsEightyByTwentyFiveOfEightBySixteen();
     testABinDumpLoadsItsRowsAndLeavesTheRestBlank();
     testTheEditionPromptMarksExactlyTheChosenAnswer();
+    testTheEditionPromptStaysInsideSetupsPalette();
     testThePromptLandsInTheRowsTheDumpLeavesBlank();
     testGlyphsRenderForegroundOverBackground();
     testTheBlinkBitDoesNotBecomeABrightBackground();
