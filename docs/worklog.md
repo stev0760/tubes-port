@@ -4920,3 +4920,54 @@ reference dump is filed at `~/Dev/tubes-tooling/setup-b8000.hex`, outside the
 repo, being game-derived.
 
 956 checks / 0 failures, up from 953. `--demo-trace` md5 unmoved at `dc4f5e6a`.
+
+## 2026-08-02 - the flicker: a palette expanded twice, after six wrong answers
+
+**Solved.** The player reported that the version picker flickers too, which was
+the datapoint the whole investigation had been missing - and it immediately
+killed the hypothesis I had filed one commit earlier. Two nearly identical loops
+both flickering means the cause is not the difference between them.
+
+It was never presentation at all. `gfx.h` defines `Palette` as "expanded from
+the 6-bit VGA values", so a `Palette` holds 8-bit channels and `fadePalette`
+returns them. `textPalette()` filled one with the **raw 6-bit table**. Both text
+screens compensated at the call site:
+
+    rgba[i] = c[0] * 255 / 63;
+
+which is right for the lit palette and wrong for the fade, already expanded.
+White becomes `255 * 255 / 63 = 1032`, truncated to **8**. The ramp sawtooths -
+242, wrap to 35, climb, wrap again - **twice** over a 16-step fade.
+
+Every element of the report falls out of it: transient (only during the fade),
+about twice (two wraps), a region (a cell inverts when its own colour crosses
+the wrap point, brightest first), settles correct (the frame after the fade is
+`upload(lit)`, the one case that was right).
+
+And it explains the six failures. Present rate, swap-chain priming, vsync
+throttling, texture access mode - every one of them is about WHEN pixels reach
+the screen. The wrong pixels were being computed before any of that ran. Three
+of those four changes were real improvements and are worth keeping; none of them
+could have touched this.
+
+**Fixed at the source**: `textPalette()` expands, honouring the type it returns,
+and both screens copy instead of converting. The settled screen is byte-identical
+to before - 0 pixels different - because it was never the broken case, which is
+also why every capture in this repo was unaffected.
+
+`testTheTextFadeEndsExactlyOnTheLitPalette` pins the invariant that could not
+have been tuned around: **the fade must end where the lit screen begins.** On the
+old code it fails, `[63,63,63]` against a fade endpoint of `[255,255,255]`. It
+also asserts white is 255 on both sides, so it cannot be satisfied by making both
+6-bit - which would pass while leaving every text screen a quarter as bright.
+
+Two lessons. **The comment was the camouflage.** `// 6-bit DAC to 8-bit, the same
+v * 255 / 63 the rest of the port uses` is true, cites a real note in
+`docs/debug-rig.md`, and describes the wrong operation for one of the two
+palettes that reach it - so every read of that line confirmed it. And **a symptom
+described in timing words was not about timing.** "Flickers", "for a split
+second", "settles" all sound like presentation; the player's description was
+exact and my inference from it was wrong six times.
+
+959 checks / 0 failures, up from 956. `--demo-trace` md5 unmoved at `dc4f5e6a`.
+Awaiting confirmation on hardware, the flicker never having been visible here.

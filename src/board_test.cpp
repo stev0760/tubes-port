@@ -2324,14 +2324,68 @@ void testTheBlinkBitDoesNotBecomeABrightBackground() {
 // brown, not dark yellow. Getting that wrong is invisible until something
 // actually uses it.
 void testTheTextPaletteIsTheEgaOneIncludingBrown() {
-    const tubes::Palette p = tubes::textPalette();
-    check(p.rgb[0][0] == 0 && p.rgb[0][1] == 0 && p.rgb[0][2] == 0, "0 is black");
-    check(p.rgb[15][0] == 63 && p.rgb[15][1] == 63 && p.rgb[15][2] == 63, "15 is white");
-    check(p.rgb[1][2] == 42 && p.rgb[1][0] == 0, "1 is blue");
-    check(p.rgb[6][0] == 42 && p.rgb[6][1] == 21 && p.rgb[6][2] == 0,
+    // The TABLE is 6-bit DAC units, which is what the hardware holds and what
+    // the game's own `.PAL` resources are in.
+    const uint8_t (*t)[3] = tubes::kTextPalette;
+    check(t[0][0] == 0 && t[0][1] == 0 && t[0][2] == 0, "0 is black");
+    check(t[15][0] == 63 && t[15][1] == 63 && t[15][2] == 63, "15 is white");
+    check(t[1][2] == 42 && t[1][0] == 0, "1 is blue");
+    check(t[6][0] == 42 && t[6][1] == 21 && t[6][2] == 0,
           "6 is brown, not dark yellow");
-    check(p.rgb[14][0] == 63 && p.rgb[14][1] == 63 && p.rgb[14][2] == 21,
-          "14 is yellow");
+    check(t[14][0] == 63 && t[14][1] == 63 && t[14][2] == 21, "14 is yellow");
+
+    // But `textPalette()` returns a `Palette`, and a `Palette` is EXPANDED -
+    // "a 256-entry RGB palette expanded from the 6-bit VGA values", per gfx.h.
+    // Returning the raw table here was the exit screen's flicker: the callers
+    // expanded it themselves, and that same expansion then hit `fadePalette`'s
+    // output, which is already 8-bit.
+    const tubes::Palette p = tubes::textPalette();
+    bool expanded = true;
+    for (int i = 0; i < 16; ++i) {
+        for (int c = 0; c < 3; ++c) {
+            if (p.rgb[i][c] != static_cast<uint8_t>(t[i][c] * 255 / 63)) {
+                expanded = false;
+            }
+        }
+    }
+    check(expanded, "textPalette is that table expanded to 8 bits");
+}
+
+// THE FLICKER, as an invariant rather than a story. Six attempts blamed
+// presentation - present rate, swap chains, vsync, texture access mode - and
+// none of them was it. It was arithmetic: `textPalette()` returned RAW 6-bit
+// values in a `Palette`, which gfx.h defines as already expanded, so the two
+// text screens expanded it themselves - and that same expansion then hit
+// `fadePalette`'s output, which is 8-bit already. White came out
+// `255 * 255 / 63 = 1032`, truncated to 8, and the brightness ramp sawtoothed
+// twice over a 16-step fade. Hence "about twice, colours invert, then it
+// settles": the frame after the fade used the lit palette and was correct.
+//
+// What pins it is that THE FADE MUST END WHERE THE LIT SCREEN BEGINS. Any
+// mismatch in scale between the two producers breaks that, whichever one is
+// wrong, and no amount of presentation tuning could have.
+void testTheTextFadeEndsExactlyOnTheLitPalette() {
+    tubes::Bytes raw(768, 0);
+    for (int i = 0; i < 16; ++i) {
+        for (int c = 0; c < 3; ++c) raw[i * 3 + c] = tubes::kTextPalette[i][c];
+    }
+    const int steps = tubes::kFadeSteps;
+    const tubes::Palette lit = tubes::textPalette();
+    const tubes::Palette last = tubes::fadePalette(raw, steps, steps);
+
+    bool same = true;
+    for (int i = 0; i < 16; ++i) {
+        for (int c = 0; c < 3; ++c) {
+            if (last.rgb[i][c] != lit.rgb[i][c]) same = false;
+        }
+    }
+    check(same, "the last fade step is already the lit palette");
+
+    // And both are on the 8-bit scale, stated directly so the contract cannot
+    // be met by making BOTH of them 6-bit - which would satisfy the check
+    // above while leaving every text screen a quarter as bright as it should be.
+    check(lit.rgb[15][0] == 255 && last.rgb[15][0] == 255,
+          "white is 255 in both, so neither is raw 6-bit DAC units");
 }
 
 // The nine glyphs the art is built from have to tile, or the boxes and their
@@ -4156,6 +4210,7 @@ int main() {
     testGlyphsRenderForegroundOverBackground();
     testTheBlinkBitDoesNotBecomeABrightBackground();
     testTheTextPaletteIsTheEgaOneIncludingBrown();
+    testTheTextFadeEndsExactlyOnTheLitPalette();
     testTheBoxAndBlockGlyphsTile();
 
     testTheSharewareMenuInsertsTwoItems();

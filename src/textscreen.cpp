@@ -27,11 +27,16 @@ const uint8_t kTextPalette[16][3] = {
 };
 
 Palette textPalette() {
+    // EXPANDED to 8 bits here, because that is what `Palette` is: "a 256-entry
+    // RGB palette expanded from the 6-bit VGA values". Returning the raw 6-bit
+    // numbers looked harmless and was the exit screen's flicker - the callers
+    // compensated with a `* 255 / 63` of their own, which then also hit
+    // `fadePalette`'s output, which is ALREADY expanded. See gfx.h.
     Palette p{};
     for (int i = 0; i < 16; ++i) {
-        p.rgb[i][0] = kTextPalette[i][0];
-        p.rgb[i][1] = kTextPalette[i][1];
-        p.rgb[i][2] = kTextPalette[i][2];
+        for (int c = 0; c < 3; ++c) {
+            p.rgb[i][c] = static_cast<uint8_t>(kTextPalette[i][c] * 255 / 63);
+        }
     }
     return p;
 }

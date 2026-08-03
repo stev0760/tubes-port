@@ -361,67 +361,59 @@ Listed first because building on them wastes work.
 
 ## Next
 
-### KNOWN ISSUE: the exit screen flickers, cause not found
+### SOLVED: the text screens flickered - a palette expanded twice
 
-**Open, reproducible, and parked deliberately** after six attempts - the player
-wants it fixed, just not in the session that found it. The port's own bug: it is
-in `runExitScreen` in `main.cpp`, not in anything decompiled.
+**Found and fixed.** Seven attempts; the first six all blamed presentation and
+none of them was it. The cause was arithmetic, and it was in plain sight in a
+line that had a correct-sounding comment on it.
 
-**It is no longer only the sign-off screen, and that changes the priority.**
-The version picker added later runs the SAME presentation path - its own loop in
-`runEditionPrompt`, but built from `runExitScreen`: a 640x400 `STATIC` texture,
-`SDL_UpdateTexture` on change, unconditional throttling, `presentRect` for the
-destination. So every suspect in the list below is present in it too, and unlike
-the exit screen the picker is shown on **every interactive launch**. Two
-consequences:
+**What it was.** `gfx.h` defines `Palette` as *"a 256-entry RGB palette expanded
+from the 6-bit VGA values"* - so a `Palette` holds **8-bit** channels, and
+`fadePalette` correctly returns them. But `textPalette()` filled one with the
+**raw 6-bit** table. The two text screens compensated by expanding what they
+were handed:
 
-* if the flicker appears there, it is seen constantly rather than once at quit,
-  which promotes this from cosmetic to worth doing;
-* it is also a **second reproduction site on demand** - `--edition-prompt` opens
-  it without walking a session - which is more than the exit screen ever gave.
+    rgba[i] = c[0] * 255 / 63;      // correct for textPalette, wrong for the fade
 
-**First thing to check next time**, before re-reading any of the analysis below:
-does the picker flicker at all? If it does not, the difference between the two
-loops is the shortest path to the cause that this bug has ever offered. If it
-does, `--edition-prompt` is the reproduction the earlier attempts lacked.
+That expansion is right for the lit palette and catastrophic for the fade, whose
+output is already expanded. White comes out `255 * 255 / 63 = 1032`, truncated
+to a byte: **8**. Mid-grey wraps too. The brightness ramp does not rise, it
+**sawtooths**, twice over a 16-step fade:
 
-**The symptom, as the player describes it and it is the best evidence there
-is:** about **twice**, shortly after the screen appears, **the first quarter of
-the text elements invert colours for a split second**. It then settles and
-stays correct. Reproduces windowed and fullscreen. It is a REGION, it is
-TRANSIENT, and it happens during the hold rather than during the fade.
+    step        7    8    9   10   11   12   13   14   15   16
+    written    35   88  120  169  201  249   42   74  123  176
+               ^ wrap                         ^ wrap
 
-**What is ruled out**, each tried and each failing to fix it:
+**Every part of the report falls out of that.** *Transient* - only during the
+fade. *About twice* - two wraps. *A region* - a cell inverts when its own colour
+crosses the wrap point, so the brightest elements go first. *Then it settles* -
+the frame after the fade is `upload(lit)`, which was the one correct case.
 
-1. *Presenting too rarely* - the loop originally presented only on the cursor
-   blink. Presenting every retrace changed nothing.
-2. *Swap chain convergence* - priming with four back-to-back presents so every
-   buffer holds the final frame changed nothing. (That loop was removed; it was
-   uploading a megabyte four times with no delay and may have been making it
-   worse.)
-3. *Unthrottled presenting* - **a real bug, found and fixed, and not this.**
-   `SDL_RenderSetVSync(1)` returns 0 and sets the PRESENTVSYNC flag on this
-   Wayland/OpenGL target **without actually syncing** - measured, 60 presents in
-   459 ms. The loop believed the return value and skipped its delay. Fixed by
-   throttling unconditionally; the flicker survived.
-4. *Mismatched texture access* - the texture was `STREAMING` updated with
-   `SDL_UpdateTexture`, which is the pairing neither mode is for, and at
-   640x400 RGBA it is a megabyte racing the draw. Changed to `STATIC` with
-   uploads only when content changes. The flicker survived that too.
+And it explains why six fixes failed: present rate, swap-chain priming, vsync
+throttling and texture access mode are all about **when** pixels reach the
+screen, and the wrong pixels were being computed before any of that.
 
-**What has NOT been tried**, in the order worth trying:
+**The fix is at the source**, not at the call sites: `textPalette()` now expands,
+honouring the type it returns, and both screens copy rather than convert. The
+settled screen is unchanged - `0` pixels different from the pre-fix capture -
+because it was never the broken case.
 
-* **run it under X11** - `SDL_VIDEODRIVER=x11 ./build/tubes-port --exit-screen`.
-  If it does not happen there, it is the Wayland backend and everything above
-  was looking in the wrong layer. This is the cheapest decisive test and should
-  be first;
-* **the software renderer**, `SDL_RENDER_DRIVER=software`, for the same reason;
-* `SDL_LockTexture` / `SDL_UnlockTexture` with a `STREAMING` texture - the other
-  correct pairing, and the one not yet used;
-* **actually capturing it.** Every diagnosis so far has been reasoning plus the
-  player's description. A recording would settle it in one look, and could not
-  be made: the session is Wayland, `grim` and `wf-recorder` are not installed,
-  and `ffmpeg -f x11grab` on `:1` captures black.
+`testTheTextFadeEndsExactlyOnTheLitPalette` pins it, and would have failed on the
+old code (`[63,63,63]` against a fade endpoint of `[255,255,255]`). The invariant
+is the one that could not have been tuned around: **the fade must end where the
+lit screen begins.** It also asserts white is 255 in both, so the check cannot be
+satisfied by making both sides 6-bit, which would pass while leaving every text
+screen a quarter as bright as it should be.
+
+Two lessons worth keeping. **The comment was the camouflage** - `// 6-bit DAC to
+8-bit, the same v * 255 / 63 the rest of the port uses` is true, cites a real
+note in `docs/debug-rig.md`, and describes the wrong operation for one of the two
+palettes reaching it. And **a symptom described in terms of timing was not about
+timing**: "flickers", "for a split second", "settles" all sound like presentation
+and the report was accurate; the inference from it was not.
+
+*Awaiting the player's confirmation on hardware - the fix is derived and
+measured, but the flicker itself was only ever visible to them.*
 
 ### The version picker's wording - open, and the player's call
 

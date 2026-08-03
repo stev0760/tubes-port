@@ -1766,10 +1766,14 @@ tubes::Edition runEditionPrompt(SDL_Renderer* ren, int fadeSteps,
                               tubes::kTextScreenH * 4);
     auto upload = [&](const tubes::Palette& pal) {
         for (size_t i = 0; i < indexed.size(); ++i) {
+            // `Palette` is already 8-bit - both `fadePalette` and
+            // `textPalette` expand - so this copies rather than converting.
+            // Expanding here as well is what made the fade wrap; see the
+            // flicker note in PLAN.md.
             const uint8_t* c = pal.rgb[indexed[i]];
-            rgba[i * 4 + 0] = static_cast<uint8_t>(c[0] * 255 / 63);
-            rgba[i * 4 + 1] = static_cast<uint8_t>(c[1] * 255 / 63);
-            rgba[i * 4 + 2] = static_cast<uint8_t>(c[2] * 255 / 63);
+            rgba[i * 4 + 0] = c[0];
+            rgba[i * 4 + 1] = c[1];
+            rgba[i * 4 + 2] = c[2];
             rgba[i * 4 + 3] = 255;
         }
         SDL_UpdateTexture(tex, nullptr, rgba.data(), tubes::kTextScreenW * 4);
@@ -1931,13 +1935,13 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
     // and once per cursor blink.
     auto upload = [&](const tubes::Palette& pal) {
         for (size_t i = 0; i < indexed.size(); ++i) {
+            // Already 8-bit: `Palette` holds expanded values, and both the
+            // fade and the lit palette produce them. This used to expand a
+            // second time, which overflowed and wrapped - THE FLICKER.
             const uint8_t* c = pal.rgb[indexed[i]];
-            // 6-bit DAC to 8-bit, the same `v * 255 / 63` the rest of the port
-            // uses - see the grey-tolerance note in docs/debug-rig.md for why
-            // that expansion and not `v << 2`.
-            rgba[i * 4 + 0] = static_cast<uint8_t>(c[0] * 255 / 63);
-            rgba[i * 4 + 1] = static_cast<uint8_t>(c[1] * 255 / 63);
-            rgba[i * 4 + 2] = static_cast<uint8_t>(c[2] * 255 / 63);
+            rgba[i * 4 + 0] = c[0];
+            rgba[i * 4 + 1] = c[1];
+            rgba[i * 4 + 2] = c[2];
             rgba[i * 4 + 3] = 255;
         }
         if (cursorOn) {
@@ -1947,9 +1951,9 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
                     (static_cast<size_t>(kPromptRow * tubes::kGlyphH + y) * tubes::kTextScreenW +
                      static_cast<size_t>(cursorCol) * tubes::kGlyphW) * 4;
                 for (int x = 0; x < tubes::kGlyphW; ++x) {
-                    rgba[base + x * 4 + 0] = static_cast<uint8_t>(c[0] * 255 / 63);
-                    rgba[base + x * 4 + 1] = static_cast<uint8_t>(c[1] * 255 / 63);
-                    rgba[base + x * 4 + 2] = static_cast<uint8_t>(c[2] * 255 / 63);
+                    rgba[base + x * 4 + 0] = c[0];
+                    rgba[base + x * 4 + 1] = c[1];
+                    rgba[base + x * 4 + 2] = c[2];
                     rgba[base + x * 4 + 3] = 255;
                 }
             }
