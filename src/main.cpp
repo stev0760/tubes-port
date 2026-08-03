@@ -1870,8 +1870,7 @@ tubes::Edition runEditionPrompt(SDL_Renderer* ren, int fadeSteps,
         SDL_Delay(1000 / 70);
     }
     SDL_DestroyTexture(tex);
-    return selected == 1 ? tubes::Edition::kShareware
-                         : tubes::Edition::kRegistered;
+    return tubes::editionForAnswer(selected);
 }
 
 void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& banner,
@@ -3599,9 +3598,16 @@ int main(int argc, char** argv) {
     // The third source, the prompt, needs a renderer and so cannot run here.
     // It is below, and everything that depends on the edition - which is the
     // two filenames - is below IT.
+    // Shown on EVERY interactive start, not only the first - the player's call,
+    // and the wording follows from it: this is "which would you like to play?",
+    // not "which do you own?". Both editions are on archive.org now, so owning
+    // one is no longer the question, and a launcher choice is a fair thing to
+    // ask every time as long as it costs one keypress.
+    //
+    // It is still skipped for a flag and under `harness`, for the same reasons
+    // as before: a capture that stopped on a question would hang.
     const bool mustAskEdition =
-        opt.editionPrompt >= 0 ||
-        (!opt.editionFromFlag && !settings.editionChosen && !harness);
+        opt.editionPrompt >= 0 || (!opt.editionFromFlag && !harness);
 
     // One controller, the first one plugged in. Opened below, once SDL is
     // actually up - this used to enumerate here, which is BEFORE `SDL_Init`,
@@ -3952,10 +3958,19 @@ int main(int argc, char** argv) {
     // menu item; see PLAN.md, "Where the edition switch should live".
     if (mustAskEdition) {
         bool cancelled = false;
+        // The remembered answer is the row the cursor starts on, so the common
+        // case is Enter and nothing else. `editionChosen` is false only before
+        // the first answer, and then the default is registered - which is both
+        // the larger edition and what this port has always defaulted to.
+        const int startOn =
+            opt.editionPrompt >= 0
+                ? (opt.editionPrompt > 0 ? 1 : 0)
+                : (settings.editionChosen
+                       ? tubes::editionAnswerIndex(settings.edition)
+                       : tubes::editionAnswerIndex(tubes::Edition::kRegistered));
         const tubes::Edition chosen = runEditionPrompt(
             ren, opt.editionPrompt >= 0 ? 0 : opt.fadeSteps, cancelled,
-            opt.editionPrompt >= 0 ? opt.screenshot : std::string(),
-            opt.editionPrompt > 0 ? 1 : 0);
+            opt.editionPrompt >= 0 ? opt.screenshot : std::string(), startOn);
         // Closing the window is not an answer. Defaulting to registered and
         // carrying on would file this player's saves under a choice they never
         // made, and the point of the question is that the port cannot work it

@@ -2175,6 +2175,29 @@ void testTheEditionPromptMarksExactlyTheChosenAnswer() {
         check(tubes::editionAnswerRow(i) < tubes::kPromptRow,
               "the answers sit above the row a DOS prompt would take");
     }
+
+    // Row and edition must agree in both directions. The picker preselects the
+    // remembered answer, so a mapping that disagreed with itself would start
+    // the cursor on the wrong line - quietly, and only for the edition that is
+    // not the default, which is the shape of bug that survives a demo.
+    for (int i = 0; i < kEditionAnswers; ++i) {
+        check(tubes::editionAnswerIndex(tubes::editionForAnswer(i)) == i,
+              "row -> edition -> row is the identity");
+    }
+    for (const tubes::Edition e :
+         {tubes::Edition::kRegistered, tubes::Edition::kShareware}) {
+        check(tubes::editionForAnswer(tubes::editionAnswerIndex(e)) == e,
+              "and edition -> row -> edition is too");
+    }
+    // The row an edition names must be one the screen actually draws it on, or
+    // the cursor and the label part company.
+    tubes::TextScreen sw;
+    tubes::buildEditionPrompt(
+        sw, tubes::editionAnswerIndex(tubes::Edition::kShareware));
+    const int swRow =
+        tubes::editionAnswerRow(tubes::editionAnswerIndex(tubes::Edition::kShareware));
+    check(sw.at(tubes::kEditionAnswerCol, swRow).ch == 'S',
+          "the shareware row is the one that starts with Shareware");
 }
 
 // Foreground where the glyph has a bit, background where it does not, MSB

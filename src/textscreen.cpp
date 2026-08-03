@@ -91,38 +91,60 @@ void TextScreen::render(std::vector<uint8_t>& out) const {
 }
 
 // ---------------------------------------------------------------------------
-// The first-run edition prompt - see the header for why it looks like this
+// The version picker - see the header for what it is and why it looks like this
 // ---------------------------------------------------------------------------
 
 const char* const kEditionAnswerText[kEditionAnswers] = {
-    // The game's own words for the two releases. The shareware build calls the
-    // other one `Preview Registered` on its own menu and its sign-off says
-    // `Register`, so "Registered" is the program's term rather than a label
-    // invented here; "Shareware" is what the release itself was called.
-    "Registered Version",
-    "Shareware Version",
+    // Named for what the player gets, because this is a CHOICE now rather than
+    // a question about what they own - both editions are freely downloadable,
+    // so the interesting difference is what is in them.
+    "Registered   -   75 waves, both special atoms",
+    "Shareware    -   25 waves, plus the Preview",
 };
 
 namespace {
 
-// A dialogue box roughly centred in the 80 x 25 field. The numbers are the
-// port's - there is nothing to transliterate on a screen the original does not
-// have - so they are named rather than scattered through the drawing.
-constexpr int kBoxX = 14;
-constexpr int kBoxY = 5;
-constexpr int kBoxW = 52;
-constexpr int kBoxH = 13;
-constexpr int kTextX = kBoxX + 3;
+// `TUBESEND.BIN`'S OWN PANEL GRAMMAR, read off the file rather than invented,
+// which is what lets this screen sit beside the game's without looking bolted
+// on. Dumping the banner's right-hand panel cell by cell gives:
+//
+//   * the field is BLUE, attribute 0x10 - black on blue - so a blank cell in it
+//     is a space that reads as solid blue;
+//   * there are TWO single-line boxes of the same size, the outer offset by
+//     (+2, -1) from the inner, both in 0x10. That doubled outline is the whole
+//     signature of the look;
+//   * body text is 0x17, light grey on blue, and headings 0x1f, white on blue;
+//   * the shadow is a bright-blue block: 0xdb at 0x19 down the right, 0xdf at
+//     0x09 along the bottom, with 0xdc softening the corners.
+//
+// The colours it picks out with - 0x1b bright cyan, 0x1a bright green, 0x1e
+// yellow - are the banner's own accents, used here for the same job.
+constexpr uint8_t kField = 0x10;      // black on blue: the panel itself
+constexpr uint8_t kBody = 0x17;       // light grey on blue
+constexpr uint8_t kBright = 0x1F;     // white on blue
+constexpr uint8_t kAccent = 0x1B;     // bright cyan on blue
+constexpr uint8_t kChosen = 0x1E;     // yellow on blue
+constexpr uint8_t kShadow = 0x09;     // bright blue on black
+constexpr uint8_t kShadowIn = 0x19;   // bright blue on blue
+constexpr uint8_t kEdge = 0x01;       // blue on black
 
-// The text-mode attributes, in the DOS-dialogue convention: light grey for
-// body, white for what matters, yellow for the row under the cursor.
-constexpr uint8_t kBody = 0x07;
-constexpr uint8_t kBright = 0x0F;
-constexpr uint8_t kChosen = 0x0E;
+// CP437: the single-line box, the blocks, and the pointer.
+constexpr uint8_t kH = 0xC4, kV = 0xB3, kTL = 0xDA, kTR = 0xBF;
+constexpr uint8_t kBL = 0xC0, kBR = 0xD9;
+constexpr uint8_t kBlock = 0xDB, kUpper = 0xDF, kLower = 0xDC;
+constexpr uint8_t kPointer = 0x10;
 
-// CP437's double-line box drawing, and the right-pointing triangle at 0x10.
-constexpr uint8_t kHBar = 205, kVBar = 186, kTopL = 201, kTopR = 187;
-constexpr uint8_t kBotL = 200, kBotR = 188, kPointer = 0x10;
+// The inner box. The outer is this offset by (+2, -1), as the banner has it.
+constexpr int kInX = 10;
+constexpr int kInY = 7;
+constexpr int kInW = 58;
+constexpr int kInH = 12;
+constexpr int kOutX = kInX + 2;
+constexpr int kOutY = kInY - 1;
+
+// Text sits inside BOTH boxes, inset one cell - which is where the banner puts
+// it: two columns right of the outer box's left edge.
+constexpr int kTextX = kOutX + 2;
 
 void say(TextScreen& ts, int col, int row, const char* s, uint8_t attr) {
     for (int i = 0; s[i]; ++i) {
@@ -130,44 +152,77 @@ void say(TextScreen& ts, int col, int row, const char* s, uint8_t attr) {
     }
 }
 
+void box(TextScreen& ts, int x, int y, int w, int h, uint8_t attr) {
+    for (int i = 1; i < w - 1; ++i) {
+        ts.put(x + i, y, kH, attr);
+        ts.put(x + i, y + h - 1, kH, attr);
+    }
+    for (int j = 1; j < h - 1; ++j) {
+        ts.put(x, y + j, kV, attr);
+        ts.put(x + w - 1, y + j, kV, attr);
+    }
+    ts.put(x, y, kTL, attr);
+    ts.put(x + w - 1, y, kTR, attr);
+    ts.put(x, y + h - 1, kBL, attr);
+    ts.put(x + w - 1, y + h - 1, kBR, attr);
+}
+
 }  // namespace
 
-int editionAnswerRow(int index) { return kBoxY + 8 + index; }
+int editionAnswerRow(int index) { return kInY + 5 + index * 2; }
+
+int editionAnswerIndex(Edition e) {
+    return e == Edition::kShareware ? 1 : 0;
+}
+
+Edition editionForAnswer(int index) {
+    return index == 1 ? Edition::kShareware : Edition::kRegistered;
+}
 
 void buildEditionPrompt(TextScreen& ts, int selected) {
     for (int row = 0; row < kTextRows; ++row) {
-        for (int col = 0; col < kTextCols; ++col) ts.put(col, row, ' ', kBody);
+        for (int col = 0; col < kTextCols; ++col) ts.put(col, row, ' ', 0x0F);
     }
 
-    for (int i = 1; i < kBoxW - 1; ++i) {
-        ts.put(kBoxX + i, kBoxY, kHBar, kBody);
-        ts.put(kBoxX + i, kBoxY + kBoxH - 1, kHBar, kBody);
+    // The blue field is the union of the two boxes, which is what makes the
+    // outer stick out top-right and the inner bottom-left.
+    for (int row = kOutY; row < kInY + kInH; ++row) {
+        for (int col = kInX; col < kOutX + kInW; ++col) {
+            ts.put(col, row, ' ', kField);
+        }
     }
-    for (int j = 1; j < kBoxH - 1; ++j) {
-        ts.put(kBoxX, kBoxY + j, kVBar, kBody);
-        ts.put(kBoxX + kBoxW - 1, kBoxY + j, kVBar, kBody);
-    }
-    ts.put(kBoxX, kBoxY, kTopL, kBody);
-    ts.put(kBoxX + kBoxW - 1, kBoxY, kTopR, kBody);
-    ts.put(kBoxX, kBoxY + kBoxH - 1, kBotL, kBody);
-    ts.put(kBoxX + kBoxW - 1, kBoxY + kBoxH - 1, kBotR, kBody);
+    // The banner caps the field's top corners with a half block rather than
+    // ending it square - two cells, NOT a bar across the top, which is what an
+    // earlier reading of this drew before the cells were dumped.
+    ts.put(kInX - 1, kOutY, kLower, kEdge);
+    ts.put(kOutX + kInW, kOutY, kLower, kEdge);
 
-    say(ts, kBoxX + 19, kBoxY, " Tubes Setup ", kBright);
-    say(ts, kTextX, kBoxY + 2, "Tubes shipped in two editions, and this", kBody);
-    say(ts, kTextX, kBoxY + 3, "one cannot tell which you have: the game", kBody);
-    say(ts, kTextX, kBoxY + 4, "files are identical in both.", kBody);
-    say(ts, kTextX, kBoxY + 6, "Which copy of Tubes do you have?", kBright);
+    box(ts, kOutX, kOutY, kInW, kInH, kField);
+    box(ts, kInX, kInY, kInW, kInH, kField);
+
+    // The shadow: a bright-blue block down the right and along the bottom.
+    for (int row = kOutY + 1; row < kInY + kInH; ++row) {
+        ts.put(kOutX + kInW, row, kBlock, kShadowIn);
+    }
+    ts.put(kOutX + kInW, kInY + kInH, kLower, kShadowIn);
+    for (int col = kInX + 1; col <= kOutX + kInW; ++col) {
+        ts.put(col, kInY + kInH, kUpper, kShadow);
+    }
+
+    say(ts, kOutX + (kInW - 13) / 2, kOutY, " Tubes Setup ", kBright);
+    say(ts, kTextX, kInY + 1, "Tubes shipped in two editions.", kBody);
+    say(ts, kTextX, kInY + 2, "Which one would you like to play?", kBright);
 
     for (int i = 0; i < kEditionAnswers; ++i) {
         const bool on = i == selected;
-        ts.put(kTextX + 3, editionAnswerRow(i), on ? kPointer : ' ',
-               on ? kChosen : kBody);
+        ts.put(kTextX, editionAnswerRow(i), on ? kPointer : ' ',
+               on ? kChosen : kField);
         say(ts, kEditionAnswerCol, editionAnswerRow(i), kEditionAnswerText[i],
             on ? kChosen : kBody);
     }
 
-    say(ts, kTextX, kBoxY + kBoxH - 2,
-        "Up/Down to choose, Enter to accept.", kBody);
+    say(ts, kTextX, kInY + kInH - 2,
+        "Up/Down to choose, Enter to play.", kAccent);
 }
 
 }  // namespace tubes

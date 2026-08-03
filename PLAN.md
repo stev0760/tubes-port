@@ -1492,8 +1492,21 @@ The three candidates were:
    **Taken, as the discovery.**
 
 So the resolution order is: a `--shareware` / `--registered` / `--preview` flag
-wins and does not persist; otherwise the settings file, if the question has been
-answered; otherwise the player is asked.
+wins and does not persist; otherwise **the player is asked, every interactive
+start**, with the cursor already on the remembered answer.
+
+**It asks every time, and asks the right question.** The first version of this
+was a FIRST-RUN prompt reading *"which copy of Tubes do you have?"*, which
+frames the edition as a fact about the player. It is not one. Both editions are
+preserved and downloadable now - the registered one was believed lost for years
+until a copy surfaced and reached archive.org - so nobody is stuck with one, and
+the honest question is *"which one would you like to play?"*.
+
+That reframing is what makes showing it every launch reasonable rather than
+nagging. It is a launcher choice, like picking a difficulty, and it costs one
+keypress because the cursor starts on the remembered answer. It also removes the
+last awkwardness in the old design: a screen that asked what you OWNED had to be
+first-run-only to avoid implying you might have acquired the other one since.
 
 **The flags must come in BOTH directions**, and `--registered` was added when
 this was reviewed rather than shipped as written. While the edition was only
@@ -1508,7 +1521,13 @@ value is not an answer either.
 #### What the prompt looks like, and why
 
 **A text screen, in `TUBESEND.BIN`'s idiom** - CP437 box art at 80 x 25, before
-the graphics come up. Four candidates were built and rendered rather than
+the graphics come up, and drawn in the banner's **own panel grammar** rather
+than a generic DOS dialogue. That distinction is the difference between looking
+period and looking like it belongs to this game, and it was settled by dumping
+the banner's panels cell by cell: a blue field, TWO single-line boxes of the
+same size with the outer offset by `(+2, -1)`, black-on-blue borders,
+grey-on-blue body text, white headings, and a bright-blue block shadow down the
+right and along the bottom. Four candidates were built and rendered rather than
 argued about, which is this project's own standard for anything visual:
 
 | | |
@@ -1535,15 +1554,15 @@ inherits window scaling, 4:3 and the fade. `buildEditionPrompt` is in
 
 | | |
 |---|---|
-| for one run | `--shareware` or `--registered`; neither persists |
-| permanently | edit `edition` in the settings file |
-| to be asked again | delete the `edition` line |
+| normally | the picker, on every start - one keypress, cursor on last time's answer |
+| for one run, skipping the picker | `--shareware` or `--registered`; neither persists |
+| by hand | edit `edition` in the settings file |
 
 The settings file is wherever `SDL_GetPrefPath` puts it - on Linux
 `~/.local/share/tubes-port/settings.cfg`. There is deliberately **no in-game
-switch**, and the reason is the ordering constraint below rather than reluctance:
-a menu item would have to rebuild and re-read the save and high-score files
-mid-run. If one is ever wanted, that is the work it implies, and it is the write
+switch** - the player asked for exactly that - and the ordering constraint below
+is why it would be awkward anyway: a menu item would have to rebuild and re-read
+the save and high-score files mid-run. If one is ever wanted, that is the work it implies, and it is the write
 path `edition.h` warns about.
 
 Two invariants that must hold if this is ever revisited. The edition is **fixed

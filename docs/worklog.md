@@ -4807,3 +4807,59 @@ states plainly that there is deliberately no in-game switch, with the ordering
 constraint as the reason rather than reluctance.
 
 948 checks / 0 failures, `--demo-trace` md5 unmoved at `dc4f5e6a`.
+
+## 2026-08-02 - the version picker: every start, and in the banner's own grammar
+
+Two changes to the edition prompt, both the player's, and each fixed something
+the other had made awkward.
+
+**It asks every interactive start now, not only the first**, with the cursor on
+the remembered answer so the common case is Enter and nothing else. That is what
+makes it a menu without being an in-game menu - which was the actual request:
+switchable from the interface, not from a config file, and not mid-session.
+
+**And it asks the right question.** The first version read *"which copy of Tubes
+do you have?"*, framing the edition as a fact about the player. It is not one.
+Both editions are preserved and downloadable now - and the registered one was
+believed LOST for years until the player found a copy, which is how it reached
+archive.org at all. So nobody is stuck with one edition, and the honest question
+is *"which one would you like to play?"*.
+
+The two changes need each other. A screen asking what you OWN has to be
+first-run-only, because asking every launch implies you might have acquired the
+other one since; a screen asking what you want to PLAY can reasonably ask every
+time. The answers now name what the player gets - 75 waves and both special
+atoms, against 25 waves plus the Preview - because with the question reframed,
+the interesting difference is the content rather than the licence.
+
+**The styling was redone against the binary rather than against DOS in general.**
+The first draft was a double-line box on black: period, but generic. Dumping
+`TUBESEND.BIN`'s own panels cell by cell gives the game's actual text-screen
+grammar, and it is specific:
+
+* the field is BLUE - attribute `0x10`, black on blue, so a blank cell reads as
+  solid blue;
+* there are **two single-line boxes of the same size**, the outer offset by
+  `(+2, -1)` from the inner, both in `0x10`. That doubled outline is the whole
+  signature;
+* body text is `0x17` grey on blue, headings `0x1f` white on blue, accents
+  `0x1b` bright cyan and `0x1e` yellow;
+* the shadow is a bright-blue block - `0xdb` at `0x19` down the right, `0xdf` at
+  `0x09` along the bottom, `0xdc` capping the corners.
+
+Copying that construction is what makes the picker look like it belongs beside
+the game's own sign-off instead of merely looking like 1994. One correction
+along the way: a first pass drew a half-block BAR across the top of the field.
+The banner has no such bar - `0xdc` appears at exactly two cells, capping the
+field's top corners - and only dumping the cells showed it.
+
+`editionAnswerIndex` / `editionForAnswer` were extracted while wiring the
+preselection, rather than repeating `== kShareware ? 1 : 0` at three sites. A row
+index that disagreed with the edition it came from would start the cursor on the
+wrong line, quietly, and only for the edition that is not the default - the shape
+of bug that survives a demo. Both directions are pinned, and so is the claim that
+the row an edition names is the row the screen draws it on.
+
+953 checks / 0 failures, up from 948. `--demo-trace` md5 unmoved at `dc4f5e6a`.
+Verified that a harness capture with no settings file still does not block, and
+that `--shareware` still bypasses the picker entirely.

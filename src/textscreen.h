@@ -33,6 +33,7 @@
 #include <string>
 #include <vector>
 
+#include "edition.h"
 #include "gfx.h"
 
 namespace tubes {
@@ -122,30 +123,50 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// The first-run edition prompt
+// The version picker
 // ---------------------------------------------------------------------------
 //
 // THE PORT'S OWN SCREEN, top to bottom, and it is deliberately the only one
 // that does not pretend otherwise.
 //
-// The port has to know which edition the player owns, and it cannot find out:
-// `TUBES.RES` is byte-identical between the shareware and registered releases,
-// so an install carries no evidence of which one it came from. The edition
-// lives only in the executable, and the port IS the executable. So it asks.
+// The port cannot work out which edition to be. `TUBES.RES` is byte-identical
+// between the shareware and registered releases, so an install carries no
+// evidence of which one it came from - the edition lives only in the
+// executable, and the port IS the executable. So it asks.
 //
-// WHY THIS IS A TEXT SCREEN, and why that was the right of four candidates.
-// The other three put the question inside the game - on the title screen in
-// the `Exit Tubes?` page's idiom, or on the projector slide in Lanny's mouth.
-// Both look authentic and both are a small lie: the 1994 game never asked this
-// and had no reason to, so a screen that speaks AS the game is claiming
-// something about the original. A setup screen before the graphics come up is
-// outside the program's world, which is exactly where a question the original
-// never asked belongs - and it is still period-honest, because it is what
-// `SETUP.EXE` would have looked like.
+// IT ASKS EVERY TIME, and asks the right question. An earlier version of this
+// was a FIRST-RUN prompt reading "which copy of Tubes do you have?", which
+// framed it as a fact about the player. It is not one. Both editions are
+// preserved and downloadable now - the registered one was believed lost for
+// years until a copy surfaced and reached archive.org - so nobody is stuck with
+// one of them, and the honest question is "which would you like to play?".
 //
-// It borrows `TUBESEND.BIN`'s presentation - CP437 in 80 x 25 at 8 x 16, the
-// sixteen text-mode attributes - so it needs no renderer of its own and
-// inherits the window scaling, the 4:3 correction and the fade with it.
+// That reframing is what makes showing it every launch reasonable rather than
+// nagging: it is a launcher choice, like picking a difficulty, and it costs one
+// keypress because the cursor starts on the remembered answer. It is skipped
+// entirely for `--shareware` / `--registered`, which is the developer's and the
+// harness's way past it.
+//
+// WHY A TEXT SCREEN, of four candidates that were built and rendered. The other
+// three put the question inside the game - on the title screen in the
+// `Exit Tubes?` page's idiom, or on the projector slide in Lanny's mouth. All
+// three look right and all three are a small lie: the 1994 game never asked
+// this and had no reason to, so a screen speaking AS the game claims something
+// about the original. A setup screen before the graphics come up sits outside
+// the program's world, which is where a question the original never asked
+// belongs - and it is still period-honest, being what `SETUP.EXE` would have
+// looked like.
+//
+// IT IS DRAWN IN `TUBESEND.BIN`'S OWN GRAMMAR rather than a generic DOS
+// dialogue, which is the difference between looking period and looking like it
+// belongs to this game. The banner's panels were dumped cell by cell and the
+// construction copied: a blue field, TWO single-line boxes of the same size
+// with the outer offset by (+2, -1), black-on-blue borders, grey-on-blue body
+// text, white headings, and a bright-blue block shadow down the right and along
+// the bottom. `textscreen.cpp` carries the attribute-by-attribute derivation.
+//
+// It shares the exit screen's renderer, so it needs no display code of its own
+// and inherits window scaling, 4:3 correction, fullscreen and the fade.
 //
 // The layout lives here rather than in `main.cpp` so it can be tested without
 // SDL, the same reason `kPromptRow` does.
@@ -161,6 +182,14 @@ void buildEditionPrompt(TextScreen& ts, int selected);
 // Where the answers land, so a test can read them back off the screen without
 // knowing the box's geometry.
 int editionAnswerRow(int index);
-constexpr int kEditionAnswerCol = 22;
+constexpr int kEditionAnswerCol = 18;
+
+// The row an edition sits on, and back again. Two functions rather than a bare
+// `== kShareware ? 1 : 0` at each site: the picker preselects the remembered
+// answer, and a row index that disagreed with the edition it came from would
+// start the cursor on the wrong line - quietly, and only for the edition that
+// is not the default.
+int editionAnswerIndex(Edition e);
+Edition editionForAnswer(int index);
 
 }  // namespace tubes
