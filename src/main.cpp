@@ -550,6 +550,15 @@ Options parseArgs(int argc, char** argv) {
         } else if (a == "--shareware") {
             o.edition.edition = tubes::Edition::kShareware;
             o.editionFromFlag = true;
+        } else if (a == "--registered") {
+            // The other half of `--shareware`, and it is not decoration. Once
+            // the answer is REMEMBERED, a flag that can only say "shareware"
+            // is a one-way door: a player who answered shareware, or who wants
+            // one registered run against a registered install, would have had
+            // to hand-edit the settings file to get back. Both directions or
+            // neither.
+            o.edition.edition = tubes::Edition::kRegistered;
+            o.editionFromFlag = true;
         } else if (a == "--preview") {
             // The Preview only exists in the shareware build, so asking for it
             // implies the edition rather than needing both flags.
@@ -592,6 +601,7 @@ void usage() {
         "  --no-splash       go straight to the title screen\n"
         "  --edition-prompt [N]  open the first-run edition prompt, for capture\n"
         "  --shareware       play the 25-wave shareware edition\n"
+        "  --registered      play the 75-wave registered edition\n"
         "  --exit-screen     show TUBESEND.BIN, the shareware sign-off\n"
         "  --ordering [N]    open the shareware Ordering Info deck at page N\n"
         "  --registration    open the shareware wave-25 end screen\n"

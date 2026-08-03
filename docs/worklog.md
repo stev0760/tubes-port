@@ -4778,3 +4778,32 @@ unit tests cannot reach:
 
 948 checks / 0 failures, up from 936. `--demo-trace` md5 unmoved at `dc4f5e6a`,
 game directory untouched.
+
+## 2026-08-02 - `--registered`, because a remembered answer made the flag one-way
+
+Caught on review, one commit after the prompt landed: *can we still switch
+between versions?*
+
+Mostly yes, and in one direction no. `--shareware` overrode a remembered answer
+fine; there was **no `--registered`**, so a player who answered shareware had no
+flag to get back and would have had to hand-edit the settings file.
+
+Worth recording why it was not a gap before. While the edition was only ever a
+command-line flag with registered as the default, `--shareware` alone WAS
+symmetric - omitting it was the other answer. Persisting the answer is what
+broke that, and the missing half was invisible because nothing in the port had
+ever needed to say "registered" out loud. A default stops being a default the
+moment it can be overwritten.
+
+Both directions now, neither persisting. Verified against a scratch settings
+file: `--registered` over `edition shareware` matches a registered run exactly
+(0 pixels), `--shareware` over `edition registered` matches a shareware run
+exactly (0 pixels), the two menus differ by 4,394 pixels so the comparison is
+not vacuous, and the settings file is unedited after all four runs.
+
+`PLAN.md` gains the switching table a player actually needs - flag for one run,
+edit the line to change it permanently, delete the line to be asked again - and
+states plainly that there is deliberately no in-game switch, with the ordering
+constraint as the reason rather than reluctance.
+
+948 checks / 0 failures, `--demo-trace` md5 unmoved at `dc4f5e6a`.

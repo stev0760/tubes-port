@@ -1491,9 +1491,16 @@ The three candidates were:
    cannot know, and asked before any session exists so nothing is rebuilt.
    **Taken, as the discovery.**
 
-So the resolution order is: a `--shareware` / `--preview` flag wins and does not
-persist; otherwise the settings file, if the question has been answered;
-otherwise the player is asked. The key is **absent** from the file until it is
+So the resolution order is: a `--shareware` / `--registered` / `--preview` flag
+wins and does not persist; otherwise the settings file, if the question has been
+answered; otherwise the player is asked.
+
+**The flags must come in BOTH directions**, and `--registered` was added when
+this was reviewed rather than shipped as written. While the edition was only
+ever a flag with registered as the default, `--shareware` alone was symmetric -
+omitting it *was* the other answer. Once the answer is REMEMBERED that stops
+being true: a player who answered shareware would have had no flag to get back,
+and hand-editing the settings file is not a switch. Both directions or neither. The key is **absent** from the file until it is
 answered, so its absence is the first-run state and deleting the line asks
 again - which is the recovery path for answering it wrongly. An unrecognised
 value is not an answer either.
@@ -1523,6 +1530,21 @@ It reuses the exit screen's renderer, so it needs no display code of its own and
 inherits window scaling, 4:3 and the fade. `buildEditionPrompt` is in
 `textscreen.h` rather than `main.cpp` so the layout is testable without SDL, and
 `--edition-prompt [N]` opens it for capture like every other screen here.
+
+**Switching afterwards**, which is the question this leaves a player with:
+
+| | |
+|---|---|
+| for one run | `--shareware` or `--registered`; neither persists |
+| permanently | edit `edition` in the settings file |
+| to be asked again | delete the `edition` line |
+
+The settings file is wherever `SDL_GetPrefPath` puts it - on Linux
+`~/.local/share/tubes-port/settings.cfg`. There is deliberately **no in-game
+switch**, and the reason is the ordering constraint below rather than reluctance:
+a menu item would have to rebuild and re-read the save and high-score files
+mid-run. If one is ever wanted, that is the work it implies, and it is the write
+path `edition.h` warns about.
 
 Two invariants that must hold if this is ever revisited. The edition is **fixed
 before the first file is opened**, since it names the save and high-score files -
