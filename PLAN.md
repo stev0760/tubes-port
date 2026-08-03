@@ -363,10 +363,27 @@ Listed first because building on them wastes work.
 
 ### KNOWN ISSUE: the exit screen flickers, cause not found
 
-**Open, reproducible, and given up on for now** after six attempts. The port's
-own bug - it is in `runExitScreen` in `main.cpp`, not in anything decompiled -
-and it is cosmetic: it affects only the shareware sign-off screen and nothing
-in the game.
+**Open, reproducible, and parked deliberately** after six attempts - the player
+wants it fixed, just not in the session that found it. The port's own bug: it is
+in `runExitScreen` in `main.cpp`, not in anything decompiled.
+
+**It is no longer only the sign-off screen, and that changes the priority.**
+The version picker added later runs the SAME presentation path - its own loop in
+`runEditionPrompt`, but built from `runExitScreen`: a 640x400 `STATIC` texture,
+`SDL_UpdateTexture` on change, unconditional throttling, `presentRect` for the
+destination. So every suspect in the list below is present in it too, and unlike
+the exit screen the picker is shown on **every interactive launch**. Two
+consequences:
+
+* if the flicker appears there, it is seen constantly rather than once at quit,
+  which promotes this from cosmetic to worth doing;
+* it is also a **second reproduction site on demand** - `--edition-prompt` opens
+  it without walking a session - which is more than the exit screen ever gave.
+
+**First thing to check next time**, before re-reading any of the analysis below:
+does the picker flicker at all? If it does not, the difference between the two
+loops is the shortest path to the cause that this bug has ever offered. If it
+does, `--edition-prompt` is the reproduction the earlier attempts lacked.
 
 **The symptom, as the player describes it and it is the best evidence there
 is:** about **twice**, shortly after the screen appears, **the first quarter of
@@ -405,6 +422,22 @@ TRANSIENT, and it happens during the hold rather than during the fade.
   player's description. A recording would settle it in one look, and could not
   be made: the session is Wayland, `grim` and `wf-recorder` are not installed,
   and `ffmpeg -f x11grab` on `:1` captures black.
+
+### The version picker's wording - open, and the player's call
+
+The screen is right; the words on it are not finished. `Choose Version`,
+`Registered` / `Shareware`, and the `Current Set-Up` summary lines - waves,
+special atoms, extras - are all first drafts, and the player has said they may
+want to refine them.
+
+Worth knowing before editing them. The **layout** is `SETUP.EXE`'s and is pinned
+by a test, but the **strings** are the port's own and nothing is transliterated,
+so they can be changed freely. Two constraints only: the title block must not
+sign the publisher's name to the port's screen - that is why it reads
+`Tubes Port` where the installer reads `Absolute Magic, Inc` - and the button
+labels are centred in a 22-column bevel, so anything past 20 characters will not
+fit. `kEditionAnswerText` in `textscreen.cpp` is where the labels live and the
+summary table is directly below it.
 
 **The method note, which is the part worth keeping.** Four causes were inferred
 before giving up, and *every one of them was reasoned from a true statement
