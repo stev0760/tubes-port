@@ -4970,4 +4970,10 @@ second", "settles" all sound like presentation; the player's description was
 exact and my inference from it was wrong six times.
 
 959 checks / 0 failures, up from 956. `--demo-trace` md5 unmoved at `dc4f5e6a`.
-Awaiting confirmation on hardware, the flicker never having been visible here.
+
+**Confirmed fixed by the player.** Worth noting what the loop actually was: the
+report of the picker flickering is what opened the case, and the report of it
+having stopped is what closed it. The flicker was never visible in this
+environment at any point - every capture here was of the settled screen, which
+was byte-identical throughout and could not have shown it. Six sessions of
+reasoning could not substitute for either end of that.

@@ -412,8 +412,10 @@ palettes reaching it. And **a symptom described in terms of timing was not about
 timing**: "flickers", "for a split second", "settles" all sound like presentation
 and the report was accurate; the inference from it was not.
 
-*Awaiting the player's confirmation on hardware - the fix is derived and
-measured, but the flicker itself was only ever visible to them.*
+**Confirmed fixed by the player on hardware, 2026-08-02.** The derivation and
+the measurement were only ever half of it: the flicker was never visible in this
+environment, so nothing short of the report could close it - the same way the
+report of the picker flickering is what opened it.
 
 ### The version picker's wording - open, and the player's call
 
