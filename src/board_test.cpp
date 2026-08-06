@@ -4007,6 +4007,37 @@ void testTheHelpScreenKeepsTheOriginalsIrregularLayout() {
     check(listsItself, "the help screen lists Help");
 }
 
+// `Press Any Key...` is the screen's own wording and it is NOT the rule. The
+// wait at `1000:301b` is a bare `ReadKey`, and `KEYBOARD.DRV` has already
+// taken the six keys it maps to the game's inputs, so a control never reaches
+// the BIOS buffer. Measured on the original over sixteen probes: Up, Down,
+// Left, Right, Ctrl and Space leave it up; a, z, Tab, Enter, ESC, F3 and F5
+// take it down.
+//
+// The port has no driver, so `bindsKey` is the transfer - which means the rule
+// follows a rebind instead of naming keys, and that is the property worth
+// pinning here.
+void testABoundControlDoesNotDismissTheHelpScreen() {
+    tubes::Bindings b = tubes::defaultBindings();
+    for (int i = 0; i < tubes::kGameButtons; ++i) {
+        check(tubes::bindsKey(b, b.b[i].key), "every default control is claimed");
+        check(tubes::bindsPad(b, b.b[i].pad), "on the pad as well");
+    }
+    // Something nobody binds by default dismisses.
+    const int scEnter = 40;             // SDL_SCANCODE_RETURN
+    check(!tubes::bindsKey(b, scEnter), "Enter is not a control, so it dismisses");
+    check(!tubes::bindsKey(b, tubes::kUnbound), "an unbound control claims nothing");
+    check(!tubes::bindsPad(b, tubes::kUnbound), "and neither does an unbound pad");
+
+    // Rebind A onto Enter and the answer must follow it - this is the whole
+    // reason the rule is expressed over the bindings rather than over a list
+    // of the original driver's six keys.
+    const int oldA = b[tubes::GameButton::kA].key;
+    b.bindKey(tubes::GameButton::kA, scEnter);
+    check(tubes::bindsKey(b, scEnter), "Enter stops dismissing once it is bound");
+    check(!tubes::bindsKey(b, oldA), "and the key it replaced starts");
+}
+
 // `1000:a5e8`: an abort jumps clear of the stats screen and the Continue
 // offer, so a player who quits is never asked to continue.
 void testAbortSkipsTheStatsScreenAndTheContinue() {
@@ -4241,6 +4272,7 @@ int main() {
     testBannerRulesAreNotDerivedFromTheCaption();
     testAttractModeTurnsEveryKeyIntoAnAbort();
     testTheHelpScreenKeepsTheOriginalsIrregularLayout();
+    testABoundControlDoesNotDismissTheHelpScreen();
     testAbortSkipsTheStatsScreenAndTheContinue();
     testAnAcceptedContinueReplaysWithoutAdvancing();
     testTheContinueCountdownExpiringDeclines();

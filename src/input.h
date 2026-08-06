@@ -88,6 +88,31 @@ struct Bindings {
 Bindings defaultBindings();
 
 // ---------------------------------------------------------------------------
+// Is this input one the DRIVER would have claimed?
+// ---------------------------------------------------------------------------
+//
+// `KEYBOARD.DRV` hooks the keyboard and takes the six keys it maps to Up,
+// Down, Left, Right, A and B; they never reach the BIOS buffer that Turbo
+// Pascal's `ReadKey` drains. That is invisible almost everywhere - the game
+// reads the driver, not the keyboard - but it decides one thing outright: the
+// F1 Help overlay waits in a bare `ReadKey` (`1000:301b`) and so is dismissed
+// by every key EXCEPT the six the driver ate.
+//
+// Measured on the original, sixteen probes: Up, Down, Left, Right, Ctrl and
+// Space leave the overlay up; `a`, `z`, Tab, Enter, ESC, F3 and F5 all take it
+// down. Six keys, which is exactly the driver's six inputs.
+//
+// This is where the port's one departure earns its keep. `src/input.h` does
+// not transliterate the driver chooser because SDL is the abstraction the
+// drivers existed to provide - so the faithful transfer of "the driver ate it"
+// is "the player has this bound to a control", and it keeps working after a
+// rebind, which a hard-coded key list would not. A joystick driver claims the
+// stick instead and leaves the whole keyboard live; the pad half below is the
+// same rule on the same reasoning.
+bool bindsKey(const Bindings& b, int scancode);
+bool bindsPad(const Bindings& b, int padButton);
+
+// ---------------------------------------------------------------------------
 // Display options - THE PORT'S OWN, like the bindings above
 // ---------------------------------------------------------------------------
 //

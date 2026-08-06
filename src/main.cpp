@@ -4941,10 +4941,19 @@ int main(int argc, char** argv) {
                                   !saveScreen && !hsActive &&
                                   !paused && !helpScreen;
             SDL_Keycode k = SDLK_UNKNOWN;
+            // Whether the INPUT DRIVER would have claimed this - see
+            // `bindsKey` in `input.h`. Only the help overlay cares, but it has
+            // to be worked out here, where the scancode and the pad button are
+            // still in hand.
+            bool boundControl = false;
             if (ev.type == SDL_KEYDOWN) {
                 k = ev.key.keysym.sym;
+                boundControl =
+                    tubes::bindsKey(settings.bindings, ev.key.keysym.scancode);
             } else if (ev.type == SDL_CONTROLLERBUTTONDOWN && !livePlay) {
                 k = menuKeyForPad(settings.bindings, ev.cbutton.button);
+                boundControl =
+                    tubes::bindsPad(settings.bindings, ev.cbutton.button);
             }
             if (k == SDLK_UNKNOWN) continue;
 
@@ -5388,12 +5397,17 @@ int main(int argc, char** argv) {
             // a completed save. `1000:3382` is the navigation and `1000:3423`
             // the two keys that end it.
             // `1000:301b` is a bare `ReadKey` with nothing after it, so the
-            // help overlay leaves on ANY key - and the key is DISCARDED
-            // rather than re-dispatched. F5 out of help does not pause and
-            // ESC out of help does not abort, which is the whole difference
-            // between this wait and Pause's `repeat until k = $bf`.
+            // help overlay leaves on any key that REACHES it - and the key is
+            // DISCARDED rather than re-dispatched. F5 out of help does not
+            // pause and ESC out of help does not abort, which is the whole
+            // difference between this wait and Pause's `repeat until k = $bf`.
+            //
+            // "Any key" is not the whole rule, and the screen's own
+            // `Press Any Key...` is what made that easy to get wrong: the
+            // input driver has already eaten its six, so a control does
+            // nothing here. Measured, not assumed - see `bindsKey`.
             if (helpScreen) {
-                helpScreen = false;
+                if (!boundControl) helpScreen = false;
                 continue;
             }
 

@@ -59,6 +59,22 @@ Bindings defaultBindings() {
     return x;
 }
 
+bool bindsKey(const Bindings& b, int scancode) {
+    if (scancode == kUnbound) return false;
+    for (int i = 0; i < kGameButtons; ++i) {
+        if (b.b[i].key == scancode) return true;
+    }
+    return false;
+}
+
+bool bindsPad(const Bindings& b, int padButton) {
+    if (padButton == kUnbound) return false;
+    for (int i = 0; i < kGameButtons; ++i) {
+        if (b.b[i].pad == padButton) return true;
+    }
+    return false;
+}
+
 int displayUnitHeight(const GraphicsOptions& g) {
     // 240 is 200 x 1.2, which is 320x200 in a 4:3 frame - the shape a 1994
     // monitor showed and the shape the artists drew for.

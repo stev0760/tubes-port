@@ -940,6 +940,15 @@ the save banks. Verified against the original in both modes: every text row's
 y, x-extent and pixel count identical, 3,585 and 3,481 text pixels. `--f1`
 opens it for capture.
 
+**Its `Press Any Key...` is not the rule**, and finding that out is the part
+worth keeping. `KEYBOARD.DRV` eats the six keys it maps to the game's inputs
+before `ReadKey` ever sees them, so Up/Down/Left/Right/Ctrl/Space leave the
+overlay up and everything else takes it down - measured over sixteen probes and
+confirmed by the player from play. The port expresses it over the bindings, so
+it follows a rebind. That also names the original driver's key map for the
+first time, and it is **not** the port's default (which binds Alt, not Space,
+to B) - a defaults question, deliberately not changed here.
+
 F2 is done, both ways in: during play, and from the abort banner's own offer.
 
 **B. The menu items that currently do nothing.** Each is reachable and inert,

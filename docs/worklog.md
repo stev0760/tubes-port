@@ -4977,3 +4977,78 @@ having stopped is what closed it. The flicker was never visible in this
 environment at any point - every capture here was of the settled screen, which
 was byte-identical throughout and could not have shown it. Six sessions of
 reasoning could not substitute for either end of that.
+
+---
+
+## The F1 Help screen - the last unread body, and its screen lies about itself
+
+`1000:2e1c`, the `$bb` arm of the in-game key handler. `PLAN.md` had carried it
+for months as "its screen is not decompiled and the key is inert - the only key
+in the game that does nothing". It is an overlay rather than a screen: copy the
+play field to page 2, write over the copy, show page 2, block in a bare
+`ReadKey`, then put the pages and the HUD font back and re-arm the frame timer.
+
+The decompilation was ordinary and quick. Every coordinate is a literal push,
+so `DisasmRange` settled the whole layout in one listing, and the argument
+order that Ghidra prints right-to-left was confirmed against the known
+`OutTextCentred(x0, x1, y, colour, mode, s)` rather than assumed. One detour
+worth recording: `DumpBytes 2785:2b96` fails outright, because Turbo Pascal
+puts string constants in the **code** segment - `PUSH CS; PUSH ofs` - which
+this file had already recorded for the banner literals at `1000:3a12` and which
+I re-learned anyway.
+
+Two findings came out of it that were not in the listing.
+
+**The mode branch names the mode numbering.** `1000:2f7b` tests `DS:0x1d4e` and
+the `= 1` arm says "The number of molecule chains you have made" while the other
+says "The number of tasks remaining". That is the 1-Endurance / 2-Wave reading
+already taken off the save banks' `+0x28` / `+0x26` split, arrived at from a
+completely different direction. Two independent readings agreeing is the
+cheapest confirmation this project gets.
+
+**`Press Any Key...` is not the rule.** The wait is a bare `ReadKey` with no
+loop, which reads as "any key", and that is how the port shipped it for an
+afternoon. A capture of the original disagreed - SPACE left the overlay up - and
+I wrote that off as a rig artifact, because the code plainly says otherwise and
+the player had said "any key literally dismisses". The player then spot-checked
+it and reversed: the control keys really do not dismiss.
+
+Probed one key at a time, sixteen presses. Up, Down, Left, Right, Ctrl and Space
+leave it up; `a`, `z`, Tab, Enter, ESC, F3 and F5 take it down. Six keys, and
+six is the number of inputs the driver has. The cause is `KEYBOARD.DRV`: it
+hooks the keyboard and eats the keys it maps, so they never reach the BIOS
+buffer `ReadKey` drains. Nothing in `1000:2dd0` filters anything - the filtering
+is one layer below the code being read.
+
+That is the lesson, and it is a new shape of it. This file already has "when a
+search comes back empty, suspect the search" and "the comment was the
+camouflage". This one is **the routine was complete and still did not contain
+the behaviour**: `1000:2dd0` can be read perfectly and will never mention the
+six keys, because the driver removed them before the game ran. A function that
+is fully understood is not the same as a behaviour that is fully understood.
+
+It also names the original driver's key map for the first time - the four arrows
+plus Ctrl and Space - which the port's own defaults do not match, since they
+bind Alt rather than Space to B. Left alone deliberately: that is a defaults
+question, not a Help question.
+
+The port expresses the rule over the bindings (`bindsKey` / `bindsPad` in
+`input.h`) rather than over a list of the original's six keys, which is the
+input departure doing exactly the job it was agreed for: the behaviour follows a
+rebind, and a pad claims its own buttons the way `JOYSTK1.DRV` would have.
+
+Verified in both modes with `grab_f1.py` and `grab_f1_wave.py`. The overlay is
+the one screen in the game that can be captured without the Pause key, because
+its `ReadKey` blocks the game loop while the emulator keeps running. Comparing
+text pixels by colour family, every row's y, x-extent and pixel count is
+identical to the original across all five blocks in both modes - 3,585 text
+pixels in Endurance, 3,481 in Wave.
+
+The one apparent disagreement was a reminder to diff the *values*, not the
+count. The Endurance key list differed at `x` 60..71, `y` 127..139, which is
+left of the list's own `x` 76 - a Pinkium in the port's backdrop passing a loose
+purple filter, not a glyph. A pixel count would have reported "the key list
+differs" and sent the next hour somewhere useless.
+
+995 checks / 0 failures, up from 978. `--demo-trace` unmoved: 71 spawns, score
+13,000, game over.

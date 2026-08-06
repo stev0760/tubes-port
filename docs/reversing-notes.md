@@ -6370,6 +6370,46 @@ transcriber would have normalised that; `testTheHelpScreenKeepsTheOriginals-
 IrregularLayout` pins it, along with ESC's two spaces of padding against
 F1..F5's three.
 
+#### `Press Any Key...` is not the rule, and the screen says it is
+
+`1000:301b` is a bare `ReadKey` with no loop, which reads as "any key" and is
+how the port shipped it for an afternoon. A capture said otherwise - SPACE left
+the overlay up - and the player confirmed it from play. Probed one key at a
+time on the rig, sixteen presses:
+
+| dismisses | leaves it up |
+|---|---|
+| `a`, `z`, Tab, Enter, ESC, F3, F5 | Up, Down, Left, Right, Ctrl, Space |
+
+Six keys survive, and six is the number of inputs the driver has. **The cause
+is `KEYBOARD.DRV`**: it hooks the keyboard and consumes the keys it maps to Up,
+Down, Left, Right, A and B, so they never reach the BIOS buffer `ReadKey`
+drains. Nothing in `1000:2dd0` filters anything - the filtering happened one
+layer down, in a driver this project deliberately does not port.
+
+That also names the driver's map, which was not previously known: the four
+arrows plus **Ctrl and Space** as the two buttons. Which of the pair is A and
+which is B is *not* settled here - only that the set is those six. Note the
+port's own default binds Ctrl to A and **Alt** to B, so it differs from the
+original's driver; that is a defaults question, not a Help question, and is
+left alone.
+
+Two consequences worth carrying:
+
+* the same swallowing must apply to every other bare `ReadKey` in the game.
+  The save screen's description editor is one (`1000:35d1`), which would mean a
+  **space cannot be typed into a save description**. Not tested - flagged here
+  rather than assumed either way;
+* under `JOYSTK1.DRV` or `MOUSE.DRV` the driver claims the stick or the mouse
+  instead and the whole keyboard stays live, so this behaviour is
+  driver-dependent in the original. The port expresses it as "bound to a
+  control" (`bindsKey` / `bindsPad` in `src/input.h`), which reproduces the
+  keyboard case, follows a rebind, and degrades the right way for a pad.
+
+**This is the fifth time the game's own words have been the trap rather than
+the answer.** `Press Any Key...` is accurate about intent and wrong as a
+specification, and the only thing that separated them was pressing keys.
+
 #### Verified against the original, both arms
 
 `grab_f1.py` and `grab_f1_wave.py` capture it; the overlay can be shot without

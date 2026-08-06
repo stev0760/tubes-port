@@ -318,6 +318,13 @@ Two things that cost time there and will again:
   captured a menu and called it a Wave-mode help screen. A fresh launch per
   mode is shorter than getting the path right, and shooting **every** step is
   what made the wrong turn visible at all.
+- **the guest swallows the game's control keys.** `key_press("space")`,
+  `"down"`, `"left"`, `"up"`, `"right"` and `"ctrl"` do not end a `ReadKey`
+  wait, because `KEYBOARD.DRV` has taken them before the BIOS buffer. That is
+  the *game's* behaviour and not a rig fault - but it looks exactly like a rig
+  fault, and it was written off as one for a while. When a keypress seems not
+  to arrive, check whether it is one of the six the driver claims before
+  blaming QMP.
 
 ### Other things learned driving it
 
