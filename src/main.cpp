@@ -302,6 +302,7 @@ struct Options {
     int wave = 0;               // 0 = Endurance; 1..75 starts Wave mode there
     int titlePage = -1;         // -1 off; 0 the bare title; 1..7 a menu page
     int hsPage = -1;            // -1 off; 0 Endurance, 1 Wave in the viewer
+    bool f1 = false;            // open the F1 help overlay, for capture
     bool f2 = false;            // open the F2 save screen, for capture
     bool rebind = false;        // open the rebinding screen, for capture
     bool graphics = false;      // open the graphics screen, for capture
@@ -487,6 +488,8 @@ Options parseArgs(int argc, char** argv) {
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 o.titlePage = std::atoi(argv[++i]);
             }
+        } else if (a == "--f1") {
+            o.f1 = true;
         } else if (a == "--f2") {
             o.f2 = true;
         } else if (a == "--rebind") {
@@ -2805,6 +2808,59 @@ void drawPaused(tubes::Screen& screen, const tubes::Font& heading,
                            "_________");
 }
 
+// The F1 Help overlay, `1000:2e1c`. The original copies the play field to page
+// 2 and writes over that; the port composes whole frames, so the caller has
+// already drawn the field and this goes on top of it - the same arrangement
+// `drawSaveScreen` uses.
+//
+// `mode` is `DS:0x1d4e`: 1 Endurance, 2 Wave. Only the left-hand note differs.
+void drawHelpScreen(tubes::Screen& screen, int mode,
+                    const tubes::Font& heading, bool haveHeading,
+                    const tubes::Font& small, bool haveSmall) {
+    if (haveHeading) {
+        tubes::drawTextCentred(screen, heading, 0, 319, tubes::kHelpTitleY,
+                               tubes::kHelpTitleColour, tubes::textmode::kPeak,
+                               tubes::kHelpTitle);
+        tubes::drawTextCentred(screen, heading, 0, 319, tubes::kHelpRuleY,
+                               tubes::kHelpTitleColour, tubes::textmode::kPeak,
+                               tubes::kHelpTitleRule);
+        tubes::drawTextCentred(screen, heading, 0, 319, tubes::kHelpPromptY,
+                               tubes::kHelpTitleColour, tubes::textmode::kPeak,
+                               tubes::kHelpPrompt);
+    }
+    if (!haveSmall) return;
+
+    tubes::drawText(screen, small, tubes::kHelpKeyX, tubes::kHelpHeadY0,
+                    tubes::kHelpKeyColour, tubes::kHelpBodyMode,
+                    tubes::kHelpHead0);
+    tubes::drawText(screen, small, tubes::kHelpKeyX, tubes::kHelpHeadY1,
+                    tubes::kHelpKeyColour, tubes::kHelpBodyMode,
+                    tubes::kHelpHead1);
+    for (int i = 0; i < tubes::kHelpKeyCount; ++i) {
+        tubes::drawText(screen, small, tubes::kHelpKeyX,
+                        tubes::kHelpKeyY0 + i * tubes::kHelpKeyPitch,
+                        tubes::kHelpKeyColour, tubes::kHelpBodyMode,
+                        tubes::kHelpKeys[i]);
+    }
+
+    // The drops note is unconditional; the mode note is the one arm that
+    // branches, and it moves as well as changing its words.
+    const bool endurance = mode == 1;
+    const int noteX = endurance ? tubes::kHelpEnduranceX : tubes::kHelpWaveX;
+    const int noteY0 = endurance ? tubes::kHelpEnduranceY0 : tubes::kHelpWaveY0;
+    const char* const* note =
+        endurance ? tubes::kHelpEndurance : tubes::kHelpWave;
+    for (int i = 0; i < tubes::kHelpNoteLines; ++i) {
+        tubes::drawText(screen, small, tubes::kHelpDropsX,
+                        tubes::kHelpDropsY0 + i * tubes::kHelpNotePitch,
+                        tubes::kHelpNoteColour, tubes::kHelpBodyMode,
+                        tubes::kHelpDrops[i]);
+        tubes::drawText(screen, small, noteX,
+                        noteY0 + i * tubes::kHelpNotePitch,
+                        tubes::kHelpNoteColour, tubes::kHelpBodyMode, note[i]);
+    }
+}
+
 // The title screen, `1b2e:52bf`, and its menu, `1b2e:4d80`.
 //
 // `TUBESBG.GFX` and `TUBESFG.GFX` are a background/foreground pair - the word
@@ -4691,6 +4747,10 @@ int main(int argc, char** argv) {
     // The F2 save screen, `1000:2dd0`'s save arm. It blocks the frame loop the
     // same way Pause does - the original calls it from inside the loop body
     // and does not come back until it is done.
+    // The F1 help overlay, `1000:2e1c`. Blocks the loop like the save screen
+    // and Pause do, and leaves on any key at all.
+    bool helpScreen = opt.f1;
+
     bool saveScreen = opt.f2;
     int saveSlotSel = 1;              // `DS:0x1d4d`
     bool saveTyping = false;
@@ -4878,7 +4938,8 @@ int main(int argc, char** argv) {
             // Live play polls the pad instead - see `menuKeyForPad`.
             const bool livePlay = stage == Stage::kPlay &&
                                   sstage == tubes::SessionStage::kPlay &&
-                                  !saveScreen && !hsActive && !paused;
+                                  !saveScreen && !hsActive &&
+                                  !paused && !helpScreen;
             SDL_Keycode k = SDLK_UNKNOWN;
             if (ev.type == SDL_KEYDOWN) {
                 k = ev.key.keysym.sym;
@@ -5326,6 +5387,16 @@ int main(int argc, char** argv) {
             // the typing loops do - `1000:2dd0` does not return until ESC or
             // a completed save. `1000:3382` is the navigation and `1000:3423`
             // the two keys that end it.
+            // `1000:301b` is a bare `ReadKey` with nothing after it, so the
+            // help overlay leaves on ANY key - and the key is DISCARDED
+            // rather than re-dispatched. F5 out of help does not pause and
+            // ESC out of help does not abort, which is the whole difference
+            // between this wait and Pause's `repeat until k = $bf`.
+            if (helpScreen) {
+                helpScreen = false;
+                continue;
+            }
+
             if (saveScreen) {
                 if (saveWritten > 0.0f) continue;      // the written hold
                 if (!saveTyping) {
@@ -5603,8 +5674,9 @@ int main(int argc, char** argv) {
                 }
                 break;
             case tubes::GameAction::kHelp:
-                // `1b2e:2d63`'s help body is read as a dispatch but its screen
-                // is not decompiled. Left inert rather than invented.
+                // `1000:2e1c`. An overlay over the frame the loop left up,
+                // dismissed by any key.
+                helpScreen = true;
                 break;
             default:
                 break;
@@ -5760,7 +5832,7 @@ int main(int argc, char** argv) {
                                                       : 0);
                 }
             } else if (sstage == tubes::SessionStage::kPlay && !paused &&
-                       !saveScreen) {
+                       !saveScreen && !helpScreen) {
                 game->update(opt.demo ? scriptedInput(*game)
                                       : readInput(settings.bindings, gamepad),
                              dt);
@@ -6238,6 +6310,10 @@ int main(int argc, char** argv) {
             drawSaveScreen(screen, saves[b], b, saveSlotSel, saveTyping,
                            saveDesc, headingFont, haveHeading, scriptFont,
                            haveScript, &smallBall[1], haveSmallBall[1]);
+        }
+        if (helpScreen) {
+            drawHelpScreen(screen, gameMode, headingFont, haveHeading,
+                           smallFont, haveSmall);
         }
         if (paused) drawPaused(screen, headingFont, haveHeading);
 

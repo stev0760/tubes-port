@@ -3940,6 +3940,73 @@ void testAttractModeTurnsEveryKeyIntoAnAbort() {
               tubes::GameAction::kSave, "and alive when it is not");
 }
 
+// The F1 Help overlay, `1000:2e1c`. The layout is eighteen literal pushes and
+// the transliteration is only as good as those numbers, so pin the ones a
+// later edit could plausibly "tidy" - the irregular spacing and the fact that
+// the two modes disagree about where the left note goes as well as what it
+// says.
+void testTheHelpScreenKeepsTheOriginalsIrregularLayout() {
+    // `1000:2e9b`..`1000:2f2a`: x is a flat 76 and y steps 10 from 110, but
+    // the two heading lines above it are at 85 and 95 - a 15-pixel gap into
+    // the list, not another 10.
+    check(tubes::kHelpHeadY1 - tubes::kHelpHeadY0 == 10, "the heading is 10 apart");
+    check(tubes::kHelpKeyY0 - tubes::kHelpHeadY1 == 15,
+          "and the list starts 15 below it, not 10");
+
+    // ESC gets TWO spaces and F1..F5 three, which is what lines the
+    // descriptions up under a 6-pixel advance. Deriving the padding from the
+    // key name would put "Abort Game" one column left of everything else.
+    const std::string esc = tubes::kHelpKeys[0];
+    check(esc.rfind(" ESC  A", 0) == 0, "ESC is padded with two spaces");
+    for (int i = 1; i < tubes::kHelpKeyCount; ++i) {
+        const std::string row = tubes::kHelpKeys[i];
+        check(row.size() > 6 && row.compare(3, 3, "   ") == 0,
+              "F1..F5 are padded with three");
+    }
+    check(tubes::kHelpKeyCount == 6, "six keys: ESC and F1..F5");
+
+    // `1000:2f7b` branches on `DS:0x1d4e`, and the arms differ in POSITION as
+    // well as in text - the Wave note clears the Task Display's corner.
+    check(tubes::kHelpEnduranceX == 1 && tubes::kHelpEnduranceY0 == 15,
+          "the Endurance note sits at (1, 15)");
+    check(tubes::kHelpWaveX == 5 && tubes::kHelpWaveY0 == 30,
+          "the Wave note at (5, 30)");
+
+    // Both notes are four lines, and the drops note is drawn in BOTH modes -
+    // drops are a persistent pool and mean the same thing either way.
+    check(tubes::kHelpNoteLines == 4, "four lines a note");
+    check(std::string(tubes::kHelpDrops[3]) == "game is over.",
+          "the drops note ends the game");
+    check(std::string(tubes::kHelpWave[3]) == "Wave is complete.",
+          "the wave note completes the wave");
+
+    // The compiler pooled one literal across the two notes, which is worth a
+    // check because it is the sort of coincidence a transcriber would "fix":
+    // both blocks really do say `remaining.` with FIVE spaces after it.
+    check(std::string(tubes::kHelpDrops[1]) == std::string(tubes::kHelpWave[1]),
+          "the two notes share their second line verbatim");
+    check(std::string(tubes::kHelpDrops[1]) == "remaining.     When",
+          "and it carries five spaces, not one");
+
+    // The three centred lines are the banners' colour and mode; the body is
+    // the only place in the session drawn at `$82`.
+    check(tubes::kHelpTitleColour == tubes::kBannerColour,
+          "the title is the banner colour");
+    check(tubes::kHelpBodyMode ==
+              (tubes::textmode::kShadow | tubes::textmode::kFadeUp),
+          "the body is mode $82");
+
+    // F1 is listed on its own screen, which is how the port knows the list is
+    // the whole dispatch and not a subset of it.
+    bool listsItself = false;
+    for (int i = 0; i < tubes::kHelpKeyCount; ++i) {
+        if (std::string(tubes::kHelpKeys[i]).find("F1") != std::string::npos) {
+            listsItself = true;
+        }
+    }
+    check(listsItself, "the help screen lists Help");
+}
+
 // `1000:a5e8`: an abort jumps clear of the stats screen and the Continue
 // offer, so a player who quits is never asked to continue.
 void testAbortSkipsTheStatsScreenAndTheContinue() {
@@ -4173,6 +4240,7 @@ int main() {
     testHighScoreRowMovesForThePerfectBonus();
     testBannerRulesAreNotDerivedFromTheCaption();
     testAttractModeTurnsEveryKeyIntoAnAbort();
+    testTheHelpScreenKeepsTheOriginalsIrregularLayout();
     testAbortSkipsTheStatsScreenAndTheContinue();
     testAnAcceptedContinueReplaysWithoutAdvancing();
     testTheContinueCountdownExpiringDeclines();

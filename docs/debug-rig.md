@@ -301,6 +301,24 @@ game writes.
   is double-scanned to 400 lines and DOSBox-X doubles horizontally too. Halve
   both axes before comparing against the port's own `--screenshot` output.
 
+### F1 Help freezes the game without the Pause key
+
+Every other capture here needs the game's own Pause first, because halting via
+GDB blocks the emulator's main loop and `screendump` then times out. The F1
+Help overlay is the exception: `1000:301b` is a blocking `ReadKey`, so the
+*game loop* stops while the emulator keeps running, and a screendump is
+answered normally. `grab_f1.py` and `grab_f1_wave.py` use that.
+
+Two things that cost time there and will again:
+
+- **backing out of a session does not land where it looks like it should.**
+  ESC leaves the session, ESC again clears the abort banner, and the menu comes
+  back on its *saved games* page rather than on Start Game - so a script that
+  assumes "ESC ESC then Start Game" silently captures the wrong screen. It
+  captured a menu and called it a Wave-mode help screen. A fresh launch per
+  mode is shorter than getting the path right, and shooting **every** step is
+  what made the wrong turn visible at all.
+
 ### Other things learned driving it
 
 - **A timed-out tool call desynchronises the GDB stream.** After the screenshot

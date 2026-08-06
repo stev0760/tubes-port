@@ -931,8 +931,15 @@ the title. Two things in it are **marked as stand-ins, not derived**:
   `--screenshot-after N` plus `--auto-advance` is how the port side is
   captured.
 
-Still open from it: `1000:2dd0`'s **F1 Help** body. Its screen is not
-decompiled and the key is inert - the only key in the game that does nothing.
+~~Still open from it: `1000:2dd0`'s **F1 Help** body.~~ **DONE.** `1000:2e1c`,
+an overlay rather than a screen: it copies the play field to page 2, writes a
+key list and two HUD annotations over the copy, and blocks in a bare `ReadKey`.
+No fade, the dismissing key discarded rather than re-dispatched, and a mode
+branch whose two texts name the 1-Endurance / 2-Wave numbering independently of
+the save banks. Verified against the original in both modes: every text row's
+y, x-extent and pixel count identical, 3,585 and 3,481 text pixels. `--f1`
+opens it for capture.
+
 F2 is done, both ways in: during play, and from the abort banner's own offer.
 
 **B. The menu items that currently do nothing.** Each is reachable and inert,

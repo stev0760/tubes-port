@@ -78,6 +78,123 @@ GameAction classifyGameKey(uint8_t code, bool attractMode, bool saveDisabled);
 constexpr bool kSaveDisabled = false;
 
 // ---------------------------------------------------------------------------
+// The F1 Help screen, `1000:2e1c`
+// ---------------------------------------------------------------------------
+//
+// The `$bb` arm of `1000:2dd0`, and the last body in the program that was not
+// decompiled. It is an OVERLAY, not a screen of its own: it snapshots the play
+// field and writes over the copy.
+//
+//     CopyPage(src := [$2376] xor 1, dst := 2);   { 1000:2e1c, 2321:020c }
+//     SetDrawPage(2);
+//     SetFont(big);    <the three centred lines>
+//     SetFont(small);  <the key list, then the two annotations>
+//     SetShownPage(2);
+//     k := Fold(ReadKey);                         { 1000:301b - BLOCKING }
+//     SetDrawPage([$2376]);  SetShownPage([$2376] xor 1);
+//     SetFont(hud);                               { $211c, advance 8, peak 7 }
+//     ReArmFrameTimer;                            { 1000:3053, 21ea:072a }
+//
+// Three things follow from that and none of them is a guess.
+//
+// **ANY key dismisses it**, which is what the screen says and what `ReadKey`
+// with no dispatch after it does. Contrast F5, whose `repeat until k = $bf`
+// swallows everything but F5 - the two waits are deliberately different and
+// the port must not share one.
+//
+// **The dismissing key is discarded.** `1000:3026` stores it into the same
+// local the dispatch switched on and then jumps to the common exit at
+// `1000:39c4`, so it is never re-classified: F5 out of Help does not pause,
+// and ESC out of Help does not abort.
+//
+// **There is no fade.** Neither `23e7:0097` nor `23e7:00ce` is called, so the
+// overlay appears and leaves instantly, unlike every full screen in the game.
+//
+// `21ea:072a` writes `DS:0x0d40`, the session's frame period, back into the
+// timing unit - the original re-arms its tick after a blocking wait so the
+// game does not fast-forward through the frames the player spent reading. The
+// port clamps `dt` instead and needs no equivalent.
+
+// The three centred lines, in STARTREK.816 (`DS:0x2110`), colour 47, mode 3.
+// Same colour as the banners, and like them the rule is its own literal.
+constexpr int kHelpTitleY = 15;            // 0x0f
+constexpr int kHelpRuleY = 18;             // 0x12
+constexpr int kHelpPromptY = 180;          // 0xb4
+constexpr uint8_t kHelpTitleColour = 47;   // 0x2f
+constexpr const char* kHelpTitle = "Help";
+constexpr const char* kHelpTitleRule = "___";
+constexpr const char* kHelpPrompt = "Press Any Key...";
+
+// Everything below is TINY6X8.88 (`DS:0x2118`) at mode `$82`.
+constexpr uint8_t kHelpBodyMode = textmode::kShadow | textmode::kFadeUp;
+
+// The key list, `1000:2e9b`..`1000:2f2a`. x is a flat 76 - the briefing's own
+// left margin - and y steps 10 from 110 after a two-line heading at 85 and 95.
+constexpr int kHelpKeyX = 76;              // 0x4c
+constexpr int kHelpHeadY0 = 85;            // 0x55
+constexpr int kHelpHeadY1 = 95;            // 0x5f
+constexpr int kHelpKeyY0 = 110;            // 0x6e
+constexpr int kHelpKeyPitch = 10;
+constexpr uint8_t kHelpKeyColour = 166;    // 0xa6
+
+// Spacing is part of the transliteration: ESC gets TWO spaces after it and
+// F1..F5 get three, which is what lines the descriptions up in a fixed-pitch
+// font. Do not tidy these, and do not derive them.
+constexpr const char* kHelpHead0 = "The   following   keys   are";
+constexpr const char* kHelpHead1 = "active, during the game:";
+constexpr const char* kHelpKeys[] = {
+    " ESC  Abort Game",
+    " F1   Help",
+    " F2   Save Game",
+    " F3   Toggle Music On/Off",
+    " F4   Toggle Sound FX On/Off",
+    " F5   Pause Game",
+};
+constexpr int kHelpKeyCount = 6;
+
+// The two annotations, which point at the HUD counters either side of the
+// score - `Chains` is drawn at x 1 and `Drops` at x 288, and these sit under
+// them. Colour 70 for both, where the key list is 166.
+constexpr uint8_t kHelpNoteColour = 70;    // 0x46
+
+// The right-hand note, `1000:2f2f`. Drawn in BOTH modes: drops are a
+// persistent pool and mean the same thing either way.
+constexpr int kHelpDropsX = 200;           // 0xc8
+constexpr int kHelpDropsY0 = 15;           // 0x0f
+constexpr int kHelpNotePitch = 10;
+constexpr const char* kHelpDrops[] = {
+    "The number of drops",
+    "remaining.     When",
+    "this reaches 0 your",
+    "game is over.",
+};
+
+// The left-hand note, `1000:2f7b`, on `DS:0x1d4e = 1`. The mode numbering is
+// the save banks': 1 Endurance, 2 Wave - and the two texts say so themselves,
+// which is a second reading agreeing with the one taken off `+0x28` / `+0x26`.
+constexpr int kHelpEnduranceX = 1;
+constexpr int kHelpEnduranceY0 = 15;       // 0x0f
+constexpr const char* kHelpEndurance[] = {
+    "The number of molecule",
+    "chains you have  made.",
+    "Your goal is to create",
+    "as many as you can!",
+};
+
+// The Wave arm sits lower and one pixel further in - 5/30 against 1/15 - which
+// is the Task Display's doing: it occupies the top-left corner in wave mode
+// and the note has to clear it.
+constexpr int kHelpWaveX = 5;
+constexpr int kHelpWaveY0 = 30;            // 0x1e
+constexpr const char* kHelpWave[] = {
+    "The number of tasks",
+    "remaining.     When",     // shared literal with the drops note
+    "this reaches 0, the",
+    "Wave is complete.",
+};
+constexpr int kHelpNoteLines = 4;
+
+// ---------------------------------------------------------------------------
 // The end-of-session banners, `1000:5d64`
 // ---------------------------------------------------------------------------
 //

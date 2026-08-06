@@ -6309,6 +6309,85 @@ call the driver, then flash `Music On` / `Music Off` / `Sound On` / `Sound Off`
 centred at `y` 92, colour 47, mode 3. The music arm restarts the *current* song
 from `parent[-0xa]` when switching on, and calls the stop vector when off.
 
+### The F1 Help screen, `1000:2e1c` - the last undecompiled body
+
+`PLAN.md` carried this for months as "its screen is not decompiled and the key
+is inert - the only key in the game that does nothing". It is the `$bb` arm of
+`1000:2dd0` and it is an **overlay**, not a screen:
+
+    CopyPage(src := [$2376] xor 1, dst := 2);          { 1000:2e1c }
+    SetDrawPage(2);
+    SetFont($2110, 8, 16, 8, 8);                       { STARTREK.816 }
+    OutTextCentred(0, 319,  15, 47, 3, 'Help');
+    OutTextCentred(0, 319,  18, 47, 3, '___');
+    OutTextCentred(0, 319, 180, 47, 3, 'Press Any Key...');
+    SetFont($2118, 8, 8, 6, 4);                        { TINY6X8.88 }
+    <the key list, then the two annotations>
+    SetShownPage(2);
+    k := Fold(ReadKey);                                { 1000:301b }
+    SetDrawPage([$2376]);  SetShownPage([$2376] xor 1);
+    SetFont($211c, 8, 16, 8, 7);                       { back to the HUD's }
+    ReArmFrameTimer;                                   { 21ea:072a }
+
+Four things fall out of the listing and none needed a capture:
+
+* **there is no fade.** Neither `23e7:0097` nor `23e7:00ce` is called, so this
+  is the one full-screen change in the game that is instant;
+* **the dismissing key is discarded** - `1000:3026` stores it in the same local
+  the dispatch switched on and then jumps to the common exit at `1000:39c4`, so
+  it is never re-classified. F5 out of Help does not pause and ESC does not
+  abort;
+* `21ea:072a` writes `DS:0x0d40`, the session's frame period, back into the
+  timing unit at `2000:0009` - the original re-arms its tick after a blocking
+  wait so it does not fast-forward through the frames the player spent reading.
+  The port clamps `dt` and needs no equivalent;
+* the string constants are in the **code** segment, pushed `PUSH CS; PUSH ofs`,
+  which is why a DGROUP dump of `2b96` fails outright. The same is already true
+  of the banners at `1000:3a12`.
+
+The layout, all of it literal pushes:
+
+| what | font | x | y | colour | mode |
+|---|---|---|---|---|---|
+| `Help` / `___` | STARTREK | centred 0..319 | 15, 18 | 47 | 3 |
+| `Press Any Key...` | STARTREK | centred 0..319 | 180 | 47 | 3 |
+| two heading lines | TINY6X8 | 76 | 85, 95 | 166 | `$82` |
+| six key lines | TINY6X8 | 76 | 110 step 10 | 166 | `$82` |
+| the drops note | TINY6X8 | 200 | 15 step 10 | 70 | `$82` |
+| the mode note, Endurance | TINY6X8 | 1 | 15 step 10 | 70 | `$82` |
+| the mode note, Wave | TINY6X8 | 5 | 30 step 10 | 70 | `$82` |
+
+The two notes point at the HUD counters either side of the score. The mode arm
+is `1000:2f7b` on `DS:0x1d4e`, and **the two texts identify the mode numbering
+independently of the save banks**: `= 1` says "The number of molecule chains you
+have made", `<> 1` says "The number of tasks remaining", which is the same
+1-Endurance / 2-Wave reading already taken off the `+0x28` / `+0x26` split.
+
+`1000:2f9c` pushes `2c6e` in the Wave note and `1000:2f4b` pushes it in the
+drops note - **the compiler pooled one literal across both**, because both
+blocks really do read `remaining.` followed by five spaces and `When`. A
+transcriber would have normalised that; `testTheHelpScreenKeepsTheOriginals-
+IrregularLayout` pins it, along with ESC's two spaces of padding against
+F1..F5's three.
+
+#### Verified against the original, both arms
+
+`grab_f1.py` and `grab_f1_wave.py` capture it; the overlay can be shot without
+the Pause key because the `ReadKey` blocks the game loop while the emulator
+keeps running, which is the one screen in the game where that is true.
+
+Comparing text pixels by colour family - red for the three centred lines,
+purple for the key list, yellow for the two notes - every row's y, x-extent and
+pixel count is **identical** between the original and the port, across all five
+blocks in both modes: 3,585 text pixels in Endurance and 3,481 in Wave.
+
+The one apparent disagreement was worth the discipline this file keeps
+preaching. The Endurance key-list band differed at `x` 60..71, `y` 127..139 -
+and those columns are left of the list's own `x` 76. It was a Pinkium in the
+port's backdrop passing a loose "purple" filter, not a glyph. A count would
+have said "the key list differs"; the extents said where, and the where was
+outside the text.
+
 ### The end-of-session banners, `1000:5d64`
 
 Still inside `3a67`, after the loop falls out. All three are centred over
@@ -6889,8 +6968,10 @@ its purpose **by name**, which a wrong frame-offset reading could not produce.
 * `1000:0000` (place N marked atoms), `1000:0236` (place N crystals) and
   `1000:035e` (pre-fill the beaker with N) are named but not read.
 * `1000:9499`, reached on clearing wave 75.
-* `1000:2dd0`'s F1 Help body and its F2 Save slot picker - the dispatch is
-  read, the two screens are not.
+* ~~`1000:2dd0`'s F1 Help body and its F2 Save slot picker - the dispatch is
+  read, the two screens are not.~~ **Both done** - the save screen earlier, the
+  help overlay in "The F1 Help screen, `1000:2e1c`" above. It was the last body
+  in the program left unread.
 * Where `-0x14f`, the number of Continues, is seeded.
 * The beaker morph body at `1000:4bf6`.
 * Whether the shareware really carries all 75 arms or the later ones are dead;
