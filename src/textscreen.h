@@ -2,30 +2,29 @@
 
 // A VGA text-mode screen, rendered as pixels.
 //
-// WHY THIS EXISTS. `TUBESEND.BIN` is the shareware edition's sign-off, and it
+// Why this exists. `TUBESEND.BIN` is the shareware edition's sign-off, and it
 // is not a bitmap: it is a raw dump of text-mode video memory, 80 x 23 cells of
 // {character, attribute}, which the original `Move`s to segment 0xB800 and then
 // quits. See `tools/bin_decode.py` and the notes.
 //
-// THE ONE PLACE THIS PORT INVENTS A PRESENTATION, and it is unavoidable. The
-// original does not DISPLAY this screen, it LEAVES it behind: the program ends,
-// the banner stays on the shell, and the DOS prompt lands in the two rows the
-// dump deliberately does not cover - which is why 3,680 bytes is 23 rows and
-// not 25. A windowed SDL port has no shell to leave anything on. So the port
-// renders it, holds it until a key, and then exits, and that hold is the
-// invented part. Everything else - the cells, the attributes, the palette, the
-// geometry - is the file's.
+// The presentation here is invented, and unavoidably so. The original does not
+// display this screen; it leaves it behind. The program ends, the banner stays
+// on the shell, and the DOS prompt lands in the two rows the dump deliberately
+// does not cover - which is why 3,680 bytes is 23 rows, not 25. A windowed SDL
+// port has no shell to leave anything on, so the port renders it, holds it
+// until a key, and then exits. That hold is the invented part. Everything else
+// - the cells, the attributes, the palette, the geometry - is the file's.
 //
-// Writing it to the real terminal instead was considered and rejected. It
-// reproduces the mechanism and loses the picture: the art is drawn in box and
+// Writing it to the real terminal was considered and rejected. That would
+// reproduce the mechanism but lose the picture. The art is drawn in box and
 // half-block glyphs with drop shadows, so it needs the 8x16 cell, the CP437
-// shapes and the 16-colour palette, and any terminal with its own font metrics
-// or a themed palette breaks the tiling. Below 80 columns it wraps and is
+// shapes, and the 16-colour palette. Any terminal with its own font metrics or
+// a themed palette breaks the tiling. Below 80 columns it wraps and is
 // destroyed outright.
 //
-// GEOMETRY. 80 x 25 cells of 8 x 16 is 640 x 400 - exactly twice the port's
+// Geometry. 80 x 25 cells of 8 x 16 is 640 x 400 - exactly twice the port's
 // 320 x 200 in both axes, so the aspect is identical and `presentRect` returns
-// the SAME destination rectangle. Window scaling, 4:3 correction, fullscreen
+// the same destination rectangle. Window scaling, 4:3 correction, fullscreen,
 // and scanlines therefore all apply unchanged, without the display code
 // learning about a second resolution.
 
@@ -60,8 +59,8 @@ struct TextCell {
 // existing fade works on this screen without knowing what it is.
 //
 // These are the standard EGA/VGA text palette: the low eight are the dim
-// colours, the high eight their bright pairs, with the usual brown-not-dark-
-// yellow at index 6.
+// colours, the high eight their bright pairs, with the usual
+// brown-not-dark-yellow at index 6.
 extern const uint8_t kTextPalette[16][3];
 
 // Builds a 256-entry palette whose first 16 entries are the text colours, so a
@@ -72,15 +71,14 @@ Palette textPalette();
 // The fake DOS prompt
 // ---------------------------------------------------------------------------
 //
-// THE PORT'S OWN INVENTION, and the only content on this screen that is not in
-// the file. It is here rather than buried in the SDL layer so the invariant
-// below can be tested.
+// The port's own invention, and the only content on this screen that is not in
+// the file. It lives here rather than in the SDL layer so the invariant below
+// can be tested.
 //
-// The justification is the file's own shape: 3,680 bytes is 23 rows of a
-// 25-row screen, and it stops short precisely so the shell's next line lands
-// under the art instead of scrolling it. The blank rows are a hole cut for the
-// prompt. Drawing one fills the gap the dump was designed around, which is why
-// the screen reads as finished rather than as cropped.
+// The file's shape justifies it. 3,680 bytes is 23 rows of a 25-row screen,
+// and it stops short so the shell's next line lands under the art instead of
+// scrolling it. The blank rows are a hole cut for the prompt. Drawing a prompt
+// fills that gap, which is why the screen reads as finished, not cropped.
 constexpr int kPromptRow = 23;
 constexpr uint8_t kPromptAttr = 0x07;       // light grey on black, the DOS default
 
@@ -99,8 +97,8 @@ public:
     // Rows beyond it are left blank, which is what the original leaves for the
     // shell prompt - the file really is 23 rows of a 25-row screen.
     //
-    // Returns false if the blob is not a whole number of 80-cell rows, rather
-    // than rendering a torn screen.
+    // Returns false if the blob is not a whole number of 80-cell rows, instead
+    // of rendering a torn screen.
     bool loadBin(const std::vector<uint8_t>& blob);
 
     int rowsLoaded() const { return rowsLoaded_; }
@@ -110,7 +108,7 @@ public:
 
     // Renders to an 8-bit indexed 640 x 400 buffer, palette indices 0..15.
     //
-    // Blink (attribute bit 7) is NOT animated. On the real thing this screen is
+    // Blink (attribute bit 7) is not animated. On the real thing this screen is
     // static the instant the program exits, so nothing on it ever blinks - and
     // `TUBESEND.BIN` sets the bit nowhere, which `bin_decode.py INFO` confirms:
     // all twelve of its attributes are below 0x80. The bit is masked off rather
@@ -126,42 +124,38 @@ private:
 // The version picker
 // ---------------------------------------------------------------------------
 //
-// THE PORT'S OWN SCREEN, top to bottom, and it is deliberately the only one
-// that does not pretend otherwise.
+// The port's own screen, top to bottom, and it does not pretend otherwise.
 //
 // The port cannot work out which edition to be. `TUBES.RES` is byte-identical
 // between the shareware and registered releases, so an install carries no
 // evidence of which one it came from - the edition lives only in the
-// executable, and the port IS the executable. So it asks.
+// executable, and the port is the executable. So it asks.
 //
-// IT ASKS EVERY TIME, and asks the right question. An earlier version of this
-// was a FIRST-RUN prompt reading "which copy of Tubes do you have?", which
-// framed it as a fact about the player. It is not one. Both editions are
-// preserved and downloadable now - the registered one was believed lost for
-// years until a copy surfaced and reached archive.org - so nobody is stuck with
-// one of them, and the honest question is "which would you like to play?".
+// It asks every launch, and it asks "which would you like to play?" rather
+// than "which copy do you have?". The second frames the edition as a fact
+// about the player, and it is not one: both editions are preserved and
+// downloadable, the registered one having been believed lost for years until a
+// copy surfaced and reached archive.org. Nobody is stuck with one of them.
 //
-// That reframing is what makes showing it every launch reasonable rather than
-// nagging: it is a launcher choice, like picking a difficulty, and it costs one
-// keypress because the cursor starts on the remembered answer. It is skipped
-// entirely for `--shareware` / `--registered`, which is the developer's and the
-// harness's way past it.
+// Asking a preference is also what makes every launch reasonable rather than
+// nagging. It is a launcher choice, like picking a difficulty, and it costs
+// one keypress because the cursor starts on the remembered answer. It is
+// skipped entirely for `--shareware` / `--registered`, which is the
+// developer's and the harness's way past it.
 //
-// WHY A TEXT SCREEN, of four candidates that were built and rendered. The other
-// three put the question inside the game - on the title screen in the
-// `Exit Tubes?` page's idiom, or on the projector slide in Lanny's mouth. All
-// three look right and all three are a small lie: the 1994 game never asked
-// this and had no reason to, so a screen speaking AS the game claims something
+// Why a text screen, and not one inside the game. Putting the question on the
+// title screen in the `Exit Tubes?` page's idiom, or on the projector slide in
+// Lanny's mouth, looks right and is a small lie: the 1994 game never asked
+// this and had no reason to, so a screen speaking as the game claims something
 // about the original. A setup screen before the graphics come up sits outside
 // the program's world, which is where a question the original never asked
 // belongs - and it is still period-honest, being what `SETUP.EXE` would have
 // looked like.
 //
-// IT IS DRAWN IN `SETUP.EXE`'S OWN LOOK, and that is the game's INSTALLER, not
-// its sign-off. An earlier version of this screen copied `TUBESEND.BIN` - blue
-// panels, doubled outlines - which was the wrong reference twice over: the
-// banner is the game saying goodbye, `SETUP.EXE` is the game asking the player
-// a question, and this screen asks a question.
+// The look to copy is `SETUP.EXE`, the game's installer, and not
+// `TUBESEND.BIN`, its sign-off. The banner is the game saying goodbye,
+// `SETUP.EXE` is the game asking the player a question, and this screen asks a
+// question.
 //
 // The look was not taken from a screenshot either. `SETUP.EXE` was run under
 // DOSBox-X and its text memory read back from 0xB8000, so every attribute is
@@ -177,7 +171,7 @@ private:
 // version actually gives you.
 //
 // It shares the exit screen's renderer, so it needs no display code of its own
-// and inherits window scaling, 4:3 correction, fullscreen and the fade.
+// and inherits window scaling, 4:3 correction, fullscreen, and the fade.
 //
 // The layout lives here rather than in `main.cpp` so it can be tested without
 // SDL, the same reason `kPromptRow` does.

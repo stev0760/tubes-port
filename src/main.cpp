@@ -1694,7 +1694,7 @@ tubes::GraphicsOptions g_display;
 // build `Move`s this dump to 0xB800 and quits, leaving the banner on the shell
 // with the DOS prompt landing in the two rows the file deliberately omits. A
 // windowed port has no shell to leave it on, so it draws it and holds it until
-// a key. That hold is the invented part and the only one - see textscreen.h.
+// a key. That hold is the invented part - see textscreen.h.
 //
 // It goes through the SAME `presentRect` as everything else, and gets fullscreen,
 // window scale, 4:3 correction and scanlines for free, because 640 x 400 and
