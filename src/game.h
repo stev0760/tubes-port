@@ -1,12 +1,12 @@
 // Game state: the dispenser, the player's test tube, and the beaker.
 //
 // Atoms enter at the foot of one of six feed tubes, rise, cross the top along
-// that tube's lane and come back down a play column - tracing the artwork
-// rather than falling straight. The test tube slides on a rail and holds
-// atoms stacked; A tips one into the beaker, B speeds an atom along.
+// that tube's lane, and come back down a play column. The test tube slides on
+// a rail and holds a stack of atoms. A tips one into the beaker; B speeds an
+// atom along.
 //
 // Six atoms are in flight at once, one per column, because the original's
-// array is indexed by the column. See `Falling` and PLAN.md.
+// array is indexed by column. See `Falling` and PLAN.md.
 
 #pragma once
 
@@ -32,14 +32,14 @@ constexpr uint8_t kA = 0x10;
 constexpr uint8_t kB = 0x20;
 }  // namespace button
 
-// The frame rate, MEASURED - see docs/reversing-notes.md. It was carried as
-// 18.2 Hz, the PC BIOS tick, for the whole project on the strength of "attract
-// mode produced ~17 state changes a second". It is not 18.2.
+// The frame rate, measured. See docs/reversing-notes.md. It was carried as
+// 18.2 Hz, the PC BIOS tick, for the whole project because "attract mode
+// produced ~17 state changes a second". It is not 18.2.
 //
 // The game installs its own timer (`226c:00c6` reprograms the PIT and hooks
 // INT 8) and `21ea:06ba` waits out a per-frame period held in `DS:0x0d40`,
 // against a dividend of 145. Read live, that word is 9 in the play session and
-// 6 on the title screen, the menu and the briefing.
+// 6 on the title screen, menu, and briefing.
 //
 // Two independent routes agree:
 //
@@ -49,9 +49,10 @@ constexpr uint8_t kB = 0x20;
 //   port's own exact frame->index mapping
 //                                                = 16.18 Hz
 //
-// 0.4% apart, so the formula is right and the constant is derived from it.
+// The two results are 0.4% apart, so the formula is right and the constant is
+// derived from it.
 //
-// NOT resolved: how 145 relates to the PIT divisor the game actually writes,
+// Not resolved: how 145 relates to the PIT divisor the game actually writes,
 // which is 16384 = 72.83 Hz. 72.83/9 is 8.09 Hz and is contradicted by the
 // measurement, so the tick the period counts is not simply that interrupt.
 constexpr float kFrameDividend = 145.0f;   // `21ea:0706  MOV AX,0x91`
@@ -72,7 +73,7 @@ enum class Difficulty {
 // numbers, kept so a live record can be compared against this struct directly.
 namespace atomstate {
 constexpr uint8_t kFree = 0;      // slot unused; the spawn looks for this
-// States 1 and 2 are a two-frame teardown after a record lands - `1000:18ec`
+// States 1 and 2 are a two-frame teardown after a record lands. `1000:18ec`
 // steps 1 to 2 and 2 to 0, and `drawn()` is `state > 2`, so neither renders.
 // They exist so a slot is not reallocated on the frame it was released.
 constexpr uint8_t kLanded = 1;
@@ -94,7 +95,7 @@ constexpr uint8_t kPoured = 3;
 constexpr uint8_t kRelease = 4;   // never rendered; see kTipFrames below
 }  // namespace tubephase
 
-// The session holds one sound handle per ATOM TYPE, `sound[t]` at `F9 - 0x72 +
+// The session holds one sound handle per atom type, `sound[t]` at `F9 - 0x72 +
 // 4t`, loaded by name at `1000:a2e0` onward. Index 0 of that same array is
 // `DROP.SFX`, so a lost atom is literally the sound of type nothing:
 //
@@ -106,11 +107,11 @@ constexpr uint8_t kRelease = 4;   // never rendered; see kTipFrames below
 //     sound[18]     CRFADE      the Crystal
 //
 // and three more sit just below the array, at -0x76, -0x7a and -0x7e. Types
-// 11..17 and 19 have no sound, which is the same set that has no fade family.
+// 11..17 and 19 have no sound, the same set that has no fade family.
 //
-// ONE plays at a time. `SBSOUND.DRV`'s play entry calls its own stop routine
-// before anything else and holds a single position/length pair, so a new sound
-// cuts off whatever was going.
+// One sound plays at a time. `SBSOUND.DRV`'s play entry calls its own stop
+// routine before anything else and holds a single position/length pair, so a
+// new sound cuts off whatever was going.
 namespace sfx {
 constexpr int8_t kNone = -1;
 constexpr int8_t kDrop = 0;          // = sound[0]; 1..19 are the atom types
@@ -129,9 +130,9 @@ constexpr int8_t kCount = 23;
 //     DS:0x18  column x 143 125 107 197 179 161   where it comes back down
 //     DS:0x24  tube x   104 122 140 158 176 194   the test tube's six stops
 //
-// All four are indexed by the column, 1..6. Column 1's feed x was carried as
-// "inferred from the mirror symmetry" for a session because no atom happened
-// to use that column while sampling; it is measured now.
+// All four are indexed by column, 1..6. Column 1's feed x was carried as
+// "inferred from mirror symmetry" for a while because no atom happened to use
+// that column while sampling; it is measured now.
 constexpr int kFeedX[7] = {0, 10, 34, 58, 246, 270, 294};
 constexpr int kLaneY[7] = {0, 26, 13, 0, 0, 13, 26};
 constexpr int kAtomColumnX[7] = {0, 143, 125, 107, 197, 179, 161};
@@ -145,38 +146,38 @@ constexpr int kTubeStopX[7] = {0, 104, 122, 140, 158, 176, 194};
 //     Tubes 201  0x180 = 384 = 3 px/frame
 //     Tubes 301  0x200 = 512 = 4 px/frame
 //
-// and every fifteenth wave adds 0x20 - a quarter of a pixel a frame. The 512
-// a live record once read was a late wave on an easy setting, not the base.
+// Every fifteenth wave adds 0x20 - a quarter of a pixel a frame. The 512 a
+// live record once read was a late wave on an easy setting, not the base.
 constexpr int kSubPixel = 128;
 
 // Nine pixels a frame. Two things use it, and both are per-frame rather than
 // sticky, because `1000:1906` - the last thing the router does to every atom -
 // reloads the velocity from the session's base value every single frame:
 //
-//   * Down or B sets it on ONE atom, the one heading for the column the test
+//   * Down or B sets it on one atom, the one heading for the column the test
 //     tube is parked under. The boost therefore lasts exactly one frame and
-//     the player has to HOLD the button.
+//     the player has to hold the button.
 //   * the Bonus atom, type 10, gets it unconditionally in that same reload -
 //     which is why GOLDBALL travels the tube visibly faster than anything
 //     else.
 //
 // An earlier version made the boost permanent, on the grounds that the field
 // had "exactly three writers" and none of them reset it. The search covered
-// `1000:3a67` and the fourth writer is in `1000:0f80`.
+// `1000:3a67`; the fourth writer is in `1000:0f80`.
 constexpr int kBoostVel = 0x480;
 
 // The test tube slides a flat 6 pixels a frame between its stops.
 constexpr int kTubeSlidePx = 6;
 
 // The tube's record carries `array[1..5] of AtomRec` inline, at `tube + 7 +
-// 28*n`, with its count in the byte at `tube + 0x21`. Slot 1 is the BOTTOM:
-// each slot's y offset within the tube is a literal in the fill routines -
-// 52, 39, 26, 13, 0 for slots 1..5, the 13 px row pitch again - and the atom's
+// 28*n`, with its count in the byte at `tube + 0x21`. Slot 1 is the bottom:
+// each slot's y offset within the tube is a literal in the fill routines - 52,
+// 39, 26, 13, 0 for slots 1..5, the 13 px row pitch again - and the atom's
 // absolute y is that plus the tube's own y of 0x44.
 //
 // Five is a literal in the original too. `1000:08d2` and `1000:0a27` fill
 // `while count < 5`, so a Multiplier tops the tube up to five whatever a
-// Filler has done to it - the Filler does not shrink a capacity variable, it
+// Filler has done to it. The Filler does not shrink a capacity variable; it
 // parks an immovable atom in slot 1.
 constexpr int kTubeSlots = 5;
 
@@ -187,19 +188,19 @@ constexpr int kTubeY = 68;
 constexpr int kSlotDy[kTubeSlots + 1] = {0, 52, 39, 26, 13, 0};
 
 // A caught atom drops to its slot, and a tipped one falls into the beaker, at
-// the same flat 9 px a frame - `1000:187e` and `1000:15c0`.
+// the same flat 9 px a frame. `1000:187e` and `1000:15c0`.
 constexpr int kTubeDropPx = 9;
 
 // The tipping animation, `1000:463a`. A divider at tube+0x16 counts to 2, so
 // each phase lasts two frames and the whole tip is six.
 constexpr int kTipDivider = 2;
 
-// Phase 2 bunches the contents up as the tube tilts, phase 3 lines them all up
-// as it pours. Both are written as literals per slot, not computed.
+// Phase 2 bunches the contents as the tube tilts; phase 3 lines them up as it
+// pours. Both are written as literals per slot, not computed.
 constexpr int kTiltY[kTubeSlots + 1] = {0, 99, 93, 87, 81, 73};
 constexpr int kPourY = 82;
 
-// Flashium, type 8, has NO SPRITE OF ITS OWN. `1000:486b` rewrites its slot in
+// Flashium, type 8, has no sprite of its own. `1000:486b` rewrites its slot in
 // the ball table from one of the seven ordinary colours instead:
 //
 //     Inc(subTick);
@@ -209,16 +210,16 @@ constexpr int kPourY = 82;
 //         ball[8] := ball[flash]
 //     end
 //
-// so it advances every FOUR frames - the counter starts at 1 and fires when it
-// reaches 5 - which at 18.2 Hz is the 4-ish per second a play session measured.
-// The cycle was known from watching; this is the code doing it.
+// so it advances every four frames - the counter starts at 1 and fires when it
+// reaches 5 - which at 18.2 Hz is the 4-ish per second a play session
+// measured. The cycle was known from watching; this is the code doing it.
 constexpr int kFlashPeriod = 5;
 
 // The Bonus atom's award, `1000:0846  ADD [award], 0x3e8`.
 constexpr int kBonusAward = 1000;
 
 // The beaker's five rows, as the y a falling record must reach to land in
-// them - `1000:15da` onward, indexed by the Pascal row 1..5. Row 1's 131 is
+// them. `1000:15da` onward, indexed by the Pascal row 1..5. Row 1's 131 is
 // three pixels above where the cell actually draws (134); every other row is
 // exact. Transliterated as found.
 constexpr int kLandY[kTubeSlots + 1] = {0, 131, 147, 160, 173, 186};
@@ -238,7 +239,7 @@ constexpr int kSpawnIntervalFrames[3] = {70, 60, 50};
 //     +0x14/+0x16 saved x, +0x18/+0x1a saved y - one pair per video page
 //
 // `state == 0` means the slot is free; the renderer draws a record only when
-// `state > 2`, which is the same test the original makes at every draw site.
+// `state > 2`, the same test the original makes at every draw site.
 struct Falling {
     int8_t colour = kEmpty;
     int x = 0;
@@ -252,24 +253,24 @@ struct Falling {
     int accY = 0;
     // Record +0x0d. The router overloads it: in the tube (state 8) it is the
     // slot's y offset, 52 down to 0; falling into the beaker (state 9) it is
-    // first the target y and then, on arrival, the row 1..5 that y meant. That
-    // reuse is the original's, not a simplification - `1000:167c` rewrites the
-    // field in place from one meaning to the other.
+    // first the target y and then, on arrival, the row 1..5 that y meant.
+    // That reuse is the original's, not a simplification - `1000:167c`
+    // rewrites the field in place from one meaning to the other.
     int slotDy = 0;
     // Record +0x0f. Set when a caught atom reaches its slot; it is what gates
     // the catch-time specials at `1000:180c`, not the catch itself.
     bool arrived = false;
     // True while the router is applying its corner offset, i.e. the atom is
     // rounding a bend rather than running along a straight pipe. Kept because
-    // the arc offsets are what the router computes, not because anything is
-    // painted over the atom - the original paints nothing over it.
+    // the arc offsets are what the router computes, not because the original
+    // paints anything over the atom.
     bool onArc = false;
 
     bool active() const { return state != atomstate::kFree; }
     bool drawn() const { return state > 2; }
 };
 
-// The network holds six atoms at once, one per column, and the slot index IS
+// The network holds six atoms at once, one per column, and the slot index is
 // the column. That is not an implementation choice: the spawn at `1000:4967`
 // indexes the array by the column it rolled, and every one of the six draw
 // sites in the frame is hard-coded to one slot. See `kAtomSlots` uses in
@@ -286,24 +287,24 @@ constexpr int kAtomRecords = 12;
 class Game {
 public:
     // `randomTrace`, if given, collects every `Random(n)` call as (n, seed
-    // going in). It is a CONSTRUCTOR argument rather than a setter because the
-    // session's very first roll - the test tube's starting column, 1000:43d6 -
-    // happens in here, and a sink attached afterwards silently loses it. That
-    // is the exact off-by-one the trace exists to find.
+    // going in). It is a constructor argument rather than a setter because the
+    // session's very first roll - the test tube's starting column, `1000:43d6`
+    // - happens in here, and a sink attached afterwards silently loses it.
+    // That is the exact off-by-one the trace exists to find.
     Game(int cols, int rows, Difficulty diff, uint32_t seed,
          std::vector<std::pair<int, uint32_t>>* randomTrace = nullptr);
 
-    // Callers pass the raw button state each frame. NOTHING is edge-detected:
+    // Callers pass the raw button state each frame. Nothing is edge-detected:
     // the original gates its whole input block on the test tube being idle
     // (`1000:44f0`) and reads the buttons as levels, so holding A tips once
     // every six frames rather than once. The port used to edge-detect A, which
     // made holding it do nothing at all.
     void update(uint8_t buttons, float dt);
 
-    // Advances EXACTLY one game frame. `update` turns elapsed real time into a
-    // variable number of frames, which is right for a player and wrong for a
-    // recording: `DEMO.SCR` is one input byte per frame and replaying it has to
-    // consume them one for one.
+    // Advances exactly one game frame. `update` turns elapsed real time into
+    // a variable number of frames, which is right for a player and wrong for
+    // a recording: `DEMO.SCR` is one input byte per frame and replaying it has
+    // to consume them one for one.
     void stepOnce(uint8_t buttons);
 
     const Board& board() const { return board_; }
@@ -318,13 +319,13 @@ public:
     int tubeX() const { return tubeX_; }
     // `1000:44f0` tests the tube's state and, when it is not 0, jumps straight
     // past the input block to the state machine - so the input driver is not
-    // CALLED AT ALL on a frame where the tube is sliding or tipping.
+    // called at all on a frame where the tube is sliding or tipping.
     //
     // For live play that is invisible: not reading the keyboard and reading it
-    // then ignoring it look the same. For a REPLAY it is the whole ball game,
+    // then ignoring it look the same. For a replay it is the whole ball game,
     // because in demo playback those driver vectors are the demo reader and
     // calling one is what advances the recording. A `.SCR` is therefore one
-    // byte per frame the tube was IDLE, not one byte per frame - so a replay
+    // byte per frame the tube was idle, not one byte per frame - so a replay
     // that steps the stream unconditionally drifts out of step the first time
     // the player moves, and never recovers.
     bool acceptsInput() const { return tubeState_ == 0; }
@@ -333,13 +334,13 @@ public:
     uint8_t tubePhase() const { return tubePhase_; }
 
     // The colour Flashium is wearing this frame, 1..7. A renderer must draw
-    // type 8 with THIS type's sprite; there is no sprite for 8 itself, and one
+    // type 8 with this type's sprite; there is no sprite for 8 itself, and one
     // drawn as-is is invisible. See kFlashPeriod.
     int8_t flashColour() const { return flashColour_; }
 
     // The test tube holds up to five atoms, stacked. Index 0 is slot 1, the
-    // BOTTOM of the tube; the LAST element is the mouth, and it is both the one
-    // a catch lands in and the one the next A press tips out. Five is not
+    // bottom of the tube; the last element is the mouth, and it is both the
+    // one a catch lands in and the one the next A press tips out. Five is not
     // inferred from sprite heights any more: the game's own Detailed
     // Instructions state "The test tube you control to collect and release
     // atoms can hold up to 5 atoms at a time", with no mention of difficulty.
@@ -353,18 +354,18 @@ public:
     bool tubeFull() const {
         return static_cast<int>(tube_.size()) >= tubeCapacity_;
     }
-    // The tube is a STACK, not a queue - `1000:4715` tips `slot[count]`, the
+    // The tube is a stack, not a queue - `1000:4715` tips `slot[count]`, the
     // last one caught, and `1000:180c` fires a special on `slot[count]` too.
     // The port used to tip `tube_.front()`, which emptied it oldest-first.
     int8_t heldAtom() const {
         return tube_.empty() ? static_cast<int8_t>(kEmpty) : tube_.back().colour;
     }
 
-    // Drops are a single pool that counts DOWN, not misses counting up. It is
+    // Drops are a single pool that counts down, not misses counting up. It is
     // seeded once per game from the difficulty (9/6/3), decremented by a miss,
     // incremented by a caught Bonus atom, and left alone by clearing a wave -
-    // every one of those measured against the running original. The HUD shows
-    // this number, labelled "Drops".
+    // each of those measured against the running original. The HUD shows this
+    // number, labelled "Drops".
     int dropsRemaining() const { return dropsRemaining_; }
     int startingDrops() const { return startingDrops_; }
 
@@ -387,25 +388,25 @@ public:
 
     // `1000:a525` and `1000:3660`, the two halves of a saved game. They are
     // mirror images - fourteen fields each, in the same order - so they live
-    // together and a field added to one is obvious in the other. `SessionTotals`
-    // is the caller's, so its three fields are passed rather than owned.
+    // together and a field added to one is obvious in the other.
+    // `SessionTotals` is the caller's, so its three fields are passed rather
+    // than owned.
     void loadFrom(const SaveSlot& s, SessionTotals& totals);
     void saveInto(SaveSlot& s, const SessionTotals& totals) const;
-    // The sound to play, consumed by the caller. See `namespace sfx` - it is an
-    // atom type for the fade families and DROP, or one of the three ids above
-    // it. `sfx::kNone` means nothing happened.
+    // The sound to play, consumed by the caller. See `namespace sfx` - it is
+    // an atom type for the fade families and DROP, or one of the three ids
+    // above it. `sfx::kNone` means nothing happened.
     //
-    // A SMALL QUEUE, not one slot - and this is the same departure the voice
+    // A small queue, not one slot - and this is the same departure the voice
     // pool in sfx.h is, for the same reason and agreed the same way.
     //
     // One slot matched the driver: a second event in the same frame cut off
-    // the first, which is what calling `PlaySound` twice does on hardware
-    // with one voice. But it truncated the sound BEFORE it was ever played,
-    // which is worse than the original - the original at least starts it -
-    // and it is what a player heard as a drop being swallowed when a match
-    // landed in the same frame. Every event still fires from the site the
-    // original calls `PlaySound` at; they no longer overwrite each other on
-    // the way out.
+    // the first, which is what calling `PlaySound` twice does on hardware with
+    // one voice. But it truncated the sound before it was ever played, which
+    // is worse than the original - the original at least starts it - and that
+    // is what a player heard as a drop being swallowed when a match landed in
+    // the same frame. Every event still fires from the site the original calls
+    // `PlaySound` at; they no longer overwrite each other on the way out.
     int8_t takeSound() {
         if (soundCount_ == 0) return sfx::kNone;
         const int8_t s = pendingSounds_[0];
@@ -421,7 +422,7 @@ public:
 
     // `1000:8d0b`, the arm an accepted Continue takes. It zeroes the score,
     // restores the drop count from the seed `DS:0x1d51`, and clears the game
-    // over. It does NOT touch either chain total - those live in the outer
+    // over. It does not touch either chain total - those live in the outer
     // frame and a continued game keeps the chains it has made, which is why
     // the stats screen's running total survives a Continue.
     void continueSession() {
@@ -434,9 +435,9 @@ public:
 
     // ---- Wave mode -------------------------------------------------------
     //
-    // A Game is one WAVE, not one session. `1000:9e53` owns the loop around
-    // `1000:3a67` - brief, play, show the stats, step the progression - so
-    // the caller drives that with `startWave` and `waveComplete`.
+    // A Game is one wave, not one session. `1000:9e53` owns the loop around
+    // `1000:3a67` - brief, play, show the stats, step the progression - so the
+    // caller drives that with `startWave` and `waveComplete`.
     //
     // Endurance is the default and touches none of this: its mode is 1, and
     // every wave test in the original is `mode <> 0 and mode <> 1`.
@@ -455,7 +456,7 @@ public:
     // Task Display has no count left to run down.
     bool waveComplete() const { return waveComplete_; }
 
-    // `1000:a616`, and it runs ONLY on a cleared wave. The caller then calls
+    // `1000:a616`, and it runs only on a cleared wave. The caller then calls
     // `startWave` again for the next one.
     void advanceWave() { progress_.advance(); }
 
@@ -480,7 +481,7 @@ public:
     // describe it or a mid-game capture can never be matched.
     // The session setup's write to `DS:0x1d49` and `DS:0x1d4a` - `1000:9e63`
     // in the shareware image, `1000:a59e` in the registered one. It is a
-    // SESSION-level act in both, done once before the frame loop, which is why
+    // session-level act in both, done once before the frame loop, which is why
     // this is a setter rather than a constructor argument threaded through
     // every caller: `1000:9718` and `1000:9e53` are the only writers.
     void applyEdition(const EditionState& ed) {
@@ -526,7 +527,8 @@ private:
     // The Down/B boost, `1000:4534` - inside the tube's `state = 0` guard and
     // before the Left/Right handler moves the stop.
     void boostAtomUnderTube(uint8_t buttons);
-    // Phase 4: hand the mouth's record to a free record of 7..12 - `1000:4715`.
+    // Phase 4: hand the mouth's record to a free record of 7..12 -
+    // `1000:4715`.
     void releaseTippedAtom();
     // Append a slot the way the Multiplier fills do - `1000:092d`.
     void pushTubeSlot(int8_t colour);
@@ -554,9 +556,9 @@ private:
     Falling atoms_[kAtomRecords + 1];
 
     // The test tube's own record: x at +0x00, state at +0x04, phase at +0x05,
-    // the tip divider at +0x16, stop index at +0x1e, target x at +0x1f. State 0
-    // is parked and is the ONLY state that accepts input; 1 and 2 are sliding
-    // left and right, and 3 is tipping.
+    // the tip divider at +0x16, stop index at +0x1e, target x at +0x1f. State
+    // 0 is parked and is the only state that accepts input; 1 and 2 are
+    // sliding left and right, and 3 is tipping.
     int tubeColumn_ = 0;          // the original's +0x1e, less one
     int tubeX_ = kTubeStopX[1];
     int tubeTargetX_ = kTubeStopX[1];
@@ -572,14 +574,14 @@ private:
     int dropsRemaining_ = 9;
     int startingDrops_ = 9;
     int score_ = 0;
-    // The score ramp, from 1000:2410 and the flush at 1000:58c5. `pending` is
-    // this clear's award, `multiplier` the number of distinct runs, and the
+    // The score ramp, from `1000:2410` and the flush at `1000:58c5`. `pending`
+    // is this clear's award, `multiplier` the number of distinct runs, and the
     // total paid is their product, spread over six frames.
     int scorePending_ = 0;
     int scoreMultiplier_ = 0;
     int rampSteps_ = 0;
     int rampIncrement_ = 0;
-    // The Bonus atom's award GROWS across the session. `1000:0846` adds 1000
+    // The Bonus atom's award grows across the session. `1000:0846` adds 1000
     // to a word of its own and then pays the whole word, and the only other
     // write to it is the zero at `1000:3a8d` in the session prologue - so the
     // first Bonus is worth 1000, the second 2000, the third 3000.
@@ -588,7 +590,7 @@ private:
     // will not declare a wave complete while it is running.
     int clearTimer_ = 0;
     // `-0x1be`, the byte right beside it, and the reason a "survive N atoms"
-    // wave does not end the instant the last atom is DISPENSED. See
+    // wave does not end the instant the last atom is dispensed. See
     // `atomLeftPlay`.
     int inPlay_ = 0;
     // Written through `queueSound`; drained by `takeSound`, oldest first.
@@ -639,9 +641,10 @@ private:
 
     // `DS:0x1d49` and `DS:0x1d4a`, the two special-atom rates the dispenser
     // rolls against. Session state in the original, not literals - which is
-    // the entire mechanism by which the shareware edition withholds AntiMatter
-    // and Bonus from normal play. Defaulted to the registered values so a
-    // caller that never mentions an edition gets the registered game.
+    // the entire mechanism by which the shareware edition withholds
+    // AntiMatter and Bonus from normal play. Defaulted to the registered
+    // values so a caller that never mentions an edition gets the registered
+    // game.
     int antiMatterChance_ = kAntiMatterChanceOn;   // DS:0x1d49
     int bonusChance_ = kBonusChanceOn;             // DS:0x1d4a
     EditionState edition_{};                       // registered, no Preview
