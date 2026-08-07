@@ -60,11 +60,23 @@ else
 fi
 
 # 2. indented code samples inside comments must be byte-identical
+#
+# An indented block is not always code: bullet continuations and address
+# listings with prose descriptions indent the same way, and de-capitalising a
+# word in one of those is a legitimate edit. So a difference that survives
+# lowercasing is a real change and fails, while a case-only difference is
+# reported and allowed. Pascal and asm are case-insensitive, so nothing that
+# matters can hide in that gap - the semicolons this guard was written for are
+# punctuation and still caught.
 samples() { sed -n 's|^//\( \{4,\}\S.*\)|\1|p' "$1"; }
-if ! diff -q <(samples "$A") <(samples "$B") >/dev/null; then
+samples_ci() { samples "$1" | tr 'A-Z' 'a-z'; }
+if ! diff -q <(samples_ci "$A") <(samples_ci "$B") >/dev/null; then
     echo "FAIL: quoted code samples inside comments changed"
     diff -u <(samples "$A") <(samples "$B")
     fail=1
+elif ! diff -q <(samples "$A") <(samples "$B") >/dev/null; then
+    echo "note: indented blocks differ only in capitalisation - read these:"
+    diff -u <(samples "$A") <(samples "$B") | grep -E '^[-+][^-+]' | sed 's/^/      /'
 else
     echo "ok:   quoted code samples identical ($(samples "$A" | wc -l) lines)"
 fi
