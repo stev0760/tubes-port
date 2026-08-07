@@ -4,7 +4,7 @@
 // each with an objective and often a modifier. The whole system is one screen
 // and twenty-five procedures in the original:
 //
-//     1000:86b8   the briefing screen. Its body is the WAVE TABLE - an
+//     1000:86b8   the briefing screen. Its body is the wave table - an
 //                 if-chain 75 arms long on the wave number, one arm per wave,
 //                 each calling one objective routine.
 //     1000:62f1                   the 25 objective routines. Each sets
@@ -12,7 +12,7 @@
 //                                 whichever of the colour, orientation,
 //                                 rotation and modifier fields it needs.
 //     1000:a4cd   the six counters the objectives read, seeded as literals.
-//     1000:a616   the progression that steps them, once per wave CLEARED.
+//     1000:a616   the progression that steps them, once per wave cleared.
 //     1000:192f   the scoring hook every matcher calls.
 //
 // Nothing here is derived from the wave number: the table is data in the
@@ -79,7 +79,7 @@ enum class Objective : uint8_t {
     kMystery,            // 1000:8581  - picks one of four at random
 };
 
-// The REGISTERED wave count. `kWaveCountShareware` is 25; see `edition.h`,
+// The registered wave count. `kWaveCountShareware` is 25; see `edition.h`,
 // which carries both and the count that produced them.
 constexpr int kWaveCount = kWaveCountRegistered;
 
@@ -116,7 +116,7 @@ inline uint8_t chainCodeOf(RunKind k) {
     return chaincode::kDiagonal;
 }
 
-// The counters a briefing reads. They belong to the SESSION, not the wave:
+// The counters a briefing reads. They belong to the session, not the wave:
 // `1000:a4cd` seeds them once as immediates on a new game, `1000:a525` reads
 // the same fields out of a save instead, and `1000:a616` steps them after each
 // wave the player clears.
@@ -136,7 +136,7 @@ struct WaveProgress {
     int interval = 70;         // -0x181, frames between dispenses
     int velocity = 256;        // -0x180, 1/128 px per frame
 
-    // `1000:a616`, and it runs ONLY when the wave was cleared - a Continue
+    // `1000:a616`, and it runs only when the wave was cleared - a Continue
     // jumps past it at `1000:a60f`, which is why a retried wave is not harder.
     void advance();
 
@@ -192,7 +192,7 @@ struct TaskDisplay {
 // `1000:486b`'s tail, on the four-frame Flashium tick. All presentation: it
 // moves the Task Display's own copies, never the objective's.
 //
-//   * when the wave requires no particular colour, the ball CYCLES the seven,
+//   * when the wave requires no particular colour, the ball cycles the seven,
 //     off the same variable Flashium does - which is the rotating counter the
 //     wave 6 sampling measured and took for an effect of its own;
 //   * the diagonal illustration flips direction;
@@ -227,7 +227,7 @@ TaskDisplay seedTaskDisplay(const WaveObjective& obj);
 // them under eight ordinary atoms or rings them with eight Xenons.
 //
 // The marked atom's own type is rolled `Random(8) + 1`, so a marked cell can
-// be a FLASHIUM. The two modifier loops share one counter, seeded 8 once, so
+// be a Flashium. The two modifier loops share one counter, seeded 8 once, so
 // the second is dead if the first ran; `1000:643b` and `1000:6592` never set
 // both flags, which is the only reason that is harmless.
 void placeMarkedAtoms(Board& board, int n, bool covered, bool xenon,
@@ -238,7 +238,7 @@ void placeMarkedAtoms(Board& board, int n, bool covered, bool xenon,
 void seedPreFilledBeaker(Board& board, int n, const RollFn& roll);
 
 // `1000:4bf6`, on the 720-frame clock. Every settled ordinary atom steps to
-// the NEXT colour, 7 wrapping to 1 - a rotation, not a re-roll.
+// the next colour, 7 wrapping to 1 - a rotation, not a re-roll.
 //
 // That distinction is the whole mechanic. A uniform rotation is a permutation,
 // so every chain already in the beaker survives it intact; what it destroys is
@@ -286,7 +286,7 @@ void placeCrystals(Board& board, std::vector<Crystal>& crystals, int n,
 //
 // The animation is one fade family played out and then back in: the crystal
 // marks its own cell so the ordinary fade pass runs `CRFADE` forward over it,
-// then reappears at the destination holding the LAST fade frame and walks that
+// then reappears at the destination holding the last fade frame and walks that
 // value backwards to the static sprite. `CRFADE1` being its resting sprite is
 // not an oddity - frame 0 is where it lives.
 bool stepCrystals(Board& board, std::vector<Crystal>& crystals, int interval,
