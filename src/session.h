@@ -1,14 +1,14 @@
-// The session's outer loop - `1000:9e53`'s wave loop, the end-of-session
-// banners at the tail of `1000:3a67`, and the two screens the loop goes
-// through: the stats screen `1000:8da5` and the Continue screen `1000:8c38`.
+// The session's outer loop: `1000:9e53`'s wave loop, the end-of-session
+// banners at the tail of `1000:3a67`, and the two screens inside the loop:
+// the stats screen `1000:8da5` and the Continue screen `1000:8c38`.
 //
-// Also `1000:2dd0`, the in-game key handler, which is where ESC and Pause
-// live. That function is nested TWO deep - inside `1000:3a67` inside
-// `1000:9e53` - and reaches the outermost frame through two static links,
-// which is why the abort flag it writes cannot be found by searching `3a67`.
+// Also `1000:2dd0`, the in-game key handler, which handles ESC and Pause.
+// It is nested two levels deep - inside `1000:3a67` inside `1000:9e53` - and
+// reaches the outermost frame through two static links. The abort flag it
+// writes cannot be found by searching `3a67`.
 //
-// Platform-agnostic on purpose: this is rules and layout, no SDL. The caller
-// draws. See `docs/reversing-notes.md`, "Closing the session loop".
+// Platform-agnostic on purpose: this file holds rules and layout, no SDL.
+// The caller draws. See `docs/reversing-notes.md`, "Closing the session loop".
 #ifndef TUBES_SESSION_H
 #define TUBES_SESSION_H
 
@@ -24,11 +24,11 @@ namespace tubes {
 // The three control flags
 // ---------------------------------------------------------------------------
 //
-// `1000:9e53` keeps these adjacent, and Ghidra's decompiler names them two
-// bytes low - its `local_1ff` is really `BP-0x1fd`. The listing at
-// `1000:a5e8`..`1000:a6a9` is what these come from.
+// `1000:9e53` keeps these adjacent. Ghidra's decompiler names them two bytes
+// low - its `local_1ff` is really `BP-0x1fd`. The listing at
+// `1000:a5e8`..`1000:a6a9` is where they come from.
 struct SessionFlags {
-    bool aborted = false;    // BP-0x1fd, written ONLY by the key handler
+    bool aborted = false;    // BP-0x1fd, written only by the key handler
     bool gameOver = false;   // BP-0x1fe, written by `3a67` at 47f8 / 5d0a
     bool replay = false;     // BP-0x1ff, written by the Continue screen
 };
@@ -37,10 +37,10 @@ struct SessionFlags {
 // `1000:2dd0`, the in-game key handler
 // ---------------------------------------------------------------------------
 //
-// Called from `1000:5cf7` once per frame, and only when `KeyPressed`
+// Called from `1000:5cf7` once per frame, but only when `KeyPressed`
 // (`2000:5e52`) is true. Turbo Pascal's `ReadKey` returns #0 followed by the
-// scancode for an extended key, and `2000:7823` folds that into `0x80 + scan`,
-// so F1..F5 arrive as 0xbb..0xbf.
+// scancode for an extended key, and `2000:7823` folds that into `0x80 + scan`.
+// F1..F5 arrive as 0xbb..0xbf.
 namespace gamekey {
 constexpr uint8_t kEsc = 0x1b;
 constexpr uint8_t kF1 = 0xbb;
@@ -63,16 +63,16 @@ enum class GameAction {
 // `1000:2dd0`'s dispatch, in its own order. Two rewrites happen before the
 // case, and both matter:
 //
-// * in attract mode (`DS:0x1d4e` = 0) ANY key is rewritten to ESC, which is
-//   how a keypress drops the demo back to the title;
+// * in attract mode (`DS:0x1d4e` = 0) any key is rewritten to ESC, which
+//   drops the demo back to the title;
 // * F2 is rewritten to nothing when `DS:0x1d4b` is set, which is the build
 //   flag that disables saving.
 GameAction classifyGameKey(uint8_t code, bool attractMode, bool saveDisabled);
 
-// `DS:0x1d4b`. Written in ONE place - `1000:b1e4`, which sets it to zero - and
-// read in three: `1000:2ded`'s F2 gate, `1000:5ed0`'s F2 hint on the abort
-// banner, and `1000:a6ba`'s high-score offer. Nothing ever sets it, so saving
-// is always enabled in the shipped build and this is a constant rather than a
+// `DS:0x1d4b`. Written in one place - `1000:b1e4` sets it to zero - and read
+// in three: `1000:2ded`'s F2 gate, `1000:5ed0`'s F2 hint on the abort banner,
+// and `1000:a6ba`'s high-score offer. Nothing else sets it, so saving is
+// always enabled in the shipped build and this is a constant rather than a
 // variable. Kept as a named one because all three sites read it and a later
 // edition might not.
 constexpr bool kSaveDisabled = false;
@@ -81,9 +81,9 @@ constexpr bool kSaveDisabled = false;
 // The F1 Help screen, `1000:2e1c`
 // ---------------------------------------------------------------------------
 //
-// The `$bb` arm of `1000:2dd0`, and the last body in the program that was not
-// decompiled. It is an OVERLAY, not a screen of its own: it snapshots the play
-// field and writes over the copy.
+// The `$bb` arm of `1000:2dd0`, the last body in the program that was not
+// decompiled. It is an overlay, not a screen of its own: it snapshots the
+// playfield and writes over the copy.
 //
 //     CopyPage(src := [$2376] xor 1, dst := 2);   { 1000:2e1c, 2321:020c }
 //     SetDrawPage(2);
@@ -95,23 +95,23 @@ constexpr bool kSaveDisabled = false;
 //     SetFont(hud);                               { $211c, advance 8, peak 7 }
 //     ReArmFrameTimer;                            { 1000:3053, 21ea:072a }
 //
-// Three things follow from that and none of them is a guess.
+// Three things follow from that, and none is a guess.
 //
-// **ANY key dismisses it**, which is what the screen says and what `ReadKey`
-// with no dispatch after it does. Contrast F5, whose `repeat until k = $bf`
+// Any key dismisses it. That is what the screen says and what `ReadKey` with
+// no dispatch after it does. Contrast F5, whose `repeat until k = $bf`
 // swallows everything but F5 - the two waits are deliberately different and
 // the port must not share one.
 //
-// **The dismissing key is discarded.** `1000:3026` stores it into the same
-// local the dispatch switched on and then jumps to the common exit at
-// `1000:39c4`, so it is never re-classified: F5 out of Help does not pause,
-// and ESC out of Help does not abort.
+// The dismissing key is discarded. `1000:3026` stores it into the same local
+// the dispatch switched on and then jumps to the common exit at `1000:39c4`.
+// It is never re-classified: F5 out of Help does not pause, and ESC out of
+// Help does not abort.
 //
-// **There is no fade.** Neither `23e7:0097` nor `23e7:00ce` is called, so the
+// There is no fade. Neither `23e7:0097` nor `23e7:00ce` is called, so the
 // overlay appears and leaves instantly, unlike every full screen in the game.
 //
 // `21ea:072a` writes `DS:0x0d40`, the session's frame period, back into the
-// timing unit - the original re-arms its tick after a blocking wait so the
+// timing unit. The original re-arms its tick after a blocking wait so the
 // game does not fast-forward through the frames the player spent reading. The
 // port clamps `dt` instead and needs no equivalent.
 
@@ -128,8 +128,8 @@ constexpr const char* kHelpPrompt = "Press Any Key...";
 // Everything below is TINY6X8.88 (`DS:0x2118`) at mode `$82`.
 constexpr uint8_t kHelpBodyMode = textmode::kShadow | textmode::kFadeUp;
 
-// The key list, `1000:2e9b`..`1000:2f2a`. x is a flat 76 - the briefing's own
-// left margin - and y steps 10 from 110 after a two-line heading at 85 and 95.
+// The key list, `1000:2e9b`..`1000:2f2a`. x is 76, the briefing's own left
+// margin, and y steps 10 from 110 after a two-line heading at 85 and 95.
 constexpr int kHelpKeyX = 76;              // 0x4c
 constexpr int kHelpHeadY0 = 85;            // 0x55
 constexpr int kHelpHeadY1 = 95;            // 0x5f
@@ -137,9 +137,9 @@ constexpr int kHelpKeyY0 = 110;            // 0x6e
 constexpr int kHelpKeyPitch = 10;
 constexpr uint8_t kHelpKeyColour = 166;    // 0xa6
 
-// Spacing is part of the transliteration: ESC gets TWO spaces after it and
-// F1..F5 get three, which is what lines the descriptions up in a fixed-pitch
-// font. Do not tidy these, and do not derive them.
+// Spacing is part of the transliteration: ESC gets two spaces after it and
+// F1..F5 get three, which lines the descriptions up in a fixed-pitch font.
+// Do not tidy these, and do not derive them.
 constexpr const char* kHelpHead0 = "The   following   keys   are";
 constexpr const char* kHelpHead1 = "active, during the game:";
 constexpr const char* kHelpKeys[] = {
@@ -152,12 +152,12 @@ constexpr const char* kHelpKeys[] = {
 };
 constexpr int kHelpKeyCount = 6;
 
-// The two annotations, which point at the HUD counters either side of the
-// score - `Chains` is drawn at x 1 and `Drops` at x 288, and these sit under
+// The two annotations point at the HUD counters on either side of the score.
+// `Chains` is drawn at x 1 and `Drops` at x 288, and the notes sit under
 // them. Colour 70 for both, where the key list is 166.
 constexpr uint8_t kHelpNoteColour = 70;    // 0x46
 
-// The right-hand note, `1000:2f2f`. Drawn in BOTH modes: drops are a
+// The right-hand note, `1000:2f2f`. Drawn in both modes: drops are a
 // persistent pool and mean the same thing either way.
 constexpr int kHelpDropsX = 200;           // 0xc8
 constexpr int kHelpDropsY0 = 15;           // 0x0f
@@ -169,9 +169,10 @@ constexpr const char* kHelpDrops[] = {
     "game is over.",
 };
 
-// The left-hand note, `1000:2f7b`, on `DS:0x1d4e = 1`. The mode numbering is
-// the save banks': 1 Endurance, 2 Wave - and the two texts say so themselves,
-// which is a second reading agreeing with the one taken off `+0x28` / `+0x26`.
+// The left-hand note, `1000:2f7b`, on `DS:0x1d4e = 1`. The mode numbering
+// matches the save banks': 1 Endurance, 2 Wave. The two texts say so
+// themselves, which is a second reading agreeing with the one taken off
+// `+0x28` / `+0x26`.
 constexpr int kHelpEnduranceX = 1;
 constexpr int kHelpEnduranceY0 = 15;       // 0x0f
 constexpr const char* kHelpEndurance[] = {
@@ -181,9 +182,9 @@ constexpr const char* kHelpEndurance[] = {
     "as many as you can!",
 };
 
-// The Wave arm sits lower and one pixel further in - 5/30 against 1/15 - which
-// is the Task Display's doing: it occupies the top-left corner in wave mode
-// and the note has to clear it.
+// The Wave arm sits lower and one pixel further in - 5/30 against 1/15 -
+// because the Task Display occupies the top-left corner in wave mode and the
+// note has to clear it.
 constexpr int kHelpWaveX = 5;
 constexpr int kHelpWaveY0 = 30;            // 0x1e
 constexpr const char* kHelpWave[] = {
@@ -210,8 +211,8 @@ constexpr uint8_t kBannerMode = textmode::kShadow | textmode::kPeak;   // 0x83
 constexpr int kAbortHintY = 115;         // 0x73
 constexpr uint8_t kAbortHintMode = textmode::kShadow | textmode::kFadeDown;
 
-// `1000:3a43`. Only shown when the mode is not attract and saving is enabled,
-// and the abort arm then calls `1000:2dd0` a second time so the offer works.
+// `1000:3a43`. Only shown when the mode is not attract and saving is enabled.
+// The abort arm then calls `1000:2dd0` a second time so the offer works.
 constexpr const char* kAbortHint = "F2 to Save Game, ESC for Main Menu!";
 
 // The Perfect Bonus, `1000:5dae`: 0x9c4 added to the score before the banner.
@@ -233,21 +234,20 @@ constexpr int kPerfectBonus = 2500;
 //
 // and `1000:5ef0` then runs `Delay($28)` again on the way out, for every arm.
 //
-// **The first Delay is why the banner cannot be missed.** 40 retraces at 70 Hz
-// is 0.571 s in which no input is looked at, and the key buffer is FLUSHED
-// afterwards - so the keypress that ended the wave, which for a survive wave
-// is the player holding the tip button, cannot dismiss the banner it caused.
-// A port that goes straight to "wait for a key" shows the banner for one frame
-// and moves on, which is exactly what a player reported: "the first wave
-// ending did not show wave complete".
+// The first Delay is why the banner cannot be missed. 40 retraces at 70 Hz is
+// 0.571 s in which no input is looked at, and the key buffer is flushed
+// afterwards. The keypress that ended the wave - for a survive wave the
+// player holding the tip button - cannot dismiss the banner it caused. A port
+// that goes straight to "wait for a key" shows the banner for one frame and
+// moves on, which is exactly what a player reported: "the first wave ending
+// did not show wave complete".
 //
-// **`[DS:0x22ce]` is the music's own end.** It returns 0xff once the song has
-// been through once, and the wait ends on that as well as on a key - which is
-// the player's earlier report that the banner ends when its music does,
-// confirmed from the code rather than from watching.
+// `[DS:0x22ce]` is the music's own end. It returns 0xff once the song has
+// been through once, and the wait ends on that as well as on a key. This
+// confirms the player's report that the banner ends when its music does.
 constexpr int kBannerHoldRetraces = 0x28;      // 40, both ends
-// Mode X's 70 Hz - `kRetraceHz` below, spelled out here because it is declared
-// further down the file.
+// Mode X's 70 Hz - `kRetraceHz` below, spelled out here because it is
+// declared further down the file.
 constexpr float kBannerHoldSeconds =
     static_cast<float>(kBannerHoldRetraces) / 70.0f;
 
@@ -265,7 +265,7 @@ struct BannerText {
 };
 
 // The rule under each banner is its own string constant and is a different
-// length in each case: `Game Over` is nine characters over SEVEN underscores.
+// length in each case: `Game Over` is nine characters over seven underscores.
 // Deriving it from the caption would be wrong for two of the three.
 BannerText bannerText(Banner b);
 
@@ -274,8 +274,8 @@ BannerText bannerText(Banner b);
 // ---------------------------------------------------------------------------
 //
 // Not a blackboard, whatever `MapProgram` labelled it: it re-blits the held
-// `GAMEBG` and puts text over it, exactly as the briefing does. The blackboard
-// is the cutscene at `1b2e:1651`.
+// `GAMEBG` and puts text over it, exactly as the briefing does. The actual
+// blackboard is the cutscene at `1b2e:1651`.
 struct SessionTotals {
     int chainsThisWave = 0;      // -0x17c
     int totalChains = 0;         // -0x14e
@@ -294,19 +294,19 @@ struct StatsRow {
     std::string text;
 };
 
-// Builds the screen exactly as `1000:8da5` draws it, and MUTATES `totals` the
-// way that function does.
+// Builds the screen exactly as `1000:8da5` draws it, and mutates `totals`
+// the way that function does.
 //
-// The mutation is the part that is easy to miss: between the two chain lines
-// the original does `-0x14e := -0x14e + -0x17c; -0x17c := 0`, so the running
-// total is accumulated *in the draw code* and the per-wave counter is zeroed
-// by the very screen that displays it. This is not a pure view - calling it
+// The mutation is the part that is easy to miss. Between the two chain lines
+// the original does `-0x14e := -0x14e + -0x17c; -0x17c := 0`. The running
+// total accumulates in the draw code and the per-wave counter is zeroed by
+// the very screen that displays it. This is not a pure view - calling it
 // twice would double-count, which is why the caller must build the rows once
 // and then only redraw them.
 std::vector<StatsRow> buildStatsScreen(SessionTotals& totals, int wave,
                                        int score, bool isHighScore);
 
-// Entering the stats screen, whole - and the ONE place the port's two copies
+// Entering the stats screen, whole - and the one place the port's two copies
 // of the chain count are allowed to meet.
 //
 // In the original there is one byte. `-0x17c` is what the HUD prints every
@@ -314,17 +314,18 @@ std::vector<StatsRow> buildStatsScreen(SessionTotals& totals, int wave,
 // screen displays as "Molecule Chains", and what that same screen zeroes at
 // `1000:8ee4` after adding it to `-0x14e`. It is written in exactly three
 // places in the whole program: zeroed for a new game at `1000:a4e4`, loaded
-// from the save at `1000:a553`, and zeroed here. **There is no per-wave reset
-// anywhere in the wave setup - the stats screen IS the per-wave reset.**
+// from the save at `1000:a553`, and zeroed here. There is no per-wave reset
+// anywhere in the wave setup - the stats screen is the per-wave reset.
 //
-// The port has to hold it twice, because `Game` owns the simulation and
-// `SessionTotals` owns the screens, and it got that wrong: the zero was
-// applied to the screen's copy while `Game::chains_` went on accumulating for
-// the whole session. So the HUD's Chains never reset between waves, every
+// The port has to hold it twice because `Game` owns the simulation and
+// `SessionTotals` owns the screens, and the port got that wrong: the zero
+// was applied to the screen's copy while `Game::chains_` went on accumulating
+// for the whole session. So the HUD's Chains never reset between waves, every
 // wave's "Molecule Chains" was really the session's running count, and "Total
-// Molecule Chains" summed those, double-counting every wave before it. It also
-// went into the save at `+0x28`, which is why a save carried across to the
-// original started a wave with chains already on it. Reported from play.
+// Molecule Chains" summed those, double-counting every wave before it. The
+// value also went into the save at `+0x28`, which is why a save carried across
+// to the original started a wave with chains already on it. Reported from
+// play.
 //
 // `liveChains` is in-out: it goes in as the play session's counter and comes
 // back zeroed, so a caller cannot take the number without also clearing it.
@@ -337,10 +338,10 @@ constexpr const char* kStatsMusic = "STAT.MUS";
 // `1000:86b8`'s.
 constexpr const char* kBriefingMusic = "BRIEF.MUS";
 
-// `1000:4494`, just before `3a67`'s frame loop - so once per WAVE, not once
-// per session. The choice is made from the drop counter and NOT from the
-// difficulty, which is what it looks like it should be: a wave entered with no
-// drops left plays the fast song for its whole length.
+// `1000:4494`, just before `3a67`'s frame loop - so once per wave, not once
+// per session. The choice is made from the drop counter, not from the
+// difficulty, which is what it looks like it should be. A wave entered with
+// no drops left plays the fast song for its whole length.
 constexpr const char* kPlayMusic = "GAME.MUS";
 constexpr const char* kPlayMusicLastDrop = "FASTGAME.MUS";
 inline const char* playMusicFor(int dropsLeft) {
@@ -352,7 +353,7 @@ inline const char* playMusicFor(int dropsLeft) {
 // ---------------------------------------------------------------------------
 //
 // One routine draws the backdrop for the briefing, the stats screen and the
-// Continue screen. `2321:060b(x, y, w, h, colour)` is a filled rect - the
+// Continue screen. `2321:060b(x, y, w, h, colour)` is a filled rect. The
 // order is settled by `1b2e:097a`, which threads its own two parameters into
 // the slots the fixed call fills with `0x4a` and `0x1f`.
 constexpr int kBoardY = 12;           // `2321:068d`'s [BP+0xe], x is 0
@@ -374,9 +375,9 @@ constexpr uint8_t kSlideColour = 17;  // 0x11
 constexpr int kCornerDX = 168;        // 0xa8
 constexpr int kCornerDY = 128;        // 0x80
 
-// The corners are UL / UR / **DL** / **DR**, in the order `1000:aaba` loads
-// them into `DS:0x20fe`, `0x2102`, `0x2106` and `0x210a`. `LLCORNER.GFX` and
-// `LRCORNER.GFX` also exist in the archive and are NOT these - a plausible
+// The corners are UL / UR / DL / DR, in the order `1000:aaba` loads them
+// into `DS:0x20fe`, `0x2102`, `0x2106` and `0x210a`. `LLCORNER.GFX` and
+// `LRCORNER.GFX` also exist in the archive and are not these - a plausible
 // guess that the load table disproves.
 constexpr const char* kCornerNames[4] = {"ULCORNER.GFX", "URCORNER.GFX",
                                          "DLCORNER.GFX", "DRCORNER.GFX"};
@@ -385,7 +386,7 @@ constexpr const char* kCornerNames[4] = {"ULCORNER.GFX", "URCORNER.GFX",
 // The professor, `1b2e:0656`
 // ---------------------------------------------------------------------------
 //
-// He is drawn BEFORE `1b2e:0a11`, which is why the frame and slide do not
+// He is drawn before `1b2e:0a11`, which is why the frame and slide do not
 // paint over him: the frame spans x 62..257 and he stands at x 267.
 //
 //     Draw(267, 121, POINTER0)     { the standing pose }
@@ -398,11 +399,11 @@ constexpr int kBooksY = 165;          // 0xa5
 constexpr int kBarX = 57;             // 0x39
 constexpr int kBarDY = 26;            // 0x1a, added to the frame height
 
-// `1b2e:0e37`, the key wait, advances `DS:0x20b0` once per iteration - so the
-// professor waves his pointer WHILE the game waits for a key, one frame every
+// `1b2e:0e37`, the key wait, advances `DS:0x20b0` once per iteration. The
+// professor waves his pointer while the game waits for a key, one frame every
 // ten retraces. The counter runs 1..5, and `1000:af23`/`1000:af34` alias
 // entries 4 and 5 onto POINTER2 and POINTER1 with a struct copy
-// (`2000:7133`), so the sequence PING-PONGS rather than looping:
+// (`2000:7133`), so the sequence ping-pongs rather than looping:
 //
 //     1 -> POINTER1   2 -> POINTER2   3 -> POINTER3   4 -> POINTER2   5 -> POINTER1
 //
@@ -419,9 +420,9 @@ inline int pointerFrameFor(int wave) {
     return kSeq[wave - 1];
 }
 
-// The slide DROPS into place the first time the scene is shown, and only then
-// - `1b2e:0a11` gates the whole sequence on `DS:0x210e`, which it sets. Six
-// frames, each held for 10 vertical retraces, wobbling around the resting
+// The slide drops into place the first time the scene is shown, and only
+// then. `1b2e:0a11` gates the whole sequence on `DS:0x210e`, which it sets.
+// Six frames, each held for 10 vertical retraces, wobble around the resting
 // place before settling on it.
 struct SlideFrame { int x, y; };
 constexpr SlideFrame kSlideDrop[] = {
@@ -435,11 +436,11 @@ constexpr int kSlideDropFrames =
 // ---------------------------------------------------------------------------
 //
 // It polls port 0x3da bit 3 low-then-high `n` times, so `n` is `n` VGA frames
-// at the Mode X refresh rate of 70 Hz - NOT milliseconds, and not the game's
+// at the Mode X refresh rate of 70 Hz - not milliseconds, and not the game's
 // own 16.11 Hz simulation tick.
 //
 // That settles `1b2e:0e37(param)`, which runs `param * 7` iterations of
-// `23e7:0024(10)`: `param * 70` retraces, so **`param` seconds exactly**. The
+// `23e7:0024(10)`: `param * 70` retraces, so `param` seconds exactly. The
 // round number is the confirmation. The Continue screen passes 2 and the
 // briefing 0x1e, so a Continue tick is two seconds and the briefing gives up
 // after thirty.
@@ -455,15 +456,16 @@ inline float waitKeySeconds(int param) {
 //
 // The derivation is in `game.cpp`, above `Game::random`, and it is not a
 // modulus: `Random(n)` is the top 32 bits of the 48-bit product
-// `RandSeed * n`, with `RandSeed` read UNSIGNED.
+// `RandSeed * n`, with `RandSeed` read unsigned.
 //
 // It lives here because the classroom animations draw from it too. The
-// original has ONE `RandSeed` for the whole program, so the professor's mouth
-// and the atom the dispenser picks come off the same sequence; the port keeps
+// original has one `RandSeed` for the whole program, so the professor's mouth
+// and the atom the dispenser picks come off the same sequence. The port keeps
 // a stream per `Game` plus one for the scene, because its generator is a Game
-// member and the Instructions screen has no Game at all. What is transliterated
-// is the arithmetic and every call's argument - `Random(12) + 1`, `Random(4) +
-// 4`, `Random(100) < 5` - not which stream they are drawn from.
+// member and the Instructions screen has no Game at all. What is
+// transliterated is the arithmetic and every call's argument -
+// `Random(12) + 1`, `Random(4) + 4`, `Random(100) < 5` - not which stream they
+// are drawn from.
 struct PascalRandom {
     uint32_t seed = 1;
 
@@ -478,15 +480,15 @@ struct PascalRandom {
 // The joke slide, `1b2e:084e`
 // ---------------------------------------------------------------------------
 //
-// The player reported this from play: "Lanny accidentally shows a WRONG slide -
-// he is flashing, wearing an Absolute Magic shirt under his lab coat." It is
-// `FLASH.GFX`, and the sprite settles it on sight - 172 x 132, which is the
-// slide rectangle exactly, and what it draws is the professor holding his coat
+// The player reported this from play: "Lanny accidentally shows a wrong slide
+// - he is flashing, wearing an Absolute Magic shirt under his lab coat." It
+// is `FLASH.GFX`, and the sprite settles it on sight - 172 x 132, which is
+// the slide rectangle exactly. What it draws is the professor holding his coat
 // open over an "AM" T-shirt. `POINTERT` is the 28 x 21 head that goes with it,
 // a startled face stamped over his own.
 //
-// `1b2e:0a11` calls `1b2e:084e` on EVERY scene redraw - every slide change and
-// every screen entry - and it is gated twice:
+// `1b2e:0a11` calls `1b2e:084e` on every scene redraw - every slide change
+// and every screen entry - and it is gated twice:
 //
 //     if (DS:0x210f = 0) and (Random(100) < 5) then begin
 //       Flip;  Delay($f);
@@ -501,11 +503,11 @@ struct PascalRandom {
 //       PlaySound(SLIDE.SFX)
 //     end
 //
-// `DS:0x210f` is cleared once, by `1000:b1da` at start-up, and set here - so
-// this is one-in-twenty per slide but **at most once per program run**.
+// `DS:0x210f` is cleared once, by `1000:b1da` at start-up, and set here. This
+// is one-in-twenty per slide but at most once per program run.
 //
 // The slide rect and corners it draws are the same ones `1b2e:0a11` lays down
-// immediately afterwards, which is what wipes the gag: it is on screen for its
+// immediately afterwards, which is what wipes the gag. It is on screen for its
 // own two delays and no longer.
 constexpr int kJokeChance = 5;            // `Random(100) < 5`
 constexpr int kJokeLeadRetraces = 15;     // `Delay($f)` before it appears
@@ -531,7 +533,7 @@ struct JokeSlide {
     bool showFlash() const { return phase >= 2; }   // the wrong slide is up
     bool showFace() const { return phase == 2; }    // and POINTERT with it
 
-    // True on the frame the gag ends, which is where `SLIDE.SFX` goes - the
+    // True on the frame the gag ends, which is where `SLIDE.SFX` goes. The
     // original plays it last, as the projector moves off the wrong slide.
     bool tick(float dt) {
         if (phase == 0) return false;
@@ -552,13 +554,13 @@ struct JokeSlide {
 };
 
 // ---------------------------------------------------------------------------
-// The professor TALKS before he waves - `1b2e:0cd1`
+// The professor talks before he waves - `1b2e:0cd1`
 // ---------------------------------------------------------------------------
 //
 // `TALK1..5.GFX` were loaded by `1000:aaba` and drawn by no arm anyone had
 // found, which is what `PLAN.md` recorded as "a fourth behaviour somewhere".
-// It is `1b2e:0cd1`, and it is not a fourth arm of `1b2e:0656` at all - it is
-// the OTHER key wait. Every screen that waits calls two of them in order:
+// It is `1b2e:0cd1`, and it is not a fourth arm of `1b2e:0656` at all. It is
+// the other key wait. Every screen that waits calls two of them in order:
 //
 //     k := 1b2e:0cd1(bursts);                  { he talks }
 //     if k = 3 then k := 1b2e:0e37(seconds);   { timed out - now he waves }
@@ -567,18 +569,18 @@ struct JokeSlide {
 // Both return the same codes `1b2e:0e37` does, 3 being "ran out".
 //
 // The talk loop draws a 12 x 8 sprite at (276, 133) - inside the professor's
-// own 44-wide box at (267, 121), i.e. over his mouth - and the size is a
-// literal in the call rather than the resource header, which is why the five
-// records hold a pointer and nothing else. `TALK1..5.GFX` measure exactly
-// 12 x 8, so the literal and the art agree independently.
+// own 44-wide box at (267, 121), i.e. over his mouth. The size is a literal
+// in the call rather than the resource header, which is why the five records
+// hold a pointer and nothing else. `TALK1..5.GFX` measure exactly 12 x 8,
+// so the literal and the art agree independently.
 constexpr const char* kTalkNames[5] = {"TALK1.GFX", "TALK2.GFX", "TALK3.GFX",
                                        "TALK4.GFX", "TALK5.GFX"};
 constexpr int kTalkX = 276;              // 0x114
 constexpr int kTalkY = 133;              // 0x85
 
 // `DS:0xbbb`, array[1..12] of byte: which mouth each step of the cycle shows.
-// Frames 1..5 are TALK1..5, and 4 never comes up - the script uses 3 half the
-// time, which is what makes it read as speech rather than as a flicker.
+// Frames 1..5 are TALK1..5, and 4 never comes up. The script uses 3 half the
+// time, which makes it read as speech rather than as a flicker.
 constexpr int kTalkScriptLen = 12;
 constexpr int kTalkScript[kTalkScriptLen] = {1, 2, 3, 3, 3, 5, 2, 3, 1, 2, 3, 3};
 constexpr int kTalkRetraces = 8;         // `Delay(8)`, so 8/70 s a mouth
@@ -586,7 +588,7 @@ constexpr int kTalkRetraces = 8;         // `Delay(8)`, so 8/70 s a mouth
 // out. That is also the script's most common frame.
 constexpr int kTalkRestFrame = 3;
 
-// The structure of the loop is two counters, and the outer one is NOT frames:
+// The structure of the loop is two counters, and the outer one is not frames:
 //
 //     repeat
 //       DS:0x20c6 := Random(12) + 1;         { where in the script to start }
@@ -601,21 +603,21 @@ constexpr int kTalkRestFrame = 3;
 //     until k <> 0;
 //     Draw(276, 133, TALK3)
 //
-// so `bursts` counts BURSTS, each 4..7 mouths long. 35 bursts is 16..28 s.
+// so `bursts` counts bursts, each 4..7 mouths long. 35 bursts is 16..28 s.
 constexpr int kTalkBurstBase = 4;        // Random(4) + 4
 constexpr int kTalkBurstSpan = 4;
 
-// The parameter at each call site, read off the call rather than guessed. The
-// Continue screen is the one screen with no talk at all: `1000:8c38` runs
-// `1b2e:0e37(2)` on its own, which is the two-second tick its countdown is
-// made of.
+// The parameter at each call site, read off the call rather than guessed.
+// The Continue screen has no talk at all: `1000:8c38` runs `1b2e:0e37(2)`
+// on its own, which is the two-second tick its countdown is made of.
 constexpr int kTalkBurstsBriefing = 0x17;   // `1000:86b8`, then Wave(0x1e)
 constexpr int kTalkBurstsStats = 10;        // `1000:8da5`, then Wave(0x1e)
-constexpr int kTalkBurstsSlide = 35;        // `1b2e:2d63` / `411b`, then Wave(0x1e)
+constexpr int kTalkBurstsSlide = 35;        // `1b2e:2d63` / `411b`,
+                                          // then Wave(0x1e)
 
 // The two waits, in the order every screen runs them. `talking` is the first
-// phase and `wave` is `DS:0x20b0`, parked at 0 - the standing pose - until the
-// talk times out, which is why he does not gesture while he is speaking.
+// phase and `wave` is `DS:0x20b0`, parked at 0 - the standing pose - until
+// the talk times out, which is why he does not gesture while he is speaking.
 struct ProfessorIdle {
     bool talking = false;
     int step = 1;            // DS:0x20c6, 1..12 into kTalkScript
@@ -624,7 +626,8 @@ struct ProfessorIdle {
     int wave = 0;            // DS:0x20b0, 0 standing, 1..5 the gesture
     float accum = 0.0f;
 
-    // `bursts` is `1b2e:0cd1`'s parameter: 35 for a slide, 0x17 for a briefing.
+    // `bursts` is `1b2e:0cd1`'s parameter: 35 for a slide, 0x17 for a
+    // briefing.
     void restart(int bursts, PascalRandom& rng) {
         talking = bursts > 0;
         burstsLeft = bursts;
@@ -633,8 +636,9 @@ struct ProfessorIdle {
         if (talking) newBurst(rng);
     }
 
-    // 0 draws no mouth at all - the wave frames carry their own, and stamping
-    // one over `POINTER1..3` would put a still mouth on a moving head.
+    // 0 draws no mouth at all - the wave frames carry their own, and
+    // stamping one over `POINTER1..3` would put a still mouth on a moving
+    // head.
     int mouthFrame() const {
         if (!talking) return 0;
         return kTalkScript[step - 1];
@@ -650,7 +654,7 @@ struct ProfessorIdle {
                 if (--burstLeft <= 0) {
                     // A burst ends; the parameter counts those, not mouths.
                     if (--burstsLeft <= 0) {
-                        // `k := 3` - the talk timed out, so the wave starts.
+                        // `k := 3`: the talk timed out, so the wave starts.
                         talking = false;
                         wave = 1;
                         accum = 0.0f;
@@ -672,13 +676,13 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// The projector screen ROLLS DOWN - `1b2e:0510`
+// The projector screen rolls down - `1b2e:0510`
 // ---------------------------------------------------------------------------
 //
 // This is the animation the plan had been looking for on `DS:0x210e`, and it
 // was never there. `1b2e:0a11`'s gated six-frame wobble (`kSlideDrop`, above)
-// moves the SLIDE; the screen behind it is rolled down by `1b2e:0510`, the
-// routine that builds the scene from nothing - and that one is not gated on
+// moves the slide; the screen behind it is rolled down by `1b2e:0510`, the
+// routine that builds the scene from nothing. That one is not gated on
 // anything. It runs every time the scene is built: entering the briefing
 // (`1000:60d8`, `1000:86b8`), the Instructions (`1b2e:2d63`) and the Credits
 // (`1b2e:411b`) all `CALL 1b2e:0510` first.
@@ -690,17 +694,17 @@ private:
 //     Draw(57, kRollDown[i] + 26, SLIDEBAR)        { the bar rides its edge }
 //     Delay(3)
 //
-// so it is the same rect and the same bar `1b2e:0656` draws at rest, with the
+// So it is the same rect and the same bar `1b2e:0656` draws at rest, with the
 // height stepped. The heights are a word table at `DS:0xb9c`, array[1..15]:
 constexpr int kRollDownFrames = 15;
 constexpr int kRollDown[kRollDownFrames] = {
     11, 22, 33, 44, 55, 66, 77, 88, 99, 110, 121, 132, 145, 150, 145,
 };
-// Twelve even steps of 11, then 145, an OVERSHOOT to 150, and back to 145 -
-// the screen is yanked down and bounces once, which is what a roller blind
-// does. The last entry is `DS:0xbba`, and `1b2e:0656` reads exactly that word
-// when it redraws the scene at rest, so `kFrameH` and `kRollDown`'s tail are
-// the same number by construction rather than by coincidence.
+// Twelve even steps of 11, then 145, an overshoot to 150, and back to 145 -
+// the screen is yanked down and bounces once, like a roller blind. The last
+// entry is `DS:0xbba`, and `1b2e:0656` reads exactly that word when it redraws
+// the scene at rest. `kFrameH` and `kRollDown`'s tail are the same number by
+// construction rather than by coincidence.
 constexpr int kRollDownRetraces = 3;     // `Delay(3)`, so 15 * 3/70 = 0.64 s
 
 // The bar rides the screen's lower edge - `Draw(57, h + 26, SLIDEBAR)` - and
@@ -733,8 +737,8 @@ struct ScreenRoll {
 // The Continue screen, `1000:8c38`
 // ---------------------------------------------------------------------------
 //
-// A five-tick countdown. The number on screen IS the counter, and letting it
-// reach zero declines - there is no separate "No" to press.
+// A five-tick countdown. The number on screen is the counter; letting it
+// reach zero declines. There is no separate "No" to press.
 constexpr int kContinueTicks = 5;
 constexpr const char* kContinueMusic = "CONTINUE.MUS";
 
@@ -754,7 +758,7 @@ enum class ContinueResult {
 // `1000:8c38`'s body, one tick per call. `accept` and `decline` are the two
 // keys the original's `WaitKey(2)` distinguishes by returning 1 and 2.
 //
-// On acceptance the caller must apply `applyContinue` - the original does the
+// On acceptance the caller must apply `applyContinue`. The original does the
 // resets inline, but they touch the Game rather than this screen.
 class ContinuePrompt {
 public:
@@ -774,8 +778,8 @@ private:
 };
 
 // `1000:8d0b`'s arm, the writes an accepted Continue makes. It zeroes the
-// score and restores the drop seed, but leaves BOTH chain totals alone - so a
-// continued game keeps the chains it has made.
+// score and restores the drop seed, but leaves both chain totals alone - so
+// a continued game keeps the chains it has made.
 void applyContinue(SessionFlags& flags, SessionTotals& totals);
 
 // ---------------------------------------------------------------------------
@@ -790,8 +794,8 @@ enum class SessionStage {
     kFinished,   // the loop has fallen out
 };
 
-// True when the mode takes a briefing and a stats screen. Every wave test in
-// the original is `mode <> 0 and mode <> 1` - 0 is attract, 1 is endurance.
+// True when the mode takes a briefing and a stats screen. Every wave test
+// in the original is `mode <> 0 and mode <> 1` - 0 is attract, 1 is endurance.
 inline bool modeHasWaves(int mode) { return mode != 0 && mode != 1; }
 
 // The stage the loop enters on, `1000:a5d2`.
@@ -800,7 +804,7 @@ inline SessionStage firstStage(int mode) {
 }
 
 // What the banner shows given the flags, `1000:5dbb`..`1000:5e9d`. The
-// original tests all three in this order and can draw more than one; the port
+// original tests all three in this order and can draw more than one. The port
 // shows the first, because two captions share one pair of rows.
 Banner bannerFor(const SessionFlags& flags, bool waveComplete);
 
