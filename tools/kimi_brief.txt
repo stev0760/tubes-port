@@ -1,0 +1,49 @@
+Rewrite the COMMENTS in this file to be clearer and less verbose. Do not change
+a single line of code - only comment text.
+
+This file is part of a C++ port of a 1994 DOS game, reconstructed by
+decompiling the original binary. The comments record WHERE each fact came from
+in the original machine code. That provenance is the most valuable thing in the
+file and must survive intact.
+
+## Never touch
+
+- Any hex address (`1000:86b8`, `DS:0x2056`), constant, filename, or number.
+- Any INDENTED CODE SAMPLE inside a comment. Blocks indented four or more
+  spaces are quoted Pascal, assembly, or tables copied out of the original
+  program. Reproduce them CHARACTER FOR CHARACTER, including their semicolons
+  and punctuation. Pascal needs its semicolons to be valid Pascal. The prose
+  rules below apply to PROSE ONLY and never to quoted code.
+- Any code, identifier, or value outside comments.
+- Any claim about what the original binary does.
+
+## What to change
+
+Aim for CLARITY. A reader who knows C++ but not this project should follow the
+comment on one pass.
+
+- Split sentences that run past about 30 words, where splitting makes them
+  easier to follow.
+- Cut filler, hedging, and throat-clearing. State things plainly.
+- Prefer active voice when it costs nothing.
+- Remove promotional or self-congratulatory adjectives.
+- Reduce UNWARRANTED EMPHASIS. Lines of ALL-CAPS shouting for emphasis should
+  become ordinary prose. Keep capitals only where they mark a genuine warning
+  or a real trap for the next reader, and use them sparingly.
+
+## Punctuation: leave it alone unless it hurts clarity
+
+Do NOT mechanically remove semicolons, dashes, or colons from prose. They are
+fine. Change them only when a sentence is genuinely easier to read split up.
+This instruction overrides any general style habit you have about semicolons.
+
+## Preserve length where length is doing work
+
+Do not compress a paragraph that is explaining a subtle mechanism. Being
+shorter is not the goal; being clearer is. If a long explanation is already
+clear, leave it long.
+
+Keep the existing comment style: `//` line comments, wrapped at 79 columns.
+Re-wrap any paragraph you edit so no comment line exceeds 79 columns.
+
+Edit the file in place.
