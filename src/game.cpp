@@ -457,18 +457,18 @@ int8_t Game::nextColour() {
 
 // One frame of the beaker: `1000:22a6`, which the frame body calls once at
 // `1000:47d0` whether or not anything is happening - that is what animates the
-// clear and the settle. The ramp's own clock is NOT here; see `stepScoreRamp`.
-// THE ENDURANCE RAMP, `1000:235c`. The game speeds up as you clear, and it is
-// driven by MATCHES - not by atoms dispensed, and not by time.
+// clear and the settle. The ramp's own clock is not here; see `stepScoreRamp`.
+// The endurance ramp, `1000:235c`. The game speeds up as you clear, and it is
+// driven by matches - not by atoms dispensed, and not by time.
 //
-// The whole thing is a LOOP OVER THE RUNS. `1000:240a` decrements the run count
-// and `1000:240d` jumps back to the `runs >= 1` test at `1000:2342`, so the body
-// executes once per run formed this frame and falls through to the score
-// multiplier at `1000:2410` only once the count reaches zero:
+// The whole thing is a loop over the runs. `1000:240a` decrements the run
+// count and `1000:240d` jumps back to the `runs >= 1` test at `1000:2342`, so
+// the body executes once per run formed this frame and falls through to the
+// score multiplier at `1000:2410` only once the count reaches zero:
 //
 //     while runs >= 1 do begin                          { 1000:2342 }
 //       if (waveMode = 1) or (waveMode = 0) then begin
-//         Inc(counter);                                 { [fe84], a BYTE }
+//         Inc(counter);                                 { [fe84], a byte }
 //         if counter = 0 then break;                    { wrap guard, 1000:2368 }
 //         if counter mod 5 = 0 then begin
 //             if not latch5 then begin
@@ -485,22 +485,23 @@ int8_t Game::nextColour() {
 //       Dec(runs)                                       { 1000:240a }
 //     end
 //
-// PER RUN is the whole point and it was missed the first time round, with the
-// body hung off `if runs >= 1` instead. Runs are counted once per SEED, so a
-// line of four pays twice and a line of five three times, and simultaneous runs
-// in different orientations each count - which means one good clear can walk the
-// counter through several crossings at once. Measured against the original: with
-// the body run once per frame the counter reached 14 by frame 2,792, where the
-// original was past 25.
+// Per run is the whole point and it was missed the first time round, with the
+// body hung off `if runs >= 1` instead. Runs are counted once per seed, so a
+// line of four pays twice and a line of five three times, and simultaneous
+// runs in different orientations each count - which means one good clear can
+// walk the counter through several crossings at once. Measured against the
+// original: with the body run once per frame the counter reached 14 by frame
+// 2,792, where the original was past 25.
 //
 // The two latches make each crossing fire once, and every tenth run the two
-// adjustments cancel, so the net shape is five frames off the dispense interval
-// per ten runs with the velocity climbing 0x20 alongside. The original's demo
-// steps 50 -> 45 -> 40 -> 35 over its first three thousand frames.
+// adjustments cancel, so the net shape is five frames off the dispense
+// interval per ten runs with the velocity climbing 0x20 alongside. The
+// original's demo steps 50 -> 45 -> 40 -> 35 over its first three thousand
+// frames.
 //
-// THIS IS WHY THE DEMO REPLAY FELL APART, and nothing about it is visible early:
-// the original's spawns land on exact 50-frame centres for 29 atoms and then
-// start stepping down, and the first thing anyone notices is a green ball
+// This is why the demo replay fell apart, and nothing about it is visible
+// early: the original's spawns land on exact 50-frame centres for 29 atoms and
+// then start stepping down, and the first thing anyone notices is a green ball
 // dropping several hundred frames later.
 void Game::stepEnduranceRamp(int runs) {
     runsThisFrame_ = runs;
@@ -535,7 +536,7 @@ void Game::updateBeaker() {
         scorePending_ += s.award;
         rampSteps_ = kScoreRampSteps;   // 1000:1c63  MOV [rampSteps], 6
         clearTimer_ = kClearFrames;     // 1000:1c70  MOV [clearTimer], 10
-        // The increment is NOT cleared here. `1000:1c63` writes the step count
+        // The increment is not cleared here. `1000:1c63` writes the step count
         // and the clear timer and nothing else, and the only zero into the
         // increment is at `1000:58d2`, on the frame the ramp runs out. So an
         // award landing mid-ramp extends the ramp at the rate already running
@@ -550,9 +551,9 @@ void Game::updateBeaker() {
         clearTimer_ = kClearFrames;
         queueSound(s.soundType);
     }
-    // 1000:2777, at the tail of the gravity pass: if anything moved this frame,
-    // one HITATOM. Not one per atom - a whole beaker settling is a single
-    // knock, which is why the flag is a boolean and not a count.
+    // 1000:2777, at the tail of the gravity pass: if anything moved this
+    // frame, one HITATOM. Not one per atom - a whole beaker settling is a
+    // single knock, which is why the flag is a boolean and not a count.
     if (s.settled) queueSound(sfx::kHitAtom);
     chains_ += s.chainsVertical + s.chainsHorizontal + s.chainsDiagonal;
 
@@ -567,7 +568,7 @@ void Game::updateBeaker() {
         score_ += rampIncrement_;
     }
 
-    // NO overflow loss. The port used to end the game the moment a column
+    // No overflow loss. The port used to end the game the moment a column
     // reached the top, which froze it solid with no message - `update()`
     // returns immediately once gameOver_ is set, so the window stayed up and
     // nothing ever moved again. It reads as a crash and was reported as one.
@@ -581,7 +582,7 @@ void Game::updateBeaker() {
 }
 
 // The ramp's clock, `1000:58c5`, which is a separate statement in the frame
-// body and sits AFTER the router at `1000:4819`:
+// body and sits after the router at `1000:4819`:
 //
 //     Dec(rampSteps);
 //     if rampSteps = 0 then begin
@@ -609,16 +610,16 @@ void Game::stepScoreRamp() {
     }
 }
 
-// `-0x1be`, the in-play count, and the reason a "survive N atoms" wave does not
-// end when the atom counter does.
+// `-0x1be`, the in-play count, and the reason a "survive N atoms" wave does
+// not end when the atom counter does.
 //
-// TWO counters run in a mode-4 wave and they come down at different moments:
+// Two counters run in a mode-4 wave and they come down at different moments:
 //
-//     -0x1f4  the OBJECTIVE counter, seeded 30. `1000:4b3b` decrements it in
-//             the DISPENSER, so it is spent when the last atom is sent out.
+//     -0x1f4  the objective counter, seeded 30. `1000:4b3b` decrements it in
+//             the dispenser, so it is spent when the last atom is sent out.
 //             This is the number the Task Display draws.
-//     -0x1be  the IN-PLAY count, seeded from the same 30 at `1000:3af0`.
-//             It comes down when an atom LEAVES play, and the wave-complete
+//     -0x1be  the in-play count, seeded from the same 30 at `1000:3af0`.
+//             It comes down when an atom leaves play, and the wave-complete
 //             test at `1000:5d30` requires it to be zero as well.
 //
 // So the wave ends when the last atom has landed, not when the last atom has
@@ -643,10 +644,10 @@ void Game::atomLeftPlay() {
     if (--inPlay_ == 0) clearTimer_ += kInPlayDrainFrames;
 }
 
-// `1000:0a13` and `1000:0b41`, both INSIDE the fill loop, so it is one per BALL
-// the Multiplier or the Evil Multiplier puts in the tube. Those balls have to
-// leave play too, and without this a filled tube would strand the count above
-// zero and the wave would never end.
+// `1000:0a13` and `1000:0b41`, both inside the fill loop, so it is one per
+// ball the Multiplier or the Evil Multiplier puts in the tube. Those balls
+// have to leave play too, and without this a filled tube would strand the
+// count above zero and the wave would never end.
 void Game::atomEnteredPlay() {
     if (objective_.mode != WaveMode::kSurvive) return;
     ++inPlay_;
@@ -654,7 +655,7 @@ void Game::atomEnteredPlay() {
 
 // The other half of the specials. The beaker-side four are in `board.cpp`,
 // where `1000:2790` runs them over the settled grid; these four fire when the
-// TEST TUBE catches one, and they are dispatched out of the router by
+// test tube catches one, and they are dispatched out of the router by
 // `1000:180c` on the frame the caught atom finishes sliding down to its slot:
 //
 //     if rec.arrived <> 0 then begin
@@ -666,24 +667,25 @@ void Game::atomEnteredPlay() {
 //         end
 //     end
 //
-// The Bonus sits deliberately OUTSIDE the `DS:0x1d48` gate and the other three
+// The Bonus sits deliberately outside the `DS:0x1d48` gate and the other three
 // inside it - the same gate that guards the Blocker on the beaker side.
 //
-// All four work on `slot[count]`, the mouth of the tube - which is normally the
-// atom that just arrived, but need not be: an atom caught while an earlier one
-// is still sliding arrives second, and the routine still acts on the top slot.
-// That is the original's own behaviour and is left in.
+// All four work on `slot[count]`, the mouth of the tube - which is normally
+// the atom that just arrived, but need not be: an atom caught while an earlier
+// one is still sliding arrives second, and the routine still acts on the top
+// slot. That is the original's own behaviour and is left in place.
 //
 // Each of the four rewrites the type of the slot it touches, which is what
 // stops them firing again on the next frame - `arrived` stays set for as long
-// as the atom is in the tube, so the dispatch is re-entered every frame and the
-// type is the only guard. Same trick as AntiMatter rewriting its cells to 9.
+// as the atom is in the tube, so the dispatch is re-entered every frame and
+// the type is the only guard. Same trick as AntiMatter rewriting its cells to
+// 9.
 void Game::catchSpecial() {
     if (tube_.empty()) return;
     const int8_t type = tube_.back().colour;
 
     if (type == kBonus) {
-        // 1000:07f7  slot[count].type := 8. The Instructions' "turns into
+        // 1000:07f7  slot[count].type := 8. The instructions' "turns into
         // Flashium when caught" is the code's own doing, one byte.
         tube_.back().colour = kFlashium;
         // 1000:0803: on the way from zero the drop counter's sprite has been
@@ -704,7 +706,7 @@ void Game::catchSpecial() {
             rampIncrement_ = scorePending_ * scoreMultiplier_ / rampSteps_;
         }
         score_ += rampIncrement_;           // 1000:08c4
-        queueSound(kBonus);             // 1000:083b, sound[10] = GLDFADE
+        queueSound(kBonus);             // 1000:083b, sound[10] = GldFade
     }
 
     if (!board_.specialsEnabled()) return;
@@ -749,9 +751,9 @@ void Game::catchSpecial() {
     //         Move(slot[i - 1], slot[i], 28);
     //         slot[i].dy := yofs[i];  slot[i].y := slot[i].dy + $44
     //     end;
-    //     slot[1].type := 17                       { FILLBALL }
+    //     slot[1].type := 17                       { FillBall }
     //
-    // The count is NOT touched, so the shift pushes the top slot out of the
+    // The count is not touched, so the shift pushes the top slot out of the
     // stack: the Filler is at slot[count] and is exactly what gets discarded.
     // What is left is the same number of atoms with an immovable one under
     // them, and `1000:4715` will not tip a 17 - which is where "permanently
@@ -765,7 +767,7 @@ void Game::catchSpecial() {
         fill.arrived = true;
         tube_.insert(tube_.begin(), fill);
         // The shift moves every slot up one, and each one's y offset is
-        // rewritten from the literal for its NEW index - 1000:0b96 onward.
+        // rewritten from the literal for its new index - 1000:0b96 onward.
         for (size_t i = 0; i < tube_.size(); ++i) {
             tube_[i].slotDy = kSlotDy[i + 1];
             tube_[i].y = kTubeY + tube_[i].slotDy;
@@ -815,9 +817,9 @@ void Game::spawn() {
     a.velocity = networkVel_;
     a.colour = nextColour();
 
-    // `1000:4b31`, and it is the LAST thing the dispenser does - after the
+    // `1000:4b31`, and it is the last thing the dispenser does - after the
     // record is fully built, colour roll included. A "survive N atoms" wave
-    // spends its OBJECTIVE counter here, on the atom being SENT OUT, and that
+    // spends its objective counter here, on the atom being sent out, and that
     // is the number the Task Display draws. The count that ends the wave is a
     // different byte and comes down when the atom lands - `atomLeftPlay`.
     //
@@ -844,7 +846,7 @@ void Game::spawn() {
 //
 // The whole input block sits inside `if state = 0`, so nothing is accepted
 // while the tube is busy. That is why holding Left slides one column at a time
-// rather than accelerating, and it is also the ONLY thing gating A: the press
+// rather than accelerating, and it is also the only thing gating A: the press
 // is not edge-detected anywhere. Holding A tips repeatedly, one atom every six
 // frames, because six frames is exactly how long the animation takes to hand
 // the state back. The port used to edge-detect A, which made holding it do
@@ -859,20 +861,22 @@ void Game::spawn() {
 //
 // - the four literal cases write fixed frame offsets that decode to exactly
 // those slots at the array's 28-byte stride, so the permutation is 1<->3 and
-// 4<->6 with 2 and 5 fixed. That is just "the slot whose destination x is where
-// the tube is", so comparing the x values reproduces it without hard-coding it.
+// 4<->6 with 2 and 5 fixed. That is just "the slot whose destination x is
+// where the tube is", so comparing the x values reproduces it without
+// hard-coding it.
 //
-// TWO things about WHERE this sits, both of which the port had wrong:
+// Two things about where this sits, both of which the port had wrong:
 //
-//   * it is INSIDE `if tube.state = 0`, so a tube that is sliding or tipping
+//   * it is inside `if tube.state = 0`, so a tube that is sliding or tipping
 //     grants no boost at all. The port ran it unconditionally every frame.
-//   * it runs BEFORE the Left/Right handler updates `tube.stop`, so on the
+//   * it runs before the Left/Right handler updates `tube.stop`, so on the
 //     frame a direction is pressed the boost still goes to the slot the tube
 //     was leaving. The port moved the tube first and boosted after.
 //
 // The velocity field is reloaded by the router at the end of every frame, so
-// this lasts exactly one frame and the player has to hold the button - which is
-// what the recorded demo does, holding Down for 150 of its first 250 frames.
+// this lasts exactly one frame and the player has to hold the button - which
+// is what the recorded demo does, holding Down for 150 of its first 250
+// frames.
 void Game::boostAtomUnderTube(uint8_t buttons) {
     if (!(buttons & (button::kDown | button::kB))) return;
     for (int c = 1; c <= kAtomSlots; ++c) {
