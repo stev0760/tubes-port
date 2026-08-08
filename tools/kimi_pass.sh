@@ -94,7 +94,18 @@ else
     echo "ok:   all address and number tokens preserved"
 fi
 
-# 4. wrap width
+# 4. the backtick convention. Addresses and identifiers are written `like this`
+# throughout src/, and one run stripped all 102 of them out of save.h. Cheap to
+# count, and invisible to every other guard here.
+ticks() { grep -o '`' "$1" | wc -l; }
+if [ "$(ticks "$A")" -ne "$(ticks "$B")" ]; then
+    echo "FAIL: backticks $(ticks "$A") -> $(ticks "$B"), the `like this` convention changed"
+    fail=1
+else
+    echo "ok:   backticks preserved ($(ticks "$A"))"
+fi
+
+# 5. wrap width
 over() { awk 'length>79' "$1" | wc -l; }
 echo "info: lines over 79 cols: $(over "$A") -> $(over "$B")"
 
