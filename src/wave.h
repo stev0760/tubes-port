@@ -76,7 +76,7 @@ enum class Objective : uint8_t {
     kHorizontalAny,      // 1000:8056  mode 2
     kVerticalAny,        // 1000:81bb  mode 2
     kDiagonalAny,        // 1000:8320  mode 2
-    kMystery,            // 1000:8581  - picks one of four at random
+    kMystery,            // 1000:8581, picks one of four at random
 };
 
 // The registered wave count. `kWaveCountShareware` is 25; see `edition.h`,
@@ -126,12 +126,12 @@ inline uint8_t chainCodeOf(RunKind k) {
 struct WaveProgress {
     int wave = 1;              // -0x170
 
-    int chainTargetChain = 3;  // -0x183, when the ORIENTATION is required
+    int chainTargetChain = 3;  // -0x183, when the orientation is required
     int atomTarget = 30;       // -0x182
-    int chainTargetColour = 2; // -0x184, when a colour, or nothing, is required
+    int chainTargetColour = 2; // -0x184, colour when required, or ignored
     int crystals = 0;          // -0x185, and `1000:66cb` increments it itself
     int marked = 3;            // -0x186
-    int preFill = 8;           // -0x17b, atoms the pre-filled beaker starts with
+    int preFill = 8;           // -0x17b, atoms in the pre-filled beaker
 
     int interval = 70;         // -0x181, frames between dispenses
     int velocity = 256;        // -0x180, 1/128 px per frame
@@ -175,12 +175,12 @@ struct WaveObjective {
 // The three half-size balls and the number beside them, drawn by `1000:2a4a`.
 // They live in `1000:3a67`'s own frame and are seeded from the objective at
 // `1000:3ac7`, so they track the required colour and chain as those rotate.
-// `-0x1be` is NOT one of these, though it was carried here as `count` for
-// several sessions on the strength of being seeded from the objective next to
-// the other three. It is never drawn - the number beside the balls is the
-// objective counter itself, `SS:[DI-0x1f4]` - and it is a live count of atoms
-// still in play. It now lives in `Game` as `inPlay_`, beside the clear timer
-// it belongs with. See `Game::atomLeftPlay`.
+// `-0x1be` is not one of these, though it was carried here as `count` for
+// several sessions because it was seeded from the objective next to the other
+// three. It is never drawn - the number beside the balls is the objective
+// counter itself, `SS:[DI-0x1f4]` - and it is a live count of atoms still in
+// play. It now lives in `Game` as `inPlay_`, beside the clear timer it belongs
+// with. See `Game::atomLeftPlay`.
 struct TaskDisplay {
     int8_t colour = 8;   // -0x1bf; `1000:3ad0` shows Flashium when none is set
     uint8_t chain = 0;   // -0x1c0
@@ -244,7 +244,7 @@ void seedPreFilledBeaker(Board& board, int n, const RollFn& roll);
 // so every chain already in the beaker survives it intact; what it destroys is
 // the player's plan, because the test tube and the network do not morph with
 // it. Specials, Flashium and anything mid-fade are skipped - the `< 8` test
-// excludes a fading cell for free, since a fading cell holds `type + 19*frame`.
+// excludes a fading cell for free: a fading cell holds `type + 19*frame`.
 void rotateBeakerColours(Board& board);
 
 // ---------------------------------------------------------------------------
@@ -261,7 +261,7 @@ void rotateBeakerColours(Board& board);
 // ---------------------------------------------------------------------------
 
 // `array[1..n]` of 10 bytes at `1000:9e53`'s `[BP-0x1f8]`. Element 0 would sit
-// exactly on top of the objective block - `-0x1f8` IS `rotateColour` - but
+// exactly on top of the objective block - `-0x1f8` is `rotateColour` - but
 // only 1..n are ever touched, so the two coexist in the original's frame.
 struct Crystal {
     bool active = false;      // +0, and `1000:041c` is what clears it

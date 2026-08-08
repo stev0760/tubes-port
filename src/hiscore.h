@@ -197,7 +197,8 @@ constexpr const char* kHsSentinel = "([C+C GAMES FACTORY])";
 // on `DS:0x20c8`, which draws `CLAP1..3.GFX` at (267, 100) over `BOOKS.GFX` -
 // is a different thing and remains unattributed. It was tempting to join the
 // two because both say "clap", and that would have put an animated professor
-// on a screen the player says does not have one; the viewer draws no professor.
+// on a screen the player says does not have one; the viewer draws no
+// professor.
 constexpr int kClapY = 100;             // 0x64, vs 121 for the pointer pose
 constexpr int kClapFrames = 3;
 constexpr int kClapRetraces = 10;
@@ -260,7 +261,8 @@ constexpr int kHsViewBarX = 57;             // 0x39
 constexpr int kHsViewBarY = 26;             // 0x1a
 constexpr const char* kHsViewMusic = "CLASS.MUS";   // `DS:0x212c`
 
-// `DS:0x2120` is `CLAP.SFX`, and the wait loop restarts it whenever the effects
+// `DS:0x2120` is `CLAP.SFX`, and the wait loop restarts it whenever the
+// effects
 // voice reports itself idle - so the applause loops for as long as the screen
 // is up rather than playing once.
 //

@@ -31,8 +31,15 @@ rm -rf "$WORK"; mkdir -p "$WORK"
 cp "$SRC" "$WORK/$BASE"
 cp "$SRC" "$SANDBOX/$BASE.orig"
 
+# The file has to be NAMED. The brief says "this file", and with nothing
+# attached the model answered "What file should I rewrite the comments in?" and
+# stopped - which looked exactly like a model deciding the file needed no work.
+# Three files were recorded as clean no-ops that way before the logs were read.
 echo "== running $MODEL on $SRC"
-( cd "$WORK" && opencode run -m "$MODEL" --dir "$WORK" "$(cat "$BRIEF")" ) \
+( cd "$WORK" && opencode run -m "$MODEL" --dir "$WORK" \
+    "$(cat "$BRIEF")
+
+The file to edit is $BASE, in the current directory." ) \
     > "$SANDBOX/$BASE.log" 2>&1
 rc=$?
 if [ $rc -ne 0 ]; then
@@ -105,7 +112,18 @@ else
     echo "ok:   backticks preserved ($(ticks "$A"))"
 fi
 
-# 5. wrap width
+# 5. ASCII only. One run replaced every " - " in board.h with a U+2014 em dash,
+# 16 lines of it. The source is ASCII throughout and should stay that way.
+nonascii() { grep -cP '[^\x00-\x7F]' "$1" 2>/dev/null || echo 0; }
+if [ "$(nonascii "$B")" != "0" ] && [ "$(nonascii "$A")" = "0" ]; then
+    echo "FAIL: introduced non-ASCII on $(nonascii "$B") line(s) - probably em dashes"
+    grep -nP '[^\x00-\x7F]' "$B" | head -3 | sed 's/^/      /'
+    fail=1
+else
+    echo "ok:   ASCII only"
+fi
+
+# 6. wrap width
 over() { awk 'length>79' "$1" | wc -l; }
 echo "info: lines over 79 cols: $(over "$A") -> $(over "$B")"
 

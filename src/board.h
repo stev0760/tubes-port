@@ -1,18 +1,19 @@
 // The beaker: three parallel 30-byte planes, exactly as `1000:3a67` holds it.
 //
 // Transliterated from `1000:22a6` (the per-frame beaker update) and the four
-// matchers it calls - `1000:1aae`, `1c9f`, `1e90` and `209b`. The previous
-// version of this file was a behavioural reconstruction and said so; it is
-// replaced rather than extended.
+// matchers it calls: `1000:1aae`, `1c9f`, `1e90` and `209b`. The previous
+// version of this file was a behavioural reconstruction; it is replaced
+// rather than extended.
 //
-// The three planes live in 3a67's own frame, contiguous, 30 bytes apart:
+// The three planes live in `3a67`'s own frame, contiguous, 30 bytes apart:
 //
 //     [BP-0x25] + row*6 + col    cells      `type + 19 * fadeFrame`
 //     [BP-0x43] + row*6 + col    marked     1 while the cell is clearing
 //     [BP-0x61] + row*6 + col    objective  1 = a wave target, drawn MARKER
 //
-// with `row` 1..5 and `col` 1..6 - Turbo Pascal's `array[1..5, 1..6] of byte`,
-// whose +7 bias on the base is the fingerprint that first identified it.
+// with `row` 1..5 and `col` 1..6 - Turbo Pascal's
+// `array[1..5, 1..6] of byte`, whose +7 bias on the base is the fingerprint
+// that first identified it.
 
 #pragma once
 
@@ -47,8 +48,8 @@ enum Atom : int8_t {
     kFiller = 16,
     kObstacle = 17,
     kCrystal = 18,
-    // MYSTBALL is a rendering state, not a ball. 1000:3a67 draws it in place
-    // of the real atom when a hidden-atom wave is active:
+    // MYSTBALL is a rendering state, not a ball. `1000:3a67` draws it in
+    // place of the real atom when a hidden-atom wave is active:
     //     if (hidden == 0) Draw(ball[type], x, y); else Draw(MYSTBALL, x, y);
     // so an atom keeps its true type underneath and is merely concealed.
     kMystery = 19,
@@ -56,9 +57,9 @@ enum Atom : int8_t {
 };
 
 // A cell does not hold a type - it holds `type + 19 * fadeFrame`, so one table
-// lookup draws a settled atom and a fading one alike and the drawing code
-// never branches. The original's own sprite table is indexed by exactly this
-// value: `ball[cell]` at `DS:0x1da6 + 4 * cell`.
+// lookup draws a settled atom and a fading one alike and the drawing code never
+// branches. The original's own sprite table is indexed by exactly this value:
+// `ball[cell]` at `DS:0x1da6 + 4 * cell`.
 //
 // `1000:2729` extracts the type with `cell mod 19` when it needs one, which is
 // where the stride is confirmed rather than inferred.
@@ -66,14 +67,14 @@ constexpr int kFadeStride = 19;
 
 // A cell is a Pascal `byte`, and it must be unsigned here too: the composite
 // reaches 152 at the end of a fade, which overflows a signed char. Storing it
-// in int8_t compiled and passed every match test, and only the fade-frame
+// in `int8_t` compiled and passed every match test, and only the fade-frame
 // assertion caught it - a reminder that "it builds and the game looks right"
 // is not a type check.
 using Cell = uint8_t;
 
 // Fade sprites exist for frames 1..6 - the loop in `1000:9e53` that loads them
 // ends on `CMP byte ptr [BP-0x2], 0x6`. Frames past that have null table
-// entries and draw nothing, which is not a bug: see kCellClearAbove.
+// entries and draw nothing, which is not a bug: see `kCellClearAbove`.
 constexpr int kFadeFrames = 6;
 
 // A marked cell gains 19 a frame and is emptied once it passes 152 - `ADD
@@ -94,8 +95,9 @@ constexpr int kColourCount = 7;
 
 // What can seed a run, straight from `1000:1ae1`: `if (cell < 1) or (cell > 8)
 // then exit`. Note this is applied to the raw cell, so a cell already fading
-// has a value above 19 and cannot start or join a run - the encoding does that
-// work on its own, with no separate "is clearing" test anywhere in the matcher.
+// has a value above 19 and cannot start or join a run - the encoding does
+// that work on its own, with no separate "is clearing" test anywhere in the
+// matcher.
 inline bool canSeedRun(Cell raw) {
     return raw >= kRedium && raw <= kFlashium;
 }
@@ -183,16 +185,16 @@ public:
     void setDisabledType(int8_t t) { disabledType_ = t; }
 
     // Wave mode 6 gates the objective plane; outside it the plane is inert.
-    // `1000:24db` is the gate itself - `CMP byte ptr [0x1d4e], 0x6`.
+    // `1000:24db` is the gate itself: `CMP byte ptr [0x1d4e], 0x6`.
     void setObjectiveMode(bool on) { objectiveMode_ = on; }
 
-    // `1000:251f`..`2533`, and this is the whole of what clearing a marked
-    // atom does. The original reaches the wave counter through two static
-    // links - `MOV DI,[BP+4]` then `MOV DI,SS:[DI+4]`, out of the fade pass,
-    // through `1000:3a67`, into `1000:9e53`'s frame at `[BP-0x1f4]` - because
-    // Board and the objective live in the same Pascal frame there and do not
-    // here. An observer is the honest translation of that reach; the Crystal's
-    // two use the same pattern for the same reason.
+    // `1000:251f`..`2533`, and this is the whole of what clearing a marked atom
+    // does. The original reaches the wave counter through two static links -
+    // `MOV DI,[BP+4]` then `MOV DI,SS:[DI+4]`, out of the fade pass, through
+    // `1000:3a67`, into `1000:9e53`'s frame at `[BP-0x1f4]` - because Board and
+    // the objective live in the same Pascal frame there and do not here. An
+    // observer is the honest translation of that reach; the Crystal's two use
+    // the same pattern for the same reason.
     //
     // Board counted these into a member instead and nothing read it, so the
     // counter never came down and every marked wave was unfinishable. Reported
