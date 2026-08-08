@@ -943,8 +943,9 @@ void Game::stepTube(uint8_t buttons) {
     // from an angle, so they are transliterated as a table.
     //
     // The loops run over all five slots whatever the count, which only matters
-    // because it moves slots that hold nothing. The port keeps `tube_` sized to
-    // the count, so it moves what exists; the surplus is invisible either way.
+    // because it moves slots that hold nothing. The port keeps `tube_` sized
+    // to the count, so it moves what exists; the surplus is invisible either
+    // way.
     if (++tipDivider_ != kTipDivider) return;
     tipDivider_ = 0;
     ++tubePhase_;
@@ -962,8 +963,8 @@ void Game::stepTube(uint8_t buttons) {
 
     if (tubePhase_ == tubephase::kRelease) {
         tubeState_ = 0;
-        // Back to 1 BEFORE the frame's draw, which is why nothing ever renders
-        // phase 4 and why three tube sprites cover four phases.
+        // Returns to 1 before the frame is drawn, which is why nothing ever
+        // renders phase 4 and why three tube sprites cover four phases.
         tubePhase_ = tubephase::kUpright;
         releaseTippedAtom();
     }
@@ -982,10 +983,10 @@ void Game::stepTube(uint8_t buttons) {
 //     Dec(tube.count)
 //
 // Two things the port had wrong before this. It tipped `slot[1]`, so the tube
-// emptied oldest-first; and a type 17 in the mouth simply refuses, which is the
-// whole of what the Filler does to you.
+// emptied oldest-first; and a type 17 in the mouth simply refuses, which is
+// the whole of what the Filler does to you.
 //
-// The record is MOVED, so the falling atom keeps the position it had in the
+// The record is moved, so the falling atom keeps the position it had in the
 // tube - it appears exactly where the mouth was, not at the beaker.
 void Game::releaseTippedAtom() {
     if (tube_.empty()) return;
@@ -994,7 +995,7 @@ void Game::releaseTippedAtom() {
     Falling tipped = tube_.back();
     tipped.state = atomstate::kTipped;
     // The board's columns are left to right and so are the tube's stops, so
-    // the stop index IS the column. The network's own 1..6 numbering is a
+    // the stop index is the column. The network's own 1..6 numbering is a
     // different order and is not involved here.
     tipped.column = tubeColumn_ + 1;
     tipped.arrived = false;
@@ -1026,7 +1027,7 @@ void Game::stepFrame(uint8_t buttons) {
 
     stepTube(buttons);
 
-    // The router runs over all TWELVE records, then the dispenser ticks. Both
+    // The router runs over all twelve records, then the dispenser ticks. Both
     // are unconditional in the original - it does not wait for the network to
     // empty, which is why six atoms can be in flight at once. `1000:47fe`:
     //
@@ -1038,8 +1039,9 @@ void Game::stepFrame(uint8_t buttons) {
         if (atoms_[c].active()) stepAtom(atoms_[c]);
     }
 
-    // The tube's own contents are routed too, but by a SECOND loop at
-    // `1000:4849` - and that one is skipped entirely while the tube is tipping:
+    // The tube's own contents are routed too, but by a second loop at
+    // `1000:4849` - and that one is skipped entirely while the tube is
+    // tipping:
     //
     //     if tube.state <> 3 then
     //         for i := 1 to tube.count do Router(@tube.slot[i], BP);
@@ -1084,8 +1086,8 @@ void Game::stepFrame(uint8_t buttons) {
         waveComplete_ = true;
     }
 
-    // `1000:5d3c`, and the ORDER matters: the clear timer is stepped down
-    // AFTER the test above, not before it. The port ran the decrement at the
+    // `1000:5d3c`, and the order matters: the clear timer is decremented
+    // after the test above, not before it. The port ran the decrement at the
     // end of `updateBeaker()`, which is early in the frame, so a timer set to
     // 10 by a match was already 9 by the time the same frame tested it and
     // every clear animation was judged one frame short.
@@ -1199,7 +1201,7 @@ void Game::stepAtom(Falling& a) {
         }
 
         // Falling out of the tube into the beaker, `1000:15bd`. The target is
-        // recomputed EVERY frame from the first free row of the column, so an
+        // recomputed every frame from the first free row of the column, so an
         // atom already on its way down lands correctly if the column settles
         // under it. The field it is kept in is the same `+0x0d` the tube used
         // for the slot offset, and on arrival it is rewritten in place from a
@@ -1219,7 +1221,7 @@ void Game::stepAtom(Falling& a) {
             a.state = atomstate::kLanded;
             if (row == 0) {
                 // 1000:16d3. The column is full: the atom is destroyed and it
-                // costs a drop. It does NOT sit on top or bounce.
+                // costs a drop. It does not sit on top or bounce.
                 if (a.colour != kBonus && dropsRemaining_ > 0) --dropsRemaining_;
                 queueSound(sfx::kDrop);      // 1000:172a
             } else {
@@ -1230,7 +1232,7 @@ void Game::stepAtom(Falling& a) {
                                                        : sfx::kHitAtom);
             }
             // 1000:17a2, where the two branches join. Settled or destroyed,
-            // the atom is out of play - and THIS is what ends a mode-4 wave.
+            // the atom is out of play - and this is what ends a mode-4 wave.
             atomLeftPlay();
             break;
         }
@@ -1245,7 +1247,7 @@ void Game::stepAtom(Falling& a) {
             break;
     }
 
-    // The LAST thing the router does to every atom, every frame, at
+    // The last thing the router does to every atom, every frame, at
     // `1000:1906`:
     //
     //     if record.type = 10 then record.velocity := 0x480
@@ -1253,7 +1255,7 @@ void Game::stepAtom(Falling& a) {
     //
     // so the velocity is reloaded on every single frame. The Down/B boost that
     // the caller writes just before this loop therefore lasts exactly one
-    // frame: the player has to HOLD the button, which is what the game
+    // frame: the player has to hold the button, which is what the game
     // actually does and what the previous version got wrong.
     //
     // That mistake is worth naming. The velocity field was declared to have
@@ -1280,30 +1282,31 @@ void Game::stepAtom(Falling& a) {
     //         rec.state := 1
     //     end
     //
-    // Three things the port had wrong. It is a WINDOW at 60..70, not "past the
+    // Three things the port had wrong. It is a window at 60..70, not "past the
     // mouth"; the tube will not catch while it is tipping; and the network
     // record goes to state 1 rather than straight to free, so its slot cannot
     // be reused for two more frames.
     //
-    // The test is `rec.x = tube.x + 3` - the tube's ACTUAL x, not its stop
+    // The test is `rec.x = tube.x + 3` - the tube's actual x, not its stop
     // index. The two differ for the three frames of a slide, because Left and
     // Right move the stop immediately and the tube then takes 6 px a frame to
-    // catch up. So a tube on its way to a column does NOT catch there yet, and
-    // a tube on its way out still catches at the one it is leaving until it has
-    // physically left.
+    // catch up. So a tube on its way to a column does not catch there yet, and
+    // a tube on its way out still catches at the one it is leaving until it
+    // has physically left.
     //
     // The port compared stop indices, which caught an atom up to three frames
     // early. That is not a wash: catching early puts an extra atom in a tube
-    // that holds five, and `tube.count <> 5` then refuses a LATER atom the
+    // that holds five, and `tube.count <> 5` then refuses a later atom the
     // original had room for. Two of the demo's atoms were lost that way.
     //
     // Note the boost at `1000:4534` genuinely does use the stop index, so the
-    // asymmetry between the two tests is the original's, not an oversight here.
+    // asymmetry between the two tests is the original's, not an oversight
+    // here.
     if (a.y >= kCatchTop && a.y <= kCatchBottom &&
         a.x == tubeX_ + kTubeMouthDx &&
         !tubeFull() && tubeState_ != 3) {
         // Into the mouth, not into the stack: the atom becomes slot[count] and
-        // then SLIDES down to its resting offset over the next few frames. The
+        // then slides down to its resting offset over the next few frames. The
         // port used to teleport it into place and fire its special at once.
         Falling s = a;
         s.state = atomstate::kInTube;
@@ -1315,24 +1318,25 @@ void Game::stepAtom(Falling& a) {
         return;
     }
 
-    // Otherwise it falls past and is lost - `1000:1516`. A missed atom does NOT
-    // land in the beaker; the beaker fills only from the tube, via Button A.
+    // Otherwise it falls past and is lost - `1000:1516`. A missed atom does
+    // not land in the beaker; the beaker fills only from the tube, via Button
+    // A.
     if (a.y > kLostY) {
         a.y = kLostY;
         a.state = atomstate::kLanded;
         queueSound(sfx::kDrop);         // 1000:15a0, whatever was missed
         // 1000:157b. An atom lost at the bottom is out of play too, and the
-        // count comes down BEFORE the Bonus exemption below - `1000:1543`
+        // count comes down before the Bonus exemption below - `1000:1543`
         // jumps past the drops block straight to it.
         atomLeftPlay();
-        // 1000:153e. A missed BONUS costs nothing. It is the same exemption the
-        // full-column loss in state 9 makes, and the port had it in one place
-        // and not the other.
+        // 1000:153e. A missed BONUS costs nothing. It is the same exemption
+        // the full-column loss in state 9 makes, and the port had it in one
+        // place and not the other.
         if (a.colour == kBonus) return;
         if (dropsRemaining_ > 0) {
             --dropsRemaining_;
         } else {
-            // Losing means dropping *more* atoms than allowed, so the
+            // Losing means dropping more atoms than allowed, so the
             // allowance is spent first and the next miss ends it.
             gameOver_ = true;
         }
@@ -1368,8 +1372,8 @@ void Game::update(uint8_t buttons, float dt) {
 // same DGROUP copies of the record. Keeping them adjacent is the point: the
 // original's two lists are 0x3000 bytes apart and agreeing by hand.
 //
-// What is NOT saved is as informative as what is. There is no beaker, no atom
-// in flight, no test tube: a load resumes at the START of the wave it stored,
+// What is not saved is as informative as what is. There is no beaker, no atom
+// in flight, no test tube: a load resumes at the start of the wave it stored,
 // which is why the record needs `WaveProgress` but nothing about the board.
 void Game::loadFrom(const SaveSlot& s, SessionTotals& totals) {
     totals.continuesLeft   = s.continuesLeft;      // 1000:a525  -0x14f
