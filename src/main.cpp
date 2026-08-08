@@ -842,9 +842,9 @@ void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
     const tubes::Image* corners = art.corners;
     const bool* haveCorner = art.haveCorner;
     screen.clear(0);
-    // `1000:8db4` / the briefing: the held image goes to (0, 12), NOT to the
+    // `1000:8db4` / the briefing: the held image goes to (0, 12), not to the
     // origin. The port drew it at (0, 0) for several sessions and the pixel
-    // diff never caught it, because every region ever measured was INSIDE the
+    // diff never caught it, because every region ever measured was inside the
     // white slide - where the two agree by construction.
     if (haveBoard) screen.blit(*board, 0, tubes::kBoardY);
 
@@ -859,25 +859,26 @@ void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
         }
     };
 
-    // `1b2e:0656` runs BEFORE the frame and slide, so the professor, his books
+    // `1b2e:0656` runs before the frame and slide, so the professor, his books
     // and the roller bar go down first - and the frame paints over none of
     // them, because it spans x 62..257 and he stands at 267.
-    // The professor is TWO draws, and the sprite sizes are what say so:
-    // POINTER0 is 44 x 79 - the whole figure, legs and book stack - while
-    // POINTER1..3 are 44 x 39, his upper body only. `1b2e:0656` lays down
-    // POINTER0 masked (`2321:0711`), and then `1b2e:0e37` stamps the wave
-    // frame OPAQUELY (`2321:068d`) over his top half once every ten retraces.
+    // The professor is two draws, and the sprite sizes are what say so:
+    // `POINTER0` is 44 x 79 - the whole figure, legs and book stack - while
+    // `POINTER1..3` are 44 x 39, his upper body only. `1b2e:0656` lays down
+    // `POINTER0` masked (`2321:0711`), and then `1b2e:0e37` stamps the wave
+    // frame opaquely (`2321:068d`) over his top half once every ten retraces.
     // Drawing only the wave frame erases him from the waist down; drawing it
     // masked leaves the base pose's arm showing through it.
     //
-    // No separate BOOKS.GFX draw: the normal arm never reaches one. `BOOKS` is
-    // used by the clap and jump arms, where he stands at a different height.
+    // No separate `BOOKS.GFX` draw: the normal arm never reaches one. `BOOKS`
+    // is used by the clap and jump arms, where he stands at a different
+    // height.
     if (pose.jumpFrame > 0) {
-        // `1b2e:0656`'s `DS:0x20e3` arm: BOOKS at its own place, then the hop
-        // frame at `(267, 97 - 3 * frame)`. Both masked - the arm uses
-        // `2321:0711` and `1b2e:0b8f` uses `2000:3921`, which is the same
-        // routine. No `POINTER0` here at all; the jump frames are the whole
-        // figure, 71 tall against the standing pose's 79.
+    // `1b2e:0656`'s `DS:0x20e3` arm: `BOOKS` at its own place, then the hop
+    // frame at `(267, 97 - 3 * frame)`. Both masked - the arm uses
+    // `2321:0711` and `1b2e:0b8f` uses `2000:3921`, which is the same
+    // routine. No `POINTER0` here at all; the jump frames are the whole
+    // figure, 71 tall against the standing pose's 79.
         if (art.haveBooks) {
             screen.blit(*art.books, tubes::kJumpBooksX, tubes::kJumpBooksY);
         }
@@ -905,8 +906,8 @@ void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
     // frames carry their own mouth, so `ProfessorIdle` reports 0 for this the
     // moment the gesture starts.
     // ...and only while he is standing. The mouth's (276, 133) is nine right
-    // and twelve down from the STANDING pose's origin; the jump arm puts him
-    // at (267, 94..88) and there is nothing under (276, 133) but blackboard.
+    // and twelve down from the standing pose's origin; the jump arm puts him
+    // at (267, 94..88), so (276, 133) is over blackboard.
     // Structurally it cannot happen in the original either - the mouth is
     // drawn by `1b2e:0cd1` and the jump by `1b2e:0b8f`, and no screen runs
     // both - but the port drives one professor from two clocks, so it has to
@@ -917,7 +918,7 @@ void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
                     tubes::kTalkY);
     }
 
-    // The frame behind the slide. Its HEIGHT is the one thing about it that
+    // The frame behind the slide. Its height is the one thing about it that
     // moves: `1b2e:0656` reads `DS:0xbba` for it and `1b2e:0510` steps that
     // word down the `kRollDown` table when the scene is first built.
     fillRect(tubes::kFrameX, tubes::kFrameY, tubes::kFrameW, pose.frameH,
@@ -934,7 +935,7 @@ void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
     if (pose.frameH < tubes::kFrameH) return;
 
     // The slide itself. Its resting place, (74, 31, 172, 132, 17), is exactly
-    // the rectangle this file used to carry as "MEASURED, NOT DECOMPILED" -
+    // the rectangle this file used to carry as "measured, not decompiled" -
     // the measurement was right, and it is now derived.
     fillRect(slideX, slideY, tubes::kSlideW, tubes::kSlideH, tubes::kSlideColour);
 
@@ -947,8 +948,8 @@ void drawScene(tubes::Screen& screen, const tubes::Image* board, bool haveBoard,
         if (haveCorner[i]) screen.blit(corners[i], cx[i], cy[i]);
     }
 
-    // The wrong slide goes ON the blank one, in `1b2e:084e`'s own order:
-    // FillRect, the four corners, then `FLASH.GFX` at the slide's origin.
+    // The wrong slide goes on the blank one, in `1b2e:084e`'s own order:
+    // `FillRect`, the four corners, then `FLASH.GFX` at the slide's origin.
     if (pose.jokeSlide && art.haveFlash) {
         screen.blit(*art.flash, slideX, slideY);
     }
@@ -1041,7 +1042,7 @@ void drawBriefing(tubes::Screen& screen, const tubes::Game& game,
                         tubes::kBriefDropsB);
 }
 
-// The Task Display, `1000:2a4a` - the small ball and the number in the top
+// The task display, `1000:2a4a` - the small ball and the number in the top
 // left corner that say what the current wave wants.
 //
 //     if (counter <> 0) and not mysteryHidden then begin
@@ -1058,7 +1059,7 @@ void drawBriefing(tubes::Screen& screen, const tubes::Game& game,
 //     end
 //
 // The three x values are 10, 6 and 2 - a step of 4, which is half the big
-// font's advance, so the number is CENTRED about x = 14 rather than moved.
+// font's advance, so the number is centred about x = 14 rather than moved.
 //
 // `1000:2894`, the modes 2 and 3 arm, is not decompiled: it draws the chain
 // illustration that shows which orientation is wanted. Left undrawn rather
@@ -1066,7 +1067,7 @@ void drawBriefing(tubes::Screen& screen, const tubes::Game& game,
 
 // The end-of-session banner, `1000:5d64`. It is drawn by `1000:3a67` itself,
 // over whatever the play field was left showing, rather than on a fresh
-// screen - so the caller must NOT clear first.
+// screen - so the caller must not clear first.
 void drawBanner(tubes::Screen& screen, tubes::Banner banner,
                 const tubes::Font& heading, bool haveHeading,
                 const tubes::Font& small, bool haveSmall, bool showHint) {
@@ -1092,7 +1093,7 @@ void drawStats(tubes::Screen& screen, const std::vector<tubes::StatsRow>& rows,
                const tubes::Font& heading, const tubes::Font& label,
                const tubes::Font& number, bool haveHeading, bool haveLabel,
                bool haveNumber, const ScenePose& pose) {
-    // `1000:8db4` blits the HELD image through `2321:068d` at (0, 12) and then
+    // `1000:8db4` blits the held image through `2321:068d` at (0, 12) and then
     // calls `1b2e:0a11`, the same classroom scene the briefing uses - so the
     // stats land on the blackboard's white slide, not on the play backdrop.
     // The held image is `BLACKBRD.GFX`: 48644 bytes is exactly 320 x 152 plus
@@ -1122,7 +1123,7 @@ void drawStats(tubes::Screen& screen, const std::vector<tubes::StatsRow>& rows,
 // stats and briefing use, with `DS:0x20e3` set so the professor hops.
 //
 //     page 1   `1b2e:0656`; `1b2e:0a11`; the heading and the story text
-//     page 2   `1b2e:0a11` again - which wipes the slide - then PRIZE.GFX at
+//     page 2   `1b2e:0a11` again - which wipes the slide - then `PRIZE.GFX` at
 //              `((320 - w) div 2, (200 - h) div 2)`
 //
 // Each held by `1b2e:0b8f(0x1e)`, the jump wait: thirty seconds or a key.
@@ -1259,13 +1260,13 @@ void drawHiScores(tubes::Screen& screen, const tubes::HiScoreBankData& bank,
     }
 }
 
-// The high score VIEWER, `1b2e:61b6` - the menu item. ONE bank per page, the
+// The high score viewer, `1b2e:61b6` - the menu item. One bank per page, the
 // same panel and rows as the entry screen, and a heading that names the mode.
 //
 // No professor and no projector slide: the function draws the board, the
 // panel, the ten rows, the roller bar and the title, and nothing else. The
-// clap is a SOUND, played and replayed by the wait loop; `1b2e:0656`'s clap
-// ANIMATION is a different thing and does not belong here.
+// clap is a sound, played and replayed by the wait loop; `1b2e:0656`'s clap
+// animation is a different thing and does not belong here.
 void drawHiScoreViewer(tubes::Screen& screen, const tubes::HiScoreBankData& bank,
                        const char* title, const tubes::Image* board,
                        bool haveBoard, const tubes::Image* bar, bool haveBar,
@@ -1292,9 +1293,9 @@ void drawHiScoreViewer(tubes::Screen& screen, const tubes::HiScoreBankData& bank
         }
     }
 
-    // `2321:0711(57, 26, DS:0x2060)`: the roller bar, masked, at the top of the
-    // panel - the same bar the classroom scene rides down the slide's edge,
-    // parked here at its fully-drawn height.
+    // `2321:0711(57, 26, DS:0x2060)`: the roller bar, masked, at the top of
+    // the panel - the same bar the classroom scene rides down the slide's
+    // edge, parked here at its fully-drawn height.
     if (haveBar) {
         screen.blit(*bar, tubes::kHsViewBarX, tubes::kHsViewBarY);
     }
@@ -1305,13 +1306,13 @@ void drawHiScoreViewer(tubes::Screen& screen, const tubes::HiScoreBankData& bank
     }
 }
 
-// The F2 save screen, `1000:2dd0`'s save arm. It draws over the play field the
-// frame loop left up - the original flips to the other video page and puts this
-// on it, so the caller supplies whatever background it likes.
+    // The F2 save screen, `1000:2dd0`'s save arm. It draws over the play field
+    // the frame loop left up - the original flips to the other video page and
+    // puts this on it, so the caller supplies whatever background it likes.
 //
 // `1b2e:52bf`'s slot list and this share their mode split: Endurance counts
-// CHAINS and Wave counts WAVES, right down to the heading's x, so the two words
-// end in the same column.
+// chains and Wave counts waves, right down to the heading's x, so the two
+// words end in the same column.
 void drawSaveScreen(tubes::Screen& screen, const tubes::SaveBankData& bank,
                     tubes::SaveBank which, int selected, bool typing,
                     const std::string& editText,
@@ -1349,7 +1350,8 @@ void drawSaveScreen(tubes::Screen& screen, const tubes::SaveBankData& bank,
             const tubes::SaveSlot& rec = bank.slots[i - 1];
             const int y = tubes::saveRowY(i);
             // 1000:316b: a live record shows its description, an empty one the
-            // "( Available )" literal. The row being typed shows the live text.
+            // "( Available )" literal. The row being typed shows the live
+            // text.
             std::string left;
             const bool editing = typing && i == selected;
             if (editing) left = editText;
@@ -1357,13 +1359,13 @@ void drawSaveScreen(tubes::Screen& screen, const tubes::SaveBankData& bank,
             else left = tubes::kSaveAvailable;
             // `1000:34ba` on entry and `1000:35d1` on every keystroke both
             // pass colour 0x0f, where the list rows are drawn in
-            // `kSaveRowColour`. So the row being typed turns WHITE, and that
+            // `kSaveRowColour`. So the row being typed turns white, and that
             // is the only thing on the screen that says the editor is open -
             // there is no cursor (see below). The port drew it in the row
             // colour, so selecting a slot looked like it had done nothing,
             // and a player reported exactly that: no way to tell it was
             // waiting for a new name.
-            // `1000:34ba` and `1000:35d1` pass colour $0f AND MODE 0 - flat,
+            // `1000:34ba` and `1000:35d1` pass colour $0f and mode 0 - flat,
             // no colour walk - where the list rows walk. Keeping the rows'
             // mode with the new colour is what turned the edited line into a
             // scrambled ramp instead of white: `2000:35ec` steps the palette
@@ -1374,7 +1376,7 @@ void drawSaveScreen(tubes::Screen& screen, const tubes::SaveBankData& bank,
                                     : tubes::kSaveRowColour,
                             editing ? tubes::textmode::kFlat
                                     : tubes::textmode::kPeak, left);
-            // 1000:31a8 sits AFTER the two arms join, so the number is drawn
+            // 1000:31a8 sits after the two arms join, so the number is drawn
             // for every row - an empty slot shows a right-justified 0. The
             // port guarded it on `live()` and the capture said otherwise.
             const int x = which == tubes::SaveBank::kWave
@@ -1382,15 +1384,15 @@ void drawSaveScreen(tubes::Screen& screen, const tubes::SaveBankData& bank,
             tubes::drawText(screen, script, x, y, tubes::kSaveRowColour,
                             tubes::textmode::kPeak,
                             tubes::saveSlotDetail(which, rec));
-            // NO CURSOR. The high score screen pulses a 4x4 block at
+            // No cursor. The high score screen pulses a 4x4 block at
             // `1000:9757`; this loop has nothing of the kind - it draws the
             // characters and erases an 8-wide cell on backspace, and that is
             // all. It was given one by analogy for one revision, which is
-            // exactly the kind of invention the prime directive forbids.
+            // exactly the kind of invention this port refuses to add.
         }
     }
 
-    // 1000:3357: SRBALL either side of the selected row.
+    // 1000:3357: `SRBALL` either side of the selected row.
     if (haveMarker) {
         const int y = tubes::saveRowY(selected) + tubes::kSaveMarkerDY;
         screen.draw(*marker, tubes::kSaveMarkerLeftX, y);
@@ -1398,7 +1400,7 @@ void drawSaveScreen(tubes::Screen& screen, const tubes::SaveBankData& bank,
     }
 }
 
-// What a binding is CALLED. SDL owns these names, which is the whole reason
+// What a binding is called. SDL owns these names, which is the whole reason
 // `input.h` stores opaque integers.
 std::string bindingLabel(const tubes::Binding& x) {
     std::string s;
@@ -1416,13 +1418,13 @@ std::string bindingLabel(const tubes::Binding& x) {
     return s.empty() ? std::string("(unbound)") : s;
 }
 
-// One Instructions slide, `1b2e:2d63`. The background is the CLASSROOM -
+// One Instructions slide, `1b2e:2d63`. The background is the classroom -
 // `1b2e:0a11`, the same scene the briefing uses, projector slide and all - and
 // the slide's text goes on the white sheet. That is why every x in the table
 // is between 76 and 244: the sheet is 74..246.
 //
 // The two navigation lines are the exception. They are centred over the whole
-// screen at y 184 and 192, which is BELOW the sheet, on the black.
+// screen at y 184 and 192, which is below the sheet, on the black.
 void drawInstructionSlide(tubes::Screen& screen,
                           const tubes::InstructionSlide* pages, int count,
                           int slide, bool hasNav,
@@ -1477,26 +1479,26 @@ void drawInstructionSlide(tubes::Screen& screen,
             break;
         }
     };
-    // The two navigation lines at y 184 and 192. The Instructions, the
-    // Credits and the shareware's Ordering deck all draw them - checked in
-    // each, not assumed - but the wave-25 end screen draws NEITHER, because it
-    // does not page: `1000:8df8` waits with `1ac3:0b8f`, the terminal wait, and
-    // has no nav strings at all. So this is a property of the deck rather than
-    // of the screen it is drawn on.
+    // The two navigation lines at y 184 and 192. The Instructions, the Credits
+    // and the shareware's Ordering deck all draw them - checked in each, not
+    // assumed - but the wave-25 end screen draws neither, because it does not
+    // page: `1000:8df8` waits with `1ac3:0b8f`, the terminal wait, and has no
+    // nav strings at all. So this is a property of the deck rather than of the
+    // screen it is drawn on.
     if (hasNav) {
         for (const tubes::InstructionItem& n : tubes::kInstructionNav) item(n);
     }
     for (int i = 0; i < s.count; ++i) item(s.items[i]);
 }
 
-// Rebinding the six controls. THE PORT'S OWN SCREEN - the original's third
+// Rebinding the six controls. The port's own screen - the original's third
 // Game Options item loads a driver, which SDL makes meaningless; see input.h.
 // It is drawn in the menu's own language so it does not look bolted on: the
 // page title where a page title goes, a rule under it, and one row per
 // control with the same colour the menu items use.
 //
-// It borrows from BOTH the classroom scene and the high score viewer and is
-// quite the same as neither, because six labelled rows want more room than
+// It borrows from both the classroom scene and the high score viewer and is
+// not the same as either, because six labelled rows want more room than
 // either was built for:
 //
 //   from `1b2e:0a11`   the blackboard at (0, 12) and the professor at his own
@@ -1504,7 +1506,7 @@ void drawInstructionSlide(tubes::Screen& screen,
 //                      score viewer deliberately does not have
 //   from `1b2e:61b6`   the chalk panel over the board, the roller bar above
 //                      it, the cursive rows and the centred title
-//   its own            a NARROWER panel, so the professor is not painted over,
+//   its own            a narrower panel, so the professor is not painted over,
 //                      and two columns instead of the viewer's name-and-score
 //
 // The projector slide is left out on purpose. `drawScene` always lays it down
@@ -1536,7 +1538,7 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
         }
     }
 
-    // The professor goes on AFTER the panel, so he stands in front of a clean
+    // The professor goes on after the panel, so he stands in front of a clean
     // board rather than being wiped off it. Same two draws the scene makes:
     // the standing pose masked, then the wave frame stamped over his top half.
     if (art.havePointer && art.havePointer[0]) {
@@ -1546,7 +1548,7 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
         art.havePointer[profFrame]) {
         screen.blit(art.pointer[profFrame], tubes::kProfX, tubes::kProfY);
     }
-    // The roller bar rides the top of the BOARD rather than the top of the
+    // The roller bar rides the top of the board rather than the top of the
     // panel. The viewer puts its title across the bar and gets away with it in
     // blue; in red on grey it is a struggle to read, and there is no room to
     // clear a 16-tall font between the board's top edge at 12 and the panel.
@@ -1556,7 +1558,7 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
     }
 
     if (haveBig) {
-        // Centred over the PANEL rather than the screen, or the professor
+        // Centred over the panel rather than the screen, or the professor
         // pushes the title off-centre.
         tubes::drawTextCentred(screen, big, tubes::kHsPanelX, kPanelRight, 32,
                                tubes::kHsTitleColour, tubes::textmode::kPeak,
@@ -1569,8 +1571,8 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
     constexpr int kBindX = 112;
     for (int i = 0; i < tubes::kGameButtons; ++i) {
         const int y = kRow0 + i * kPitch;
-        // The row being bound says so instead of showing its binding, which is
-        // also how the player knows the next press is being taken.
+    // The row being bound says "press a key" instead of showing its binding,
+    // which is also how the player knows the next press is being taken.
         const bool armed = waiting && i == row;
         // `0x2f` is the game's red - it is what draws "Save Game", the abort
         // banner and the high score entry screen's own title, and measured off
@@ -1592,7 +1594,7 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
         }
     }
     // The hint goes where the Instructions and Credits put theirs: on the
-    // BLACK FLOOR below the board, in `0x76` cyan, in TINY6X8, centred over
+    // black floor below the board, in `0x76` cyan, in `TINY6X8`, centred over
     // the whole screen. That is the game's own convention for "how to work
     // this screen", and off the green it needs no help to be read.
     if (haveSmall) {
