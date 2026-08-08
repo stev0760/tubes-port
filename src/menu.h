@@ -89,7 +89,7 @@ struct MenuPage {
 };
 
 // Indexed 1..7. Element 0 matches the original's table and stays unused.
-// **This is the image's data and must stay that way** - read it to know what
+// This is the image's data and must stay that way - read it to know what
 // the original menu said. The rest of this file routes through `menuPage`
 // below, where the port's one addition lives.
 extern const MenuPage kMenuPages[kPageCount + 1];

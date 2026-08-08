@@ -36,15 +36,15 @@ namespace tubes {
 //     BlockWrite(f, DGROUP 0x1610, 0x18c)    { bank 0 }
 //     BlockWrite(f, DGROUP 0x179c, 0x18c)    { bank 1 }
 //
-// and its head loads `0x1610` when `DS:0x1d4e = 1`, so **bank 0 is Endurance
-// and bank 1 is Wave**. Those are the two the title screen draws under the
+// and its head loads `0x1610` when `DS:0x1d4e = 1`, so bank 0 is Endurance
+// and bank 1 is Wave. Those are the two the title screen draws under the
 // headings ` Chains` and ` Wave`.
 constexpr int kHiScoreRecord = 36;
 constexpr int kHiScoreNameField = 31;
 constexpr int kHiScoreBankBytes = 396;      // 0x18c
 constexpr int kHiScoreFileBytes = kHiScoreBankBytes * 2;
 
-// **Eleven slots, ten of them the table.** The display loop runs `1..10` and
+// Eleven slots, ten of them the table. The display loop runs `1..10` and
 // stops, so the eleventh is an overflow slot that an insert pushes an entry
 // into rather than off the end. That is visible in a captured file: an
 // untouched bank has ten names and an empty eleventh, and a bank that has just
@@ -59,7 +59,7 @@ constexpr int kHiScoreNameMax = 25;
 enum class HiScoreBank { kEndurance = 0, kWave = 1 };
 
 // The name is stored as a Pascal ShortString in a fixed 31-byte field, and
-// **the original never clears the tail**. Assigning a shorter name writes the
+// the original never clears the tail. Assigning a shorter name writes the
 // length byte and the characters and leaves the rest of the field alone, so
 // residue from whatever was there before survives on disk.
 //
@@ -112,7 +112,7 @@ struct HiScoreFile {
 // offset 0x00d621 right after the `TUBES.HSC` literal - ten per bank, in the
 // order the file writes them.
 //
-// `1b2e:0243` writes the 1000, 900 ... 100 ladder **longhand**, one literal
+// `1b2e:0243` writes the 1000, 900 ... 100 ladder longhand, one literal
 // store per record, rather than looping - so the ladder is a coincidence of
 // twenty hand-written constants, not a generated series. Reproducing it with
 // a loop gives the same bytes and is what this port does, but the note matters
@@ -128,7 +128,7 @@ HiScoreFile defaultHiScores();
 bool decodeHiScores(const std::vector<uint8_t>& raw, HiScoreFile& out);
 std::vector<uint8_t> encodeHiScores(const HiScoreFile& in);
 
-// `1000:9709`: the score has to beat the LOWEST DISPLAYED entry, slot 10 - not
+// `1000:9709`: the score has to beat the lowest displayed entry, slot 10 - not
 // the eleventh. `1000:8da5`'s "High Score!" banner tests the same slot, which
 // is why the two agree.
 bool qualifies(const HiScoreBankData& b, uint32_t score);
@@ -164,8 +164,8 @@ inline int hiScoreRowY(int row) {           // row is 1-based, as the loop is
 }
 
 // The score is `Str(score:10)` - `2591:005d` converts the longint and
-// `2591:0180(10, ...)` formats it into a TEN-CHARACTER field, so it is
-// RIGHT-JUSTIFIED with leading blanks and x 220 is where the field starts,
+// `2591:0180(10, ...)` formats it into a ten-character field, so it is
+// right-justified with leading blanks and x 220 is where the field starts,
 // not where the digits do. Both screens do this.
 constexpr int kHsScoreWidth = 10;
 
@@ -175,7 +175,7 @@ constexpr int kHsScoreWidth = 10;
 // slightly proud of the panel. Do not nudge either constant.
 
 // `1000:96db`'s tail. When the typing loop ends the row is redrawn in the
-// settled colour with no cursor, `CLAP.SFX` plays, and only THEN - after
+// settled colour with no cursor, `CLAP.SFX` plays, and only then - after
 // `23e7:0024(0x78)`, 120 retraces - is the record copied into the bank and the
 // file written. So the applause belongs to the entry screen as well as the
 // viewer, and the screen holds while it plays.
@@ -193,9 +193,9 @@ constexpr const char* kHsSentinel = "([C+C GAMES FACTORY])";
 // `CLAP.SFX` plays when the high score viewer opens - the player's account,
 // and now `1b2e:61b6` below, which plays it and keeps replaying it.
 //
-// **It is a sound, not an animation.** `1b2e:0656`'s clap arm - the one gated
+// It is a sound, not an animation. `1b2e:0656`'s clap arm - the one gated
 // on `DS:0x20c8`, which draws `CLAP1..3.GFX` at (267, 100) over `BOOKS.GFX` -
-// is a DIFFERENT thing and remains unattributed. It was tempting to join the
+// is a different thing and remains unattributed. It was tempting to join the
 // two because both say "clap", and that would have put an animated professor
 // on a screen the player says does not have one; the viewer draws no professor.
 constexpr int kClapY = 100;             // 0x64, vs 121 for the pointer pose
@@ -204,7 +204,7 @@ constexpr int kClapRetraces = 10;
 constexpr const char* kClapSound = "CLAP.SFX";
 
 // ---------------------------------------------------------------------------
-// The high score VIEWER, `1b2e:61b6` - the menu item, not the entry screen
+// The high score viewer, `1b2e:61b6` - the menu item, not the entry screen
 // ---------------------------------------------------------------------------
 //
 // Found by asking `MapProgram`'s dump which function references the strings
@@ -212,11 +212,11 @@ constexpr const char* kClapSound = "CLAP.SFX";
 // session looked for it with `FindScalarRefs` on the bank addresses and
 // concluded it was "unfound, not absent" - correctly, and for the stated
 // reason: the scan only sees code that names the banks, and this function does
-// name them, but the search that would have found it was a STRING search. The
+// name them, but the search that would have found it was a string search. The
 // lesson from CLAUDE.md applies exactly - when a search comes back empty,
 // suspect the search.
 //
-// **It is ONE table at a time, and a key moves between them.** The original
+// It is one table at a time, and a key moves between them. The original
 // draws Endurance onto video page 0 and Wave onto page 1 up front, then flips
 // pages with `2321:01b5`, so there is no redraw when the player presses a key.
 // Redrawing gives the same picture.
@@ -249,7 +249,7 @@ constexpr const char* kClapSound = "CLAP.SFX";
 //     SetFont(STARTREK.816, 8, 16, 8)
 //     WriteCentred(0, 319, 14, 159, 3, title)
 //
-// **THE CHALKBOARD CARRIES NO WRITING.** `BLACKBRD.GFX` has equations chalked
+// THE CHALKBOARD CARRIES NO WRITING. `BLACKBRD.GFX` has equations chalked
 // on it, and `2321:060b(10, 37, 299, 118, 111)` - the same panel the entry
 // screen puts up - covers all but its frame. The port drew the board bare for
 // one revision and the player caught it. The panel is the entry screen's, so
@@ -261,7 +261,7 @@ constexpr int kHsViewBarY = 26;             // 0x1a
 constexpr const char* kHsViewMusic = "CLASS.MUS";   // `DS:0x212c`
 
 // `DS:0x2120` is `CLAP.SFX`, and the wait loop restarts it whenever the effects
-// voice reports itself idle - so the applause LOOPS for as long as the screen
+// voice reports itself idle - so the applause loops for as long as the screen
 // is up rather than playing once.
 //
 //     if not SoundBusy then PlaySound(CLAP.SFX)
@@ -272,7 +272,7 @@ constexpr const char* kHsViewTitle[2] = {"Endurance Mode High Scores",
                                          "Wave Mode High Scores"};
 
 // The give-up: `0x1a4` iterations of `23e7:0024(5)` is 2100 retraces at Mode
-// X's 70 Hz - **thirty seconds**, the same as the briefing's. A timeout does
+// X's 70 Hz - thirty seconds, the same as the briefing's. A timeout does
 // what a key does: page 0 advances to page 1, page 1 leaves.
 constexpr int kHsViewIterations = 0x1a4;
 constexpr int kHsViewDelay = 5;

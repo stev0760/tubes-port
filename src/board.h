@@ -1,4 +1,4 @@
-// The beaker: THREE parallel 30-byte planes, exactly as `1000:3a67` holds it.
+// The beaker: three parallel 30-byte planes, exactly as `1000:3a67` holds it.
 //
 // Transliterated from `1000:22a6` (the per-frame beaker update) and the four
 // matchers it calls - `1000:1aae`, `1c9f`, `1e90` and `209b`. The previous
@@ -47,7 +47,7 @@ enum Atom : int8_t {
     kFiller = 16,
     kObstacle = 17,
     kCrystal = 18,
-    // MYSTBALL is a RENDERING STATE, not a ball. 1000:3a67 draws it in place
+    // MYSTBALL is a rendering state, not a ball. 1000:3a67 draws it in place
     // of the real atom when a hidden-atom wave is active:
     //     if (hidden == 0) Draw(ball[type], x, y); else Draw(MYSTBALL, x, y);
     // so an atom keeps its true type underneath and is merely concealed.
@@ -55,7 +55,7 @@ enum Atom : int8_t {
     kTypeCount = 20,        // 0..19 inclusive
 };
 
-// A cell does not hold a type - it holds `type + 19 * fadeFrame`, so ONE table
+// A cell does not hold a type - it holds `type + 19 * fadeFrame`, so one table
 // lookup draws a settled atom and a fading one alike and the drawing code
 // never branches. The original's own sprite table is indexed by exactly this
 // value: `ball[cell]` at `DS:0x1da6 + 4 * cell`.
@@ -92,7 +92,7 @@ constexpr int8_t kFirstColour = kRedium;
 constexpr int8_t kLastColour = kPinkium;
 constexpr int kColourCount = 7;
 
-// What can SEED a run, straight from `1000:1ae1`: `if (cell < 1) or (cell > 8)
+// What can seed a run, straight from `1000:1ae1`: `if (cell < 1) or (cell > 8)
 // then exit`. Note this is applied to the raw cell, so a cell already fading
 // has a value above 19 and cannot start or join a run - the encoding does that
 // work on its own, with no separate "is clearing" test anywhere in the matcher.
@@ -187,14 +187,14 @@ public:
     void setObjectiveMode(bool on) { objectiveMode_ = on; }
 
     // `1000:251f`..`2533`, and this is the whole of what clearing a marked
-    // atom DOES. The original reaches the wave counter through TWO static
+    // atom does. The original reaches the wave counter through two static
     // links - `MOV DI,[BP+4]` then `MOV DI,SS:[DI+4]`, out of the fade pass,
     // through `1000:3a67`, into `1000:9e53`'s frame at `[BP-0x1f4]` - because
     // Board and the objective live in the same Pascal frame there and do not
     // here. An observer is the honest translation of that reach; the Crystal's
     // two use the same pattern for the same reason.
     //
-    // Board counted these into a member instead and NOTHING READ IT, so the
+    // Board counted these into a member instead and nothing read it, so the
     // counter never came down and every marked wave was unfinishable. Reported
     // from play on wave 8, which is the first of eleven in the table.
     void setObjectiveClearedObserver(std::function<void()> f) {
@@ -202,7 +202,7 @@ public:
     }
 
     // `DS:0x1d48` gates the Blocker here and the Multiplier, EvilMultiplier
-    // and Filler at catch time in `1000:0f80`. The Bonus atom is NOT gated by
+    // and Filler at catch time in `1000:0f80`. The Bonus atom is not gated by
     // it. Nothing in `1000:9e53` writes it, so it is set further out - the
     // wave or mode setup - and the port defaults it on.
     void setSpecialsEnabled(bool on) { specialsEnabled_ = on; }
@@ -210,10 +210,10 @@ public:
 
     // `1000:192f`, the wave-objective hook. Every matcher calls it from the
     // same unconditional path as the award - `1000:1c3b`, after the
-    // distinct-run test and before `ADD [pending], 250` - so it fires ONCE PER
-    // SEED, not once per distinct run. That distinction has been got wrong
+    // distinct-run test and before `ADD [pending], 250` - so it fires once per
+    // seed, not once per distinct run. That distinction has been got wrong
     // twice in this project, so it is checked here rather than assumed: a run
-    // of four ticks a wave objective down TWICE.
+    // of four ticks a wave objective down twice.
     void setRunObserver(std::function<void(RunKind, int8_t)> f) {
         onRun_ = std::move(f);
     }
@@ -231,7 +231,7 @@ public:
         onCrystalFell_ = std::move(f);
     }
 
-    // `1000:0f24`, inside the blast's per-cell loop and BEFORE the cell is
+    // `1000:0f24`, inside the blast's per-cell loop and before the cell is
     // overwritten. This is the only way a Crystal is ever removed, which is
     // what "removed with Anti-Matter, never by matching" means in code.
     //
@@ -244,7 +244,7 @@ public:
 
     // The first cell holding exactly `want`, in row-major order - `1000:0c82`,
     // which scans the 30-byte plane with a byte search and divides the index
-    // by 6. Matching is on the RAW cell, so a fading atom is never found.
+    // by 6. Matching is on the raw cell, so a fading atom is never found.
     bool findCell(int8_t want, int& c, int& r) const;
 
 private:
@@ -256,7 +256,7 @@ private:
     void matchPass(BoardStep& out);
     void fadePass();
     void gravityPass(BoardStep& out);
-    // `1000:2790`: the specials, applied to atoms that have SETTLED in the
+    // `1000:2790`: the specials, applied to atoms that have settled in the
     // beaker. Each one scans for its type and acts on the first it finds.
     void specialsPass(BoardStep& out);
     void applyAntiMatter(BoardStep& out);
