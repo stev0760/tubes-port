@@ -30,8 +30,8 @@ void Screen::blit(const Image& img, int x, int y) {
 }
 
 void Screen::draw(const Sprite& spr, int x, int y) {
-    // The .CSP base: see the note in screen.h. Displacements are relative to
-    // it, so a sprite whose pixels start further in is placed further in.
+    // The `.CSP` base; see the note in `screen.h`. Displacements are relative
+    // to it, so a sprite whose pixels start further in is placed further in.
     x += spr.originX - kSpriteBaseX;
     y += spr.originY - kSpriteBaseY;
 

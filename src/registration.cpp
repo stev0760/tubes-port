@@ -5,11 +5,12 @@
 //       Registration "@@never@@" --shift 0x120 --array kRegistrationPages \
 //       --count kRegistrationPageCount --include ordering.h
 //
-// The SHAREWARE edition's end-of-game screen - what wave 25 reaches instead of
-// the registered build's Nobel ending at `1000:9499`. ONE page: the separator
-// argument is deliberately an instruction that never occurs, because there is
-// no page break to find. It waits with `1ac3:0b8f`, the same terminal wait the
-// registered ending uses, rather than the paging wait the decks use.
+// The shareware edition's end-of-game screen - what wave 25 reaches instead of
+// the registered build's Nobel ending at `1000:9499`. It is one page: the
+// separator argument is deliberately an instruction that never occurs,
+// because there is no page break to find. It waits with `1ac3:0b8f`, the same
+// terminal wait the registered ending uses, rather than the paging wait the
+// decks use.
 //
 // The two endings are not interchangeable and the port must never substitute
 // one for the other: the shareware image contains no `PRIZE.GFX` and none of

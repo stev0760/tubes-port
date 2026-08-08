@@ -315,9 +315,9 @@ bool decodeSpr(const Bytes& data, std::vector<Image>& out, std::string& error) {
 
 // ---- .ANM ------------------------------------------------------------------
 //
-// The interpreter. Every opcode the one .ANM in the game uses is here, and an
-// unknown one is an error rather than a skip - a compiled format that is
-// silently tolerant decodes garbage into plausible-looking pixels.
+// Interpreter for the one `.ANM` in the game. Every opcode it uses is handled
+// here; an unknown opcode is an error, not a skip, because a silently tolerant
+// compiled format turns garbage into plausible-looking pixels.
 
 bool decodeAnm(const Bytes& data, std::vector<AnimFrame>& out,
                std::string& error) {

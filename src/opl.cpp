@@ -106,7 +106,7 @@ bool MusicPlayer::play(const Bytes& data, std::string& error) {
 
 void MusicPlayer::stop() {
     // The device can be open with no sequencer behind it: `openSilent` gives
-    // sound effects a device of their own when music is off.
+    // sound effects their own device when music is off.
     if (deviceId_ == 0 || !seq_) return;
     SDL_LockAudioDevice(deviceId_);
     seq_->silence();
@@ -123,12 +123,12 @@ void MusicPlayer::audioCallback(void* userdata, uint8_t* stream, int len) {
     self->mix(reinterpret_cast<int16_t*>(stream), len / (2 * sizeof(int16_t)));
 }
 
-// Steps the sequencer from the sample clock, so tempo does not drift with
-// the video frame rate the way it would if the game loop drove it.
+// Steps the sequencer from the sample clock, so the tempo does not drift
+// with the video frame rate the way it would if the game loop drove it.
 void MusicPlayer::playSound(const Sound* s) {
     if (deviceId_ == 0) return;
-    // The callback runs on the audio thread and reads the voice, so the swap
-    // has to be atomic with respect to it.
+    // The callback runs on the audio thread and reads the voice, so this
+    // must be atomic with the callback.
     SDL_LockAudioDevice(deviceId_);
     sfxVoice_.play(s, deviceRate_);
     SDL_UnlockAudioDevice(deviceId_);
@@ -143,7 +143,7 @@ void MusicPlayer::stopSound() {
 
 void MusicPlayer::mix(int16_t* out, int frames) {
     // With no song loaded there is nothing to step, but the effects voice
-    // still has to be serviced - `--no-music` should not mean no sound.
+    // still has to be serviced; `--no-music` should not mean no sound.
     if (!seq_ || !chip_) {
         for (int i = 0; i < frames * 2; ++i) out[i] = 0;
         sfxVoice_.mix(out, frames);
@@ -205,7 +205,7 @@ bool MusicPlayer::logRegisters(const Archive& drivers, const Bytes& song,
 
     MusSequencer seq(tables, out);
     // The reset sweep happens before any tick, so it is logged at tick 0
-    // exactly as tools/mus_decode.py does it.
+    // the way `tools/mus_decode.py` does it.
     out.tick = 0;
     seq.start(&events);
     for (int i = 0; i < ticks; ++i) {

@@ -16,7 +16,7 @@
 //
 // It is also the only reason a recording can be this small. Nothing about the
 // atoms is stored - which colour is dispensed, into which column, when - so the
-// port reproduces a demo only if its `Random` and its call ORDER both match.
+// port reproduces a demo only if its `Random` and its call order both match.
 // That is precisely what makes this the project's regression oracle.
 
 #pragma once

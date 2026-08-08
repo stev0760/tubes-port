@@ -2,7 +2,7 @@
 // routines it dispatches to.
 //
 // This file is the one place in `src/` that holds the game's own prose. It is
-// isolated deliberately: the strings are Pascal ShortStrings in the code image
+// deliberately isolated: the strings are Pascal ShortStrings in the code image
 // around `0x62a0`..`0x8600`, and if this project ever reads them out of the
 // user's `TUBES.EXE` at runtime instead, only this file changes.
 //
@@ -48,7 +48,7 @@ enum class BriefBallKind : uint8_t {
     kRequired,   // the wave's colour
     kCrystal,    // type 18
     kRandom,     // `Random(8) + 1`, rolled at draw time - `1000:632f`
-    kMarker,     // MARKER.CSP over the ball before it
+    kMarker,     // `MARKER.CSP` over the ball before it
 };
 
 struct BriefBall {
@@ -82,7 +82,7 @@ extern const char* const kBriefDropsB;     // ' drops.'
 const Briefing& briefingFor(Objective o);
 
 // The seven element names, `DS:0xbbc` at stride 16, indexed 1..7. Index 0 is
-// not a name - the table's element 0 overlaps other data in DGROUP.
+// not a name - the table's element 0 overlaps other data in `DGROUP`.
 extern const char* const kElementNames[8];
 
 }  // namespace tubes

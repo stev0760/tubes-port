@@ -1,22 +1,22 @@
-// GENERATED from `1ac3:4889` by tools/gen_instructions.py - do not edit by
+// Generated from `1ac3:4889` by tools/gen_instructions.py - do not edit by
 // hand. Regenerate with:
 //
 //   tools/gen_instructions.py disasm-sw-4889.txt strings-sw-4889.txt Ordering \
 //       "CALL 0x1000:b8a8" --shift 0x120 --array kOrderingPages \
 //       --count kOrderingPageCount --include ordering.h
 //
-// The SHAREWARE edition's "Ordering Info" deck, reachable from its menu item 8
-// and run again on the way out when the player picks Exit. It is text only -
-// the deck makes no call to the sprite routine at all, unlike the Instructions
-// and the Credits.
+// The shareware edition's "Ordering Info" deck is reachable from its menu
+// item 8, and runs again when the player picks Exit. It is text-only:
+// the deck does not call the sprite routine, unlike the Instructions
+// and Credits.
 //
 // `--shift 0x120` is not a fudge: the shareware image's interface unit is
-// larger, so every segment above it sits 0x12 paragraphs higher and the four
-// text-unit entry points move by exactly that. See docs/reversing-notes.md,
-// "The segment layout shifted".
+// larger, so every segment above it sits 0x12 paragraphs higher and the
+// four text-unit entry points move by exactly that.
+// See docs/reversing-notes.md, "The segment layout shifted".
 //
-// The page separator is `CALL 0x1000:b8a8`, which is `1ac3:0c78` - the same
-// key wait every other screen in this unit uses.
+// The page separator is `CALL 0x1000:b8a8`, which is `1ac3:0c78` -- the same
+// key wait used by every other screen in this unit.
 #include "ordering.h"
 
 namespace tubes {

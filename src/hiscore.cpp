@@ -6,8 +6,8 @@
 namespace tubes {
 
 // Read out of the binary at 0x00d621, packed with no padding, ten per bank.
-// The block ends at 0x00d723 where code resumes with `ENTER 0x80,0`, which is
-// what brackets it - the walk cannot have run past the end.
+// The block ends at 0x00d723 where code resumes with `ENTER 0x80,0`, which
+// brackets it - the walk cannot have run past the end.
 const char* const kHiScoreDefaults[2][kHiScoreShown] = {
     // bank 0 - Endurance, the ` Chains` table
     {"Ken Heckbert", "Kelly Rogers", "Glenda Moore", "Terry Herrin",
@@ -69,7 +69,7 @@ std::vector<uint8_t> encodeHiScores(const HiScoreFile& in) {
             const size_t len =
                 std::min<size_t>(e.name.size(), kHiScoreNameField);
             raw[off] = static_cast<uint8_t>(len);
-            // The WHOLE field, tail residue and all - not just the name.
+            // The whole field, tail residue and all - not just the name.
             std::memcpy(&raw[off + 1], e.field, kHiScoreNameField);
             raw[off + 32] = static_cast<uint8_t>(e.score & 0xff);
             raw[off + 33] = static_cast<uint8_t>((e.score >> 8) & 0xff);
@@ -81,8 +81,8 @@ std::vector<uint8_t> encodeHiScores(const HiScoreFile& in) {
 }
 
 bool qualifies(const HiScoreBankData& b, uint32_t score) {
-    // Slot 10, the lowest DISPLAYED entry - `1000:9709` compares against that
-    // one and not the eleventh, and `1000:8da5`'s banner tests the same slot.
+    // Slot 10, the lowest displayed entry. `1000:9709` compares against it
+    // rather than the eleventh, and `1000:8da5`'s banner tests the same slot.
     return score > b.rows[kHiScoreShown - 1].score;
 }
 
@@ -94,14 +94,14 @@ int insertHiScore(HiScoreBankData& b, const std::string& name,
     for (int i = 0; i < kHiScoreShown; ++i) {
         if (score > b.rows[i].score) { at = i; break; }
     }
-    // Shift down into the eleventh slot rather than off the end - that is what
-    // makes a bank which has taken an entry hold eleven names on disk while an
-    // untouched one holds ten and a blank.
+    // Shift down into the eleventh slot rather than off the end. A bank that has
+    // taken an entry holds eleven names on disk; an untouched one holds ten and
+    // a blank.
     for (int i = kHiScoreSlots - 1; i > at; --i) {
         b.rows[i] = b.rows[i - 1];
     }
     // `1000:9705` seeds the new record with the sentinel and the player types
-    // over it, so the sentinel's tail is what survives past the typed name.
+    // over it, so the sentinel's tail survives past the typed name.
     b.rows[at] = HiScoreEntry{};
     b.rows[at].seedField(kHsSentinel);
     b.rows[at].setName(name);

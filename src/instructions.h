@@ -1,10 +1,10 @@
 // The Instructions slideshow, `1b2e:2d63`.
 //
-// Twenty-one slides of the game's own documentation - which this project has
-// twice found an answer in that it was deriving the hard way. The test tube
-// holding five came from here, and so did Flashium's wildcard.
+// Twenty-one slides of the game's own documentation. This project twice found
+// here an answer it was deriving the hard way: the test tube holding five, and
+// Flashium's wildcard.
 //
-// The slides are DATA and are extracted rather than transcribed:
+// The slides are data, extracted rather than transcribed:
 // `tools/gen_instructions.py` reads the disassembly and emits
 // `instructions.cpp`. 152 strings typed by hand would be 152 chances to
 // mistype a line of the original's documentation and never notice.
@@ -14,7 +14,7 @@
 // with a thirty-second give-up - and branches:
 //
 //     key = 2   leave the slideshow          { ESC }
-//     key = 5   the PREVIOUS slide           { Up }
+//     key = 5   the previous slide           { Up }
 //     otherwise the next one                 { Down, or anything else }
 //
 // Slide 1's "previous" arm jumps to its own wait rather than anywhere else,
@@ -35,7 +35,7 @@ struct InstructionItem {
     Kind kind;
     int x;              // kCentred: the left edge of the span, which is 0
     int y;
-    // kText/kCentred: the colour. kAtom: the atom TYPE, or one of the two
+    // kText/kCentred: the colour. kAtom: the atom type, or one of the two
     // negatives below for the slideshow's own sprites.
     int colour;
     uint8_t mode;       // `2000:35ec`'s colour walk - see font.h
@@ -58,11 +58,11 @@ struct InstructionSlide {
 constexpr int kInstructionSlideCount = 21;
 extern const InstructionSlide kInstructionSlides[kInstructionSlideCount];
 
-// The two navigation lines. `1b2e:2e12` draws them ONCE, before the first
+// The two navigation lines. `1b2e:2e12` draws them once, before the first
 // slide, and nothing ever clears them - so they are on screen for every slide
 // and belong to the screen rather than to any one of them. The credits at
 // `1b2e:4191` do exactly the same thing with the same two strings.
-// `0x76` is the cyan, and 184 is BELOW the blackboard - the board is 152 tall
+// `0x76` is the cyan, and 184 is below the blackboard - the board is 152 tall
 // at y 12, so it ends at 163 and these sit on the black floor under it. That
 // is the game's own convention for "how to work this screen", and it reads far
 // better than chalk on green.
@@ -82,7 +82,7 @@ constexpr InstructionItem kInstructionNav[2] = {
 // ---------------------------------------------------------------------------
 //
 // Four pages on the same classroom scene, with the same navigation and the
-// same key rules. Two people and a technical note - and the note is worth
+// same key rules. Two people and a technical note. The note is worth
 // reading, because the game says of itself:
 //
 //     "Tubes was written in Borland Pascal v7, and uses a planar

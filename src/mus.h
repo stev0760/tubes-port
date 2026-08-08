@@ -1,12 +1,12 @@
-// .MUS playback: the FM sequencer from DRIVERS.RES:FMMUSIC.DRV.
+// `.MUS` playback: the FM sequencer from `DRIVERS.RES:FMMUSIC.DRV`.
 //
-// Format and driver offsets are documented in docs/reversing-notes.md.
-// tools/mus_decode.py is the reference implementation; this is a port of it,
+// Format and driver offsets are documented in `docs/reversing-notes.md`.
+// `tools/mus_decode.py` is the reference implementation; this is a port of it,
 // and `tubes-port --dump-regs` exists so the two register streams can be
 // diffed against each other.
 //
 // Nothing here embeds game data. The frequency and attenuation tables are
-// read out of the user's own FMMUSIC.DRV at runtime.
+// read out of the user's own `FMMUSIC.DRV` at runtime.
 
 #pragma once
 
@@ -44,11 +44,11 @@ struct MusEvent {
     uint8_t args[12] = {};
 };
 
-// Splits a .MUS into events. Returns false with `error` set on anything
+// Splits a `.MUS` into events. Returns false with `error` set on anything
 // unexpected; a well-formed resource consumes every byte to EOF.
 bool parseMus(const Bytes& data, std::vector<MusEvent>& out, std::string& error);
 
-// The lookup tables FMMUSIC.DRV keeps in its own code segment.
+// The lookup tables that `FMMUSIC.DRV` keeps in its own code segment.
 struct FmTables {
     uint8_t opOffset[kMusChannels];     // 0x3a: channel -> operator slot
     uint8_t rhythmMask[5];              // 0x45: channel-6 -> reg 0xBD bit
@@ -58,7 +58,7 @@ struct FmTables {
     uint8_t pitchClass[96];             // 0x638: note -> fnum table row
     uint8_t defaultInstr[6][11];        // 0x85: six startup patches
 
-    // `drv` is the decompressed FMMUSIC.DRV from DRIVERS.RES.
+    // `drv` is the decompressed `FMMUSIC.DRV` from `DRIVERS.RES`.
     static bool load(const Bytes& drv, FmTables& out, std::string& error);
 };
 
@@ -98,8 +98,8 @@ public:
     // One 72.827 Hz tick. Safe to call with no song armed.
     void tick();
 
-    // Set once the song has run past its 0xf0. Playback continues, because
-    // 0xf0 rewinds rather than stopping.
+// Set when the song runs past its 0xf0 marker. Playback continues, because
+// 0xf0 rewinds rather than stopping.
     bool looped() const { return looped_; }
 
     void silence();

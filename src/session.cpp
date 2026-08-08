@@ -34,7 +34,7 @@ BannerText bannerText(Banner b) {
     // `1000:3a12` over `1000:3a20` - 13 characters over 11 underscores.
     case Banner::kWaveComplete:
         return {"Wave Complete", "___________", "VICTORY.MUS"};
-    // `1000:3a2c` over `1000:39f8` - 9 characters over SEVEN underscores.
+    // `1000:3a2c` over `1000:39f8` - 9 characters over 7 underscores.
     // The rule is its own constant in every case and is not measured from the
     // caption; two of the three would come out wrong if it were.
     case Banner::kGameOver:
@@ -108,9 +108,9 @@ std::vector<StatsRow> buildStatsScreen(SessionTotals& totals, int wave,
     addRow(rows, 68, StatsFont::kNumber, kStatValueColour, textmode::kFadeDown,
            std::to_string(totals.chainsThisWave));
 
-    // `1000:8d68`. The accumulation happens HERE, between the two lines, in
-    // the middle of the drawing - so the per-wave counter is zeroed by the
-    // screen that just displayed it.
+    // `1000:8d68`. The accumulation happens between the two lines, in the
+    // middle of the drawing - so the per-wave counter is zeroed by the screen
+    // that just displayed it.
     totals.totalChains += totals.chainsThisWave;
     totals.chainsThisWave = 0;
 
@@ -148,7 +148,7 @@ std::vector<StatsRow> buildStatsScreen(SessionTotals& totals, int wave,
 
 ContinueResult ContinuePrompt::tick(bool accept, bool decline) {
     if (ticksLeft_ <= 0) return ContinueResult::kDeclined;
-    // `1000:8cfb` tests the declining key FIRST, so a frame carrying both
+    // `1000:8cfb` tests the declining key first, so a frame carrying both
     // keys declines. Order preserved rather than tidied.
     if (decline) { ticksLeft_ = 0; return ContinueResult::kDeclined; }
     if (accept) { ticksLeft_ = 0; return ContinueResult::kAccepted; }
@@ -160,7 +160,7 @@ ContinueResult ContinuePrompt::tick(bool accept, bool decline) {
 
 void applyContinue(SessionFlags& flags, SessionTotals& totals) {
     // `1000:8d0e`..`1000:8d2d`. The score is zeroed and the drop seed
-    // restored, but NEITHER chain total is touched.
+    // restored, but neither chain total is touched.
     if (totals.continuesLeft > 0) --totals.continuesLeft;
     flags.replay = true;
     flags.gameOver = false;

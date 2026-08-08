@@ -70,7 +70,7 @@ void SfxPool::play(const Sound* s, int deviceRate) {
         }
     }
     // All four busy. The original would have cut the running one off, so
-    // cutting ONE off is still the honest fallback - take the first.
+    // cutting one off is still the honest fallback - take the first.
     voices_[0].play(s, deviceRate);
 }
 

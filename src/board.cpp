@@ -16,7 +16,7 @@ namespace {
 
 // Each matcher tests exactly two cells beyond the seed - a run of three - and
 // longer runs fall out of the overlapping seeds rather than being scanned.
-// That is not an optimisation: it is why a run of four pays TWICE, because two
+// That is not an optimisation: it is why a run of four pays twice, because two
 // seed positions each add the orientation's award. "4 atom molecules count as
 // 2 chains" in the Instructions is literally the number of seeds.
 constexpr int kRunLength = 3;
@@ -107,7 +107,7 @@ bool Board::drop(int c, int8_t type) {
 //         if (matchType <> other) and (other <> 8) then exit
 //     for i := 0 to 2 do marked[r + i*dr, c + i*dc] := 1
 //
-// Two things here are worth not smoothing over. The wildcard ADOPTS: a
+// Two things here are worth not smoothing over. The wildcard adopts: a
 // Flashium seed becomes whatever the next non-empty cell is, and from then on
 // the run is that colour - which is how one Flashium can complete runs of two
 // different colours in two different directions. And the bail-out on `other >
@@ -132,7 +132,7 @@ bool Board::matchAt(int c, int r, int dc, int dr, RunKind kind, BoardStep& out) 
         marked_[idx(c + dc * i, r + dr * i)] = 1;
     }
 
-    // Count this as a DISTINCT run only when the cell one step back does not
+    // Count this as a distinct run only when the cell one step back does not
     // continue it, so a run of four counts once however many seeds it has.
     // That count is the chain bonus multiplier, not the award.
     const int pc = c - dc, pr = r - dr;
@@ -151,12 +151,12 @@ bool Board::matchAt(int c, int r, int dc, int dr, RunKind kind, BoardStep& out) 
     }
 
     // `1000:1c3b`, on the same path as the award below and with the same
-    // per-seed frequency. The type passed is what the run RESOLVED to after
+    // per-seed frequency. The type passed is what the run resolved to after
     // any wildcard adoption, which is why an all-Flashium run arrives as 8.
     if (onRun_) onRun_(kind, static_cast<int8_t>(matchType));
 
     out.award += awardFor(kind);
-    out.soundType = static_cast<int8_t>(matchType);   // the family sound follows what it matched AS
+    out.soundType = static_cast<int8_t>(matchType);   // the family sound follows what it matched as
     return true;
 }
 
@@ -197,7 +197,7 @@ void Board::fadePass() {
             // carries an objective marker consumes the marker and ticks the
             // wave's counter down.
             //
-            // The ORDER is the original's and it matters at the end of a wave:
+            // The order is the original's and it matters at the end of a wave:
             // the marker is cleared unconditionally at `1000:251f`, and only
             // then is the counter tested (`CMP ...,0` / `JBE`) and decremented
             // at `2533`. So a marker cleared while the counter already reads
@@ -217,7 +217,7 @@ void Board::fadePass() {
     }
 }
 
-// `1000:25b3`. Each atom falls at most ONE row per frame, which is why the
+// `1000:25b3`. Each atom falls at most one row per frame, which is why the
 // beaker visibly settles instead of snapping. The destination cursor and the
 // source row walk down together, so the destination is always the row below
 // the source; scanning bottom-up lets a whole column shift in one pass.
@@ -249,7 +249,7 @@ void Board::gravityPass(BoardStep& out) {
 
 // `1000:0c82`. The original scans the 30-byte plane for a byte equal to `want`
 // and turns the index back into (row, col) by dividing by 6, so this finds the
-// FIRST such cell in row-major order and only ever handles one per frame.
+// first such cell in row-major order and only ever handles one per frame.
 bool Board::findCell(int8_t want, int& c, int& r) const {
     for (int rr = 0; rr < rows_; ++rr) {
         for (int cc = 0; cc < cols_; ++cc) {
@@ -272,7 +272,7 @@ bool Board::findCell(int8_t want, int& c, int& r) const {
 //     if (row < 1) or (row >= 4) then Dec(rowSpan);
 //     if col < 1 then col := 1;   if row < 1 then row := 1;
 //
-// Every non-empty cell in the block is REWRITTEN to type 9 and marked. That is
+// Every non-empty cell in the block is rewritten to type 9 and marked. That is
 // the whole trick: because the cell becomes AntiMatter's own type, the single
 // sprite-table lookup draws `AFADE` over all of them, so the blast animation
 // needs no special case anywhere in the renderer. It is also why `AFADE` is a
@@ -305,7 +305,7 @@ void Board::applyAntiMatter(BoardStep& out) {
     out.blast = true;
 }
 
-// `1000:0ce7`. The Blocker turns itself and every cell ABOVE it in its column
+// `1000:0ce7`. The Blocker turns itself and every cell above it in its column
 // into Xenon - "fills the beaker column it lands in with Xenons", now from
 // code rather than from a published description.
 void Board::applyBlocker() {
@@ -314,11 +314,11 @@ void Board::applyBlocker() {
     for (int rr = r; rr >= 0; --rr) cells_[idx(c, rr)] = kXenon;
 }
 
-// `1000:0d56`. The Convertor becomes Xenon, then looks at the ONE cell
+// `1000:0d56`. The Convertor becomes Xenon, then looks at the one cell
 // directly below it and turns every atom of that type anywhere on the board
 // into Xenon.
 //
-// Note that is stronger than the published description, which says it "turns
+// Note that this is stronger than the published description, which says it "turns
 // the atoms it lands on into Xenons". The code converts board-wide, by type.
 // The victim must be an ordinary type - `> 0` and `< 11` - so it will not
 // chain off a Xenon or another special.
@@ -337,12 +337,12 @@ void Board::applyConvertor() {
 }
 
 // `1000:2790`, the tail of the beaker update. Everything here acts on atoms
-// that have SETTLED, so the trigger is simply "a cell of this type exists".
+// that have settled, so the trigger is simply "a cell of this type exists".
 void Board::specialsPass(BoardStep& out) {
     applyAntiMatter(out);
 
     // Types that have no business sitting in the beaker become inert. Their
-    // real effects happen when the test tube CATCHES them - the router
+    // real effects happen when the test tube catches them - the router
     // dispatches Bonus, Multiplier, EvilMultiplier and Filler at `1000:180c` -
     // so anything of these types that reaches the glass is a leftover.
     for (int8_t t : {kBonus, kMultiplier, kEvilMultiplier, kFiller}) {

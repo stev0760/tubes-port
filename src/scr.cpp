@@ -3,8 +3,8 @@
 namespace tubes {
 
 bool decodeScr(const Bytes& raw, Demo& out, std::string& error) {
-    // The count covers everything after itself, seed included: the shipped
-    // DEMO.SCR is 11,976 bytes and its count reads 11,974.
+// The count covers everything after itself, seed included: the shipped
+// `DEMO.SCR` is 11,976 bytes and its count reads 11,974.
     if (raw.size() < 6) {
         error = "too short to hold a .SCR header";
         return false;

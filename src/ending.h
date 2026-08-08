@@ -6,15 +6,15 @@
 //     if wave >= 75 then RegisteredEnding;      { CMP $4b / JC }
 //     wave := wave + 1
 //
-// so it runs on CLEARING wave 75, before the counter moves, and the routine's
+// so it runs on clearing wave 75, before the counter moves, and the routine's
 // first act is to set the session's `gameOver` flag - `SS:[DI + 0xfe02] := 1`
 // through the static link, which is `BP-0x1fe` in `1000:9e53`'s frame. The
 // session therefore ends the moment the ending is over, and the high score
 // screen follows as it would from any other game over.
 //
-// The screen is the CLASSROOM, not a new one: `1b2e:0656` and `1b2e:0a11`
+// The screen is the classroom, not a new one: `1b2e:0656` and `1b2e:0a11`
 // again, with `DS:0x20e3` set - which is the flag that selects the professor's
-// JUMPING arm, the only place in the program that reaches it. `1000:9676`
+// jumping arm, the only place in the program that reaches it. `1000:9676`
 // clears it again on the way out.
 //
 // Two pages, each held by `1b2e:0b8f(0x1e)` - the jump wait, thirty seconds or

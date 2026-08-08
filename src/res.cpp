@@ -12,7 +12,7 @@ constexpr size_t kSignatureLen = 32;
 constexpr size_t kHeaderLen = 39;
 constexpr size_t kEntryLen = 26;
 
-// LZSS parameters, read out of the decompressor at 2475:115c / 2475:10dc.
+// LZSS parameters, read out of the decompressor at `2475:115c` / `2475:10dc`.
 constexpr int kRingSize = 4096;
 constexpr int kMaxMatch = 18;
 constexpr int kThreshold = 2;

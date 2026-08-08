@@ -1,7 +1,7 @@
-// Reading the original Tubes resource containers.
+// Reader for the original Tubes resource containers.
 //
-// Format documented in docs/reversing-notes.md. Nothing here ships game data:
-// the container is opened at runtime from the user's own copy.
+// The format is documented in `docs/reversing-notes.md`. Nothing here ships
+// game data: the container is opened at runtime from the user's own copy.
 
 #pragma once
 

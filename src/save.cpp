@@ -5,8 +5,8 @@
 namespace tubes {
 namespace {
 
-// The record is little-endian throughout, as everything Turbo Pascal writes
-// with BlockWrite is.
+    // The record is little-endian throughout, because everything Turbo Pascal
+    // writes with BlockWrite is.
 uint16_t rd16(const uint8_t* p) {
     return static_cast<uint16_t>(p[0] | (p[1] << 8));
 }
@@ -127,8 +127,8 @@ std::string saveSlotDetail(SaveBank bank, const SaveSlot& s) {
 }
 
 void stampSaveNonces(SaveFile& f, int a, int b) {
-    // The nonce IS the sixth record's interval byte - it is stored through the
-    // same field, at bank + 0x1bb.
+    // The nonce is the interval byte of the sixth record, stored in the same
+    // field at `bank + 0x1bb`.
     f.bank[0].slots[kSaveNonceSlot].interval = a;
     f.bank[1].slots[kSaveNonceSlot].interval = b;
 }
