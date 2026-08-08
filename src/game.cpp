@@ -706,7 +706,7 @@ void Game::catchSpecial() {
             rampIncrement_ = scorePending_ * scoreMultiplier_ / rampSteps_;
         }
         score_ += rampIncrement_;           // 1000:08c4
-        queueSound(kBonus);             // 1000:083b, sound[10] = GldFade
+        queueSound(kBonus);             // 1000:083b, sound[10] = GLDFADE
     }
 
     if (!board_.specialsEnabled()) return;
@@ -751,7 +751,7 @@ void Game::catchSpecial() {
     //         Move(slot[i - 1], slot[i], 28);
     //         slot[i].dy := yofs[i];  slot[i].y := slot[i].dy + $44
     //     end;
-    //     slot[1].type := 17                       { FillBall }
+    //     slot[1].type := 17                       { FILLBALL }
     //
     // The count is not touched, so the shift pushes the top slot out of the
     // stack: the Filler is at slot[count] and is exactly what gets discarded.

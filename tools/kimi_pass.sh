@@ -189,6 +189,89 @@ if [ -n "$RANGE" ]; then
     fi
 fi
 
+# 8. proper nouns lost to the de-shouting pass.
+#
+# The job is to lowercase capitals used as emphasis, and some capitals are
+# NAMES: `AntiMatter` became "antimatter" and `HITATOM` became "HitAtom" in one
+# run of game.cpp. Nothing else in this script can see that - a case change
+# loses no token, no backtick, no line and no word.
+#
+# Two shapes are checked, and both only inside comments:
+#
+#   MixedCase   an internal capital (AntiMatter, HitAtom, MysteryBall). That
+#               shape is a name almost by definition, so losing one is a fail.
+#   ALLCAPS     only flagged when the same token also appears OUTSIDE a comment
+#               somewhere in src/ - that is what separates a resource like
+#               HITATOM.SFX from ordinary emphasis like NOT or THREE, which is
+#               exactly what this pass is supposed to remove.
+if command -v python3 >/dev/null; then
+    names_out=$(python3 - "$A" "$B" "$ROOT" <<'PY'
+import re, sys, pathlib
+from collections import Counter
+
+a, b, root = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])
+
+def comments(path):
+    out = []
+    for line in pathlib.Path(path).read_text(errors="replace").splitlines():
+        s = line.strip()
+        if s.startswith("//"):
+            out.append(s)
+        elif "//" in line:
+            out.append(line.split("//", 1)[1])
+    return "\n".join(out)
+
+MIXED = re.compile(r"\b[A-Z][a-z]+[A-Z][A-Za-z]*\b")
+CAPS = re.compile(r"\b[A-Z]{3,}[0-9]*\b")
+
+# All-caps English words this pass exists to remove. Without this the guard
+# reports every successful de-shout as a lost name.
+EMPHASIS = {
+    "NOT", "ONLY", "ONE", "TWO", "ALL", "AND", "THE", "OUT", "OVER", "OFF",
+    "NOW", "WHY", "HOW", "SAME", "EACH", "BOTH", "RUNS", "TEST", "SEED",
+    "THREE", "FOUR", "FIVE", "SIX", "TEN", "ANY", "NONE", "EVERY", "MUST",
+    "NEVER", "ALWAYS", "FIRST", "LAST", "NEXT", "THEN", "BEFORE", "AFTER",
+    "PER", "WAS", "ARE", "YES", "NO", "ZERO", "ADD", "SET", "SELECT",
+    "GAME", "NAME", "WAVE", "PAGE", "ROW", "TYPE", "SIZE", "FILE",
+}
+# Deliberately NOT stop-listed even though they read as ordinary words:
+# MARKER, DEMO, BONUS. Each is also a resource stem (`MARKER.CSP`,
+# `DEMO.SCR`), so a false positive on them is cheaper than missing a real one.
+
+# tokens that appear outside comments anywhere in src/ - identifiers, string
+# literals, resource names. Built once; cheap enough at this repo's size.
+in_code = set()
+for f in (root / "src").glob("*.[ch]*"):
+    for line in f.read_text(errors="replace").splitlines():
+        code = line.split("//", 1)[0]
+        in_code.update(CAPS.findall(code))
+        in_code.update(MIXED.findall(code))
+
+ca, cb = comments(a), comments(b)
+lost = []
+for pat, kind in ((MIXED, "mixed-case"), (CAPS, "all-caps")):
+    before, after = Counter(pat.findall(ca)), Counter(pat.findall(cb))
+    for tok, n in (before - after).items():
+        if kind == "all-caps":
+            if tok in EMPHASIS or tok not in in_code:
+                continue      # ordinary emphasis; removing it is the point
+        lost.append((tok, n, kind))
+
+for tok, n, kind in sorted(lost):
+    print(f"{tok}\t{n}\t{kind}")
+PY
+)
+    if [ -n "$names_out" ]; then
+        echo "FAIL: capitalised names lost from comments - a de-shout hit a proper noun"
+        echo "$names_out" | while IFS=$'\t' read -r tok n kind; do
+            echo "      $tok (x$n, $kind)"
+        done
+        fail=1
+    else
+        echo "ok:   no capitalised names lost"
+    fi
+fi
+
 # 5. prose score, punctuation rules deliberately not counted
 LINT="$ROOT/tools/comment_lint.py"
 if [ -f "$LINT" ]; then
