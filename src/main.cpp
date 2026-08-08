@@ -4612,7 +4612,7 @@ int main(int argc, char** argv) {
     tubes::ContinuePrompt continuePrompt;
     float continueAccum = 0.0f;
     // F5, `1000:3916`. The original blocks in `repeat until ReadKey = $bf`, so
-    // the simulation does not advance and ONLY F5 releases it.
+    // only F5 releases it and the simulation does not advance.
     bool paused = false;
     // F3 and F4, `DS:0x215f` and `DS:0x215e`. The Game Options page edits the
     // same two, which is why they are seeded from the settings file - and why
@@ -4681,7 +4681,7 @@ int main(int argc, char** argv) {
     // `1000:ac01`: the shareware's Exit does not exit. It runs the Ordering
     // Info deck first and only then Halts, at which point the exit banner is
     // dumped over the text screen. So a quit that has been asked for waits for
-    // the deck to finish, and the deck is an ordinary screen in the frame loop.
+    // the deck to finish; it is an ordinary screen in the frame loop.
     bool quitAfterOrdering = false;
     int rebindRow = 0;                 // 0..5, the control being pointed at
     bool rebindWaiting = false;        // armed, waiting for the press
@@ -4690,16 +4690,16 @@ int main(int argc, char** argv) {
 
     // `1b2e:0a11`'s slide drop, gated on `DS:0x210e`. The flag is cleared in
     // exactly one place - `entry`, at `1000:b1c6` - and set by `1b2e:0a11`
-    // itself at `1b2e:0a44`, so the drop plays on the **first classroom scene
-    // of the program run** and never again, whichever screen that happens to
+    // itself at `1b2e:0a44`, so the drop plays on the first classroom scene
+    // of the program run and never again, whichever screen that happens to
     // be. It is a program-lifetime flag, not a per-briefing one.
     //
-    // The port used to arm it from the briefing alone, which is right only when
-    // a briefing is what the player reaches first. It is not the only caller:
-    // the Instructions `CALL 1b2e:0a11` twenty-one times, once a slide, and the
-    // Credits four - counted in the disassembly, not assumed - so opening
-    // either from a cold start IS the first call, and the port showed a slide
-    // already at rest. Reported from play.
+    // The port used to arm it from the briefing alone, which is right only
+    // when a briefing is what the player reaches first. It is not the only
+    // caller: the Instructions `CALL 1b2e:0a11` twenty-one times, once a
+    // slide, and the Credits four - counted in the disassembly, not assumed -
+    // so opening either from a cold start is the first call, and the port
+    // showed a slide already at rest. Reported from play.
     bool slideDropped = false;
     int slideFrame = 0;          // index into kSlideDrop while dropping
     float slideAccum = 0.0f;
@@ -4721,7 +4721,7 @@ int main(int argc, char** argv) {
         p.slideDropping = slideIsDropping();
         p.profFrame = tubes::pointerFrameFor(profIdle.wave);
         // `1b2e:084e` is a blocking routine called from inside `1b2e:0a11`,
-        // which itself runs BEFORE the key wait - so while the gag is up the
+        // which itself runs before the key wait - so while the gag is up the
         // professor is not talking, and no mouth is stamped over the face it
         // replaces.
         p.mouthFrame = joke.active() ? 0 : profIdle.mouthFrame();
@@ -4744,7 +4744,7 @@ int main(int argc, char** argv) {
 
     // ---- the high-score entry screen, `1000:96db` -------------------------
     //
-    // `1000:a6c1` runs it when the wave loop falls out and the session was NOT
+    // `1000:a6c1` runs it when the wave loop falls out and the session was not
     // aborted, the mode is not attract, and `DS:0x1d4b` is clear. The score is
     // then offered to the bank for the mode just played.
     bool hsActive = opt.hsEntry;
@@ -4775,7 +4775,7 @@ int main(int argc, char** argv) {
     // the layout is the original's rather than borrowed. Page 0 is Endurance
     // and page 1 is Wave; the original pre-renders both onto the two video
     // pages and flips between them, and redrawing gives the same picture.
-    // `1000:b268`: View Demo and the attract timeout run the SAME thing - a
+    // `1000:b268`: View Demo and the attract timeout run the same thing - a
     // session in mode 0 at difficulty 2, replaying DEMO.SCR. This flag is what
     // tells the frame loop to feed it the recording instead of the keyboard.
     bool attractDemo = false;
@@ -4806,7 +4806,7 @@ int main(int argc, char** argv) {
         }
         changeScreen();
         stage = Stage::kTitle;
-        // `1000:b2ac`: the ATTRACT arm clears `DS:0x1d42` on the way back, so
+        // `1000:b2ac`: the attract arm clears `DS:0x1d42` on the way back, so
         // the demo returns to a bare title screen with the menu down. Every
         // other route leaves the menu up, which is what `1b2e:52bf`'s own
         // flag does when it is not cleared.
@@ -4815,7 +4815,7 @@ int main(int argc, char** argv) {
         playSong("TUBES.MUS");
     };
 
-    // `1b2e:0b8f` returning ends a page; the SECOND one ends the ending, and
+    // `1b2e:0b8f` returning ends a page; the second one ends the ending, and
     // `1000:9676` clears `DS:0x20e3` on the way out so the professor stops
     // hopping. The session is already over - the ending set `gameOver` when it
     // began - so this goes straight to the finish.
@@ -4890,7 +4890,7 @@ int main(int argc, char** argv) {
 
     // Entering the stats screen is what accumulates the running chain total,
     // so it happens exactly once per visit - never in the draw path. It is
-    // also what RESETS the per-wave count, in the game as well as on the
+    // also what resets the per-wave count, in the game as well as on the
     // screen: `-0x17c` is one byte in the original and `enterStatsScreen`
     // holds both of the port's copies of it together.
     auto enterStats = [&]() {
@@ -4907,7 +4907,7 @@ int main(int argc, char** argv) {
     Uint32 last = SDL_GetTicks();
 
     while (running) {
-        // Harness only: press RETURN periodically so a headless run walks
+        // Harness only: press Return periodically so a headless run walks
         // through the screens that hold for a key. Periodic rather than every
         // frame, so each screen is on display long enough to be captured.
         if (opt.autoAdvance && ++autoAdvanceTick % 40 == 0) {
@@ -4954,7 +4954,7 @@ int main(int argc, char** argv) {
                                   !saveScreen && !hsActive &&
                                   !paused && !helpScreen;
             SDL_Keycode k = SDLK_UNKNOWN;
-            // Whether the INPUT DRIVER would have claimed this - see
+            // Whether the input driver would have claimed this - see
             // `bindsKey` in `input.h`. Only the help overlay cares, but it has
             // to be worked out here, where the scancode and the pad button are
             // still in hand.
@@ -4972,13 +4972,13 @@ int main(int argc, char** argv) {
 
             // `1000:9744`'s typing loop. It owns the keyboard entirely while
             // it is up: printable characters append, backspace removes, and
-            // ESC or RETURN finish - nothing else is looked at.
+            // Esc or Return finish - nothing else is looked at.
             if (hsActive) {
                 if (hsHold > 0.0f) continue;   // the applause owns the screen
                 if (k == SDLK_RETURN || k == SDLK_ESCAPE) {
                     // `1000:96db`'s tail: the row is redrawn in the settled
                     // colour with no cursor, the applause plays, and the
-                    // screen HOLDS for `23e7:0024(0x78)` - 120 retraces,
+                    // screen holds for `23e7:0024(0x78)` - 120 retraces,
                     // 1.71 s - before the record is committed and the file
                     // written. The port committed and left in the same frame.
                     if (soundOn && haveClapSound) music.playSound(&clapSound);
@@ -5009,7 +5009,7 @@ int main(int argc, char** argv) {
                 continue;
             }
 
-            // `1b2e:0c78` is the paging wait, and it maps a SIX-BUTTON input
+            // `1b2e:0c78` is the paging wait, and it maps a six-button input
             // byte - it does not react to "any key". Decompiled:
             //
             //     driver 0x01 Up   -> 5     scancode 0xc8/0xc9 Up/PgUp -> 5
@@ -5019,7 +5019,7 @@ int main(int argc, char** argv) {
             //                                 timeout                  -> 3
             //
             // and the deck then does: 2 leaves, 5 goes back, 1 and 4 advance.
-            // **Left and Right produce no code at all**, so the wait simply
+            // Left and Right produce no code at all, so the wait simply
             // keeps waiting and the original ignores them.
             //
             // The port used to advance on anything that was not Esc or Up,
@@ -5029,12 +5029,12 @@ int main(int argc, char** argv) {
             // than the original's awkwardness.
             //
             // The pad still works: `menuKeyForPad` already translates its A to
-            // RETURN, its B to ESCAPE and its Up/Down to the arrows, all of
+            // Return, its B to Escape and its Up/Down to the arrows, all of
             // which are handled below - and its Left and Right now correctly
             // do nothing, which is what the original's driver byte does.
             //
             // The ordering deck's own last page says as much in the game's
-            // words: "Press Button A, Button B, ENTER, or SPACE to exit." On
+            // words: "Press Button A, Button B, Enter, or Space to exit." On
             // the final page code 1 advances past the end and leaves, and code
             // 2 leaves outright, so all four do exit.
             if (instrOpen) {
@@ -5057,7 +5057,7 @@ int main(int argc, char** argv) {
                     profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
                     joke.maybeStart(sceneRng);
                 }
-                // Only LEAVING fades. Moving between slides does not - the
+                // Only leaving fades. Moving between slides does not - the
                 // original changes the slide inside one screen function and
                 // its fade-out is at the very end, on the way back.
                 if (!instrOpen) {
@@ -5081,7 +5081,7 @@ int main(int argc, char** argv) {
             }
 
             // The rebinding screen owns the keyboard while it is up. When it
-            // is ARMED the next press is the binding, ESC included - there is
+            // is armed the next press is the binding, Esc included - there is
             // no other way to bind Escape, and no reason to forbid it.
             if (rebindOpen) {
                 const auto g = static_cast<tubes::GameButton>(rebindRow);
@@ -5110,7 +5110,7 @@ int main(int argc, char** argv) {
             // The graphics screen, on the same terms. Left and Right work the
             // row, Enter is a synonym for Right so a player who only ever
             // presses Enter still gets round every value, and each change is
-            // applied and saved AT ONCE - the point of a display option is
+            // applied and saved at once - the point of a display option is
             // seeing what it does, and there is nothing here that can leave
             // the game in a state the player cannot get out of.
             if (graphicsOpen) {
@@ -5134,9 +5134,9 @@ int main(int argc, char** argv) {
                 continue;
             }
 
-            // `1b2e:6423`. The first page treats ESC specially - it leaves at
+            // `1b2e:6423`. The first page treats Esc specially - it leaves at
             // once - and any other key advances to the second. On the second
-            // page every key leaves, ESC included.
+            // page every key leaves, Esc included.
             if (hsViewing) {
                 if (hsViewPage == 0 && k != SDLK_ESCAPE) {
                     hsViewPage = 1;
@@ -5153,8 +5153,8 @@ int main(int argc, char** argv) {
                 // Every accepted press resets the attract countdown.
                 attractTimer = tubes::kAttractTimeout;
                 if (!menu.up()) {
-                    // The two-key protocol, `DS:0x1d42`: ESC, SPACE or RETURN
-                    // raises the menu and the press is SWALLOWED, so it cannot
+                    // The two-key protocol, `DS:0x1d42`: Esc, Space or Return
+                    // raises the menu and the press is swallowed, so it cannot
                     // also pick an item.
                     if (k == SDLK_ESCAPE || k == SDLK_SPACE ||
                         k == SDLK_RETURN) {
@@ -5165,7 +5165,7 @@ int main(int argc, char** argv) {
                 // `SELECT.SFX` is one of the four resources the title stage
                 // loads for itself - `TUBESBG.GFX`, `TUBESFG.GFX`,
                 // `TUBES.MUS`, `SELECT.SFX` at `1b2e:5238` - so the sound
-                // belongs to this screen. It plays on SELECTING an item, not
+                // belongs to this screen. It plays on selecting an item, not
                 // on moving between them; that is the player's account, since
                 // the menu's own call sites are near calls whose targets
                 // Ghidra renders with the 0x10000 bias and a scan for the play
@@ -5232,7 +5232,7 @@ int main(int argc, char** argv) {
                         briefingUp = false;
                         game->loadFrom(rec, totals);
                         if (c.mode == 2) {
-                            // A save resumes at the START of its wave, so the
+                            // A save resumes at the start of its wave, so the
                             // briefing runs exactly as it would have.
                             game->startWave();
                             raiseBriefing(false);
@@ -5273,8 +5273,8 @@ int main(int argc, char** argv) {
                         break;
                     case tubes::MenuResult::kPreview: {
                         // `1000:ab52`: mode 2, difficulty 0, `DS:0x1d4c` = 1
-                        // and the Preview flag on, then the ORDINARY session.
-                        // It asks for neither mode nor difficulty, which is why
+                        // and the Preview flag on, then the ordinary session.
+                        // It asks for neither mode nor difficulty, so this
                         // this does not route through the Game Mode page - the
                         // three stores are immediates in the menu arm.
                         static const tubes::Difficulty kDiff[3] = {
@@ -5335,7 +5335,7 @@ int main(int argc, char** argv) {
                         changeScreen();
                         break;
                     case tubes::MenuResult::kGraphics:
-                        // The port's own row AND its own screen - input.h
+                        // The port's own row and its own screen - input.h
                         // again, one layer over.
                         graphicsOpen = true;
                         graphicsRow = 0;
