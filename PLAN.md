@@ -1716,6 +1716,41 @@ about keeping it that way, so publishing is mostly a matter of paperwork:
   with 18k words of prose changes is reviewable as neither. The comment sweep
   is going through in nine slices and records what it did per slice.
 
+- **`harness` is one flag doing three jobs, and its name says none of them.**
+  `main.cpp:3613` computes it from six unrelated CLI flags - `--screenshot`,
+  `--auto`, `--demo`, `--play-demo`, `--render-state`, `--wave` - and then
+  uses it for three separate things:
+
+  1. seed from a constant instead of the clock, so a run is deterministic
+  2. skip timed screens, so a capture does not race an animation
+  3. **do not write to the player's game directory**
+
+  Only the third is a safety rule, and bundling it with the other two is why
+  it was once missed. `--auto-advance` walked a whole session, qualified for a
+  high score, and wrote a real `TUBES.HSC` into the player's files, silently
+  changing what every later capture compared against - the incident CLAUDE.md
+  records. Nothing in the harness used to write anything, so nobody thought
+  about it, and the guard has to be *remembered* at each new write path rather
+  than being safe by construction.
+
+  Two fixes, and they are independent:
+
+  - **Separate the write rule from the rest.** A no-op writer the scripted
+    path swaps in, or at minimum a distinct `writesAllowed`, makes a missing
+    guard impossible rather than merely documented. `saveHiScores` and
+    `writeSaves` are the only two guarded today; the next one added is the
+    one at risk.
+  - **Rename it.** "Harness" reads as the DOSBox reverse-engineering rig at
+    `~/Dev/tubes-tooling/`, which is a different program entirely and never
+    touches this code. What the flag actually means is "this run is scripted,
+    not a person playing" - `scripted` or `nonInteractive` says that, and the
+    three behaviours then read as consequences of it rather than as a
+    grab-bag.
+
+  The comment above `if (harness) return;` exists because that early return is
+  not self-explanatory. Fix the design and the comment has nothing left to
+  say, which is the sign it was standing in for structure.
+
 - **The licence is chosen: MIT**, for this project's own code. The `LICENSE`
   file is still to be written. The reasoning below is what the choice was made
   against and is kept because it is what a reader will want to check.
