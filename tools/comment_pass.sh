@@ -1,24 +1,36 @@
 #!/usr/bin/env bash
-# Run one comment-cleanup pass over a source file with kimi-k2.7-code via
+# Run one comment-cleanup pass over a source file through a second model via
 # OpenCode, then check mechanically that it changed nothing it was told not to.
 #
 # The model works on a COPY in a scratch sandbox and never sees this repo, so a
 # bad run cannot dirty the tree. Review the diff, then apply it yourself.
 #
-#     tools/kimi_pass.sh src/edition.h
-#     tools/kimi_pass.sh src/edition.h --apply     # copy result over the source
+#     tools/comment_pass.sh src/edition.h
+#     tools/comment_pass.sh src/edition.h --apply    # copy result over the source
+#     tools/comment_pass.sh src/main.cpp --lines 1,832
+#     PASS_MODEL=ollama-cloud/kimi-k2.7-code tools/comment_pass.sh src/game.cpp
 #
-# Guards, all of which have caught something or exist because something was
-# missed: C++ code identical, indented code samples identical (kimi stripped
-# semicolons out of quoted Pascal on the first run), and every address, hex
-# literal and bare number still present.
+# Two models have been used on this codebase and they behave very differently.
+# `deepseek-v4-flash` is the default because it does one job exactly: it lowers
+# capitals used as emphasis and touches nothing else - 192 changed lines across
+# board_test.cpp without moving a brace, a backtick or a proper noun.
+# `kimi-k2.7-code` is more ambitious and will restructure a tangled paragraph,
+# rewrap, and backtick bare addresses correctly; it also, over one sweep,
+# deleted a statement, deleted a comment block, stripped 102 backticks and
+# once reported an edit it had not made. Pick by the job: kimi when prose
+# genuinely needs rewriting, deepseek to finish.
+#
+# Either way the guards below are the reason this is safe to run at all. Every
+# one exists because something got through: C++ code identical, indented code
+# samples identical, addresses and numbers preserved, backticks not stripped,
+# ASCII only, and no capitalised proper noun lost to the de-shouting.
 
 set -uo pipefail
 
-MODEL=${KIMI_MODEL:-ollama-cloud/kimi-k2.7-code}
+MODEL=${PASS_MODEL:-ollama-cloud/deepseek-v4-flash:0731}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-BRIEF="$ROOT/tools/kimi_brief.txt"
-SANDBOX=${KIMI_SANDBOX:-/tmp/kimi-pass}
+BRIEF="$ROOT/tools/comment_brief.txt"
+SANDBOX=${PASS_SANDBOX:-/tmp/comment-pass}
 
 SRC=""; APPLY=""; RANGE=""
 while [ $# -gt 0 ]; do
@@ -272,7 +284,7 @@ PY
     fi
 fi
 
-# 5. prose score, punctuation rules deliberately not counted
+# 9. prose score, punctuation rules deliberately not counted
 LINT="$ROOT/tools/comment_lint.py"
 if [ -f "$LINT" ]; then
     echo "== prose score (PUN rules ignored by choice)"
