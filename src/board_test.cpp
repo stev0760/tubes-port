@@ -4,7 +4,7 @@
 // atom types, so the rules need testing directly.
 //
 // These were rewritten when Board became the original's three planes. The
-// difference is not cosmetic: a match no longer removes anything, it MARKS,
+// difference is not cosmetic: a match no longer removes anything, it marks,
 // and the marked cell then climbs one fade frame per step until it empties.
 // So a test that wants a cleared board has to step the board, not call a
 // "resolve" that runs to completion.
@@ -150,7 +150,8 @@ void testFadeEncoding() {
 
 void testFadeClearsAfterEightSteps() {
     tubes::Board b = make({"....", "....", "111."});
-    // 1 + 19*8 = 153, the first value above 152, so the eighth step empties it.
+    // 1 + 19*8 = 153, the first value above 152, so the eighth step empties
+    // it.
     for (int i = 0; i < 7; ++i) b.step();
     check(b.count() == 3, "still present after seven steps");
     check(b.at(0, 2) == 1 + 19 * 7, "at fade frame 7");
@@ -275,7 +276,7 @@ void testAwardByOrientation() {
 }
 
 void testDistinctRunsAreTheMultiplier() {
-    // The multiplier counts DISTINCT runs, not seeds, so a run of four is one
+    // The multiplier counts distinct runs, not seeds, so a run of four is one
     // run however many seed positions it has.
     tubes::Board four = make({".....", ".....", "1111."});
     check(four.step().runs == 1, "a run of four counts as one run");
@@ -313,7 +314,7 @@ void testInertSpecialsDoNotMatch() {
     check(markedAfterStep(split) == 0, "Xenon breaks a run rather than joining it");
 }
 
-// Flashium (8) is a wildcard, and in the original it ADOPTS: a Flashium seed
+// Flashium (8) is a wildcard, and in the original it adopts: a Flashium seed
 // becomes whatever the next non-empty cell is, and the run is that colour from
 // then on. That is `1000:1b53`, and it is why one Flashium can complete runs
 // of two different colours at once.
@@ -429,7 +430,7 @@ void testBlockerIsGated() {
 }
 
 void testConvertorConvertsByTypeBoardWide() {
-    // Stronger than the published description: it takes the type of the ONE
+    // Stronger than the published description: it takes the type of the one
     // cell below it and converts every atom of that type anywhere.
     tubes::Board b(6, 5);
     b.set(0, 4, tubes::kGreenium);
@@ -455,7 +456,7 @@ void testConvertorNeedsAnOrdinaryVictim() {
 
 void testSettledConsumablesGoInert() {
     // Bonus, Multiplier, EvilMultiplier and Filler do their work when the tube
-    // CATCHES them. Any that reach the glass are leftovers and turn to Xenon.
+    // catches them. Any that reach the glass are leftovers and turn to Xenon.
     tubes::Board b(6, 5);
     b.set(0, 4, tubes::kBonus);
     b.set(1, 4, tubes::kMultiplier);
@@ -492,7 +493,7 @@ void testSpeedBoostNeedsHolding() {
     // Column 6 lands at x=161, which is the tube's stop index 3; filling the
     // tube stops the atom being caught so it just descends.
     //
-    // It has to be measured ABOVE y = 50. Below that `1000:13ed` ignores the
+    // It has to be measured above y = 50. Below that `1000:13ed` ignores the
     // velocity entirely and falls a flat 9 px a frame, so a boost test down
     // there measures nothing - which is what the previous version of this test
     // did, at y = 70, and it passed by coincidence: the "boosted" 9 px a frame
@@ -531,7 +532,7 @@ void testBonusAtomIsFastByType() {
     a.velocity = 0x100;
     h.setAtom(1, a);
     for (int f = 0; f < 5; ++f) h.update(0, 1.0f / tubes::kFrameHz);
-    // 2 + 9*4: the reload happens at the END of the router, so the first frame
+    // 2 + 9*4: the reload happens at the end of the router, so the first frame
     // still runs at whatever the record held and every frame after is fast.
     // The same one-frame lag is in the original and is not worth hiding.
     check(h.atom(1).y - 5 == 38, "a Bonus atom runs at 9 px a frame unprompted");
@@ -543,7 +544,7 @@ void testBonusAtomIsFastByType() {
 // its slot. Column 6 descends to x=161, which is the tube's stop index 3, so
 // parking the tube there is what makes the catch fire.
 //
-// The frames matter now. A catch puts the atom at the MOUTH and it slides down
+// The frames matter now. A catch puts the atom at the mouth and it slides down
 // at 9 px a frame; the special does not fire until it arrives, and the arrival
 // flag is read on the frame after it is set. Fifteen frames covers the longest
 // slide (mouth to slot 1) comfortably. Nothing spawns in that window - the
@@ -575,7 +576,7 @@ void tipOnce(tubes::Game& g) {
 
 void testBonusCatchPaysAndGrows() {
     // 1000:07db. The caught atom becomes Flashium, the drop pool gains one,
-    // and the award is a word of its own that GAINS 1000 each time and is then
+    // and the award is a word of its own that gains 1000 each time and is then
     // paid whole - so the second Bonus of a session is worth 2000.
     tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
     catchOne(g, tubes::kBonus, {});
@@ -628,8 +629,8 @@ void testEvilMultiplierFillsWithXenon() {
 
 void testFillerParksAnImmovableAtom() {
     // 1000:0b55 shifts slots 5 downto 2 up by one and writes type 17 into slot
-    // 1, without touching the count. The Filler itself is at slot[count] and is
-    // what falls off the top, so the tube keeps its depth and loses a slot.
+    // 1, without touching the count. The Filler itself is at slot[count] and
+    // is what falls off the top, so the tube keeps its depth and loses a slot.
     tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
     catchOne(g, tubes::kFiller, {tubes::kRedium, tubes::kGreenium});
     check(g.tubeTypes() == std::vector<int8_t>({tubes::kObstacle,
@@ -639,7 +640,7 @@ void testFillerParksAnImmovableAtom() {
 
     // 1000:472a refuses to tip a 17, which is the whole of "permanently
     // reduces your capacity": the slot is dead for the rest of the session.
-    // A is NOT edge-detected - `1000:4511` only gates it on the tube being
+    // A is not edge-detected - `1000:4511` only gates it on the tube being
     // idle - so holding it tips once every six frames.
     for (int i = 0; i < 3; ++i) tipOnce(g);
     check(g.tubeTypes() == std::vector<int8_t>{tubes::kObstacle},
@@ -690,7 +691,7 @@ void testTipRunsFourPhasesOverSixFrames() {
     g.setTubeColumn(3);
     g.setTubeAtoms({tubes::kRedium, tubes::kGreenium});
 
-    // Sampled AFTER each step, which is where the original's draw sits - the
+    // Sampled after each step, which is where the original's draw sits - the
     // animation runs in the input section and the frame is drawn below it.
     const uint8_t want[6] = {1, 2, 2, 3, 3, 1};
     bool phasesOk = true;
@@ -724,7 +725,7 @@ void testTipMovesTheContents() {
 }
 
 void testCaughtAtomSlidesToItsSlot() {
-    // A catch lands at the MOUTH and descends 9 px a frame; the special does
+    // A catch lands at the mouth and descends 9 px a frame; the special does
     // not fire until it arrives. The port used to teleport it into place.
     tubes::Game g(6, 5, tubes::Difficulty::k101, 5);
     g.setTubeColumn(3);
@@ -740,7 +741,8 @@ void testCaughtAtomSlidesToItsSlot() {
     g.update(0, 1.0f / tubes::kFrameHz);
     check(g.tubeAtoms().size() == 1, "the atom is caught");
     // 55 + 9 = 64, inside the 60..70 window, and the slide then takes it on to
-    // 73 on the very same frame - the tube's slot loop runs after the network's.
+    // 73 on the very same frame - the tube's slot loop runs after the
+    // network's.
     check(g.tubeAtoms()[0].y == 73 && !g.tubeAtoms()[0].arrived,
           "and starts sliding rather than appearing in its slot");
     for (int f = 0; f < 6; ++f) g.update(0, 1.0f / tubes::kFrameHz);
@@ -782,7 +784,7 @@ uint8_t pixelAt(const tubes::Screen& s, int x, int y) {
 
 void testTextColourWalksDownTheCell() {
     // `2000:35ec` adjusts the colour after every scanline, so a glyph is a
-    // vertical gradient off one index. Mode 1 counts DOWN, which is what the
+    // vertical gradient off one index. Mode 1 counts down, which is what the
     // HUD uses - the palette holds a cyan ramp at 112..127 and 127 is its
     // darkest end, so the digits brighten toward the bottom.
     tubes::Screen s;
@@ -804,7 +806,7 @@ void testTextColourWalksDownTheCell() {
 }
 
 void testTextPeakMode() {
-    // Mode 3 compares the DOWN-counting row index against the turning point,
+    // Mode 3 compares the down-counting row index against the turning point,
     // so the peak is measured from the bottom of the cell. With cellH 4 and a
     // turning point of 3, rows 4 counts as above it and 3, 2, 1 below.
     tubes::Screen s;
@@ -922,7 +924,7 @@ void testMissedBonusCostsNothing() {
 }
 
 void testFlashiumCyclesEveryFourFrames() {
-    // Type 8 has NO SPRITE. `1000:486b` rewrites its slot in the ball table
+    // Type 8 has no sprite. `1000:486b` rewrites its slot in the ball table
     // from one of the seven colours instead, advancing every fourth frame -
     // the counter starts at 1 and fires when it reaches 5. Drawn as itself a
     // Flashium is invisible, which is what the phantom ball in the test tube
@@ -1030,7 +1032,7 @@ void testSfxVoiceIsSingle() {
 void testTurboPascalRandom() {
     // `2000:75bb` is `RandSeed := RandSeed * $08088405 + 1`, and `2000:755e`
     // takes the top 32 bits of the 48-bit product `RandSeed * n`. That is a
-    // scaled fraction of the range, NOT a modulus, so it is a different
+    // scaled fraction of the range, not a modulus, so it is a different
     // sequence from the same seed - which is exactly why the port's old
     // xorshift could never have replayed a demo.
     //
@@ -1074,7 +1076,7 @@ void testScrHeader() {
 void testFirstDispenseIsImmediate() {
     // `1000:3be0` seeds the dispenser countdown with 1, not with the interval,
     // as the last act of the session setup. The tick is `Dec; if = 0 then
-    // dispense`, so the first atom appears on frame ZERO.
+    // dispense`, so the first atom appears on frame zero.
     //
     // Seeding it with the interval instead delayed the first dispense by a
     // whole period, which slid a replayed recording out of step with the game
@@ -1089,10 +1091,10 @@ void testFirstDispenseIsImmediate() {
 }
 
 void testInputIsReadOnlyWhileTheTubeIsIdle() {
-    // `1000:44f0` jumps past the whole input block when the tube's state is not
-    // 0, so the input driver is never CALLED on a frame where the tube is
-    // sliding or tipping. In demo playback that driver IS the recording, so a
-    // `.SCR` holds one byte per IDLE frame - which is what `acceptsInput`
+    // `1000:44f0` jumps past the whole input block when the tube's state is
+    // not 0, so the input driver is never called on a frame where the tube is
+    // sliding or tipping. In demo playback that driver is the recording, so a
+    // `.SCR` holds one byte per idle frame - which is what `acceptsInput`
     // exists to let the replay honour.
     tubes::Game g(6, 5, tubes::Difficulty::k301, 0x322d385eu);
     check(g.acceptsInput(), "a parked tube accepts input");
@@ -1113,7 +1115,7 @@ void testInputIsReadOnlyWhileTheTubeIsIdle() {
 }
 
 void testEnduranceRampStepsOnMatches() {
-    // `1000:235c`. The game speeds up as you CLEAR - not with time, and not
+    // `1000:235c`. The game speeds up as you clear - not with time, and not
     // with atoms dispensed. Every fifth match drops the dispense interval by
     // five frames; every tenth adds 0x20 to the network velocity and hands the
     // five frames back, so the net shape is -5 frames per ten matches.
@@ -1133,7 +1135,7 @@ void testEnduranceRampStepsOnMatches() {
     check(g.networkVelForTest() == vel0, "and leaves the velocity alone");
 
     // A frame with no runs must not re-fire the crossing, and must not clear
-    // the latch either - the latch is cleared by the counter MOVING OFF a
+    // the latch either - the latch is cleared by the counter moving off a
     // multiple of five, which a runless frame does not do.
     g.stepRampForTest(0);
     check(g.spawnIntervalForTest() == 45, "a runless frame does not step it");
@@ -1150,16 +1152,16 @@ void testEnduranceRampStepsOnMatches() {
 }
 
 void testEnduranceRampCountsPerRunNotPerFrame() {
-    // The ramp body is a LOOP over the run count: `1000:240a` decrements it and
-    // `1000:240d` jumps back to the `runs >= 1` test, falling through to the
-    // score multiplier only at zero. So a frame that forms five runs steps the
-    // counter five times, not once.
+    // The ramp body is a loop over the run count: `1000:240a` decrements it
+    // and `1000:240d` jumps back to the `runs >= 1` test, falling through to
+    // the score multiplier only at zero. So a frame that forms five runs steps
+    // the counter five times, not once.
     //
     // That is easy to get wrong - the first transliteration hung the body off
     // `if runs >= 1` - and the cost is invisible for thousands of frames. Runs
-    // are counted once per SEED, so a line of four pays twice and simultaneous
-    // runs in different orientations each count, which means one good clear can
-    // walk the counter through a crossing on its own.
+    // are counted once per seed, so a line of four pays twice and simultaneous
+    // runs in different orientations each count, which means one good clear
+    // can walk the counter through a crossing on its own.
     tubes::Game one(6, 5, tubes::Difficulty::k301, 0x322d385eu);
     one.stepRampForTest(5);
     check(one.spawnIntervalForTest() == 45,
@@ -1170,7 +1172,7 @@ void testEnduranceRampCountsPerRunNotPerFrame() {
     check(five.spawnIntervalForTest() == one.spawnIntervalForTest(),
           "and land where five single-run frames do");
 
-    // Ten runs at once must hit BOTH arms, cancelling on the interval and
+    // Ten runs at once must hit both arms, cancelling on the interval and
     // leaving the velocity raised - a counter that only advanced once would
     // reach neither.
     tubes::Game ten(6, 5, tubes::Difficulty::k301, 0x322d385eu);
@@ -1184,10 +1186,11 @@ void testEnduranceRampCountsPerRunNotPerFrame() {
 void testTipSkipsFiveFramesOfInput() {
     // How long the tube is busy is how many bytes of a recording get skipped,
     // so the tip's length is load-bearing for the replay and not just for the
-    // animation. `1000:463a`: a 2-frame divider steps a phase that starts at 1,
-    // and `1000:4701` hands the state back on the frame the phase reaches 4.
+    // animation. `1000:463a`: a 2-frame divider steps a phase that starts at
+    // 1, and `1000:4701` hands the state back on the frame the phase reaches
+    // 4.
     //
-    // That is six frames in state 3 - but only FIVE frames of skipped input.
+    // That is six frames in state 3 - but only five frames of skipped input.
     // The press frame still reads a byte, because the input block runs before
     // the state machine that puts the tube into state 3. Counting the press
     // frame as skipped is an easy off-by-one and it is the wrong number.
@@ -1209,7 +1212,7 @@ void testTipSkipsFiveFramesOfInput() {
 // Wave mode: the table, the seeds and the objective hook.
 //
 // The oracle here is the old level-warp sweep, which read nine briefings out
-// of the running game before any of this was decompiled. It warped ONE save,
+// of the running game before any of this was decompiled. It warped one save,
 // so every sample saw that save's counters - and since wave 6 said 30 atoms,
 // wave 20 said 3 marked and wave 50 said 1 crystal, those counters were
 // sitting at exactly the new-game seeds. That is what makes the comparison
@@ -1288,7 +1291,7 @@ void testSeedsProduceTheSampledCounts() {
     check(w50.first.counter == 1, "wave 50 asks for 1 Mischief Crystal");
     check(w50.second.crystals == 1, "the crystal count is stepped by the briefing");
 
-    // The orientation-only waves read the OTHER chain target, seeded at 3.
+    // The orientation-only waves read the other chain target, seeded at 3.
     check(brief(13).first.counter == 3, "wave 13 asks for 3 horizontal chains");
     check(brief(13).first.mode == WaveMode::kOrientation, "wave 13 is mode 2");
 }
@@ -1363,7 +1366,7 @@ void testTaskRotationWrapsAndPicksItsClock() {
     check(obj.reqColour == kRedium, "the colour wraps 7 -> 1 after a task");
     check(task.colour == kRedium, "and the Task Display follows it");
 
-    // The same wave on the 45-second clock rotates on the timer INSTEAD, not
+    // The same wave on the 45-second clock rotates on the timer instead, not
     // as well - that is the only difference between the two template pairs.
     obj.rotateOnTimer = true;
     obj.reqColour = kRedium;
@@ -1455,7 +1458,7 @@ void testEveryWaveHasAnArm() {
 void testAWaveCountsDownThroughTheGame() {
     using namespace tubes;
     // Wave 5 is "form 3 vertical chains using any atoms" - mode 2, the
-    // orientation-only arm, whose target is the OTHER chain counter, seeded 3.
+    // orientation-only arm, whose target is the other chain counter, seeded 3.
     Game g(6, 5, Difficulty::k101, 12345u);
     g.startWave();                     // progress starts on wave 1
     check(g.waveMode() == WaveMode::kColour, "wave 1 is a colour-mode wave");
@@ -1487,7 +1490,7 @@ void testAWaveCountsDownThroughTheGame() {
 void testRunOfFourTicksTheObjectiveTwice() {
     using namespace tubes;
     // `1000:192f` is called from the same unconditional path as the award, so
-    // it fires once per SEED. Two of this project's worst bugs were "once per
+    // it fires once per seed. Two of this project's worst bugs were "once per
     // event" assumptions, so this is the check that says which it is.
     Game g(6, 5, Difficulty::k101, 999u);
     while (g.progress().wave < 5) g.advanceWave();
@@ -1516,14 +1519,14 @@ void testSurviveWaveCountsAtomsDispensed() {
     // The first dispense is on frame zero, so one step is one atom.
     g.stepOnce(0);
     check(g.objective().counter == before - 1, "an atom dispensed ticks it down");
-    // The two counters are seeded alike and MOVE APART, which is the whole
+    // The two counters are seeded alike and move apart, which is the whole
     // point: `1000:4b3b` spends one at the dispenser and `1000:17b4` spends
     // the other when the atom lands.
     check(g.atomsInPlay() == 30, "but the in-play count does not follow it");
 }
 
 // The bug a player reported: a "survive 30 atoms" wave ended the moment the
-// thirtieth atom was DISPENSED, with atoms still in the air.
+// thirtieth atom was dispensed, with atoms still in the air.
 void testSurviveWaveWaitsForTheLastAtomToLand() {
     using namespace tubes;
     Game g(6, 5, Difficulty::k101, 7u);
@@ -1563,7 +1566,7 @@ void testSurviveWaveWaitsForTheLastAtomToLand() {
         ++frames;
     }
     check(!g.waveComplete(), "the frame the count empties still holds it open");
-    // `1000:159a` puts TWO on the clear timer as the count empties, and
+    // `1000:159a` puts two on the clear timer as the count empties, and
     // `1000:5d3c` steps one off in the same frame's tail - so one is left.
     // Asserting the residue rather than "two frames later" is deliberate: the
     // atoms that land at the end of a wave often form a chain, and that
@@ -1632,7 +1635,7 @@ void testEnduranceIgnoresAllOfIt() {
 void testPreFilledBeakerIsEightRoundRobin() {
     using namespace tubes;
     // `1000:035e`. Eight atoms, one per column round robin from a random
-    // start, coloured `n mod 7 + 1` counting DOWN from 8: 2 1 7 6 5 4 3 2.
+    // start, coloured `n mod 7 + 1` counting down from 8: 2 1 7 6 5 4 3 2.
     Board b(6, 5);
     FixedRolls roll{{0}};                    // start at column 0
     seedPreFilledBeaker(b, 8, std::ref(roll));
@@ -1670,7 +1673,7 @@ void testMarkedAtomsAreFlaggedAndCanBeCovered() {
         for (int c = 0; c < 6; ++c) if (xenon.typeAt(c, r) == kXenon) ++xenons;
     check(xenons == 8, "the Xenon variant rings them with eight Xenons");
 
-    // The two modifier loops SHARE one counter seeded 8, so asking for both
+    // The two modifier loops share one counter seeded 8, so asking for both
     // gets eight in total, not sixteen. That is the original's own bug and it
     // is transliterated rather than tidied.
     Board both(6, 5);
@@ -1778,13 +1781,13 @@ void testCrystalTeleportsOutAndBackIn() {
     check(stepCrystals(b, xs, 50, std::ref(roll)), "the seventh step lands it");
     check(!x.departing && x.arriving, "and turns the fade around");
     check(x.col == x.destCol && x.row == x.destRow, "the record moved with it");
-    // 151 = 18 + 19*7, the LAST frame of CRFADE - it walks back from there.
+    // 151 = 18 + 19*7, the last frame of CRFADE - it walks back from there.
     check(b.at(x.col, x.row) == kCrystal + kFadeStride * 7,
           "it arrives on the last fade frame");
     check(!b.isMarked(x.col, x.row), "with the destination unmarked");
 
     // Seven steps of 19 walk 151 back to 18, and the flag clears on the frame
-    // AFTER that - the test is `if cell = 18 then arriving := false`, so it
+    // after that - the test is `if cell = 18 then arriving := false`, so it
     // costs one more tick to notice.
     for (int i = 0; i < 7; ++i) stepCrystals(b, xs, 50, std::ref(roll));
     check(b.typeAt(x.col, x.row) == kCrystal, "and walks back to the static sprite");
@@ -1821,7 +1824,7 @@ void testCrystalGoesOnlyToAntiMatter() {
     for (int i = 0; i < 4; ++i) g.stepOnce(0);
     check(g.objective().counter == 0, "AntiMatter is the only thing that removes one");
 
-    // And the wave then ENDS. Asserted because the marked-atom bug was exactly
+    // And the wave then ends. Asserted because the marked-atom bug was exactly
     // this gap - a counter that moved with nothing behind it - and a mode is
     // only proved passable by the wave completing, not by the count reaching
     // zero.
@@ -1876,7 +1879,7 @@ void testCrystalRecordFollowsItsCellDown() {
 void testTaskDisplayCyclesWhenNothingIsRequired() {
     using namespace tubes;
     // `1000:48ab`, on the four-frame Flashium tick. A wave that names no
-    // colour points its Task Display at the SAME cycling value Flashium uses,
+    // colour points its Task Display at the same cycling value Flashium uses,
     // which is the rotating counter the wave 6 sampling measured.
     WaveObjective any;
     any.mode = WaveMode::kColour;
@@ -1891,7 +1894,7 @@ void testTaskDisplayCyclesWhenNothingIsRequired() {
     tickTaskDisplay(any, t, kCyanium);
     check(t.chain == chaincode::kDiagonal, "and wraps back to diagonal");
 
-    // A wave that DOES name one keeps it, and its chain picture holds still.
+    // A wave that does name one keeps it, and its chain picture holds still.
     WaveObjective named;
     named.mode = WaveMode::kColour;
     named.reqColour = kPurplium;
@@ -1921,7 +1924,7 @@ void testTaskDisplayCyclesWhenNothingIsRequired() {
 void testHiddenAtomsConcealButDoNotChangeAnything() {
     using namespace tubes;
     // `-0x189`. Six draw sites in `1000:3a67` swap MYSTBALL in for the real
-    // ball, and they are the six NETWORK records - not the tube's contents,
+    // ball, and they are the six network records - not the tube's contents,
     // not records 7..12, not the beaker. So it is pure presentation: the atom
     // keeps its type all the way through and the concealment ends on the
     // catch, which is what "hidden until they leave a tube" means.
@@ -1957,7 +1960,7 @@ void testHiddenAtomsConcealButDoNotChangeAnything() {
 // nothing wired to it - `Board` counted into a member that nothing read.
 //
 // Played end to end rather than asserted on the counter alone, because the
-// unfinishable half is what was actually wrong: the wave has to COMPLETE.
+// unfinishable half is what was actually wrong: the wave has to complete.
 void testMarkedWaveCanBeFinished() {
     using namespace tubes;
 
@@ -2006,7 +2009,7 @@ void testMarkedWaveCanBeFinished() {
     check(g.objective().counter == 0, "clearing the markers empties the counter");
     check(g.waveComplete(), "and wave 8 completes - it never could before");
 
-    // Then every OTHER marked wave in the table, plain, covered and
+    // Then every other marked wave in the table, plain, covered and
     // Xenon-ringed alike: 8, 16, 20, 28, 38, 41, 51, 58 and 64. The bug was
     // one dead counter, so it took out all nine at once, and a fix checked on
     // one of them would not have said so.
@@ -2123,7 +2126,7 @@ void testABinDumpLoadsItsRowsAndLeavesTheRestBlank() {
 // which answer is marked, and whether the marking agrees with the argument.
 void testTheEditionPromptMarksExactlyTheChosenAnswer() {
     using tubes::kEditionAnswers;
-    // The labels are CENTRED in a bevelled button now, not written at a fixed
+    // The labels are centred in a bevelled button now, not written at a fixed
     // column, so a test reads the row back rather than indexing into it.
     auto rowText = [](const tubes::TextScreen& ts, int row) {
         std::string out;
@@ -2143,9 +2146,9 @@ void testTheEditionPromptMarksExactlyTheChosenAnswer() {
                   "each answer is on the row its index names");
         }
 
-        // The selection is carried by the label's ATTRIBUTE - `SETUP.EXE` lights
-        // the chosen button's text and dims the rest, rather than moving a
-        // cursor glyph. So exactly one label must be lit.
+        // The selection is carried by the label's attribute - `SETUP.EXE`
+        // lights the chosen button's text and dims the rest, rather than
+        // moving a cursor glyph. So exactly one label must be lit.
         int lit = 0, litRow = -1;
         for (int i = 0; i < kEditionAnswers; ++i) {
             const int row = tubes::editionAnswerRow(i);
@@ -2162,7 +2165,7 @@ void testTheEditionPromptMarksExactlyTheChosenAnswer() {
               "and it is the one that was asked for");
 
         // The right pane must agree with the left. It is the only thing on the
-        // screen that says what the choice MEANS, so a pane describing the
+        // screen that says what the choice means, so a pane describing the
         // other edition would be worse than no pane at all.
         std::string pane;
         for (int row = 0; row < tubes::kTextRows; ++row) pane += rowText(ts, row);
@@ -2195,19 +2198,20 @@ void testTheEditionPromptMarksExactlyTheChosenAnswer() {
           "the row an edition names is the row it is drawn on");
 }
 
-// The picker borrows `SETUP.EXE`'s look, and this is what stops that claim from
-// drifting: every attribute it writes must be one the installer itself writes.
+// The picker borrows `SETUP.EXE`'s look, and this is what stops that claim
+// from drifting: every attribute it writes must be one the installer itself
+// writes.
 //
 // The reference set is not a judgement call - `SETUP.EXE` was run under
-// DOSBox-X and its text memory read back from 0xB8000, and these eleven are all
-// it uses on that screen. A new colour appearing here means either the styling
-// has wandered off the original's palette or the reference needs re-taking, and
-// both are worth stopping for. It is the same standard the rest of the port
-// holds: the game data settles it, not taste.
+// DOSBox-X and its text memory read back from 0xB8000, and these eleven are
+// all it uses on that screen. A new colour appearing here means either the
+// styling has wandered off the original's palette or the reference needs
+// re-taking, and both are worth stopping for. It is the same standard the rest
+// of the port holds: the game data settles it, not taste.
 void testTheEditionPromptStaysInsideSetupsPalette() {
     // 0x07 is in the installer's dump too, on a single cell it leaves behind
-    // from the DOS screen underneath; it is not part of the design, so the port
-    // deliberately does not use it and it is not listed.
+    // from the DOS screen underneath; it is not part of the design, so the
+    // port deliberately does not use it and it is not listed.
     const uint8_t kSetupAttrs[] = {
         0x70,  // black on light grey   - the field
         0x7F,  // white on grey         - a bevel's lit edge, and value text
@@ -2220,7 +2224,7 @@ void testTheEditionPromptStaysInsideSetupsPalette() {
         0x00,  // black on black        - the drop shadow
         0x10,  // black on blue         - blank cells inside the title block
     };
-    // Aggregated to ONE check per screen rather than one per cell: 4,000
+    // Aggregated to one check per screen rather than one per cell: 4,000
     // identical assertions would drown the suite's count without saying more
     // than "some cell is wrong", and the count is a number this project reads.
     for (int sel = 0; sel < tubes::kEditionAnswers; ++sel) {
@@ -2303,7 +2307,7 @@ void testGlyphsRenderForegroundOverBackground() {
           "and its right five are foreground - MSB is leftmost");
 }
 
-// Attribute bit 7 is BLINK, not a fifth background bit. Nothing in
+// Attribute bit 7 is blink, not a fifth background bit. Nothing in
 // `TUBESEND.BIN` sets it, but honouring it would silently pick a background
 // from the bright eight and change colours that are not supposed to move.
 void testTheBlinkBitDoesNotBecomeABrightBackground() {
@@ -2324,7 +2328,7 @@ void testTheBlinkBitDoesNotBecomeABrightBackground() {
 // brown, not dark yellow. Getting that wrong is invisible until something
 // actually uses it.
 void testTheTextPaletteIsTheEgaOneIncludingBrown() {
-    // The TABLE is 6-bit DAC units, which is what the hardware holds and what
+    // The table is 6-bit DAC units, which is what the hardware holds and what
     // the game's own `.PAL` resources are in.
     const uint8_t (*t)[3] = tubes::kTextPalette;
     check(t[0][0] == 0 && t[0][1] == 0 && t[0][2] == 0, "0 is black");
@@ -2334,7 +2338,7 @@ void testTheTextPaletteIsTheEgaOneIncludingBrown() {
           "6 is brown, not dark yellow");
     check(t[14][0] == 63 && t[14][1] == 63 && t[14][2] == 21, "14 is yellow");
 
-    // But `textPalette()` returns a `Palette`, and a `Palette` is EXPANDED -
+    // But `textPalette()` returns a `Palette`, and a `Palette` is expanded -
     // "a 256-entry RGB palette expanded from the 6-bit VGA values", per gfx.h.
     // Returning the raw table here was the exit screen's flicker: the callers
     // expanded it themselves, and that same expansion then hit `fadePalette`'s
@@ -2351,9 +2355,9 @@ void testTheTextPaletteIsTheEgaOneIncludingBrown() {
     check(expanded, "textPalette is that table expanded to 8 bits");
 }
 
-// THE FLICKER, as an invariant rather than a story. Six attempts blamed
+// The flicker, as an invariant rather than a story. Six attempts blamed
 // presentation - present rate, swap chains, vsync, texture access mode - and
-// none of them was it. It was arithmetic: `textPalette()` returned RAW 6-bit
+// none of them was it. It was arithmetic: `textPalette()` returned raw 6-bit
 // values in a `Palette`, which gfx.h defines as already expanded, so the two
 // text screens expanded it themselves - and that same expansion then hit
 // `fadePalette`'s output, which is 8-bit already. White came out
@@ -2361,7 +2365,7 @@ void testTheTextPaletteIsTheEgaOneIncludingBrown() {
 // twice over a 16-step fade. Hence "about twice, colours invert, then it
 // settles": the frame after the fade used the lit palette and was correct.
 //
-// What pins it is that THE FADE MUST END WHERE THE LIT SCREEN BEGINS. Any
+// What pins it is that the fade must end where the lit screen begins. Any
 // mismatch in scale between the two producers breaks that, whichever one is
 // wrong, and no amount of presentation tuning could have.
 void testTheTextFadeEndsExactlyOnTheLitPalette() {
@@ -2382,8 +2386,9 @@ void testTheTextFadeEndsExactlyOnTheLitPalette() {
     check(same, "the last fade step is already the lit palette");
 
     // And both are on the 8-bit scale, stated directly so the contract cannot
-    // be met by making BOTH of them 6-bit - which would satisfy the check
-    // above while leaving every text screen a quarter as bright as it should be.
+    // be met by making both of them 6-bit - which would satisfy the check
+    // above while leaving every text screen a quarter as bright as it should
+    // be.
     check(lit.rgb[15][0] == 255 && last.rgb[15][0] == 255,
           "white is 255 in both, so neither is raw 6-bit DAC units");
 }
@@ -2422,7 +2427,7 @@ void testTheBoxAndBlockGlyphsTile() {
     }
 }
 
-// The shareware title screen: the same page with TWO items inserted, at 3 and
+// The shareware title screen: the same page with two items inserted, at 3 and
 // at 8, so everything below each insertion shifts down.
 void testTheSharewareMenuInsertsTwoItems() {
     using namespace tubes;
@@ -2437,7 +2442,7 @@ void testTheSharewareMenuInsertsTwoItems() {
     for (int i = 0; i < 10; ++i) {
         check(std::string(sw.items[i]) == expect[i], "the shareware row reads right");
     }
-    // Everything ABOVE the first insertion is untouched, which is what makes
+    // Everything above the first insertion is untouched, which is what makes
     // this an insertion rather than a different page.
     for (int i = 0; i < 2; ++i) {
         check(std::string(sw.items[i]) == std::string(reg.items[i]),
@@ -2452,9 +2457,9 @@ void testTheSharewareMenuInsertsTwoItems() {
     }
 }
 
-// A ten-item page is centred differently from an eight-item one - `SetMenuPage`
-// lays out count+1 rows - so the layout must follow the edition or every row
-// lands in the wrong place.
+// A ten-item page is centred differently from an eight-item one -
+// `SetMenuPage` lays out count+1 rows - so the layout must follow the edition
+// or every row lands in the wrong place.
 void testTheSharewareMenuIsLaidOutForTenRows() {
     using namespace tubes;
     const int regBase = menuYBase(Page::kMain, Edition::kRegistered);
@@ -2542,9 +2547,9 @@ void testSharewareWithholdsTheTwoSpecialAtoms() {
 
 // Where the two editions' random sequences part company, and where they do
 // not. An earlier draft of edition.h claimed they never diverge, on the
-// grounds that both rolls are spent either way. Half right: the GATE roll
-// `Random(100)+1` is spent either way, but the FALLBACK `Random(8)+1` is spent
-// only when the special is REJECTED - so a rate of 0 spends strictly more
+// grounds that both rolls are spent either way. Half right: the gate roll
+// `Random(100)+1` is spent either way, but the fallback `Random(8)+1` is spent
+// only when the special is rejected - so a rate of 0 spends strictly more
 // calls than a rate of 25 or 50, and the sequences part at the first 9 or 10
 // the registered game would have granted.
 //
@@ -2569,8 +2574,8 @@ void testTheEditionsDivergeExactlyWhereTheSpecialsAre() {
     check(first < n, "normal shareware play does diverge from registered");
 }
 
-// But the DEMO is safe, and this is the assertion the `DEMO.SCR` oracle rests
-// on. In BOTH editions the demo plays with the rates ON: registered arms 6 and
+// But the demo is safe, and this is the assertion the `DEMO.SCR` oracle rests
+// on. In both editions the demo plays with the rates on: registered arms 6 and
 // 9 set 50 and 25 unconditionally, and the shareware's View Demo (arm 7) and
 // attract loop (arm 11) set the Preview flag, which restores exactly those.
 // So one recorded demo replays identically under either build - which is very
@@ -2594,7 +2599,7 @@ void testTheDemoRunsWithTheSameRatesInBothEditions() {
     check(same, "the demo makes the same random calls in the same order");
 }
 
-// And the types themselves DO differ, or the test above would be vacuous -
+// And the types themselves do differ, or the test above would be vacuous -
 // a shareware normal run must never dispense 9 or 10, and must still dispense
 // Flashium, because the fallback `Random(8)+1` includes 8.
 void testSharewareNeverDispensesNineOrTenButStillDispensesFlashium() {
@@ -2646,10 +2651,10 @@ void testThePreviewHasItsOwnFiveWaveList() {
     check(!anyShared, "no Preview wave is the wave that number gives normally");
 }
 
-// `Game::startWave` must consult `edition_` when picking the objective, not the
-// registered-only overload. This caught a real bug: `--shareware` and
-// `--preview` were applying the edition to the rates but then starting every wave
-// against the registered 75-arm table.
+// `Game::startWave` must consult `edition_` when picking the objective, not
+// the registered-only overload. This caught a real bug: `--shareware` and
+// `--preview` were applying the edition to the rates but then starting every
+// wave against the registered 75-arm table.
 void testGameStartWaveUsesTheEditionAwareObjectiveTable() {
     tubes::Game reg(6, 5, tubes::Difficulty::k101, 1);
     reg.applyEdition({tubes::Edition::kRegistered, false});
@@ -2670,20 +2675,20 @@ void testGameStartWaveUsesTheEditionAwareObjectiveTable() {
           "Preview wave 1 starts with kCrystals");
 }
 
-// The shareware's twenty-five waves ARE the registered's first twenty-five,
+// The shareware's twenty-five waves are the registered's first twenty-five,
 // which is why one `kWaveTable` serves both and normal shareware play needs no
 // table of its own.
 //
-// Proven off the two dispatches rather than assumed. `1000:86b8` registered and
-// `1000:7fc7` shareware call a briefing routine per arm, and the two arm lists
-// are isomorphic across waves 1..25 - fourteen distinct routines, every repeat
-// in the same place (9=1, 10=3, 11=4, 12=7, 15=3, 16=8, 17=7, 20=8, 22=13,
-// 23=4, 24=2) - with the string set behind each pair identical, 25 of 25. One
-// arm, wave 8's, is even at the same address in both images.
+// Proven off the two dispatches rather than assumed. `1000:86b8` registered
+// and `1000:7fc7` shareware call a briefing routine per arm, and the two arm
+// lists are isomorphic across waves 1..25 - fourteen distinct routines, every
+// repeat in the same place (9=1, 10=3, 11=4, 12=7, 15=3, 16=8, 17=7, 20=8,
+// 22=13, 23=4, 24=2) - with the string set behind each pair identical, 25 of
+// 25. One arm, wave 8's, is even at the same address in both images.
 //
-// This test states the consequence the port relies on. If a future session ever
-// concludes that shareware needs its own wave table, this is the assertion that
-// has to be argued with first.
+// This test states the consequence the port relies on. If a future session
+// ever concludes that shareware needs its own wave table, this is the
+// assertion that has to be argued with first.
 void testSharewareWavesAreTheRegisteredFirstTwentyFive() {
     tubes::EditionState reg{tubes::Edition::kRegistered, false};
     tubes::EditionState sw{tubes::Edition::kShareware, false};
@@ -2697,18 +2702,18 @@ void testSharewareWavesAreTheRegisteredFirstTwentyFive() {
     check(reg.endingWave() == 75, "registered ends at wave 75");
 }
 
-// The one edition rule that is the PORT'S and not the original's: the two
+// The one edition rule that is the port's and not the original's: the two
 // editions must never write the same file.
 //
 // Both original builds write `TUBES.SAV` and `TUBES.HSC`, and could, being
 // separate installs. One binary that is either edition cannot, and the formats
 // make it dangerous rather than untidy - they are identical, so a 25-wave
-// shareware save is a structurally valid registered save and a cross-load looks
-// like nothing at all. `TUBES.RES` is byte-identical between the editions too,
-// so there is nothing to detect: the edition is the port's flag and so is the
-// separation.
+// shareware save is a structurally valid registered save and a cross-load
+// looks like nothing at all. `TUBES.RES` is byte-identical between the
+// editions too, so there is nothing to detect: the edition is the port's flag
+// and so is the separation.
 //
-// What this test protects is the registered side staying EXACTLY as it was. A
+// What this test protects is the registered side staying exactly as it was. A
 // registered install must see the files the original wrote, unchanged and
 // unrenamed; only the shareware names are the port's invention.
 void testTheEditionsNeverWriteTheSameFile() {
@@ -2731,7 +2736,7 @@ void testTheEditionsNeverWriteTheSameFile() {
           "the shareware save and score files are two files");
 
     // The Preview picks up the shareware names but must never reach a write:
-    // that guard is the ORIGINAL's, at `1000:5ed0` and `1000:9fb9`.
+    // that guard is the original's, at `1000:5ed0` and `1000:9fb9`.
     tubes::EditionState pv{Edition::kShareware, true};
     check(!pv.canSave() && !pv.canEnterHiScore(),
           "a Preview run writes neither file");
@@ -2765,7 +2770,7 @@ void testTheEditionsDifferInWaveAndBackgroundCounts() {
 // consequence of anything else, so both are asserted.
 // The end-of-game test is the same instruction in the same place in both
 // builds with a different literal - CMP 0x4b registered, CMP 0x19 shareware -
-// and a different destination. The destinations are NOT interchangeable: the
+// and a different destination. The destinations are not interchangeable: the
 // shareware image contains none of the registered ending's text.
 // The two editions' end screens are different data and must never be
 // substituted for one another - neither image contains the other's text.
@@ -2933,7 +2938,7 @@ void testMainMenuRemembersItsRow() {
     m.select();
     check(m.page() == tubes::Page::kOptions, "on Game Options");
     check(m.item() == 1, "a submenu starts at item 1");
-    // Exit is the LAST row, wherever the port's extra row has pushed it - it
+    // Exit is the last row, wherever the port's extra row has pushed it - it
     // was item 4 before the graphics row went in and is item 5 now.
     const int exitRow = tubes::menuPage(tubes::Page::kOptions).count;
     for (int i = 1; i < exitRow; ++i) m.moveDown();
@@ -2997,7 +3002,7 @@ void testInformationalItemsReturnTheirNumber() {
         check(r == want[k], "and it is the arm 1000:b23e dispatches on");
     }
     // View Demo and the attract timeout are one path in `1000:b264`/`b287`,
-    // but they are NOT the same value - 6 comes from the menu and 9 from the
+    // but they are not the same value - 6 comes from the menu and 9 from the
     // timeout, and only 9 runs the cutscene first.
     check(static_cast<int>(tubes::MenuResult::kViewDemo) !=
               static_cast<int>(tubes::MenuResult::kAttract),
@@ -3007,7 +3012,7 @@ void testInformationalItemsReturnTheirNumber() {
 
 // ---- `TUBES.HSC`, `1000:96db` --------------------------------------------
 
-// The format was read off ONE captured file, so the strongest check available
+// The format was read off one captured file, so the strongest check available
 // is that encoding the shipped defaults reproduces the layout that file has -
 // and that a decode/encode round trip is byte-identical.
 // Control bindings. Not a transliteration - see input.h - so what is tested is
@@ -3046,7 +3051,7 @@ void testTheWave75EndingAndItsHop() {
 
     check(kEndingWave == 75, "the ending is wave 75");
     // `1000:a657` is `CMP ..., 0x4b` then `JC`, i.e. an unsigned >=, and it
-    // runs BEFORE the increment - so it is the wave just cleared that counts.
+    // runs before the increment - so it is the wave just cleared that counts.
     check(74 < kEndingWave, "wave 74 does not reach it");
     check(75 >= kEndingWave, "wave 75 does");
 
@@ -3084,7 +3089,8 @@ void testTheWave75EndingAndItsHop() {
 void testTheProjectorScreenRollsDownAndBouncesOnce() {
     using namespace tubes;
 
-    // Twelve even steps of 11, then the resting height, an overshoot, and back.
+    // Twelve even steps of 11, then the resting height, an overshoot, and
+    // back.
     bool even = true;
     for (int i = 0; i < 12; ++i) {
         if (kRollDown[i] != 11 * (i + 1)) even = false;
@@ -3093,7 +3099,7 @@ void testTheProjectorScreenRollsDownAndBouncesOnce() {
     check(kRollDown[12] == kFrameH, "step 13 reaches the resting height");
     check(kRollDown[13] > kFrameH, "step 14 overshoots it");
     check(kRollDown[14] == kFrameH, "and step 15 comes back to rest");
-    // `1b2e:0656` redraws the scene by reading `DS:0xbba`, which IS the last
+    // `1b2e:0656` redraws the scene by reading `DS:0xbba`, which is the last
     // entry - so the two numbers cannot drift apart.
     check(kRollDown[kRollDownFrames - 1] == kFrameH,
           "the table's tail is the height the scene rests at");
@@ -3120,7 +3126,7 @@ void testTheProjectorScreenRollsDownAndBouncesOnce() {
 }
 
 // `1b2e:0cd1` then `1b2e:0e37`. What is easy to get wrong here is that the
-// talk's parameter counts BURSTS of 4..7 mouths, not mouths - so a slide's 35
+// talk's parameter counts bursts of 4..7 mouths, not mouths - so a slide's 35
 // is 16..28 seconds rather than four.
 void testTheProfessorTalksBeforeHeWaves() {
     using namespace tubes;
@@ -3171,7 +3177,8 @@ void testTheProfessorTalksBeforeHeWaves() {
     check(p.wave == 1, "and wraps back to the first");
     check(p.mouthFrame() == 0, "no mouth is stamped over a wave frame");
 
-    // The Continue screen has no talk at all - `1000:8c38` runs the wave alone.
+    // The Continue screen has no talk at all - `1000:8c38` runs the wave
+    // alone.
     ProfessorIdle q;
     q.restart(0, rng);
     check(q.mouthFrame() == 0, "a zero-burst screen never talks");
@@ -3180,7 +3187,7 @@ void testTheProfessorTalksBeforeHeWaves() {
 }
 
 // `1b2e:084e`. Two gates, and the one that matters is `DS:0x210f`: the roll is
-// one in twenty PER SLIDE, but the flag means at most one showing per run.
+// one in twenty per slide, but the flag means at most one showing per run.
 void testTheJokeSlideFiresAtMostOncePerRun() {
     using namespace tubes;
 
@@ -3255,7 +3262,7 @@ void testTheFadeRampEndsOnBlackAndOnThePalette() {
 // format description rather than read from the player's files - and the
 // player's real ones are diffed against `tools/anm_decode.py` with
 // `--dump-anm`, which is where the byte-for-byte agreement is proven.
-// The 0xE5 prefix is a header byte, NOT a layout marker - the routine that
+// The 0xE5 prefix is a header byte, not a layout marker - the routine that
 // draws the file decides. Getting that wrong is invisible to every size check
 // and showed up only as corrupted lettering on screen, which is why the rule
 // is pinned here.
@@ -3406,7 +3413,7 @@ void testSettingsRoundTrip() {
     decodeSettings("scale 40\n", wild);
     check(wild.graphics.scale == 0, "an out-of-range scale falls back to Fit");
 
-    // The edition. Its ABSENCE is the first-run state, so a settings file that
+    // The edition. Its absence is the first-run state, so a settings file that
     // predates the setting - which is every file written so far - must come
     // back unanswered rather than defaulting quietly to registered and never
     // asking.
@@ -3464,7 +3471,7 @@ void testDisplayOptions() {
           "and is dropped when the window cannot take it");
     g.scale = 0;
 
-    // The invariant: the picture is always a whole number of UNITS, at every
+    // The invariant: the picture is always a whole number of units, at every
     // window size the arithmetic can be asked about, so columns never come
     // out uneven. Rows are exact under square pixels only - the 4:3 stretch
     // spreads 200 source rows over 240 * s, which is the point of it.
@@ -3542,7 +3549,7 @@ void testPortGraphicsMenuRow() {
 
     // The extra row costs a layout shift, and this is where that is recorded:
     // `(180 - 26*6) div 2` is 12 where four rows gave 25, so every row on the
-    // page sits 13 pixels higher than the original's. This is the ONE menu
+    // page sits 13 pixels higher than the original's. This is the one menu
     // page the port does not render pixel-identically.
     check(tubes::menuYBase(Page::kOptions) == 12, "five rows start 13px higher");
     check(tubes::menuItemY(Page::kOptions, 1) == 38, "so row 1 is at 38");
@@ -3566,16 +3573,18 @@ void testPortGraphicsMenuRow() {
 }
 
 // `TUBES.SAV`. The record is sixteen stores in `1000:2dd0`'s save arm, so this
-// checks the BYTES at the documented offsets rather than restating the struct.
-// The real oracle is outside the tests, where it belongs: `--dump-save` decodes
-// the player's own file, re-encodes it and reports 0 of 960 bytes differing.
+// checks the bytes at the documented offsets rather than restating the struct.
+// The real oracle is outside the tests, where it belongs: `--dump-save`
+// decodes the player's own file, re-encodes it and reports 0 of 960 bytes
+// differing.
 void testSaveFileLayout() {
     tubes::SaveFile f;
     std::vector<uint8_t> raw = tubes::encodeSaves(f);
     check(raw.size() == 960, "the file is 960 bytes");
     check(tubes::kSaveBankBytes * 2 == 960, "two banks of 0x1e0");
     // `1b2e:000a` zero-fills before reading, so an untouched file is all
-    // zeroes and every slot reads as empty. A fresh install ships exactly that.
+    // zeroes and every slot reads as empty. A fresh install ships exactly
+    // that.
     bool allZero = true;
     for (uint8_t b : raw) allZero = allZero && b == 0;
     check(allZero, "an untouched file is all zeroes");
@@ -3630,7 +3639,7 @@ void testSaveFileLayout() {
 }
 
 // The nonce is not a checksum and not spare space: `1b2e:00ac` writes
-// Random(254)+1 into each bank at +0x1bb on every save, which is the SIXTH
+// Random(254)+1 into each bank at +0x1bb on every save, which is the sixth
 // record's interval byte.
 void testTheSaveNonceIsTheSixthRecordsIntervalByte() {
     tubes::SaveFile f;
@@ -3770,7 +3779,7 @@ void testTheEleventhSlotIsOverflowNotATableRow() {
           "the old slot 10 is pushed into slot 11, not off the end");
 }
 
-// `1000:9709` compares against slot 10, the lowest DISPLAYED entry - so a
+// `1000:9709` compares against slot 10, the lowest displayed entry - so a
 // score equal to it does not qualify, and one above it does.
 void testQualifyingTestsTheTenthNotTheEleventh() {
     tubes::HiScoreFile f = tubes::defaultHiScores();
@@ -3795,7 +3804,7 @@ void testNameIsCappedAtTwentyFive() {
 
 // The original seeds a new record with the sentinel and then types over it,
 // and Pascal's string assignment writes only the length and the characters -
-// so the sentinel's TAIL survives past the typed name. A captured file has `)`
+// so the sentinel's tail survives past the typed name. A captured file has `)`
 // in the byte after a 20-character name, which is character 21 of
 // `([C+C GAMES FACTORY])`. Reproducing that took the port from one differing
 // byte against the real file to none, so it is worth a test of its own.
@@ -3829,8 +3838,8 @@ void testAMalformedTableIsRefused() {
 
 // ---- The session loop, `1000:9e53` ---------------------------------------
 
-// `1000:8da5` accumulates the running chain total IN its draw code and zeroes
-// the per-wave counter. So building the screen is a MUTATION, and building it
+// `1000:8da5` accumulates the running chain total in its draw code and zeroes
+// the per-wave counter. So building the screen is a mutation, and building it
 // twice for one wave would count that wave twice. This is the shape of bug the
 // original's structure invites, so it gets a test rather than a comment.
 void testStatsScreenAccumulatesExactlyOnce() {
@@ -3847,7 +3856,7 @@ void testStatsScreenAccumulatesExactlyOnce() {
     check(t.totalChains == 17, "re-rendering the stats screen cannot re-count");
 }
 
-// `-0x17c` is ONE byte in the original - the HUD's Chains at `1000:5753` and
+// `-0x17c` is one byte in the original - the HUD's Chains at `1000:5753` and
 // the stats screen's "Molecule Chains" are the same store, and `1000:8ee4`
 // zeroes it. The port holds it twice and only zeroed one of them, so Chains
 // carried across waves and every wave's stats re-counted every wave before it.
@@ -3922,7 +3931,7 @@ void testBannerRulesAreNotDerivedFromTheCaption() {
     check(std::string(over.music) == "DEATH.MUS", "a game over is DEATH");
 }
 
-// `1000:2de2` rewrites the key to ESC in attract mode BEFORE the case, so any
+// `1000:2de2` rewrites the key to ESC in attract mode before the case, so any
 // key at all leaves the demo - it is not a separate branch.
 void testAttractModeTurnsEveryKeyIntoAnAbort() {
     const uint8_t keys[] = {tubes::gamekey::kF1, tubes::gamekey::kF5, 'a', 0};
@@ -3953,7 +3962,7 @@ void testTheHelpScreenKeepsTheOriginalsIrregularLayout() {
     check(tubes::kHelpKeyY0 - tubes::kHelpHeadY1 == 15,
           "and the list starts 15 below it, not 10");
 
-    // ESC gets TWO spaces and F1..F5 three, which is what lines the
+    // ESC gets two spaces and F1..F5 three, which is what lines the
     // descriptions up under a 6-pixel advance. Deriving the padding from the
     // key name would put "Abort Game" one column left of everything else.
     const std::string esc = tubes::kHelpKeys[0];
@@ -3965,14 +3974,14 @@ void testTheHelpScreenKeepsTheOriginalsIrregularLayout() {
     }
     check(tubes::kHelpKeyCount == 6, "six keys: ESC and F1..F5");
 
-    // `1000:2f7b` branches on `DS:0x1d4e`, and the arms differ in POSITION as
+    // `1000:2f7b` branches on `DS:0x1d4e`, and the arms differ in position as
     // well as in text - the Wave note clears the Task Display's corner.
     check(tubes::kHelpEnduranceX == 1 && tubes::kHelpEnduranceY0 == 15,
           "the Endurance note sits at (1, 15)");
     check(tubes::kHelpWaveX == 5 && tubes::kHelpWaveY0 == 30,
           "the Wave note at (5, 30)");
 
-    // Both notes are four lines, and the drops note is drawn in BOTH modes -
+    // Both notes are four lines, and the drops note is drawn in both modes -
     // drops are a persistent pool and mean the same thing either way.
     check(tubes::kHelpNoteLines == 4, "four lines a note");
     check(std::string(tubes::kHelpDrops[3]) == "game is over.",
@@ -3982,7 +3991,7 @@ void testTheHelpScreenKeepsTheOriginalsIrregularLayout() {
 
     // The compiler pooled one literal across the two notes, which is worth a
     // check because it is the sort of coincidence a transcriber would "fix":
-    // both blocks really do say `remaining.` with FIVE spaces after it.
+    // both blocks really do say `remaining.` with five spaces after it.
     check(std::string(tubes::kHelpDrops[1]) == std::string(tubes::kHelpWave[1]),
           "the two notes share their second line verbatim");
     check(std::string(tubes::kHelpDrops[1]) == "remaining.     When",
@@ -4007,7 +4016,7 @@ void testTheHelpScreenKeepsTheOriginalsIrregularLayout() {
     check(listsItself, "the help screen lists Help");
 }
 
-// `Press Any Key...` is the screen's own wording and it is NOT the rule. The
+// `Press Any Key...` is the screen's own wording and it is not the rule. The
 // wait at `1000:301b` is a bare `ReadKey`, and `KEYBOARD.DRV` has already
 // taken the six keys it maps to the game's inputs, so a control never reaches
 // the BIOS buffer. Measured on the original over sixteen probes: Up, Down,
@@ -4049,7 +4058,7 @@ void testAbortSkipsTheStatsScreenAndTheContinue() {
     check(!t.advanceWave, "and steps no progression");
 }
 
-// The whole point of `-0x1ff`: a Continue must NOT make the next wave harder.
+// The whole point of `-0x1ff`: a Continue must not make the next wave harder.
 // `1000:a60f` skips the progression when it is set.
 void testAnAcceptedContinueReplaysWithoutAdvancing() {
     tubes::SessionFlags f;
@@ -4072,7 +4081,7 @@ void testAnAcceptedContinueReplaysWithoutAdvancing() {
     check(!s.advanceWave, "and the wave does NOT advance");
 }
 
-// Letting the count run out is a DECLINE, not an acceptance - the number on
+// Letting the count run out is a decline, not an acceptance - the number on
 // screen is the counter itself and there is no separate No to press.
 void testTheContinueCountdownExpiringDeclines() {
     tubes::SessionTotals t;
@@ -4113,7 +4122,7 @@ void testEnduranceSkipsBothWaveScreens() {
           "wave mode shows its stats first");
 }
 
-// `1000:4494`. The play song comes off the DROP COUNT, not the difficulty -
+// `1000:4494`. The play song comes off the drop count, not the difficulty -
 // which is what it looks like it ought to be.
 void testTheFastSongIsAboutDropsNotDifficulty() {
     check(std::string(tubes::playMusicFor(3)) == "GAME.MUS",
@@ -4124,13 +4133,13 @@ void testTheFastSongIsAboutDropsNotDifficulty() {
 
 
 // The corner curve exists to lead the atom into the next leg. So at the moment
-// a leg hands over, the cross-axis must be displaced TOWARD the way the next
+// a leg hands over, the cross-axis must be displaced toward the way the next
 // leg travels - and that is a property of the path as a whole, so it catches a
 // sign error on any single leg.
 //
 // It was written because one existed: 'U' and 'D' displace the opposite way to
-// 'L' and 'R', and applying one sign to all four made the atom curve outward at
-// every corner entered on a vertical, clipping outside the pipe.
+// 'L' and 'R', and applying one sign to all four made the atom curve outward
+// at every corner entered on a vertical, clipping outside the pipe.
 void testCornersCurveTowardTheNextLeg() {
     tubes::TitleAtom a;
     int endX[tubes::kTitleLegs + 1] = {}, endY[tubes::kTitleLegs + 1] = {};
