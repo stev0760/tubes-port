@@ -1604,14 +1604,14 @@ void drawRebindScreen(tubes::Screen& screen, const tubes::Bindings& bind,
     }
 }
 
-// The display options. ALSO THE PORT'S OWN SCREEN, and for the same reason the
-// rebinding screen is - see `input.h`. It is deliberately the rebinding
-// screen's twin: the same blackboard, the same chalk panel, the same professor
-// standing in front of it, the same two fonts doing the same two jobs, and the
-// same hint on the black floor. Two screens the original never had should at
-// least look like each other, and like the game.
+// The display options. This is also the port's own screen, and for the same
+// reason the rebinding screen is - see `input.h`. It is deliberately the
+// rebinding screen's twin: the same blackboard, the same chalk panel, the same
+// professor standing in front of it, the same two fonts doing the same two
+// jobs, and the same hint on the black floor. Two screens the original never
+// had should at least look like each other, and like the game.
 //
-// The only structural difference is that a row here has a VALUE that changes
+// The only structural difference is that a row here has a value that changes
 // in place rather than a binding captured from a keypress, so Left and Right
 // work the row and Enter is a synonym for Right. That is also why there is no
 // armed state: nothing here waits on a second press.
@@ -1685,37 +1685,37 @@ void drawGraphicsScreen(tubes::Screen& screen, const tubes::GraphicsOptions& g,
 
 // The pause overlay, `1000:3916`. Same two rows as a banner, and the loop is
 // blocked entirely while it is up.
-// How the framebuffer gets put on the window. THE PORT'S, entirely - see the
-// display options in `input.h` - and file-scope rather than a parameter
+// How the framebuffer gets put on the window. Entirely the port's - see the
+// display options in `input.h`. It is file-scope rather than a parameter
 // because the blocking screens (both splashes, every fade) present without
 // going round the frame loop, and threading one struct through all ten call
-// sites would say nothing that this comment does not.
+// sites would add nothing this comment does not already say.
 //
 // It is written once, from the settings, and then only by the graphics screen.
 tubes::GraphicsOptions g_display;
 
 // The shareware exit screen, `TUBESEND.BIN`, presented at 640 x 400.
 //
-// The ONE screen this port presents that the original does not: the shareware
+// A screen this port presents that the original does not: the shareware
 // build `Move`s this dump to 0xB800 and quits, leaving the banner on the shell
 // with the DOS prompt landing in the two rows the file deliberately omits. A
-// windowed port has no shell to leave it on, so it draws it and holds it until
-// a key. That hold is the invented part - see textscreen.h.
+// windowed port has no shell to leave it on, so it draws the banner and holds
+// it until a key. That hold is the invented part - see `textscreen.h`.
 //
-// It goes through the SAME `presentRect` as everything else, and gets fullscreen,
-// window scale, 4:3 correction and scanlines for free, because 640 x 400 and
-// 320 x 200 have the identical 1.6 aspect and therefore the identical
-// destination rectangle. Only the source texture differs.
+// It goes through the same `presentRect` as everything else, and gets
+// fullscreen, window scale, 4:3 correction and scanlines for free, because 640
+// x 400 and 320 x 200 have the identical 1.6 aspect and therefore the
+// identical destination rectangle. Only the source texture differs.
 //
 // The reveal is `23e7:0097`'s fade, run on the text palette rather than a
 // game one - the fade is a graphics-unit routine that every screen calls, so
 // using it here is reusing the original's own mechanism rather than imitating
 // it.
-// THE PORT'S OWN, and the most invented thing in it - see the comment at the
-// call site. `C:\TUBES>` and a blinking underline, put where DOS would have
-// put them.
+// The port's own, and invented rather than read out of anything - see the
+// comment at the call site. `C:\TUBES>` and a blinking underline, put where
+// DOS would have put them.
 //
-// The two rows exist BECAUSE the prompt lands there: 3,680 bytes is 23 rows of
+// The two rows exist because the prompt lands there: 3,680 bytes is 23 rows of
 // a 25-row screen, and the dump stops short so the shell's next line does not
 // scroll the art. Drawing the prompt fills the gap the file was shaped around,
 // which is why it reads as finished rather than as cropped.
@@ -1734,10 +1734,10 @@ void drawPrompt(tubes::TextScreen& ts, const char* prompt) {
 // The first-run edition prompt, on the same text screen `TUBESEND.BIN` uses.
 //
 // See `textscreen.h` for why the question exists at all and why it is asked
-// HERE, before the graphics come up, rather than inside the game: the original
+// here, before the graphics come up, rather than inside the game: the original
 // never asked it, so a screen that speaks as the game would be claiming
-// something about the original that is not true. This one is plainly the port's
-// setup, in the idiom `SETUP.EXE` would have used.
+// something about the original that is not true. This one is plainly the
+// port's setup, in the idiom `SETUP.EXE` would have used.
 //
 // Returns the answer. `cancelled` comes back true if the player closed the
 // window, in which case nothing is saved and the program should stop - quietly
@@ -1760,10 +1760,10 @@ tubes::Edition runEditionPrompt(SDL_Renderer* ren, int fadeSteps,
         raw[i * 3 + 2] = tubes::kTextPalette[i][2];
     }
 
-    // STATIC, for the reason the exit screen documents at length: this is a
+    // Static, for the reason the exit screen documents at length: this is a
     // 640x400 RGBA picture that changes only when the selection moves, and
-    // STREAMING + `SDL_UpdateTexture` is the pairing that produced the partial
-    // uploads reported as a flicker.
+    // streaming plus `SDL_UpdateTexture` is the pairing that produced the
+    // partial uploads reported as a flicker.
     SDL_Texture* tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32,
                                          SDL_TEXTUREACCESS_STATIC,
                                          tubes::kTextScreenW,
@@ -1901,29 +1901,29 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
         raw[i * 3 + 2] = tubes::kTextPalette[i][2];
     }
 
-    // STATIC, NOT STREAMING - and this is what the flicker was.
+    // Static, not streaming - and this is what the flicker was.
     //
     // The reported symptom was precise and is what identified it: about twice,
-    // the first quarter of the picture inverted for a split second. That is not
-    // a swap or a present-rate artifact, which is what three earlier attempts
-    // assumed; it is a PARTIAL TEXTURE UPLOAD. Part of the image is drawn from
-    // the new upload and part from what was there before, so a region of it
-    // shows the previous frame's colours.
+    // the first quarter of the picture inverted for a split second. That is
+    // not a swap or a present-rate artifact, which is what three earlier
+    // attempts assumed; it is a partial texture upload. Part of the image is
+    // drawn from the new upload and part from what was there before, so a
+    // region of it shows the previous frame's colours.
     //
     // The cause is a mismatched pairing. SDL's two texture access modes each
     // have their own update path:
     //
-    //     STATIC     + SDL_UpdateTexture              - changes rarely
-    //     STREAMING  + SDL_LockTexture / Unlock       - changes every frame
+    //     static    + SDL_UpdateTexture              - changes rarely
+    //     streaming + SDL_LockTexture / Unlock       - changes every frame
     //
-    // This texture was STREAMING and updated with `SDL_UpdateTexture`, which is
-    // the combination neither is for. The main loop does the same thing and
+    // This texture was streaming and updated with `SDL_UpdateTexture`, which
+    // is the combination neither is for. The main loop does the same thing and
     // gets away with it at 320 x 200; this one is 640 x 400 RGBA - a megabyte,
     // four times the data - which is four times the window for an upload to
     // race the draw still sampling from it.
     //
-    // STATIC is the right mode on the merits anyway: this screen is a fixed
-    // picture with an 8 x 2 cursor on it. It is uploaded when it CHANGES, not
+    // Static is the right mode on the merits anyway: this screen is a fixed
+    // picture with an 8 x 2 cursor on it. It is uploaded when it changes, not
     // once a frame.
     SDL_Texture* tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32,
                                          SDL_TEXTUREACCESS_STATIC,
@@ -1933,20 +1933,21 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
 
     std::vector<uint8_t> rgba(static_cast<size_t>(tubes::kTextScreenW) *
                               tubes::kTextScreenH * 4);
-    // The cursor is stamped over the finished pixels rather than being a glyph,
-    // because that is what the hardware does - it is generated by the CRTC from
-    // the cursor scanline registers, not fetched from the character ROM.
+    // The cursor is stamped over the finished pixels rather than being a
+    // glyph, because that is what the hardware does - it is generated by the
+    // CRTC from the cursor scanline registers, not fetched from the character
+    // ROM.
     int cursorCol = 0;
     bool cursorOn = false;
 
-    // Build the pixels and hand them to the texture. Called only when something
-    // has actually changed: once per fade step, once when the prompt appears,
-    // and once per cursor blink.
+    // Build the pixels and hand them to the texture. Called only when
+    // something has actually changed: once per fade step, once when the prompt
+    // appears, and once per cursor blink.
     auto upload = [&](const tubes::Palette& pal) {
         for (size_t i = 0; i < indexed.size(); ++i) {
             // Already 8-bit: `Palette` holds expanded values, and both the
             // fade and the lit palette produce them. This used to expand a
-            // second time, which overflowed and wrapped - THE FLICKER.
+            // second time, which overflowed and wrapped - the flicker.
             const uint8_t* c = pal.rgb[indexed[i]];
             rgba[i * 4 + 0] = c[0];
             rgba[i * 4 + 1] = c[1];
@@ -1991,9 +1992,10 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
         SDL_RenderPresent(ren);
     };
 
-    // `23e7:0097`. One upload and one draw per step, throttled to the retrace -
-    // never faster, because a vsync request is advisory on this port's targets
-    // and cannot be relied on to pace anything. See the note in the hold below.
+    // `23e7:0097`. One upload and one draw per step, throttled to the retrace
+    // - never faster, because a vsync request is advisory on this port's
+    // targets and cannot be relied on to pace anything. See the note in the
+    // hold below.
     for (int i = 0; i <= fadeSteps; ++i) {
         upload(tubes::fadePalette(raw, i, fadeSteps ? fadeSteps : 1));
         draw();
@@ -2001,10 +2003,10 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
     }
     const tubes::Palette lit = tubes::textPalette();
 
-    // The prompt appears AFTER the fade, not during it: on the real thing the
-    // banner is written, the program exits, and only then does the shell get a
-    // turn. Keeping that order costs nothing and is the whole beat of the
-    // screen.
+// The prompt appears after the fade, not during it: on the real thing the
+// banner is written, the program exits, and only then does the shell get a
+// turn. Keeping that order costs nothing and is the whole beat of the
+// screen.
     const char* kPrompt = "C:\\TUBES>";
     drawPrompt(ts, kPrompt);
     cursorCol = static_cast<int>(std::strlen(kPrompt));
@@ -2031,9 +2033,9 @@ void runExitScreen(SDL_Window* win, SDL_Renderer* ren, const tubes::TextScreen& 
     // screen that outlives the program.
     //
     // Throttled unconditionally. Measured on a Wayland/OpenGL target:
-    // `SDL_RenderSetVSync(1)` returns 0, sets the PRESENTVSYNC flag, and does
-    // not sync - 60 presents in 459 ms. So a vsync request is advisory here and
-    // anything presenting in a loop paces itself.
+// `SDL_RenderSetVSync(1)` returns 0, sets the present-vsync flag, and does
+// not sync - 60 presents in 459 ms. So a vsync request is advisory here and
+// anything presenting in a loop paces itself.
     bool waiting = true;
     const uint32_t start = SDL_GetTicks();
     const uint32_t blinkMs = kCursorBlinkRetraces * 1000 / 70;
@@ -2076,10 +2078,10 @@ void presentScreen(SDL_Renderer* ren, SDL_Texture* tex,
     SDL_RenderClear(ren);
     SDL_RenderCopy(ren, tex, nullptr, &dst);
 
-    // Scanlines: one dark line per OUTPUT row pair, drawn over the image
-    // rather than baked into it, so the framebuffer a screenshot captures is
-    // untouched. Skipped below 2x, where every second row would be half the
-    // picture.
+// Scanlines: one dark line per output row pair, drawn over the image
+// rather than baked into it, so the framebuffer a screenshot captures is
+// untouched. Skipped below 2x, where every second row would be half the
+// picture.
     if (g_display.scanlines && dst.h >= tubes::kScreenHeight * 2) {
         SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 64);
@@ -2127,7 +2129,7 @@ void saveBmp(std::vector<uint8_t>& rgba, const std::string& path) {
 //     k := SoftwareCreations;                    { 21d5:007b }
 //     if (k <> 1) and (k <> 2) then AbsoluteMagic;   { 2178:00eb }
 //
-// so a skip during the FIRST splash takes the second one with it. The codes
+// so a skip during the first splash takes the second one with it. The codes
 // are the input driver's: 1 is Enter or Space, 2 is ESC.
 //
 // `23e7:0024` is `Delay(n)` and its unit is the vertical retrace - the body is
@@ -2144,13 +2146,13 @@ void waitRetraces(int n) {
 // The player's skip.
 //
 // The original reads its input driver only in the tail loop of each splash,
-// but through a BUFFERED read - `[DS:0x234e]` (ClearKeyBuffer) immediately
+// but through a buffered read - `[DS:0x234e]` (ClearKeyBuffer) immediately
 // after the wait is the tell - so a press during the animation still counts,
 // just not until the next poll. That made ESC feel dead for up to a second,
 // and the player asked for it to cut in at once.
 //
 // So `pumped()` is checked everywhere the screen would otherwise block: the
-// fade steps, the animation frames and the holds. This is a DELIBERATE
+// fade steps, the animation frames and the holds. This is a deliberate
 // departure from the original, agreed with the player, and the only one in
 // these two screens - the pacing, the order and every literal are untouched.
 struct SkipWatch {
@@ -2225,8 +2227,8 @@ bool runSplashFade(SDL_Renderer* ren, SDL_Texture* tex,
         const int n = in ? i : steps - i;
         presentScreen(ren, tex, screen, tubes::fadePalette(palRaw, n, steps),
                       rgba);
-        // A skip cuts a fade-IN short - there is no sense revealing a screen
-        // the player has already dismissed - but never a fade-OUT, which has
+        // A skip cuts a fade-in short - there is no sense revealing a screen
+        // the player has already dismissed - but never a fade-out, which has
         // to reach black or the next screen starts up lit.
         if (skip.pumped() && in) return true;
         SDL_Delay(1000 / 70);
@@ -2309,7 +2311,7 @@ int runSoftwareCreationsSplash(const tubes::Archive& res, SDL_Renderer* ren,
     }
 
     // Seven holds of ten retraces - one second - and the only place the
-    // ORIGINAL looks at the keyboard.
+    // original looks at the keyboard.
     for (int n = 7; n > 0; --n) {
         if (holdRetraces(10, skip)) return leave();
     }
@@ -2323,8 +2325,8 @@ int runSoftwareCreationsSplash(const tubes::Archive& res, SDL_Renderer* ren,
 // `AMLOGO.SPR`, `LIGHTN.SPR`, `AMTHEME.MUS` and the three sounds.
 //
 // The backdrop is built rather than loaded. `2178:0000` clears a 64,000 byte
-// buffer, copies `CLOUD.GFX` (320x83) in at offset 0, and then writes the SAME
-// bytes again DESCENDING from offset 63,999 - so the bottom of the screen is
+// buffer, copies `CLOUD.GFX` (320x83) in at offset 0, and then writes the same
+// bytes again descending from offset 63,999 - so the bottom of the screen is
 // the cloud band rotated 180 degrees, and rows 83..116 stay black. `21d0:0000`
 // then de-chunks it into Mode X planes and `2321:0792` blits it. The port
 // composes the same picture straight into its chunky framebuffer.
@@ -2334,7 +2336,7 @@ int runSoftwareCreationsSplash(const tubes::Archive& res, SDL_Renderer* ren,
 //   * the logo arrives - `WOOSH.SFX`, then `AMLOGO.SPR`'s six frames centred,
 //     20x20 growing to 172x127, at 9 fps;
 //   * five lightning strikes - `LIGHTN.SFX` and one `LIGHTN.SPR` frame each,
-//     at five hardcoded positions, at 4 fps, each with a WHITE FLASH: the
+//     at five hardcoded positions, at 4 fps, each with a white flash: the
 //     splash allocates its own 768-byte palette, fills it with 63s, and
 //     uploads it around the page flip before restoring `INTRO.PAL`;
 //   * the writing - `ABSMAGIC.SFX`, the page cleared to black, the logo and
