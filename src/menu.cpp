@@ -28,7 +28,7 @@ constexpr int kLimY[kTitleLegs + 1] = {
      33,  33, 127,  33,  33,
 };
 
-// 'F' forward, 'B' back. Leg 23 holds 0x3f, which is NEITHER, so neither
+// 'F' forward, 'B' back. Leg 23 holds 0x3f, which is neither, so neither
 // corner-rounding branch fires there. Not corruption: legs 23 and 24 are the
 // T's stem walked down and straight back up, and rounding a reversal would
 // bulge the stem sideways.
@@ -78,14 +78,14 @@ void TitleAtom::step() {
     // left alone - which is exactly what the original's two `if`s do when the
     // byte matches neither.
     //
-    // The sign is NOT the same for horizontal and vertical legs. Off the
+    // The sign is not the same for horizontal and vertical legs. Off the
     // listing, 'F' displaces:
     //
     //     L: y = limY - n        R: y = limY + n
     //     U: x = limX + n        D: x = limX - n
     //
     // so U and D are the opposite way round to L and R. Applying one sign to
-    // all four made the atom curve AWAY from the next leg at every corner
+    // all four made the atom curve away from the next leg at every corner
     // entered on a vertical, which showed up as it clipping outside the pipe
     // rounding each bend.
     const int sign = (dv == 'F') ? -1 : (dv == 'B') ? +1 : 0;
@@ -192,7 +192,7 @@ std::string menuRule(Page p, Edition e) {
 }
 
 StarPlacement placeStars(Page p, int item, const char* text, Edition e) {
-    // The width is the TEXT'S, and on a save-slot page that is the live row
+    // The width is the text's, and on a save-slot page that is the live row
     // rather than the "(Unavailable)" the page ships - a 31-character save row
     // puts the stars at 16 and 287 instead of 88 and 215. Measuring the page's
     // own string was wrong for exactly the two pages whose text is replaced at
@@ -310,7 +310,7 @@ MenuResult Menu::select() {
                 setPage(Page::kQuit);
                 return MenuResult::kNone;
             // `1000:ab52` sets mode 2 and difficulty 0 alongside the Preview
-            // flag, so the Preview is a WAVE-mode session on Tubes 101 and
+            // flag, so the Preview is a Wave-mode session on Tubes 101 and
             // never asks the player for either.
             case kSwPreviewRegistered:
                 choice_.newGame = true;
