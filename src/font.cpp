@@ -5,7 +5,7 @@ namespace {
 
 // One glyph, `2000:35ec`. The original writes straight into Mode X with a
 // plane mask, which is why its inner loop looks like four unrolled nibble
-// tests; none of that survives translation to a linear framebuffer. What does
+// tests. None of that survives translation to a linear framebuffer. What does
 // survive is everything above it:
 //
 //     src := font + char * cellH;
@@ -19,15 +19,15 @@ namespace {
 //         end
 //     end
 //
-// Note `if bits <> 0 then` and the per-pixel test inside: only SET bits are
+// Note `if bits <> 0 then` and the per-pixel test inside: only set bits are
 // written, so a glyph is transparent and never lays down a background.
 void drawGlyph(Screen& scr, const Font& f, int x, int y, uint8_t colour,
                uint8_t mode, uint8_t ch) {
     const uint8_t* src = f.glyphs.data() + static_cast<size_t>(ch) * f.cellH;
     uint8_t c = colour;
-    // The original's loop counter runs DOWN from the cell height, and mode 3
-    // compares that counter against the turning point - so the peak is
-    // measured from the bottom of the cell, not the top.
+    // The original's loop counter runs down from the cell height, and mode 3
+    // compares that counter against the turning point. So the peak is measured
+    // from the bottom of the cell, not the top.
     for (int row = f.cellH; row >= 1; --row) {
         const uint8_t bits = *src++;
         const int py = y + (f.cellH - row);
