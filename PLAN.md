@@ -1681,6 +1681,41 @@ rendering. The work is entirely code.
 The repository has never contained game data and `.gitignore` is aggressive
 about keeping it that way, so publishing is mostly a matter of paperwork:
 
+- **`main.cpp` needs breaking up, and it is the one structural job left.**
+  6348 lines, of which `main()` is 3102 - it starts at line 3246 and runs to
+  the end of the file. It holds **25 `[&]` lambdas that are really functions**,
+  capturing the enclosing frame instead of taking arguments:
+
+      writeSettings  newSession      saveHiScores    writeSaves
+      startBootMusic refreshSaveSlots blitAndPresent runFade
+      changeScreen   presentFrame    rollBackdrop    raiseBriefing
+      persistAudio   refreshOptionRows openDeck      slideIsDropping
+      slidePos       scenePose       playSong        endSession
+      endEndingPage  raiseBanner     leaveBannerWait startDemo
+      enterStats
+
+  Above `main()` sit 50 free functions, so the file is not undisciplined
+  throughout - the problem is concentrated in the one function, and it grew
+  that way because each screen was ported into the loop that already existed.
+
+  This is **not** a transliteration question. The original's structure is
+  Pascal units and nested procedures, and `1000:9e53` with `1000:3a67` inside
+  it is exactly this shape, so a flat `main()` is arguably faithful. But
+  `docs/reversing-notes.md` is where fidelity is recorded, not the layout of
+  the port's own SDL edge, and the split rule in CLAUDE.md already says only
+  `main.cpp` and `opl.cpp` may include SDL. Moving screens out into
+  `screens_*.cpp` files that keep that property costs no fidelity.
+
+  The lambdas are the natural seams: most capture a handful of the same
+  locals, and the ones that only touch `Screen` and the archive - `runFade`,
+  `blitAndPresent`, `presentFrame`, `rollBackdrop`, `slidePos`, `scenePose` -
+  could take parameters and move out first, which would also make them
+  testable without SDL the way `presentRect` already is.
+
+  **Do it after the comment cleanup, not during.** A structural diff tangled
+  with 18k words of prose changes is reviewable as neither. The comment sweep
+  is going through in nine slices and records what it did per slice.
+
 - **The licence is chosen: MIT**, for this project's own code. The `LICENSE`
   file is still to be written. The reasoning below is what the choice was made
   against and is kept because it is what a reader will want to check.
