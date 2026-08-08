@@ -1,6 +1,6 @@
 #include "game.h"
 
-// PROVENANCE. Most of this file is now transliterated from `1000:3a67` and
+// Provenance. Most of this file is now transliterated from `1000:3a67` and
 // `1000:9e53` and says so at each site: the atom router and its arc tables,
 // the spawn (period, column choice, type distribution), the difficulty seeds,
 // the test tube's slide, and the Down/B speed boost.
@@ -9,15 +9,15 @@
 // so the awards, the chain bonus multiplier and the fade are code now, not
 // readings of the Instructions.
 //
-// What is NOT from code, and is marked where it appears:
+// What is not from code, and is marked where it appears:
 //
 //   * (kOriginalFps used to be listed here as assumed; it is now
-//     measured, and derived from `21ea:06ba` - see game.h)
+//     measured, and derived from `21ea:06ba` - see `game.h`)
 //   * the specials' behaviours, which the beaker update post-processes at
 //     `1000:2790` through a scan helper that is not decoded yet.
 //
-// The order of authority is in CLAUDE.md: decompiled code settles a rule, the
-// game's text corroborates, measurement locates and validates but never
+// The order of authority is in `CLAUDE.md`: decompiled code settles a rule,
+// the game's text corroborates, measurement locates and validates but never
 // derives. This file has already carried a scoring rule fitted to two observed
 // awards that was simply wrong, and a spawn interval that was pure invention.
 
@@ -26,7 +26,7 @@
 namespace tubes {
 namespace {
 
-// Scoring, and now from CODE rather than from the Instructions. Each matcher
+// Scoring, and now from code rather than from the Instructions. Each matcher
 // adds its own literal to the pending total:
 //
 //     1000:1c56  vertical     ADD [pending], 0xfa    = 250
@@ -34,12 +34,12 @@ namespace {
 //     1000:2052  diagonal     ADD [pending], 0x3e8   = 1000   (both directions)
 //
 // which confirms what the Detailed Instructions said. What the Instructions
-// did NOT say, and what no amount of watching gave up, is that the award is
-// added ONCE PER SEED POSITION - so a run of four pays twice and a run of five
+// did not say, and what no amount of watching gave up, is that the award is
+// added once per seed position - so a run of four pays twice and a run of five
 // three times. "4 atom molecules count as 2 chains" turns out to be a literal
 // description of the scan, not a separate chain counter.
 //
-// Board::step() sums those awards; the multiplier and the ramp are below.
+// `Board::step()` sums those awards; the multiplier and the ramp are below.
 
 // The score ramps in, and the ramp is where the chain bonus multiplier lives.
 // From `1000:2410` and the flush at `1000:58c5`:
@@ -54,7 +54,7 @@ namespace {
 //         and pending and multiplier are cleared.
 //
 // So the money is `pending * multiplier`, paid over six frames, and the
-// multiplier is the number of DISTINCT runs formed at the same time. One
+// multiplier is the number of distinct runs formed at the same time. One
 // three-run pays 250 x 1; two simultaneous runs pay (250 + 250) x 2. That is
 // exactly the "chain bonus point multiplier" the Instructions mention without
 // quantifying, and it was previously left unimplemented for want of a number.
@@ -62,7 +62,7 @@ namespace {
 // Note this contradicts one earlier live measurement, which recorded a
 // diagonal run of four paying 1000 where this pays 2000. The measurement came
 // from the black-box session whose conclusions have already been overturned
-// twice; the code is the authority. Flagged in PLAN.md rather than silently
+// twice; the code is the authority. Flagged in `PLAN.md` rather than silently
 // resolved.
 constexpr int kScoreRampSteps = 6;
 
@@ -73,7 +73,7 @@ constexpr int kScoreRampSteps = 6;
 constexpr int kClearFrames = 10;
 
 // `1000:159a`, `17c1` and `0c78`: the frame the in-play count of a "survive N
-// atoms" wave empties, TWO are added to the clear timer rather than the wave
+// atoms" wave empties, two are added to the clear timer rather than the wave
 // being declared over on the spot.
 constexpr int kInPlayDrainFrames = 2;
 
@@ -82,7 +82,7 @@ constexpr int kInPlayDrainFrames = 2;
 // catch; both measured.
 constexpr int kEntryY = 187;
 
-// The descent ACCELERATES. `1000:13ed`, the first thing state 7 does:
+// The descent accelerates. `1000:13ed`, the first thing state 7 does:
 //
 //     if rec.y >= 50 then rec.acc := rec.acc + $480
 //                    else rec.acc := rec.acc + rec.velocity;
@@ -97,7 +97,7 @@ constexpr int kEntryY = 187;
 // The boost writes `rec.velocity`, and below y = 50 the velocity is not read.
 constexpr int kAccelY = 50;
 
-// The catch is a WINDOW, not "past the mouth" - `1000:1423` and `1000:142d`
+// The catch is a window, not "past the mouth" - `1000:1423` and `1000:142d`
 // bracket it at 60..70. Eleven pixels against a nine-pixel step, so an atom
 // lands inside it on one frame and is past it on the next.
 constexpr int kCatchTop = 60;
@@ -125,12 +125,12 @@ constexpr int kLostY = 187;
 //      6       294       26      161
 //
 // It is mirror-symmetric about x = 152: 34+270, 58+246, 10+294, 125+179,
-// 107+197 and 143+161 all equal 304. The outermost tube takes the LOWEST lane
+// 107+197 and 143+161 all equal 304. The outermost tube takes the lowest lane
 // and travels furthest, landing on an inner column, so the arcs nest by
 // crossing over one another - which is exactly how the furniture is drawn,
 // and it is why the six draw slots pair the columns off 1/6, 2/5, 3/4.
 
-// The corner is rounded by displacing the OTHER axis while within 9 px of the
+// The corner is rounded by displacing the other axis while within 9 px of the
 // turn. Transliterated rather than approximated, because the two tables are
 // not the same - {9,6,4,2,1} rising against {9,6,3,2,1} horizontally - which
 // marks them as hand-tuned pixel art rather than a computed curve.
@@ -150,15 +150,15 @@ int crossArcOffset(int distanceToCorner) {
     return 1;
 }
 
-// The original's frame rate, now MEASURED at 16.11 Hz - see kFrameHz in
-// game.h. The "~17 state changes a second" that motivated the old 18.2 was
+// The original's frame rate, now measured at 16.11 Hz - see `kFrameHz` in
+// `game.h`. The "~17 state changes a second" that motivated the old 18.2 was
 // closer to right than the constant fitted to it.
 constexpr float kOriginalFps = kFrameHz;
 
 // The test tube holds five, stated outright by the in-game Detailed
 // Instructions and independent of difficulty. The old 5/3/2-by-difficulty
-// guess came from TESTUBE1/2/3 sprite heights; the sprites differ for some
-// other reason.
+// guess came from `TESTUBE1`/`2`/`3` sprite heights; the sprites differ for
+// some other reason.
 constexpr int kTubeCapacity = 5;
 
 // A new game seeds the drop pool from the difficulty. Confirmed by playing all
@@ -197,30 +197,30 @@ Game::Game(int cols, int rows, Difficulty diff, uint32_t seed,
       networkVel_(velocityFor(diff)),
       rng_{seed ? seed : 1},
       randomTrace_(randomTrace) {
-    // 1000:43d6. The test tube STARTS IN A RANDOM COLUMN - `tube.stop :=
+    // `1000:43d6`. The test tube starts in a random column - `tube.stop :=
     // Random(6) + 1` - and it is the session's very first call to the
     // generator, before anything is dispensed.
     //
     // The port used to park it in the middle. That is wrong twice over: the
     // tube is in the wrong place, and, worse, every later roll is off by one
-    // call, so the whole spawn sequence differs. Replaying DEMO.SCR is what
+    // call, so the whole spawn sequence differs. Replaying `DEMO.SCR` is what
     // exposed it - the recorded player missed all nine drops in 979 frames
     // because the atoms were not where the recording expected them.
     tubeColumn_ = random(kAtomSlots);
     tubeX_ = kTubeStopX[tubeColumn_ + 1];
     tubeTargetX_ = tubeX_;
-    // `1000:3be0` seeds the dispenser countdown with 1, not with the
-    // interval - it is the last thing the session's setup does, right after the
-    // loop that parks all twelve records at (303, 186). The tick is
-    // `Dec(timer); if timer = 0 then dispense`, so a seed of 1 fires on the
-    // very first frame and only then reloads the full period.
+    // `1000:3be0` seeds the dispenser countdown with 1, not with the interval
+    // - it is the last thing the session's setup does, right after the loop
+    // that parks all twelve records at (303, 186). The tick is `Dec(timer); if
+    // timer = 0 then dispense`, so a seed of 1 fires on the very first frame
+    // and only then reloads the full period.
     //
-    // The port seeded it with the interval, which delayed the first dispense by
-    // one whole period and slid the entire recorded input stream 50 frames out
-    // of step with the game. That is why the demo's player kept reaching for
-    // atoms that were not there: the demo's first Left presses are at stream
-    // frames 16, 17 and 20, and the original consumes them SIXTEEN frames after
-    // its first atom appears, not thirty-three frames before it.
+    // The port seeded it with the interval, which delayed the first dispense
+    // by one whole period and slid the entire recorded input stream 50 frames
+    // out of step with the game. That is why the demo's player kept reaching
+    // for atoms that were not there: the demo's first Left presses are at
+    // stream frames 16, 17 and 20, and the original consumes them sixteen
+    // frames after its first atom appears, not thirty-three frames before it.
     spawnTimer_ = 1;
     tube_.reserve(static_cast<size_t>(tubeCapacity_));
 
@@ -256,7 +256,7 @@ void Game::startWave(bool replay) {
     task_ = seedTaskDisplay(objective_);
     waveComplete_ = false;              // 1000:3a6b
 
-    // `1000:3a67` is called once per WAVE, so its prologue is a per-wave
+    // `1000:3a67` is called once per wave, so its prologue is a per-wave
     // reset, not a per-session one. Only the parts this port already models
     // are listed; each has its address.
     board_.clear();                     // 1000:3b06..3b3b, three FillChars
@@ -271,16 +271,16 @@ void Game::startWave(bool replay) {
     // every other mode, which is what makes the extra term in the
     // wave-complete test vanish for the modes that do not count atoms.
     inPlay_ = (objective_.mode == WaveMode::kSurvive) ? objective_.counter : 0;
-    bonusAward_ = 0;                    // 1000:3a8d - per WAVE, not per session
+    bonusAward_ = 0;                    // 1000:3a8d - per wave, not per session
     flashTick_ = 1;                     // 1000:3ab3
     flashColour_ = kRedium;             // 1000:3ab8
     taskTimer_ = kTaskTimerFrames;      // 1000:3b00
     spawnTimer_ = 1;                    // 1000:3be0 - the first atom is on frame zero
 
-    // `1000:43d6`, and it is per WAVE for the same reason: every wave starts
+    // `1000:43d6`, and it is per wave for the same reason: every wave starts
     // the tube in a fresh random column.
     //
-    // KNOWN DEVIATION, and flagged rather than papered over. The constructor
+    // Known deviation, and flagged rather than papered over. The constructor
     // makes this same roll, because for Endurance the constructor IS the wave
     // setup - `1000:9e53` runs `1000:3a67` once and never briefs. A wave-mode
     // caller therefore spends one Random call more than the original before
@@ -302,7 +302,7 @@ void Game::startWave(bool replay) {
     board_.setObjectiveMode(objective_.mode == WaveMode::kMarked);
 
     // `1000:3b40`, `3b54` and `3b68` - the three placements, in this order and
-    // BEFORE the tube's column is rolled below, which is where `1000:43d6`
+    // before the tube's column is rolled below, which is where `1000:43d6`
     // sits. Getting the order wrong would not change the beaker but would
     // change every roll after it.
     auto roll = [this](int n) { return random(n); };
@@ -323,7 +323,7 @@ void Game::startWave(bool replay) {
     // render rule that `board.h` records but no draw site here honours yet.
 }
 
-// `1000:192f`. Board calls this once per SEED - see Board::setRunObserver.
+// `1000:192f`. Board calls this once per seed - see `Board::setRunObserver`.
 // The routine's own first act is the mode test, so Endurance falls straight
 // through it and pays nothing for the hook.
 void Game::creditObjective(RunKind kind, int8_t matchType) {
@@ -368,7 +368,7 @@ void Game::setTubeAtoms(const std::vector<int8_t>& v) {
 
 // Turbo Pascal 7's `Random`, transliterated. This used to be an xorshift32,
 // which was fine for "deterministic across runs" and useless for the one thing
-// that matters now: replaying `DEMO.SCR` requires the SAME sequence the
+// that matters now: replaying `DEMO.SCR` requires the same sequence the
 // original produces, because the demo records only the player's buttons and
 // every atom it catches was rolled by this generator.
 //
@@ -385,9 +385,10 @@ void Game::setTubeAtoms(const std::vector<int8_t>& v) {
 //     RandSeed := DX:AX
 //
 // and `Random(n)` at `2000:755e` steps it and takes the top 32 bits of the
-// 48-bit product `RandSeed * n` - i.e. `(RandSeed * n) shr 32`, with RandSeed
-// read as UNSIGNED. That is a scaled fraction of the range, not a modulus, and
-// it is not the same sequence a `% n` would give from the same seed.
+// 48-bit product `RandSeed * n` - i.e. `(RandSeed * n) shr 32`, with
+// `RandSeed` read as unsigned. That is a scaled fraction of the range, not a
+// modulus, and it is not the same sequence a `% n` would give from the same
+// seed.
 int Game::random(int n) {
     if (randomTrace_) randomTrace_->emplace_back(n, rng_.seed);
     // The arithmetic itself is `tubes::PascalRandom` in session.h, because the
@@ -414,7 +415,7 @@ int Game::random(int n) {
 //
 //  * slot 11 is not "Xenon", it is the whole special family sharing one
 //    eleventh of the roll, split 30/30/15/15/5/6 between six of them;
-//  * the failed-roll fallback is Random(8)+1, which INCLUDES 8 - so Flashium
+//  * the failed-roll fallback is Random(8)+1, which includes 8 - so Flashium
 //    is dispensed as an ordinary member of the pool with no rate of its own;
 //  * the 25 and 50 are DS:0x1d4a and DS:0x1d49, written by the session setup
 //    to 0x19 and 0x32, so they are per-session knobs rather than literals.
@@ -423,7 +424,7 @@ int Game::random(int n) {
 // unmeasured. The specials were always visible in play; what was missing was
 // any measured rate to give them.
 //
-// THE TWO RATES ARE NOT CONSTANTS. They are `DS:0x1d49` and `DS:0x1d4a`,
+// The two rates are not constants. They are `DS:0x1d49` and `DS:0x1d4a`,
 // written by the session setup, and the shareware edition is the reason it
 // matters: `1000:9718` zeroes both and restores them only under the Preview
 // flag, where the registered `1000:9e53` writes 50 and 25 unconditionally. See
@@ -432,8 +433,8 @@ int Game::random(int n) {
 // these two members hold.
 //
 // A rate of 0 is unreachable by `Random(100)+1`, so both specials fall through
-// to `Random(8)+1`. Note where the sequence diverges: the GATE roll is spent
-// either way, but the FALLBACK roll is spent only on rejection, so a rate of 0
+// to `Random(8)+1`. Note where the sequence diverges: the gate roll is spent
+// either way, but the fallback roll is spent only on rejection, so a rate of 0
 // spends strictly more calls than a rate of 25 or 50. See `edition.h`.
 
 int8_t Game::nextColour() {
