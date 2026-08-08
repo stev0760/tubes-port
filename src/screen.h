@@ -22,7 +22,7 @@ public:
     void blit(const Image& img, int x = 0, int y = 0);
 
     // Draws the sprite at (x, y), where (x, y) is the position the game passes
-    // to `2321:0905` - NOT the top-left of the sprite's pixels.
+    // to `2321:0905` - not the top-left of the sprite's pixels.
     //
     // A .CSP is compiled code storing pixels at signed displacements from a
     // base pointer, so each one carries its own offset from that base. Every
@@ -30,15 +30,15 @@ public:
     // `originY >= -2`, and 84 sit at exactly (128, -2): that is the shared
     // base, and the excess is real placement data.
     //
-    // The proof it is not an artefact is the fade families. GFADE1..6 walk
-    // (+0,+3) (+0,+6) (+2,+6) (+4,+6) (+7,+5) (+7,+5) as the sprite shrinks -
+    // The proof it is not an artefact is the fade families. `GFADE1..6` walk
+    // (+0,+3) (+0,+6) (+2,+6) (+4,+6) (+7,+5) (+7,+5) as the sprite shrinks:
     // a contracting animation has to move its origin inward to stay centred,
     // and no other reading produces that.
     //
     // This was previously documented as "meaningless as a placement offset"
-    // and dropped. It is worth 6 to 11 pixels on TESTUBES, TUBEVS, TUBEVLS and
-    // TUBEVRS, which is why the test tube had an inner wall in the wrong place
-    // and the arcs were missing their verticals.
+    // and dropped. It is worth 6 to 11 pixels on `TESTUBES`, `TUBEVS`,
+    // `TUBEVLS` and `TUBEVRS`, which is why the test tube had an inner wall in
+    // the wrong place and the arcs were missing their verticals.
     void draw(const Sprite& spr, int x, int y);
 
     // Stamp a w x h box of `src` over this screen, skipping index 0.
@@ -53,8 +53,8 @@ public:
     //     JZ  skip         ; index 0 is transparent
     //     MOV ES:[DI],AL   ; otherwise it wins
     //
-    // Called on a sprite's OLD box it is the erase; called on its NEW box it
-    // is what makes an atom look like it is inside a glass tube - the tube's
+    // Called on a sprite's old box it is the erase; called on its new box it
+    // is what makes an atom look like it is inside a glass tube: the tube's
     // walls come back on top of the ball, and the ball shows through only
     // where the snapshot is transparent, which is the hollow of the pipe.
     // One routine, both jobs, which is why the original calls it twice per

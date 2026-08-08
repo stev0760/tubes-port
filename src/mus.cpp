@@ -5,7 +5,7 @@
 namespace tubes {
 namespace {
 
-// Argument counts per command class, from the dispatcher at 0x83d.
+// Command argument counts, from the dispatcher at 0x83d.
 int argCount(uint8_t cls) {
     switch (cls) {
         case kMusInstrument: return 12;
@@ -44,8 +44,8 @@ bool parseMus(const Bytes& data, std::vector<MusEvent>& out, std::string& error)
         if (cmd == kMusEnd) {
             ev.cmd = kMusEnd;
             out.push_back(ev);
-            // A well-formed resource ends exactly here; this is the oracle
-            // that proved the framing in the first place.
+            // A well-formed resource ends exactly here; this is what proves
+            // the framing.
             if (pos != data.size()) {
                 error = "trailing bytes after end-of-song";
                 return false;
@@ -134,9 +134,9 @@ void MusSequencer::init() {
 // -- 0x1e8 ------------------------------------------------------------------
 void MusSequencer::loadInstrument(int ch, const uint8_t* r) {
     const uint8_t off = t_.opOffset[ch];
-    // The driver's two-operator test is `ch <= 6`, so the bass drum counts
-    // as two-operator even though it is a percussion voice. That boundary
-    // is one higher than the melodic/percussion split.
+    // The driver uses `ch <= 6` as its two-operator test, so the bass drum
+    // counts as two-operator despite being a percussion voice. That boundary
+    // is one channel above the melodic/percussion split.
     const bool twoOp = ch <= 6;
 
     sink_.write(0x20 + off, r[0]);
@@ -191,8 +191,9 @@ void MusSequencer::setFrequency(int ch, int note, uint8_t keyOn) {
     const uint16_t raw = t_.fnum[row * 16 + frac];
 
     int block = t_.block[ax >> 4] - 1;
-    // The sign bit of a table entry is a flag, not magnitude: negative means
-    // "use the block as-is", positive means "halve me and drop a block".
+    // The sign bit of a table entry is a flag, not part of the value:
+    // negative means keep the block as-is, positive means halve the value
+    // and reduce the block by one.
     int32_t f = (raw & 0x8000) ? static_cast<int32_t>(raw) - 0x10000 : raw;
     if (f < 0) ++block;
     if (block < 0) {
@@ -216,7 +217,7 @@ void MusSequencer::noteOn(int ch, uint8_t midiNote) {
         setFrequency(ch, note, 0x20);
     } else if (ch == 6 || ch == 8) {
         // Bass drum and tom are pitched, but key-on must stay clear in
-        // rhythm mode - the 0xBD bit triggers them instead.
+        // rhythm mode; the 0xBD bit triggers them instead.
         setFrequency(ch, note, 0x00);
     }
     if (ch >= kMusPercussionBase) {

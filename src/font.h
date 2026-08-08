@@ -5,7 +5,7 @@
 // height is the file size divided by 256, and the cell width is always 8
 // because a scanline is exactly one byte. See docs/reversing-notes.md.
 //
-// What is not obvious from the files is the RENDERER, and that is where the
+// What is not obvious from the files is the renderer, and that is where the
 // game's look comes from. `2000:35ec` draws a glyph one scanline at a time and
 // walks the palette index as it goes, so a character is a vertical gradient
 // rather than a flat colour. The HUD's cyan digits are a single colour index

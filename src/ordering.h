@@ -5,10 +5,10 @@
 // Four pages of text - the registration pitch, the phone/fax/BBS numbers, a
 // blurb about the Software Creations BBS, and a closing nav slide. It shares
 // the Instructions' item and page types because it is the same kind of screen
-// drawn by the same routines; only the text-unit entry points differ, and only
+// drawn by the same routines. Only the text-unit entry points differ, and only
 // because the shareware image's segments sit 0x120 bytes higher.
 //
-// It has NO illustrations - the deck never calls the sprite routine, unlike
+// It has no illustrations - the deck never calls the sprite routine, unlike
 // the Instructions and the Credits.
 //
 // Reached two ways in the original, both from `entry`:
@@ -17,7 +17,7 @@
 //     Exit, item 10     `1000:ac01  CALLF 0x1000:f4b9`, then Halt
 //
 // so choosing Exit runs the whole deck before the program ends. `src/ordering.cpp`
-// is GENERATED; see its header for the command.
+// is generated; see its header for the command.
 
 #include "instructions.h"
 
@@ -26,11 +26,11 @@ namespace tubes {
 constexpr int kOrderingPageCount = 4;
 extern const InstructionSlide kOrderingPages[kOrderingPageCount];
 
-// The shareware's END-OF-GAME screen, `1000:8df8` - one page, reached from
+// The shareware's end-of-game screen, `1000:8df8` - one page, reached from
 // `1000:9f56` when the wave reaches 25, where the registered build reaches its
 // Nobel ending at `1000:9499` on wave 75.
 //
-// THE TWO ARE NOT INTERCHANGEABLE. The shareware image has no `PRIZE.GFX` and
+// The two are not interchangeable. The shareware image has no `PRIZE.GFX` and
 // none of the registered ending's text; the registered image has none of this
 // screen's. Substituting either for the other would be inventing an ending for
 // an edition that does not have one.

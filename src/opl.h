@@ -72,7 +72,7 @@ public:
     void playSound(const Sound* s);
     // `[DS:0x231a]`, StopSound - and the port needs it for a second reason
     // the original never had: a screen that owns its own `Sound` objects as
-    // locals MUST silence the voice before they go out of scope, or the audio
+    // locals must silence the voice before they go out of scope, or the audio
     // thread reads freed memory. The cutscene crashed exactly that way.
     void stopSound();
 
@@ -80,9 +80,9 @@ public:
     // score viewer polls it to keep the applause looping.
     bool soundBusy() const { return sfxVoice_.busy(); }
 
-    // `DS:0x22ce`, which returns 0xff once the song has been round once. The
-    // banners at `1000:5e0b` and `1000:5e78` end on it as well as on a key,
-    // which is what "the Wave Complete banner ends when its music does" is.
+    // `DS:0x22ce`, which returns 0xff once the song has looped once. The
+    // banners at `1000:5e0b` and `1000:5e78` end on it as well as on a key;
+    // that is what makes the "Wave Complete" banner end when its music does.
     // The sequencer already tracks it - `looped_` is the driver's `cs:0x32`.
     // Read from the game thread while the audio callback writes it; a plain
     // bool that only ever goes false-to-true needs nothing more.
