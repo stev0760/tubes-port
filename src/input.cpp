@@ -83,17 +83,17 @@ int displayUnitHeight(const GraphicsOptions& g) {
 
 DisplayRect presentRect(int winW, int winH, const GraphicsOptions& g) {
     const int unitH = displayUnitHeight(g);
-    // The scale is a whole number of UNITS, which keeps columns exact: 320
+    // The scale is a whole number of units, which keeps columns exact: 320
     // source columns always land on a whole multiple of themselves, so there
     // is never a column two pixels wide beside one three pixels wide.
     //
-    // Rows are exact only with square pixels. **4:3 puts 200 source rows into
-    // 240 * s output rows, so a row is 1.2 * s tall and that is not a whole
-    // number unless s is a multiple of five** - at 3x, source rows come out
-    // three and four pixels tall in a repeating pattern. That is inherent to
-    // showing a 320x200 image in a 4:3 frame by nearest neighbour, and it is
-    // the reason square is the default: the stretch is what a CRT did, and it
-    // is offered to players who want that, not imposed on everyone.
+    // Rows are exact only with square pixels. With 4:3, 200 source rows map to
+    // 240 * s output rows, so a row is 1.2 * s tall and that is a whole number
+    // only when s is a multiple of five - at 3x, source rows come out three
+    // and four pixels tall in a repeating pattern. That is inherent to showing
+    // a 320x200 image in a 4:3 frame by nearest neighbour, and it is the
+    // reason square is the default: the stretch is what a CRT did, and it is
+    // offered to players who want that, not imposed on everyone.
     int s = std::min(winW / kScreenWidth, winH / unitH);
     // A pinned scale is honoured only while it fits. Past that the window is
     // the constraint: a 6x window on a small display would put most of the
@@ -160,7 +160,7 @@ std::string encodeSettings(const Settings& s) {
     o << "aspect43 " << (s.graphics.aspect43 ? 1 : 0) << "\n";
     o << "vsync " << (s.graphics.vsync ? 1 : 0) << "\n";
     o << "scanlines " << (s.graphics.scanlines ? 1 : 0) << "\n";
-    // Written only once it has been answered, so its ABSENCE is what says the
+    // Written only once it has been answered, so its absence is what says the
     // question has not been asked yet. That keeps the first-run state in the
     // one place a player can see and undo it: delete the line to be asked
     // again.
@@ -215,7 +215,7 @@ void decodeSettings(const std::string& text, Settings& out) {
         } else if (word == "edition") {
             std::string which;
             if (!(ls >> which)) continue;
-            // An unrecognised value is NOT an answer. Leaving `editionChosen`
+            // An unrecognised value is not an answer. Leaving `editionChosen`
             // false there means a hand-edited typo asks again rather than
             // silently playing the wrong edition - and the wrong edition is
             // the one thing here that reaches for a different save file.

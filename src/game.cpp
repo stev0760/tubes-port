@@ -209,7 +209,7 @@ Game::Game(int cols, int rows, Difficulty diff, uint32_t seed,
     tubeColumn_ = random(kAtomSlots);
     tubeX_ = kTubeStopX[tubeColumn_ + 1];
     tubeTargetX_ = tubeX_;
-    // `1000:3be0` seeds the dispenser countdown with **1**, not with the
+    // `1000:3be0` seeds the dispenser countdown with 1, not with the
     // interval - it is the last thing the session's setup does, right after the
     // loop that parks all twelve records at (303, 186). The tick is
     // `Dec(timer); if timer = 0 then dispense`, so a seed of 1 fires on the
