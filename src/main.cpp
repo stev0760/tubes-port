@@ -1,7 +1,7 @@
 // tubes-port - an SDL reimplementation of Tubes (Absolute Magic, 1994).
 //
 // Ships no game data. Assets are read at runtime from the user's own copy of
-// the original game; point --gamedir at the directory holding TUBES.RES.
+// the original game; point --gamedir at the directory holding `TUBES.RES`.
 
 #include <SDL2/SDL.h>
 
@@ -41,13 +41,13 @@
 
 namespace {
 
-// Playfield geometry, all measured from the draw loop in 1000:3a67.
+// Playfield geometry, all measured from the draw loop in `1000:3a67`.
 //
 // The playfield is 6 x 5, not the 7 x 10 the manual implied. Columns are
 // pitched 18 apart while the sprites are 16 wide, which is why nothing lined
 // up when the pitch was assumed equal to the cell size. The grid spans
 // x 107..212, centred on 160 - exactly the centre of the x 74..245 gap
-// between the tube walls in GAMEFG.GFX. See docs/reversing-notes.md.
+// between the tube walls in `GAMEFG.GFX`. See docs/reversing-notes.md.
 constexpr int kCellW = 16;      // atom sprite width
 constexpr int kCellH = 13;      // atom sprite height
 constexpr int kPitchX = 18;     // column pitch: sprites are 16 wide, so a 2px gap
@@ -104,18 +104,18 @@ const char* kAtomSprites[tubes::kTypeCount] = {
 
 // The fade families, one per type, in the order `1000:9e53` loads them. The
 // loader's inner sequence is types 1..10 then 18, and the eleven name strings
-// sit consecutively at 1000:9d07:
+// sit consecutively at `1000:9d07`:
 //
 //     RFADE GFADE BFADE CFADE PFADE YFADE PNKFADE FFADE AFADE GLDFADE CRFADE
 //
 // followed immediately by the same eleven with `.SFX` - one sound per family,
-// which is why the clear sound follows the colour the stack matched AS rather
+// which is why the clear sound follows the colour the stack matched, rather
 // than each ball's own type.
 //
 // Types 11..17 and 19 have null entries: they are never cleared by matching,
-// so they have no fade of their own. A fade family is an EFFECT, not a
-// "can be cleared" marker - AFADE is AntiMatter's blast applied to everything
-// caught in it, and CRFADE is the Crystal's teleport, forward then reverse.
+// so they have no fade of their own. A fade family is an effect, not a "can be
+// cleared" marker - `AFADE` is AntiMatter's blast applied to everything caught
+// in it, and `CRFADE` is the Crystal's teleport, forward then reverse.
 const char* kFadeFamilies[tubes::kTypeCount] = {
     nullptr,      // 0  empty
     "RFADE",      // 1  Redium
@@ -130,10 +130,10 @@ const char* kFadeFamilies[tubes::kTypeCount] = {
     "GLDFADE",    // 10 Bonus
     nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,   // 11..17
     "CRFADE",     // 18 Crystal
-    nullptr,      // 19 MYSTBALL is a rendering state, not a ball
+    nullptr,      // 19 `MYSTBALL` is a rendering state, not a ball
 };
 
-// The sound table, indexed exactly as the original's is - by ATOM TYPE, with
+// The sound table, indexed exactly as the original's is - by atom type, with
 // index 0 the sound of losing one. Loaded by name at `1000:a2e0` onward; types
 // 11..17 and 19 are silent, which is the same set that has no fade family.
 const char* kSoundFiles[tubes::sfx::kCount] = {
@@ -150,7 +150,7 @@ const char* kSoundFiles[tubes::sfx::kCount] = {
     "GLDFADE.SFX",      // 10  a Bonus caught
     nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,  // 11..17
     "CRFADE.SFX",       // 18  the Crystal
-    nullptr,            // 19  MYSTBALL is a rendering state, not a ball
+    nullptr,            // 19  `MYSTBALL` is a rendering state, not a ball
     "HITGLASS.SFX",     // 20  landing on the beaker floor
     "HITATOM.SFX",      // 21  landing on another atom, and the beaker settling
     "SELECT.SFX",       // 22  the wave-mode element cycle
@@ -160,9 +160,9 @@ const char* kSoundFiles[tubes::sfx::kCount] = {
 // runs to 152 before the cell empties, so the sprite table needs 153 slots.
 constexpr int kCellStates = tubes::kCellClearAbove + 1;
 
-// The tube network furniture, decompiled out of 1000:3a67. It is NOT a
+// The tube network furniture, decompiled out of 1000:3a67. It is not a
 // backdrop: the network is built from individual segment sprites in layered
-// passes, and the atoms are drawn *between* those passes so the solid pieces
+// passes, and the atoms are drawn between those passes so the solid pieces
 // overpaint them. That is what makes the tubes read as hollow, with atoms
 // visibly inside them and tubes overlapping one another.
 enum Furn {
@@ -192,8 +192,8 @@ struct FurnDraw {
     int16_t y, x;
 };
 
-// Transcribed in order from the decompiled draw sequence. The two ATOMS marks
-// in that sequence split this into three groups; see kFurnGroup* below.
+// Transcribed in order from the decompiled draw sequence. The two `ATOMS`
+// marks in that sequence split this into three groups; see kFurnGroup* below.
 const FurnDraw kFurniture[] = {
     // --- group 0: back layers, drawn before any atom ---
     {kTubeH,   26,  34}, {kTubeH,   26, 270}, {kTubeH,   26,  58},
@@ -223,9 +223,9 @@ constexpr int kFurnGroup1 = 32;   // and again after this many
 constexpr int kFurnTotal = static_cast<int>(sizeof(kFurniture) /
                                             sizeof(kFurniture[0]));
 
-// DEMO.SCR is recorded at TUBES 301, not 101.
+// `DEMO.SCR` is recorded at TUBES 301, not 101.
 //
-// `DS:0x1d4f` is the difficulty INDEX - `1000:a483` switches on it and is the
+// `DS:0x1d4f` is the difficulty index - `1000:a483` switches on it and is the
 // only writer of the three constants the session runs on:
 //
 //     0 -> drops 9, velocity 0x100, spawn interval 0x46 (70)     Tubes 101
@@ -233,25 +233,27 @@ constexpr int kFurnTotal = static_cast<int>(sizeof(kFurniture) /
 //     2 -> drops 3, velocity 0x200, spawn interval 0x32 (50)     Tubes 301
 //
 // and the menu's View Demo arm sets `[0x1d4f] := 2` at `1000:b272` before
-// calling the session. It was read as a mode flag at first because the same arm
-// also sets `[0x1d4e]` and `[0x1d4c]`, and because `1000:b1ee` presets the
-// difficulty block to the 101 values before the menu loop - which made 101 look
-// like what the demo inherits. It is not: a483 rewrites the block on entry.
+// calling the session. It was read as a mode flag at first because the same
+// arm also sets `[0x1d4e]` and `[0x1d4c]`, and because `1000:b1ee` presets the
+// difficulty block to the 101 values before the menu loop - which made 101
+// look like what the demo inherits. It is not: a483 rewrites the block on
+// entry.
 //
-// Confirmed live: the running demo reads 3 at the drops counter (0x245bc)
-// before the session has made its first `Random` call. Only arm 2 produces a 3.
+// Confirmed live: the running demo reads 3 at the drops counter (`0x245bc`)
+// before the session has made its first `Random` call. Only arm 2 produces a
+// 3.
 //
 // This matters far more than "the demo starts with fewer lives". The interval
 // sets how often an atom is dispensed and the velocity how fast it travels, so
-// at 101 the port was dispensing on a 70-frame beat against a recording made on
-// a 50-frame one. The recorded player was reaching for atoms that were not
+// at 101 the port was dispensing on a 70-frame beat against a recording made
+// on a 50-frame one. The recorded player was reaching for atoms that were not
 // there yet - which is exactly the symptom the oracle reported.
 constexpr tubes::Difficulty kDemoDifficulty = tubes::Difficulty::k301;
 
-// DERIVED. `23e7:0024` is a vertical-retrace wait - it polls port 0x3da bit 3
+// Derived. `23e7:0024` is a vertical-retrace wait - it polls port 0x3da bit 3
 // low-then-high `n` times - so `1b2e:0e37(param)`, which runs `param * 7`
 // iterations of `23e7:0024(10)`, waits `param * 70` retraces. At Mode X's
-// 70 Hz that is `param` SECONDS exactly, and the round number is what
+// 70 Hz that is `param` seconds exactly, and the round number is what
 // confirms the reading. The Continue screen passes 2.
 const float kContinueTickSeconds = tubes::waitKeySeconds(2);
 
@@ -270,20 +272,20 @@ struct Options {
     std::string renderMus;      // render a song to WAV and exit
     std::string dumpRegs;       // print the OPL register stream and exit
     std::string renderState;    // load a captured state, render it, exit
-    bool dumpSfx = false;       // print every .SFX header and exit
-    std::string dumpAnm;        // print a .ANM's runs, to diff the decoder
-    std::string dumpSpr;        // print a .SPR's frame dimensions
-    // Decode a TUBES.SAV and print every field, so the C++ decoder can be
+    bool dumpSfx = false;       // print every `.SFX` header and exit
+    std::string dumpAnm;        // print a `.ANM`'s runs, to diff the decoder
+    std::string dumpSpr;        // print a `.SPR`'s frame dimensions
+    // Decode a `TUBES.SAV` and print every field, so the C++ decoder can be
     // diffed against `tools/sav_decode.py` rather than trusted.
     std::string dumpSave;
-    bool playDemo = false;      // replay DEMO.SCR through the live loop
-    bool demoTrace = false;     // run DEMO.SCR headless and print the spawns
+    bool playDemo = false;      // replay `DEMO.SCR` through the live loop
+    bool demoTrace = false;     // run `DEMO.SCR` headless and print the spawns
     int randomTrace = 0;        // with --demo-trace: print the first N rolls
     std::string demoCsv;        // with --demo-trace: per-frame state, for the rig
     std::string gameBg = "GAMEBG1.GFX";   // backdrop, for matching a capture
     // True when the edition came from the command line rather than from the
     // settings file. The flags are the developer's and the harness's override:
-    // they win, they do NOT persist, and they suppress the first-run prompt -
+    // they win, they do not persist, and they suppress the first-run prompt -
     // so a capture script never blocks on a question and never rewrites the
     // player's answer.
     bool editionFromFlag = false;
@@ -311,13 +313,13 @@ struct Options {
     int instr = -1;             // open the Instructions on slide N, for capture
     bool credits = false;       // open the Credits, for capture
     // Harness only. `--screenshot` captures the first frame drawn, which can
-    // never show a screen that is reached by PLAYING - the banners, the stats
+    // never show a screen that is reached by playing - the banners, the stats
     // screen and the Continue prompt are all past a game over. These two run
     // the real loop to get there instead of adding entry points that the
     // original does not have.
     // `[DS:0x0ce6]` is 40 in the image, and the player has said outright that
     // the half second between screens may be sped up or turned off. So the
-    // knob exists and its DEFAULT is the original's number; 0 cuts instead.
+    // knob exists and its default is the original's number; 0 cuts instead.
     int fadeSteps = tubes::kFadeSteps;
     bool noSplash = false;      // skip the boot splashes outright
     int splashFrame = -1;       // capture this .ANM frame of the first splash
@@ -327,9 +329,9 @@ struct Options {
     int shotAfter = 0;          // present the screenshot after N live frames
     bool joke = false;          // force `1b2e:084e`, which is a 5% roll
     int ending = -1;            // open `1000:9499` at page 1 or 2
-    std::string makeSave;       // write a TUBES.SAV for --wave N and exit
-    bool hsEntry = false;       // open the high score ENTRY screen, 1000:96db
-    bool autoAdvance = false;   // synthesise RETURN whenever a stage waits
+    std::string makeSave;       // write a `TUBES.SAV` for --wave N and exit
+    bool hsEntry = false;       // open the high score entry screen, `1000:96db`
+    bool autoAdvance = false;   // synthesise `RETURN` whenever a stage waits
     uint32_t seed = 0;          // 0 = clock for play, fixed for the harnesses
     bool help = false;
 };
@@ -348,7 +350,7 @@ struct Options {
 //     atom <x> <y> <state> <column> <type> [<slot>]
 //
 // The optional slot is the atom's index in the original's array. It matters
-// because that index IS the column for the six network atoms, and the index
+// because that index is the column for the six network atoms, and the index
 // alone decides how deep in the tube artwork the atom is drawn. Captures
 // written before that was known omit it, and those are read as slot = column,
 // which is right for exactly the atoms they contain.
@@ -413,9 +415,10 @@ bool loadState(const std::string& path, tubes::Game& game) {
             if (n >= 5) {
                 if (n < 6) slot = col;
                 // Slots 7..12 are the atoms tipped out of the test tube and
-                // falling into the beaker. They used to be skipped, because the
-                // engine settled a tip instantly and had nowhere to put one;
-                // now they are records like any other and load straight in.
+                // falling into the beaker. They used to be skipped, because
+                // the engine settled a tip instantly and had nowhere to put
+                // one; now they are records like any other and load straight
+                // in.
                 if (slot < 1 || slot > tubes::kAtomRecords) continue;
                 f.x = x; f.y = y;
                 f.state = static_cast<uint8_t>(st);
@@ -555,7 +558,7 @@ Options parseArgs(int argc, char** argv) {
             o.editionFromFlag = true;
         } else if (a == "--registered") {
             // The other half of `--shareware`, and it is not decoration. Once
-            // the answer is REMEMBERED, a flag that can only say "shareware"
+            // the answer is remembered, a flag that can only say "shareware"
             // is a one-way door: a player who answered shareware, or who wants
             // one registered run against a registered install, would have had
             // to hand-edit the settings file to get back. Both directions or
@@ -690,7 +693,7 @@ bool loadSprite(const tubes::Archive& res, const std::string& name,
 //     end
 //
 // `$81` is the shadow bit plus mode 1, so every glyph is drawn twice: once
-// flat in index 0 at (x+1, y+1), then again walking DOWN the palette one index
+// flat in index 0 at (x+1, y+1), then again walking down the palette one index
 // per scanline from 127. The palette holds a cyan ramp at 112..127, which is
 // where the HUD's colour comes from - there is no second colour constant
 // anywhere. Confirmed against a captured frame: the pixels of "Chains" read
@@ -718,7 +721,7 @@ void drawHud(tubes::Screen& screen, const tubes::Game& game,
     while (chains.size() < 3) chains.insert(chains.begin(), ' ');
     tubes::drawText(screen, big, 32, 0, kHudColour, kHudMode, chains);
 
-    // 1000:576f. The 255 arm is the drop counter having wrapped past zero,
+    // `1000:576f`. The 255 arm is the drop counter having wrapped past zero,
     // which is the game-over condition - so "No" is on screen for the frame
     // that ends the session as well as for the last one before it.
     const int drops = game.dropsRemaining();
@@ -738,7 +741,8 @@ void drawHud(tubes::Screen& screen, const tubes::Game& game,
                                  tubes::textmode::kPeak;
     tubes::drawTextCentred(screen, small, 0, 319, 13, kPopColour, kPopMode,
                            "+" + std::to_string(game.scorePending()));
-    // 1000:586a - the multiplier only appears when it is worth more than one.
+    // `1000:586a` - the multiplier only appears when it is worth more than
+    // one.
     if (game.scoreMultiplier() > 1) {
         tubes::drawTextCentred(screen, small, 0, 319, 21, kPopColour, kPopMode,
                                "x" + std::to_string(game.scoreMultiplier()));
@@ -765,7 +769,7 @@ std::string padLeft(const std::string& s, size_t w) {
 }
 
 // `1b2e:0a11`, the classroom scene. Called by the briefing `1000:86b8`, the
-// stats screen `1000:8da5` AND the Continue screen `1000:8c38` - one routine
+// stats screen `1000:8da5` and the Continue screen `1000:8c38` - one routine
 // behind all three, which is why they share a look.
 //
 // `2321:060b(x, y, w, h, colour)` is a filled rect; the argument order comes
@@ -777,7 +781,7 @@ std::string padLeft(const std::string& s, size_t w) {
 struct SceneArt {
     const tubes::Image* corners = nullptr;   // UL, UR, DL, DR
     const bool* haveCorner = nullptr;
-    const tubes::Image* pointer = nullptr;   // POINTER0..3
+    const tubes::Image* pointer = nullptr;   // `POINTER0..3`
     const bool* havePointer = nullptr;
     const tubes::Image* books = nullptr;
     bool haveBooks = false;
@@ -807,10 +811,10 @@ struct ScenePose {
     int frameH = tubes::kFrameH;      // the projector screen's rolled height
     int slideX = tubes::kSlideX;
     int slideY = tubes::kSlideY;
-    int profFrame = 0;                // 0 standing, 1..3 POINTER1..3
-    int mouthFrame = 0;               // 0 none, 1..5 TALK1..5 - `1b2e:0cd1`
-    bool jokeSlide = false;           // FLASH.GFX is up  - `1b2e:084e`
-    bool jokeFace = false;            // and POINTERT with it
+    int profFrame = 0;                // 0 standing, 1..3 `POINTER1..3`
+    int mouthFrame = 0;               // 0 none, 1..5 `TALK1..5` - `1b2e:0cd1`
+    bool jokeSlide = false;           // `FLASH.GFX` is up  - `1b2e:084e`
+    bool jokeFace = false;            // and `POINTERT` with it
     // `DS:0x20fc`, 1..3, and 0 for "he is not jumping". `1b2e:0656`'s third
     // arm - the one `DS:0x20e3` selects - stands him on his books somewhere
     // else and hops him, and the ending is the only caller that reaches it.
@@ -821,7 +825,7 @@ struct ScenePose {
 
     // Nothing a screen wants to write belongs on the slide in any of these.
     // `1b2e:0510` returns before its caller writes a word; `1b2e:084e` and the
-    // slide drop both run INSIDE `1b2e:0a11`, which is itself blocking and
+    // slide drop both run inside `1b2e:0a11`, which is itself blocking and
     // returns before the caller is reached. So a screen's text arrives only
     // once the slide has stopped moving - the port used to draw the briefing's
     // text over a slide still wobbling under it.
