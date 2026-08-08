@@ -2358,7 +2358,7 @@ int runAbsoluteMagicSplash(const tubes::Archive& res, SDL_Renderer* ren,
         !res.read("CLOUD.GFX", cloudRaw, err) ||
         !tubes::decodeGfx(cloudRaw, cloud, err) ||
         !res.read("AMWRITE.GFX", writeRaw, err) ||
-        // PLANAR, though it carries the 0xE5 prefix - `2321:0948` is what
+        // Planar, though it carries the 0xE5 prefix - `2321:0948` is what
         // draws it, and that routine walks four planes. See GfxLayout.
         !tubes::decodeGfx(writeRaw, writing, err,
                           tubes::GfxLayout::kPlanar) ||
@@ -2513,10 +2513,10 @@ CutsceneArt loadCutsceneArt(const tubes::Archive& res) {
                     std::vector<tubes::Image>& out) {
         out.resize(static_cast<size_t>(n));
         for (int i = 0; i < n; ++i) {
-            // OPAQUE. `1b2e:0f46` draws every animation frame through
+            // Opaque. `1b2e:0f46` draws every animation frame through
             // `2000:389d`, which is `2321:068d` - the opaque member of the
             // blit family, the same one `1b2e:0e37` stamps the professor's
-            // wave frames with. So a frame REPLACES its whole w x h box,
+            // wave frames with. So a frame replaces its whole w x h box,
             // index-0 pixels included, and those land as colour 0 rather than
             // as "leave what was there". That is the whole of the 144 pixels
             // this screen was out by: the port had these masked, so the base
@@ -2573,12 +2573,12 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
         }
     };
 
-    // A capture runs the pages at full speed: the frame SEQUENCE is what
+    // A capture runs the pages at full speed: the frame sequence is what
     // has to be right, not the wall clock, and `--cutscene 4` would
     // otherwise sit through 36 seconds of the earlier pages first.
     const bool capturing = shotPage >= 0;
 
-    // `[DS:0x1d6e]` and `[DS:0x1d6f]`, the two GLOBAL frame counters. They
+    // `[DS:0x1d6e]` and `[DS:0x1d6f]`, the two global frame counters. They
     // live across pages, which is what lets page 4 start part way in.
     int frameA = 0, frameB = 0;
     // The beaker is drawn once before the fade and then left on the page, so
@@ -2588,25 +2588,25 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
     // diff found this: page 2 was missing the atoms inside the beaker.
     int beakerFrame = 0;
     // `1b2e:1e6b`: the fourth page ends by copying both animation rectangles
-    // from the OTHER video page (`2321:024d`, a page-to-page rect copy). What
-    // that leaves is not symmetric, and the capture is what says so: on page
-    // 5 the original still shows Lanny in full and the beaker is GONE. So the
+    // from the other video page (`2321:024d`, a page-to-page rect copy). What
+    // that leaves is not symmetric, and the capture shows this: on page
+    // 5 the original still shows Lanny in full and the beaker is gone. So the
     // copy restored a page that still had him and no longer had it.
     //
-    // The page bookkeeping behind that is NOT fully traced - `[0x2376]` is
+    // The page bookkeeping behind that is not fully traced - `[0x2376]` is
     // flipped once before each Animate rather than per frame, and which page
-    // holds what by then depends on the whole run. The OUTCOME is read off
+    // holds what by then depends on the whole run. The outcome is read off
     // seven captures that all agree; the mechanism is marked as unread.
 
-    // The original draws onto a PAGE, and the only thing that keeps that
+    // The original draws onto a page, and the only thing that keeps that
     // distinguishable from "an overlay over the board" is that its blits are
-    // OPAQUE: a frame writes colour 0 where its art is transparent, and black
+    // opaque: a frame writes colour 0 where its art is transparent, and black
     // is not the same as letting the blackboard through. The port kept the
     // figures in a layer stamped with index 0 meaning "not painted", which is
     // exactly the difference the fourth page's 144 pixels measured. They are
     // drawn straight onto the composed page here instead.
     //
-    // The base pose is the exception and stays MASKED: `1b2e:1a91` draws it
+    // The base pose is the exception and stays masked: `1b2e:1a91` draws it
     // through `2000:3921`, the masked thunk, because it goes over the board.
     // A page's own furniture: the bevelled panel, the story text and, on page
     // 2, the eight elements' atoms. Drawn once, over whatever is there.
@@ -2675,12 +2675,12 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
     };
 
     // The scene with no page on it: `1b2e:1a80`..`1ab6`, which is what the
-    // fade-in reveals. THREE literal draws, and they are spelled out here
+    // fade-in reveals. Three literal draws, and they are spelled out here
     // rather than routed through `drawFigures` because the first page has no
     // B track at all - its whole `CutsceneTrack` is zeroed, so asking
     // `drawFigures` for it put the beaker at `(page.b.x, page.b.y)` = (0, 0)
-    // for the one frame before the fade. Reported from play as a glitch in the
-    // top-left corner, and it was exactly that.
+    // for the one frame before the fade. Reported from play as a glitch in
+    // the top-left corner, and it was exactly that.
     auto scene = [&]() {
         screen.clear(0);
         screen.blit(*board, 0, tubes::kCutsceneBoardY);
@@ -2693,7 +2693,7 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
                        bool bLive) {
         screen.clear(0);
         screen.blit(*board, 0, tubes::kCutsceneBoardY);
-        // The page's furniture, THEN the animation over it. That is the
+        // The page's furniture, then the animation over it. That is the
         // original's order - `1b2e:1cdf` draws the panel, the text and the
         // eight elements' atoms once, and the Animate call then paints on top
         // every tick - and it is the whole reason Flashium flashes: the
@@ -2712,7 +2712,7 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
 
     // `1b2e:1ad4`: the fade reveals the board and the two figures, with no
     // page text up yet - the first page's panel is drawn after it. The scene
-    // has to be COMPOSED first: without this the fade brought up whatever the
+    // has to be composed first: without this the fade brought up whatever the
     // Absolute Magic splash had left on the screen, which is what a player
     // sees as the splash's last frame corrupting.
     scene();
@@ -2751,8 +2751,8 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
             if (!capturing &&
                 holdRetraces(tubes::kCutsceneFrameRetraces, skip)) {
                 // `1b2e:112a` onward, transliterated: Enter or Space sets the
-                // page's countdown to 1, so the PAGE ends and the next one
-                // begins; ESC does that AND sets the return code to 2, which
+                // page's countdown to 1, so the page ends and the next one
+                // begins; ESC does that and sets the return code to 2, which
                 // is what leaves the cutscene. The port had every key ending
                 // the whole thing, which made Enter a skip button rather than
                 // the page-turner the original gives you.
@@ -2765,7 +2765,7 @@ int runCutscene(const tubes::Archive& res, SDL_Renderer* ren, SDL_Texture* tex,
                     play(page.a.sound);
                 }
                 if (++frameA > page.a.count) {
-                    // A one-shot track STOPS. The original simply stops
+                    // A one-shot track stops. The original simply stops
                     // drawing and its last frame stays on the page, so the
                     // port - which recomposes every tick - has to hold that
                     // frame rather than wrap to 1. Without this the explosion
@@ -2888,14 +2888,14 @@ void drawTitle(tubes::Screen& screen, const tubes::Image& bg,
     screen.clear(0);
     if (haveArt) {
         screen.blit(bg);
-        // `1b2e:5754`: a full-screen MASKED blit of the foreground,
+        // `1b2e:5754`: a full-screen masked blit of the foreground,
         // `2321:0711(0, 0, fg, 320, 200)`. Without it the pipe walls are
         // simply absent - the network reads as a flat silhouette, which is
         // what happened when only the atom's own box was stamped.
         screen.blit(fg);
     }
 
-    // `1b2e:5780`, drawn once under the artwork with the SMALL font, which
+    // `1b2e:5780`, drawn once under the artwork with the small font, which
     // `1b2e:576b` selects just before it. Mode 3, no shadow bit.
     if (haveSmall) {
         tubes::drawTextCentred(screen, small, 0, 319, 190, 157, 3,
@@ -2928,7 +2928,7 @@ void drawTitle(tubes::Screen& screen, const tubes::Image& bg,
                                tubes::menuRule(p, ed));
     }
 
-    // Every item in one colour: the SELECTION is marked by the stars alone,
+    // Every item in one colour: the selection is marked by the stars alone,
     // which is why there is no highlight colour here.
     for (int i = 1; i <= page.count; ++i) {
         tubes::drawTextCentred(screen, big, 0, 319, tubes::menuItemY(p, i, ed),
@@ -2957,7 +2957,7 @@ void drawTaskDisplay(tubes::Screen& screen, const tubes::Game& game,
     // Flashium has no sprite of its own - the original rewrites its table slot
     // every fourth frame - and the Task Display's colour is pointed at that
     // same cycling value whenever the wave names no colour, so this ball
-    // cycles for exactly the waves the original's does.
+    // cycles for exactly the waves the original does.
     const int8_t taskColour = game.taskDisplay().colour;
     const int8_t ball = taskColour == tubes::kFlashium ? game.flashColour()
                                                        : taskColour;
@@ -3024,22 +3024,22 @@ bool loadFont(const tubes::Archive& res, const std::string& name, int advance,
 }
 
 // The one byte the game asks for, built from whatever the player has bound.
-// This IS the port's input driver: everything above it is the original's, and
+// This is the port's input driver: everything above it is the original's, and
 // `DEMO.SCR` replay feeds the same byte from a file instead.
 //
 // Keyboard and pad are OR-ed rather than switched between. The original bound
 // one driver at a time because DOS gave it no choice; SDL has no such reason,
 // and a player with a controller plugged in should not have to visit a menu.
-// What a controller button means on a screen that is WAITING - a menu, a
+// What a controller button means on a screen that is waiting - a menu, a
 // slideshow, the save or high score screen, a banner, the cutscene.
 //
 // The original's menu tests joystick button `0x20` directly (`1b2e:4d80`),
 // because DOS gave it no abstraction over a gameport; SDL is that
-// abstraction, so this maps the player's OWN bindings onto the keys those
+// abstraction, so this maps the player's own bindings onto the keys those
 // screens already handle rather than porting a driver's button numbers. Same
 // reasoning as the rebinding screen - see input.h.
 //
-// Live play does NOT come through here. `readInput` polls the pad directly,
+// Live play does not come through here. `readInput` polls the pad directly,
 // the way the original polls its driver, so A and B stay the test tube's
 // controls and never leak out as RETURN and ESCAPE.
 SDL_Keycode menuKeyForPad(const tubes::Bindings& bind, int button) {
@@ -3326,8 +3326,9 @@ int main(int argc, char** argv) {
 
     // Prints every .SFX header the way `tools/sfx_decode.py INFO` does, so the
     // two decoders can be diffed. Music is verified by diffing its register
-    // stream against the Python tool rather than by listening; this is the same
-    // check for the digital side, and it is what caught the rate being a WORD.
+    // stream against the Python tool rather than by listening; this is the
+    // same check for the digital side, and it is what caught the rate being a
+    // WORD.
     if (opt.dumpSfx) {
         for (const auto& kv : res.entries()) {
             const std::string& name = kv.first;
