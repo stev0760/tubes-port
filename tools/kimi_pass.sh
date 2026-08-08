@@ -104,10 +104,17 @@ fi
 # 4. the backtick convention. Addresses and identifiers are written `like this`
 # throughout src/, and one run stripped all 102 of them out of save.h. Cheap to
 # count, and invisible to every other guard here.
+# Losing them is the failure. Gaining them is usually right - the model has
+# backticked bare addresses and resource names that the convention wanted
+# marked all along - so that is a note to read, not a stop.
 ticks() { grep -o '`' "$1" | wc -l; }
-if [ "$(ticks "$A")" -ne "$(ticks "$B")" ]; then
-    echo "FAIL: backticks $(ticks "$A") -> $(ticks "$B"), the inline-code convention changed"
+if [ "$(ticks "$B")" -lt "$(ticks "$A")" ]; then
+    echo "FAIL: backticks $(ticks "$A") -> $(ticks "$B"), inline-code markup was stripped"
     fail=1
+elif [ "$(ticks "$B")" -gt "$(ticks "$A")" ]; then
+    echo "note: backticks $(ticks "$A") -> $(ticks "$B"), newly marked:"
+    diff -u "$A" "$B" | grep -E '^\+' | grep -oE '`[^`]+`' | sort -u | tr '\n' ' ' \
+        | sed -e 's/^/      /' -e 's/$/\n/'
 else
     echo "ok:   backticks preserved ($(ticks "$A"))"
 fi
