@@ -5399,21 +5399,21 @@ int main(int argc, char** argv) {
 
             // ---- inside the session, `1000:9e53` -------------------------
             //
-            // `1000:2dd0` runs once a frame and only when `KeyPressed`, so the
-            // whole of it belongs here rather than in the per-frame update.
-            // The keys it recognises are ESC and F1..F5; everything else falls
-            // through to the tube, which reads the keyboard separately.
+            // `1000:2dd0` runs once a frame and only when `KeyPressed`, so it
+            // belongs here rather than in the per-frame update. The keys it
+            // recognises are ESC and F1..F5; everything else falls through to
+            // the tube, which reads the keyboard separately.
             const uint8_t code = originalKeyCode(k);
 
-            // The save screen owns the keyboard while it is up, exactly as
-            // the typing loops do - `1000:2dd0` does not return until ESC or
-            // a completed save. `1000:3382` is the navigation and `1000:3423`
-            // the two keys that end it.
-            // `1000:301b` is a bare `ReadKey` with nothing after it, so the
-            // help overlay leaves on any key that REACHES it - and the key is
-            // DISCARDED rather than re-dispatched. F5 out of help does not
-            // pause and ESC out of help does not abort, which is the whole
-            // difference between this wait and Pause's `repeat until k = $bf`.
+            // The save screen owns the keyboard while it is up, just as the
+            // typing loops do - `1000:2dd0` does not return until ESC or a
+            // completed save. `1000:3382` is the navigation and `1000:3423`
+            // the two keys that end it. `1000:301b` is a bare `ReadKey` with
+            // nothing after it, so the help overlay leaves on any key that
+            // reaches it and the key is discarded rather than re-dispatched.
+            // F5 out of help does not pause and ESC out of help does not
+            // abort, which is the whole difference between this wait and
+            // Pause's `repeat until k = $bf`.
             //
             // "Any key" is not the whole rule, and the screen's own
             // `Press Any Key...` is what made that easy to get wrong: the
@@ -5428,7 +5428,7 @@ int main(int argc, char** argv) {
                 if (saveWritten > 0.0f) continue;      // the written hold
                 if (!saveTyping) {
                     if (k == SDLK_DOWN) {
-                        // 1000:3393: five slots, and it WRAPS.
+                        // 1000:3393: five slots, and it wraps.
                         saveSlotSel = saveSlotSel == tubes::kSaveSlotsShown
                                           ? 1 : saveSlotSel + 1;
                     } else if (k == SDLK_UP) {
@@ -5492,7 +5492,7 @@ int main(int argc, char** argv) {
             }
 
             // F5 first: while paused the original is blocked inside
-            // `repeat until ReadKey = $bf`, so NOTHING else is looked at and
+            // `repeat until ReadKey = $bf`, so nothing else is looked at and
             // only F5 gets out.
             if (paused) {
                 if (code == tubes::gamekey::kF5) {
@@ -5515,8 +5515,8 @@ int main(int argc, char** argv) {
                 continue;
 
             case tubes::SessionStage::kBanner:
-                // `1000:5eec`: the ABORT arm draws its hint and then calls
-                // `1000:2dd0` - the whole in-game key dispatch - a SECOND
+                // `1000:5eec`: the abort arm draws its hint and then calls
+                // `1000:2dd0` - the whole in-game key dispatch - a second
                 // time, which is what makes the offer real. "F2 to Save Game,
                 // ESC for Main Menu!" is not decoration: F2 there opens the
                 // save screen, and it is the last chance to save a session
@@ -5524,7 +5524,7 @@ int main(int argc, char** argv) {
                 //
                 // The port dismissed the banner on any key at all, so the
                 // hint pointed at nothing and the only way to save was to
-                // remember F2 BEFORE aborting. Reported from play.
+                // remember F2 before aborting. Reported from play.
                 if (banner == tubes::Banner::kAborted &&
                     bannerPhase == tubes::BannerPhase::kWait &&
                     code == tubes::gamekey::kF2 && gameMode != 0 &&
@@ -5538,7 +5538,7 @@ int main(int argc, char** argv) {
                     }
                     continue;
                 }
-                // `1000:5e0b` and `1000:5e78`: a key ends the WAIT, and only
+                // `1000:5e0b` and `1000:5e78`: a key ends the wait, and only
                 // the wait. The 40-retrace hold before it does not look at
                 // input at all, and the outro after it is already committed -
                 // which is what stops the tip keypress that ended the wave
@@ -5549,9 +5549,9 @@ int main(int argc, char** argv) {
             case tubes::SessionStage::kStats: {
                 const tubes::StageTransition t =
                     tubes::advanceStage(sstage, flags, gameMode);
-                // `1000:a657`, and it is two instructions sitting INSIDE the
-                // progression block - so it is reached only when the wave is
-                // being advanced, which is what `t.advanceWave` means here:
+            // `1000:a657` is two instructions sitting inside the progression
+            // block, so it is reached only when the wave is being advanced -
+            // which is what `t.advanceWave` means here:
                 //
                 //     if wave >= 75 then RegisteredEnding;
                 //     wave := wave + 1
@@ -5559,10 +5559,9 @@ int main(int argc, char** argv) {
                 // The ending's own first act is to set the session's game-over
                 // flag through the static link (`SS:[DI + 0xfe02] := 1`), so
                 // the session is over the moment it is.
-                // Edition-aware: 75 registered, 25 shareware, 5 in the
-                // Preview. See `edition.h` - it is the same test at the same
-                // place in both builds, with a different literal and a
-                // different destination.
+            // Edition-aware: 75 registered, 25 shareware, 5 in the Preview.
+            // See `edition.h` - it is the same test at the same place in both
+            // builds, with a different literal and a different destination.
                 //
                 // The destinations differ as well as the literals. Wave 25
                 // in the shareware reaches `1000:8df8` - "You can't stop now!"
@@ -5571,7 +5570,7 @@ int main(int argc, char** argv) {
                 // text, so the port shows each edition its own screen and
                 // never substitutes one for the other.
                 //
-                // Read the edition from the SESSION, not the CLI option:
+                // Read the edition from the session, not the CLI option:
                 // Preview is set by the menu arm even when `--preview` was
                 // not given on the command line.
                 const tubes::EditionState& ed = game->edition();
@@ -5662,9 +5661,9 @@ int main(int argc, char** argv) {
             // Still playing: `1000:2dd0`'s dispatch proper.
             //
             // `DS:0x1d4b` is the save-disabled flag, and it is written in
-            // exactly one place - `1000:b1e4`, which sets it to ZERO - and
+            // exactly one place - `1000:b1e4`, which sets it to zero - and
             // read in three: this F2 gate, the abort banner's F2 hint, and the
-            // high-score offer. So **saving is always enabled** in the shipped
+            // high-score offer. So saving is always enabled in the shipped
             // build; the flag looks like a switch for an edition that never
             // came. The port hard-coded `true` here while the save screen did
             // not exist, which quietly made F2 dead once it did.
@@ -5679,7 +5678,7 @@ int main(int argc, char** argv) {
                 break;
             case tubes::GameAction::kMusicToggle:
                 musicOn = !musicOn;
-                // `1000:377a`: switching on restarts the CURRENT song, which
+                // `1000:377a`: switching on restarts the current song, which
                 // is the one chosen at the top of the wave.
                 if (musicOn) playSong(tubes::playMusicFor(
                                  game->dropsRemaining()));
@@ -5720,7 +5719,7 @@ int main(int argc, char** argv) {
 
         // `1b2e:0510` runs before the first slide is written, so the screen
         // finishes coming down while the slideshow waits. This is outside the
-        // stage dispatch on purpose: the Instructions and the Credits are
+        // stage dispatch on purpose: the instructions and the credits are
         // their own screen, and `--instructions` opens them from the harness
         // path, where `stage` is `kPlay` rather than `kTitle`.
         if (instrOpen) screenRoll.tick(dt);
@@ -5752,12 +5751,12 @@ int main(int argc, char** argv) {
             music.playSound(&slideSound);
         }
 
-        // `1b2e:0a11`'s slide drop: six frames, ten vertical retraces each, and
-        // then done for the whole run. This sits OUTSIDE the stage dispatch for
-        // the same reason `DS:0x210e` is a program-lifetime flag - the routine
-        // does not care which screen called it, and the briefing is only one of
-        // five callers. Whichever classroom the player reaches first is the one
-        // that drops the slide.
+        // `1b2e:0a11`'s slide drop: six frames, ten vertical retraces each,
+        // and then done for the whole run. This sits outside the stage
+        // dispatch for the same reason `DS:0x210e` is a program-lifetime flag
+        // - the routine does not care which screen called it, and the briefing
+        // is only one of five callers. Whichever classroom the player reaches
+        // first is the one that drops the slide.
         //
         // It waits for the roll-down for the same reason the joke does:
         // `1b2e:0510` returns before its caller reaches `1b2e:0a11`, so there
@@ -5778,32 +5777,33 @@ int main(int argc, char** argv) {
             }
         }
 
-        // --demo drives the REAL loop with the scripted player, so the render
-        // path gets exercised on every frame of a whole session rather than
-        // only on the one frame --auto screenshots. That distinction matters:
-        // a crash that needs both a full beaker and a live render is invisible
-        // to --auto, which simulates first and draws once at the end.
+        // `--demo` drives the real loop with the scripted player, so the
+        // render path gets exercised on every frame of a whole session rather
+        // than only on the one frame `--auto` screenshots. That distinction
+        // matters: a crash that needs both a full beaker and a live render is
+        // invisible to `--auto`, which simulates first and draws once at the
+        // end.
         if (stage == Stage::kTitle) {
-            // The Instructions, the Credits and the rebinding screen all
+            // The instructions, the credits and the rebinding screen all
             // borrow the classroom, so they borrow the professor's clock too -
             // `1b2e:0e37` steps him every ten retraces, and he waves his
             // pointer while any of the three waits for a key.
             //
-            // This used to read `if (instrOpen)` around a COPY of the render
+            // This used to read `if (instrOpen)` around a copy of the render
             // section's slide draw, which ended the frame with its own
             // `continue` before the clock below could run - so the professor
             // stood still on the two screens the original animates him on, and
             // the render section's own block was unreachable. The draw is gone
             // from here; the clock is what belongs in the update.
-            // `1b2e:52bf`'s loop body, at the TITLE screen's own rate - see
+            // `1b2e:52bf`'s loop body, at the title screen's own rate - see
             // kTitleHz. Everything in it is counted in frames: 4 px a frame
             // along a leg, a star frame every three, 720 frames to attract.
             titleAccum += dt * tubes::kTitleHz;
             int steps = static_cast<int>(titleAccum);
             titleAccum -= static_cast<float>(steps);
             if (steps > 8) steps = 8;      // a stall must not teleport the atom
-            // The countdown belongs to the TITLE screen and to nothing else.
-            // Instructions, the Credits, the high score viewer and the
+            // The countdown belongs to the title screen and to nothing else.
+            // The instructions, the credits, the high score viewer and the
             // rebinding screen are separate screens with waits of their own -
             // `1b2e:0e37(30)` for the slideshows, `kHsViewSeconds` for the
             // viewer - and the original's countdown is inside `1b2e:52bf`,
@@ -5819,7 +5819,7 @@ int main(int argc, char** argv) {
             }
             if (onTitleProper && attractTimer <= 0) {
                 attractTimer = tubes::kAttractTimeout;
-                // `1000:b287`: the arm runs the blackboard cutscene FIRST and
+                // `1000:b287`: the arm runs the blackboard cutscene first and
                 // skips the demo entirely if it returns 2 - which is ESC.
                 SkipWatch attractSkip;
                 const int k = runCutscene(
@@ -5829,7 +5829,7 @@ int main(int argc, char** argv) {
                     atoms, haveAtom, smallFont, haveSmall, -1, -1,
                     std::string());
                 // The cutscene ends on black, so there is nothing to fade
-                // OUT of - whatever comes next just fades in.
+                // out of - whatever comes next just fades in.
                 if (k != 2) startDemo();
                 pendingFadeIn = true;
             }
@@ -5841,7 +5841,7 @@ int main(int argc, char** argv) {
                 // The recording is consumed at the fixed game step rather than
                 // through `update`'s real-time conversion - same accumulator,
                 // driving an index instead. One byte per frame the tube was
-                // IDLE, not per frame: see Game::acceptsInput.
+                // idle, not per frame: see Game::acceptsInput.
                 demoAccum += dt * tubes::kFrameHz;
                 int steps = static_cast<int>(demoAccum);
                 demoAccum -= static_cast<float>(steps);
@@ -5989,9 +5989,9 @@ int main(int argc, char** argv) {
             // Drain the frame's whole queue. The original would have had
             // each of these cut the last one off - one voice - and the port
             // now lets them overlap instead; see sfx.h for why that departure
-            // was taken and what it does NOT change.
+            // was taken and what it does not change.
             //
-            // The sounds are TAKEN either way, so F4 mutes without desyncing
+            // The sounds are taken either way, so F4 mutes without desyncing
             // anything - `1000:3859` toggles the driver, it does not stop the
             // game asking for sounds.
             for (int8_t want = game->takeSound(); want != tubes::sfx::kNone;
@@ -6003,9 +6003,10 @@ int main(int argc, char** argv) {
             }
         }
 
-        // The Instructions, the Credits, the high score viewer and the
-        // rebinding screen each REPLACE the title while they are up, so each
-        // ends the frame with its own `continue` before the title is drawn.
+            // The instructions, the credits, the high score viewer and the
+            // rebinding screen each replace the title while they are up, so
+            // each ends the frame with its own `continue` before the title is
+            // drawn.
         if (instrOpen) {
             drawInstructionSlide(screen, instrPages, instrPageCount,
                                  instrSlide, instrNav, &blackboard, haveBlackboard,
@@ -6081,7 +6082,7 @@ int main(int argc, char** argv) {
         if (haveBg) screen.blit(background);
         if (haveFg) screen.blit(foreground);
 
-        // Draw order transcribed from 1000:3a67. The atoms go BETWEEN the
+        // Draw order transcribed from `1000:3a67`. The atoms go between the
         // furniture passes, not on top of them, so the solid tube pieces
         // overpaint them and the network reads as hollow glass.
         auto drawFurn = [&](int from, int to) {
@@ -6104,7 +6105,7 @@ int main(int argc, char** argv) {
         // is not, and it is what a previous version was reaching for when it
         // painted a guessed TUBEH or TUBEV over each atom. The guess put pipe
         // where there was none and had to special-case bends and descents; the
-        // snapshot needs no cases, because it IS the artwork.
+        // snapshot needs no cases, because it is the artwork.
         //
         // Note what this implies about the interleaving: with the scene
         // stamped back over every atom, an atom is clipped by all of the
@@ -6119,7 +6120,7 @@ int main(int argc, char** argv) {
         // keeps the cell value 8 - which is what makes a Flashium always clear
         // with FFADE however it is drawn.
         //
-        // Without this a Flashium is INVISIBLE: `kAtomSprites[8]` is null, so
+        // Without this a Flashium is invisible: `kAtomSprites[8]` is null, so
         // every draw site skipped it. It showed up as a phantom ball in the
         // test tube, because a Multiplier fills with `Random(8) + 1` and 8 is
         // in that range.
