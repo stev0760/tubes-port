@@ -106,7 +106,7 @@ fi
 # count, and invisible to every other guard here.
 ticks() { grep -o '`' "$1" | wc -l; }
 if [ "$(ticks "$A")" -ne "$(ticks "$B")" ]; then
-    echo "FAIL: backticks $(ticks "$A") -> $(ticks "$B"), the `like this` convention changed"
+    echo "FAIL: backticks $(ticks "$A") -> $(ticks "$B"), the inline-code convention changed"
     fail=1
 else
     echo "ok:   backticks preserved ($(ticks "$A"))"
