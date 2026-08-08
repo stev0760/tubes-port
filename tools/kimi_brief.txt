@@ -16,6 +16,20 @@ of a disassembler and it is the only surviving record of it.
 The prose around those facts, on the other hand, was written quickly and is
 often overwritten. That prose is your job.
 
+## Do not use a linter
+
+There is a `prose-lint` skill and a `prose_lint.py` on this machine. Do not run
+either, and do not run any other linter or scoring tool on this file. They are
+part of a different step and will be run on your output afterwards.
+
+A low score from that linter does not mean a file is finished. It counts
+sentence length, hedging and filler, and it has no rule at all for the capitals
+used as emphasis - which is the main thing you are here to fix. Files scoring
+0.27 and 0.66 have been left untouched on the strength of a score while still
+being full of shouting.
+
+Read the file and judge it yourself.
+
 ## What to change
 
 The comments shout. Words get capitalised for emphasis several times per file -
