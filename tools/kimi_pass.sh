@@ -20,35 +20,77 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BRIEF="$ROOT/tools/kimi_brief.txt"
 SANDBOX=${KIMI_SANDBOX:-/tmp/kimi-pass}
 
-SRC=${1:-}
-APPLY=${2:-}
-[ -f "$SRC" ] || { echo "usage: $0 <source-file> [--apply]"; exit 2; }
+SRC=""; APPLY=""; RANGE=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --apply) APPLY=--apply ;;
+        --lines) RANGE=${2:-}; shift ;;
+        --lines=*) RANGE=${1#--lines=} ;;
+        -*) echo "unknown option: $1"; exit 2 ;;
+        *) SRC=$1 ;;
+    esac
+    shift
+done
+[ -f "$SRC" ] || { echo "usage: $0 <source-file> [--lines A,B] [--apply]"; exit 2; }
 [ -f "$BRIEF" ] || { echo "missing brief: $BRIEF"; exit 2; }
 
+# --lines A,B works on a slice instead of the whole file. main.cpp is 6344
+# lines with no section dividers and a main() that runs 3100 of them, so it goes
+# through in nine passes rather than one unreviewable rewrite. Slice boundaries
+# are chosen so a slice never begins mid-paragraph; the guards below are all
+# line-oriented comparisons and work on a slice unchanged.
 BASE=$(basename "$SRC")
-WORK="$SANDBOX/$BASE.d"
+if [ -n "$RANGE" ]; then
+    L1=${RANGE%,*}; L2=${RANGE#*,}
+    case "$L1$L2" in *[!0-9]*) echo "bad --lines: $RANGE"; exit 2 ;; esac
+    NLINES=$(wc -l < "$SRC")
+    [ "$L2" -le "$NLINES" ] || { echo "--lines $RANGE past EOF ($NLINES)"; exit 2; }
+    TAG="$BASE.L$L1-$L2"
+else
+    TAG="$BASE"
+fi
+
+WORK="$SANDBOX/$TAG.d"
 rm -rf "$WORK"; mkdir -p "$WORK"
-cp "$SRC" "$WORK/$BASE"
-cp "$SRC" "$SANDBOX/$BASE.orig"
+if [ -n "$RANGE" ]; then
+    sed -n "${L1},${L2}p" "$SRC" > "$WORK/$BASE"
+    sed -n "${L1},${L2}p" "$SRC" > "$SANDBOX/$TAG.orig"
+    echo "== slice $L1-$L2 of $SRC ($((L2 - L1 + 1)) lines)"
+else
+    cp "$SRC" "$WORK/$BASE"
+    cp "$SRC" "$SANDBOX/$TAG.orig"
+fi
 
 # The file has to be NAMED. The brief says "this file", and with nothing
 # attached the model answered "What file should I rewrite the comments in?" and
 # stopped - which looked exactly like a model deciding the file needed no work.
 # Three files were recorded as clean no-ops that way before the logs were read.
+# A slice is an EXTRACT: its braces do not balance and it may open or close
+# mid-function. Say so, or the model tries to repair it.
+SLICE_NOTE=""
+if [ -n "$RANGE" ]; then
+    SLICE_NOTE="
+
+This file is an EXTRACT - lines $L1 to $L2 of a larger source file. Its braces
+do not balance and it may begin or end in the middle of a function. That is
+expected and is not something to fix. Edit the comments in what you have been
+given and change nothing else."
+fi
+
 echo "== running $MODEL on $SRC"
 ( cd "$WORK" && opencode run -m "$MODEL" --dir "$WORK" \
     "$(cat "$BRIEF")
 
-The file to edit is $BASE, in the current directory." ) \
-    > "$SANDBOX/$BASE.log" 2>&1
+The file to edit is $BASE, in the current directory.$SLICE_NOTE" ) \
+    > "$SANDBOX/$TAG.log" 2>&1
 rc=$?
 if [ $rc -ne 0 ]; then
-    echo "opencode failed (exit $rc); see $SANDBOX/$BASE.log"
-    tail -20 "$SANDBOX/$BASE.log"
+    echo "opencode failed (exit $rc); see $SANDBOX/$TAG.log"
+    tail -20 "$SANDBOX/$TAG.log"
     exit 1
 fi
 
-A="$SANDBOX/$BASE.orig"
+A="$SANDBOX/$TAG.orig"
 B="$WORK/$BASE"
 fail=0
 
@@ -134,6 +176,19 @@ fi
 over() { awk 'length>79' "$1" | wc -l; }
 echo "info: lines over 79 cols: $(over "$A") -> $(over "$B")"
 
+# 7. A slice may change length - rewrapping a paragraph is most of the point -
+# and the splice below handles that. What it cannot do is renumber the slices
+# still to come, so WORK THROUGH A FILE'S SLICES LAST TO FIRST. Then every
+# range still refers to the lines it was computed against.
+if [ -n "$RANGE" ]; then
+    la=$(wc -l < "$A"); lb=$(wc -l < "$B")
+    if [ "$la" -ne "$lb" ]; then
+        echo "info: slice length $la -> $lb (later slices shift; apply last-to-first)"
+    else
+        echo "info: slice length unchanged ($la lines)"
+    fi
+fi
+
 # 5. prose score, punctuation rules deliberately not counted
 LINT="$ROOT/tools/comment_lint.py"
 if [ -f "$LINT" ]; then
@@ -159,7 +214,21 @@ if [ "$APPLY" = "--apply" ]; then
         echo "refusing --apply while guards fail"
         exit 1
     fi
-    cp "$B" "$SRC"
-    echo "applied to $SRC"
+    if [ -n "$RANGE" ]; then
+        tmp=$(mktemp)
+        { [ "$L1" -gt 1 ] && sed -n "1,$((L1 - 1))p" "$SRC"
+          cat "$B"
+          sed -n "$((L2 + 1)),\$p" "$SRC"; } > "$tmp"
+        # never leave a truncated source behind if something above went wrong
+        if [ ! -s "$tmp" ]; then
+            echo "refusing to apply: spliced result is empty"
+            rm -f "$tmp"; exit 1
+        fi
+        mv "$tmp" "$SRC"
+        echo "spliced lines $L1-$L2 back into $SRC"
+    else
+        cp "$B" "$SRC"
+        echo "applied to $SRC"
+    fi
 fi
 exit $fail
