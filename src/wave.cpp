@@ -6,14 +6,14 @@
 // PROVENANCE. All of it is decompiled: the 75-arm table is `86b8`'s body, the
 // per-routine field writes are those routines, the six seeds are immediates at
 // `1000:a4cd`, the progression is `1000:a616`, and `creditRun` is `1000:192f`
-// line for line. Nothing here was inferred from a briefing screenshot - though
-// the reading does reproduce all nine that the old level-warp sweep captured,
-// counts included, which is how it was checked.
+// line for line. Nothing here was inferred from a briefing screenshot. The
+// reading still reproduces all nine that the old level-warp sweep captured,
+// counts included. That is how we checked it.
 //
-// What is deliberately NOT here: the drawing. `86b8` also picks a background
+// What is deliberately not here: the drawing. `86b8` also picks a background
 // with a `Random(10)` retry loop, and several routines roll once more for a
-// decorative sprite. Those rolls are marked at each site, because a wave-mode
-// recording could not be replayed without them.
+// decorative sprite. This port marks those rolls at each site, because a
+// wave-mode recording cannot replay without them.
 
 namespace tubes {
 namespace {
@@ -22,7 +22,7 @@ using O = Objective;
 
 // `1000:86b8`, arm by arm. This is data in the binary and is transcribed, not
 // generated - waves 10 and 15 really do share an objective, which the sweep
-// that sampled them could only write off as a coincidence.
+// that sampled them had to treat as coincidence.
 constexpr Objective kWaveTable[kWaveCount] = {
     O::kAnyAtom, O::kSurvive, O::kVerticalColour, O::kAnyAtomMorph, O::kVerticalAny,                  // 1..5
     O::kSurviveDisabled, O::kShownAtom, O::kMarked, O::kAnyAtom, O::kVerticalColour,                  // 6..10
@@ -52,11 +52,11 @@ constexpr Objective kWaveTable[kWaveCount] = {
 //     Preview 4   sw 1000:729e  ->  reg 1000:7b72   colour AND chain, timed
 //     Preview 5   sw 1000:7cad  ->  reg 1000:8581   Mystery Wave
 //
-// Arm 4 is the TIMED variant, not `kTaskBoth`: its briefing says the
+// Arm 4 is the timed variant, not `kTaskBoth`: its briefing says the
 // requirement "will change every 45 seconds" where the untimed one says "will
 // change after completing each task".
 //
-// NONE of these five appears anywhere in the shareware's own 25-arm chain -
+// None of these five appears anywhere in the shareware's own 25-arm chain -
 // checked per function, zero hits each - so they are registered-only waves
 // carried in the shareware binary and reachable only through the Preview. That
 // is what "play some of the new waves" means, and waves 1 and 2 needing
@@ -87,10 +87,10 @@ int8_t rollColour2to7(const RollFn& roll) {
 // `array[1..5, 1..6]`, so `cells[1, col]` - the top of a column - is one test,
 // and a full column is exactly that cell being occupied.
 int columnWithRoom(const Board& b, int col, const RollFn& roll) {
-    // The original spins here forever if every column is full. It never can:
-    // the most any wave places is `marked + 8` and the beaker holds 30. The
-    // bound is this port's, so a bug upstream shows as a missing atom rather
-    // than a hung frame.
+    // The original spins here forever if every column is full. That cannot
+    // happen: the most any wave places is `marked + 8` and the beaker holds 30.
+    // The bound is this port's, so a bug upstream shows as a missing atom
+    // rather than a hung frame.
     for (int guard = 0; guard < 1000 && b.at(col, 0) != kEmpty; ++guard) {
         col = roll(b.cols());
     }
@@ -194,7 +194,7 @@ bool stepCrystals(Board& board, std::vector<Crystal>& crystals, int interval,
     for (Crystal& x : crystals) {
         if (!x.active) continue;
 
-        // Arriving: walk the fade value BACKWARDS one frame per step until it
+        // Arriving: walk the fade value backwards one frame per step until it
         // is the static sprite again.
         if (x.arriving) {
             const Cell v = board.at(x.col, x.row);
@@ -205,9 +205,9 @@ bool stepCrystals(Board& board, std::vector<Crystal>& crystals, int interval,
             }
         }
 
-        // Departing: the ordinary fade pass is animating the cell out. When
-        // the seven steps are up, land at the destination on the LAST fade
-        // frame and start walking back.
+        // Departing: the ordinary fade pass is animating the cell out. When the
+        // seven steps are up, land at the destination on the last fade frame
+        // and start walking back.
         if (x.departing && --x.step == 0) {
             x.col = x.destCol;
             x.row = x.destRow;
@@ -225,7 +225,7 @@ bool stepCrystals(Board& board, std::vector<Crystal>& crystals, int interval,
         }
 
         // The clock. Pick somewhere to go, preferring a cell that holds an
-        // ordinary atom - landing there OVERWRITES it, which is what
+        // ordinary atom - landing there overwrites it, which is what
         // "contaminating the beaker" means mechanically.
         x.timer = interval * 10;
         int tries = 10;
@@ -281,7 +281,7 @@ Objective objectiveForWave(int wave, const EditionState& ed) {
     return ed.preview ? objectiveForPreviewWave(wave) : objectiveForWave(wave);
 }
 
-// `1000:a616`. Note what is NOT stepped: the crystal count, which `1000:66cb`
+// `1000:a616`. Note what is not stepped: the crystal count, which `1000:66cb`
 // increments for itself, and the pre-fill size, which never moves.
 void WaveProgress::advance() {
     --interval;                              // a616
@@ -317,8 +317,8 @@ void applyBriefing(Objective o, WaveProgress& progress, WaveObjective& obj,
     obj.disabledColour = 0;
 
     // Mystery Wave, `1000:8581`: roll one of four, run it, then blank the Task
-    // Display. The roll is NOT guarded by the replay flag - only the routine
-    // it lands in guards its own.
+    // Display. The roll is not guarded by the replay flag - only the routine it
+    // lands in guards its own.
     if (o == O::kMystery) {
         switch (roll(4)) {
             case 0:  o = O::kShownAtom; break;
@@ -332,7 +332,7 @@ void applyBriefing(Objective o, WaveProgress& progress, WaveObjective& obj,
     }
 
     switch (o) {
-        // ---- mode 6, the marked atoms ------------------------------------
+        // Mode 6: marked atoms.
         case O::kMarkedCovered:                          // 1000:643b
             obj.markedCovered = true;
             [[fallthrough]];
@@ -350,9 +350,9 @@ void applyBriefing(Objective o, WaveProgress& progress, WaveObjective& obj,
             obj.counter = progress.marked;
             break;
 
-        // ---- mode 5, the Mischief Crystals -------------------------------
+        // Mode 5: Mischief Crystals.
         case O::kCrystals:                               // 1000:66cb
-            // The count is incremented HERE, not by the progression, and only
+            // The count is incremented here, not by the progression, and only
             // when the wave is not being replayed. So it is "how many crystal
             // waves you have reached" - wave 50, the first, is 1.
             if (!replay) ++progress.crystals;
@@ -360,7 +360,7 @@ void applyBriefing(Objective o, WaveProgress& progress, WaveObjective& obj,
             obj.counter = progress.crystals;
             break;
 
-        // ---- mode 4, live through N atoms --------------------------------
+        // Mode 4: survive N atoms.
         case O::kSurviveHidden:                          // 1000:6fd5
             obj.hiddenAtoms = true;
             [[fallthrough]];
@@ -376,7 +376,7 @@ void applyBriefing(Objective o, WaveProgress& progress, WaveObjective& obj,
             obj.countIsShown = true;
             break;
 
-        // ---- mode 3, a colour is required --------------------------------
+        // Mode 3: a colour is required.
         case O::kFlashium:                               // 1000:67d8
             obj.anyOrientation = true;
             obj.reqColour = kFlashium;
@@ -406,7 +406,7 @@ void applyBriefing(Objective o, WaveProgress& progress, WaveObjective& obj,
             obj.counter = progress.chainTargetColour;
             break;
 
-        // ---- mode 3, the Task Display drives it --------------------------
+        // Mode 3: the Task Display drives it.
         // The only difference between each pair is `-0x1ef`: rotate after each
         // task, or on the 45-second timer.
         case O::kTaskColourTimed:                        // 1000:7802
@@ -450,7 +450,7 @@ void applyBriefing(Objective o, WaveProgress& progress, WaveObjective& obj,
             obj.countIsShown = true;
             break;
 
-        // ---- mode 3, any atom --------------------------------------------
+        // Mode 3: any atom.
         // Three routines with one body and one modifier each. None of them
         // guards on the replay flag, because none of them rolls.
         case O::kAnyAtomPrefill:                         // 1000:7de3
@@ -465,7 +465,7 @@ void applyBriefing(Objective o, WaveProgress& progress, WaveObjective& obj,
             obj.countIsShown = true;
             break;
 
-        // ---- mode 2, an orientation is required, any colour --------------
+        // Mode 2: an orientation is required, any colour.
         case O::kHorizontalAny:                          // 1000:8056
         case O::kVerticalAny:                            // 1000:81bb
         case O::kDiagonalAny:                            // 1000:8320
@@ -523,8 +523,8 @@ bool creditRun(WaveObjective& obj, RunKind kind, int8_t matchType,
             scored = true;
         }
     } else if (obj.mode == WaveMode::kColour) {
-        // An all-Flashium run satisfies ANY colour requirement - the third
-        // arm of the test, and the one that would never have been guessed.
+        // An all-Flashium run satisfies any colour requirement - the third arm
+        // of the test, and the one that would never have been guessed.
         const bool colourOk = obj.reqColour == 0 || obj.reqColour == matchType ||
                               matchType == kFlashium;
         const bool chainOk = obj.anyOrientation || obj.reqChain == code;

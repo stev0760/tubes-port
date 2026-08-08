@@ -1,4 +1,4 @@
-// Decoding the original graphics formats into plain 8-bit indexed surfaces.
+// Decode the original graphics formats into plain 8-bit indexed surfaces.
 
 #pragma once
 
@@ -29,8 +29,8 @@ struct Image {
     }
 };
 
-// A decoded compiled sprite. Origin is relative to the draw position, and
-// may be negative, since a .CSP addresses pixels around a base pointer.
+// A decoded compiled sprite. The origin is relative to the draw position and
+// may be negative, because a .CSP addresses pixels around a base pointer.
 struct Sprite {
     int width = 0;
     int height = 0;
@@ -51,36 +51,36 @@ constexpr int kSpriteBaseY = -2;
 
 bool loadPalette(const Bytes& data, Palette& out, std::string& error);
 
-// The screen fade, at last - `23e7:0097` fades IN and `23e7:00ce` fades OUT,
+// The screen fade, at last. `23e7:0097` fades in and `23e7:00ce` fades out,
 // and every screen in the game calls them. That is why three scans of the
-// GAME segments for a fade found nothing: it lives in the graphics unit, which
-// is exactly where the player guessed it would be.
+// GAME segments for a fade found nothing: it lives in the graphics unit,
+// which is exactly where the player guessed it would be.
 //
 // Both are one loop over a step counter `n`, up from 0 or down from
 // `[DS:0x0ce6]` = 40, rewriting all 768 DAC components each time:
 //
 //     component := targetComponent * n div 40        { MUL BX / DIV [0ce6] }
 //
-// and handing the result to `23e7:003d`, which waits for ONE vertical retrace
+// and handing the result to `23e7:003d`, which waits for one vertical retrace
 // before uploading. So a fade is 41 uploads 1/70 s apart - 0.586 s, which is
 // the "half a second or so" the player timed between screens.
 //
 // The target palette is the one `23e7:006c` last stored at `DS:0x2400`, and
-// that routine blacks the DAC as it stores - so a screen is always drawn to a
+// that routine blacks the DAC as it stores, so a screen is always drawn to a
 // dark display and revealed by the fade, never flashed.
 //
-// The arithmetic is on the RAW 6-bit values, before the DAC expansion, which
+// The arithmetic is on the raw 6-bit values, before the DAC expansion, which
 // is why this takes the .PAL bytes rather than a Palette: truncating twice
 // would not give the original's ramp.
 constexpr int kFadeSteps = 40;              // [DS:0x0ce6]
 
 Palette fadePalette(const Bytes& raw, int step, int steps = kFadeSteps);
 
-// How a .GFX's pixels are stored. This is NOT a property of the file: three
+// How a .GFX's pixels are stored. This is not a property of the file: three
 // resources carry a leading 0xE5 and it is a header byte, not a layout
 // marker. Both of the original's blitters skip exactly one byte before
 // reading the width - `23df:0022` then copies rows chunky, `2321:0948` walks
-// four planes - so the CALLER decides, by choosing a routine.
+// four planes - so the caller decides, by choosing a routine.
 //
 // `kAuto` is the rule the port has used from the start and it is right for 72
 // of the 73 resources: prefixed means chunky. The exception is `AMWRITE.GFX`,
@@ -107,7 +107,7 @@ bool decodeCsp(const Bytes& data, Sprite& out, std::string& error);
 //
 // The offsets are an oracle rather than a reading: every one of the eleven
 // sub-images satisfies `next - offset = width * height + 4` exactly, and the
-// first offset is exactly the header length. The pixels are PLANAR, like an
+// first offset is exactly the header length. The pixels are planar, like an
 // ordinary .GFX with no 0xE5 - which is what rendering them settles, since a
 // wrong choice there passes every size check and only shows up on screen.
 bool decodeSpr(const Bytes& data, std::vector<Image>& out, std::string& error);

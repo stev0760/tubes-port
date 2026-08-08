@@ -1,7 +1,7 @@
 // Digital sound effects: the `.SFX` resources and the one voice that plays them.
 //
 // The format was recovered from the file side (docs/reversing-notes.md) and is
-// confirmed here from the OTHER side - `SBSOUND.DRV`'s play entry at offset
+// confirmed here from the other side - `SBSOUND.DRV`'s play entry at offset
 // 0x344 walks the same header:
 //
 //     if [SI] <> $F1 then exit;             { the marker }
@@ -13,12 +13,12 @@
 //     else begin SI := SI + 3;  BX := [SI];  SI := SI + 2 end;
 //     <DMA BX bytes from SI>
 //
-// That is a second consumer of one byte stream, which is this project's most
-// reliable technique, and it corrected two guesses. The rate is a **word** at
-// 0x20, not a longword - the shipped files are all 8000 Hz so the high half is
-// zero either way and the file side could not tell. And the "unknown byte" is
-// at **0x22**, not 0x24: the driver reads it right after the rate and takes a
-// different path when it is non-zero. Every shipped sound has it clear.
+// A second consumer of the same byte stream is the project's most reliable
+// technique, and it corrected two guesses. The rate is a word at 0x20, not a
+// longword - the shipped files are all 8000 Hz so the high half is zero either
+// way and the file side could not tell. And the "unknown byte" is at 0x22,
+// not 0x24: the driver reads it right after the rate and takes a different
+// path when it is non-zero. Every shipped sound has it clear.
 
 #pragma once
 
@@ -73,17 +73,17 @@ private:
     uint32_t step_ = 1 << 16;
 };
 
-// A small pool of voices, and a DEPARTURE from the original - agreed with the
+// A small pool of voices, and a departure from the original - agreed with the
 // player, and the second one in the port's audio after the resampler above.
 //
 // `SBSOUND.DRV` has exactly one voice: a new sound overwrites whatever is
 // playing, so the original genuinely cuts a drop off when a match lands on
 // top of it. That is not a bug in 1994 - it is what one DMA channel and one
 // set of position variables can do - but SDL mixes as many streams as you
-// like for nothing, and a truncated DROP is heard as a defect by anyone who
+// like for nothing, and a truncated drop is heard as a defect by anyone who
 // has not read the driver.
 //
-// So the port keeps the original's ORDER and timing exactly - every sound is
+// So the port keeps the original's order and timing exactly - every sound is
 // still fired from the site the original calls `PlaySound` at - and only
 // lifts the one-at-a-time limit. Nothing about which sound plays when
 // changes; sounds simply finish.
@@ -92,7 +92,7 @@ private:
 // fires a match, a settle and a landing, and the fade families run under half
 // a second. `SoundBusy` - which the high score viewer polls to loop its
 // applause and the cutscene polls to loop the beaker - reports the pool busy
-// if ANY voice is, which is what those two callers mean by the question.
+// if any voice is, which is what those two callers mean by the question.
 constexpr int kSfxVoices = 4;
 
 class SfxPool {
