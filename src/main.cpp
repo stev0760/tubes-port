@@ -6129,12 +6129,12 @@ int main(int argc, char** argv) {
         };
 
         // `-0x189`, the hidden-atom modifier: "live through N atoms that are
-        // HIDDEN UNTIL THEY LEAVE A TUBE". All six network draw sites carry
+        // hidden until they leave a tube". All six network draw sites carry
         //
         //     if hidden = 0 then Draw(ball[type], x, y)
         //                   else Draw(MYSTBALL,   x, y)
         //
-        // and those six are the ONLY places in `1000:3a67` that test it - not
+        // and those six are the only places in `1000:3a67` that test it - not
         // the tube's contents, not records 7..12, not the beaker grid. So the
         // atom keeps its real type underneath and the concealment ends the
         // moment it is caught, which is exactly what the briefing promises.
@@ -6154,7 +6154,7 @@ int main(int argc, char** argv) {
         };
 
         // The six interleave points are hard-coded in 1000:3a67, each bound to
-        // one slot of the atom array - and the slot index IS the column. So an
+        // one slot of the atom array - and the slot index is the column. So an
         // atom's draw depth is fixed by its column for its whole flight, not
         // by where it happens to be:
         //
@@ -6167,10 +6167,10 @@ int main(int argc, char** argv) {
         // lane and cross furthest, so they are the deepest layer. 2/5 and 3/4
         // nest inside them in turn.
         //
-        // GAMEFG.GFX carries much of the network, but NOT all of it: the
+        // `GAMEFG.GFX` carries much of the network, but not all of it: the
         // vertical pieces through the lane rows are missing from it and come
         // from these passes. A previous version removed the passes on the
-        // theory that GAMEFG was the complete network; the arcs came out
+        // theory that `GAMEFG` was the complete network; the arcs came out
         // without their verticals. Both are needed.
         drawAtom(1); drawAtom(6);
         drawFurn(0, kFurnGroup0);
@@ -6179,7 +6179,7 @@ int main(int argc, char** argv) {
         drawAtom(3); drawAtom(4);
         drawFurn(kFurnGroup1, kFurnTotal);
 
-        // The test tube is drawn TWICE per frame from two sprite pointers held
+        // The test tube is drawn twice per frame from two sprite pointers held
         // in its own record, at one position, with its contents in between:
         //
         //     Draw(tube.x, tube.y, tube.sprite[4])   if tube.phase = 1
@@ -6188,10 +6188,11 @@ int main(int argc, char** argv) {
         //     Draw(tube.x, tube.y, tube.sprite[phase])
         //
         // so the contents sit between the two layers of glass. The port had
-        // this arrangement already; what is new is that it is now read off the
-        // draw sequence rather than reasoned from "the beaker works this way".
+        // this arrangement already; what is new is that it is now read from
+        // the draw sequence rather than reasoned from "the beaker works this
+        // way".
         //
-        // `tube.x` comes straight from the six-stop table at DGROUP:0x24 -
+        // `tube.x` comes straight from the six-stop table at `DGROUP:0x24` -
         // 104, 122, 140, 158, 176, 194, exactly the column x minus 3 - and
         // `tube.y` is the literal 0x44 the setup writes. The pixel diff's
         // apparent 6 px offset was the capture catching the tube mid-slide, at
@@ -6202,7 +6203,7 @@ int main(int argc, char** argv) {
             screen.draw(furn[kTestTubeShadow], tubeX, kTubeY);
         }
 
-        // The tube's contents carry their OWN positions now. They used to be
+        // The tube's contents carry their own positions now. They used to be
         // computed from the index, which was right at rest and impossible
         // during the tip - the animation moves the slots, and a caught atom
         // slides down to its own before that.
@@ -6217,12 +6218,12 @@ int main(int argc, char** argv) {
         const int phase = game->tubePhase();
         if (haveTube[phase]) screen.draw(testTube[phase], tubeX, kTubeY);
 
-        // Beaker shadow, then its contents, then the glass FRONT last - the
-        // original draws BEAKER.CSP after the settled atoms, so the glass
+        // Beaker shadow, then its contents, then the glass front last - the
+        // original draws `BEAKER.CSP` after the settled atoms, so the glass
         // overlaps the balls. The port used to draw it first.
         if (haveFurn[kBeakerShadow]) screen.draw(furn[kBeakerShadow], 186, 135);
 
-        // The beaker grid, then the MARKER overlay, in `1000:598b`'s order.
+        // The beaker grid, then the marker overlay, in `1000:598b`'s order.
         // The cell is used as the sprite index directly - that is the whole
         // point of the `type + 19 * fadeFrame` encoding, and it is why a
         // clearing atom animates with no branch anywhere in the draw.
@@ -6230,8 +6231,8 @@ int main(int argc, char** argv) {
         for (int r = 0; r < b.rows(); ++r) {
             const int y = kGridY + r * kPitchY;
             for (int c = 0; c < b.cols(); ++c) {
-                // Only the BARE type 8 is substituted. A fading Flashium
-                // holds `8 + 19 * frame`, whose table slot is FFADE and is
+                // Only the bare type 8 is substituted. A fading Flashium
+                // holds `8 + 19 * frame`, whose table slot is `FFADE` and is
                 // never rewritten.
                 const tubes::Cell v = ball(b.at(c, r));
                 if (v == 0 || !haveAtom[v]) continue;
@@ -6251,10 +6252,10 @@ int main(int argc, char** argv) {
             }
         }
 
-        // Records 7..12 - the atoms tipped out of the tube and falling into
-        // the beaker. `1000:5c1f` runs them AFTER the grid and the MARKER
-        // overlay and BEFORE `BEAKER.CSP`, so a falling atom passes in front of
-        // the settled ones and behind the glass.
+        // Records 7..12 are the atoms tipped out of the tube and falling into
+        // the beaker. `1000:5c1f` runs them after the grid and the marker
+        // overlay and before `BEAKER.CSP`, so a falling atom passes in front
+        // of the settled ones and behind the glass.
         for (int n = tubes::kAtomSlots + 1; n <= tubes::kAtomRecords; ++n) {
             const tubes::Falling& f = game->atom(n);
             if (!f.drawn() || !haveAtom[ball(f.colour)]) continue;
@@ -6267,7 +6268,7 @@ int main(int argc, char** argv) {
         drawTaskDisplay(screen, *game, bigFont, haveBig, atoms, haveAtom, furn,
                         haveFurn, smallBall, haveSmallBall);
 
-        // `1000:a5d2` shows the briefing INSTEAD of the play field, before
+        // `1000:a5d2` shows the briefing instead of the play field, before
         // `1000:3a67` ever runs, so it simply replaces everything above.
         if (briefingUp) {
             drawBriefing(screen, *game, &blackboard, haveBlackboard, headingFont,
@@ -6287,7 +6288,7 @@ int main(int argc, char** argv) {
         }
 
         // The stats screen replaces the field; the banner, the Continue prompt
-        // and the pause overlay go OVER whatever is already drawn, because
+        // and the pause overlay go over whatever is already drawn, because
         // that is what the original does - none of the three clears first.
         if (endingPage == 0 &&
             (sstage == tubes::SessionStage::kStats ||
@@ -6297,8 +6298,8 @@ int main(int argc, char** argv) {
                       haveBig, scenePose());
         }
         if (sstage == tubes::SessionStage::kBanner) {
-            // `1000:5ec9`: the F2 hint appears only on the abort arm, and only
-            // when the mode is not attract and saving is enabled.
+            // `1000:5ec9`: the `F2` hint appears only on the abort arm, and
+            // only when the mode is not attract and saving is enabled.
             drawBanner(screen, banner, headingFont, haveHeading, smallFont,
                        haveSmall,
                         banner == tubes::Banner::kAborted && gameMode != 0 &&
@@ -6309,7 +6310,7 @@ int main(int argc, char** argv) {
                          haveHeading, bigFont, haveBig);
         }
         if (hsActive) {
-            // `1000:96db` does NOT call `1b2e:0656` or `1b2e:0a11`. It draws
+            // `1000:96db` does not call `1b2e:0656` or `1b2e:0a11`. It draws
             // three things and they are all here:
             //
             //     Draw(0, 12, BLACKBRD)          { 2321:068d, opaque }
@@ -6321,7 +6322,7 @@ int main(int argc, char** argv) {
             // the port put the whole classroom behind it and the screen showed
             // through the panel. Reported from play. The bar sits at y 26, the
             // height it has before the roll-down, which is the same place the
-            // VIEWER parks it.
+            // `VIEWER` parks it.
             screen.clear(0);
             if (haveBlackboard) screen.blit(blackboard, 0, tubes::kBoardY);
             if (haveBar) {
