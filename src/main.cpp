@@ -3371,12 +3371,12 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    // Prints what `tools/anm_decode.py RUNS` prints - per frame, the number of
+    // Prints what `tools/anm_decode.py` prints - per frame, the number of
     // runs, the bytes they carry and an FNV-1a over (offset, bytes). Two
     // interpreters of the same compiled x86 have to agree run for run, not
     // merely produce a picture that looks right: a wrong SI would still paint
     // something plausible, and the .CSP geometry bug this project already had
-    // is exactly that failure mode.
+    // is that failure mode.
     if (!opt.dumpAnm.empty()) {
         tubes::Bytes raw;
         std::vector<tubes::AnimFrame> anim;
@@ -3406,13 +3406,14 @@ int main(int argc, char** argv) {
     // Runs DEMO.SCR at full speed with no window and prints every atom the
     // dispenser rolls. This is the regression oracle the prime directive asks
     // for, and the spawn sequence is the sharpest form of it: the recording
-    // stores only the player's buttons, so which colour appears in which column
-    // is decided entirely by `Random` - by the generator AND by how many times
-    // each frame calls it. Nothing else in the port cross-checks that.
+    // stores only the player's buttons, so which colour appears in which
+    // column is decided entirely by `Random` - by the generator and by how
+    // many times each frame calls it. Nothing else in the port cross-checks
+    // that.
     //
-    // It is also robust to timing. A trace captured off the original by polling
-    // its memory cannot be aligned frame for frame, but the Nth atom it
-    // dispenses is the Nth either way.
+    // It is also robust to timing. A trace captured off the original by
+    // polling its memory cannot be aligned frame for frame, but the Nth atom
+    // it dispenses is the Nth either way.
     if (opt.demoTrace) {
         tubes::Bytes raw;
         tubes::Demo dm;
@@ -3424,8 +3425,8 @@ int main(int argc, char** argv) {
                     dm.input.size());
         // What the recorded player is actually holding. The Down/B boost is
         // the difference between a 4 px/frame traverse and a 9 px/frame one,
-        // so how often it is pressed sets how long a record stays occupied -
-        // and that decides how often the spawn re-rolls its column.
+        // so how often it is pressed sets how long a record stays occupied,
+        // which decides how often the spawn re-rolls its column.
         {
             static const char* kNames[6] = {"Up", "Down", "Left", "Right",
                                             "A(tip)", "B"};
@@ -3442,14 +3443,14 @@ int main(int argc, char** argv) {
         }
         // The rig's exp18_random_calls.py logs the same two fields off the
         // original, breaking on `Random`'s own entry, so the first index where
-        // the two disagree is the divergence - and the original's log names the
+        // the two disagree is the divergence and the original's log names the
         // call site that produced it.
         std::vector<std::pair<int, uint32_t>> rolls;
         // Per-frame state, in the form the rig diffs against the original.
         // `idx` is the key that matters: the original's demo reader keeps its
         // stream index at `24c1:001e` (linear 0x24c2e) and `read` increments
-        // it, so the two sides can be aligned on the byte being consumed
-        // rather than on any notion of time.
+        // it, so the two sides align on the byte being consumed rather than
+        // on any notion of time.
         std::FILE* csv = nullptr;
         if (!opt.demoCsv.empty()) {
             csv = std::fopen(opt.demoCsv.c_str(), "w");
@@ -3467,7 +3468,7 @@ int main(int argc, char** argv) {
         int born[tubes::kAtomRecords + 1] = {};
         int drops = g.dropsRemaining();
         int spawns = 0;
-        // One byte per IDLE frame - see Game::acceptsInput. The frame count is
+        // One byte per idle frame - see Game::acceptsInput. The frame count is
         // therefore larger than the byte count, so the loop ends when the
         // recording is exhausted rather than after input.size() frames.
         size_t idx = 0;
@@ -3483,20 +3484,20 @@ int main(int argc, char** argv) {
                 std::fprintf(csv, "%d,%d,%d,%d,", g.rampCounterForTest(),
                              g.spawnIntervalForTest(), g.networkVelForTest(),
                              g.runsThisFrameForTest());
-                // The six network records: state and y, which is what a catch
-                // turns on.
+                // The six network records: state and y. A catch turns on both.
                 for (int c = 1; c <= tubes::kAtomSlots; ++c) {
                     std::fprintf(csv, "%d:%d;", g.atom(c).state, g.atom(c).y);
                 }
                 std::fprintf(csv, ",");
-                // The beaker, in the original's own row-major order, so the two
-                // sides diff cell for cell. A catch that goes the other way
-                // shows up here long before it shows up in the score.
-                // The RAW cell, `type + 19*fadeFrame`, which is what the
-                // original's beaker plane holds. Writing typeAt() here instead
-                // strips the fade and makes every clearing cell look like an
-                // unmatched one - it produced a confident false report of the
-                // matcher missing a diagonal.
+                // The beaker, in the original's own row-major order, so the
+                // two sides diff cell for cell. A catch that goes the other
+                // way shows up here long before it shows up in the score.
+                //
+                // The raw cell, `type + 19*fadeFrame`, is what the original's
+                // beaker plane holds. Writing typeAt() here instead strips the
+                // fade and makes every clearing cell look like an unmatched
+                // one; it produced a confident false report of the matcher
+                // missing a diagonal.
                 for (int r = 0; r < g.board().rows(); ++r) {
                     for (int c = 0; c < g.board().cols(); ++c) {
                         std::fprintf(csv, "%02x", g.board().at(c, r) & 0xFF);
@@ -3508,19 +3509,19 @@ int main(int argc, char** argv) {
                 const bool now = g.atom(c).active();
                 if (now && !wasActive[c]) {
                     // The cumulative roll count is the field the rig can match
-                    // without any notion of time: `RandSeed` is one orbit of an
-                    // injective LCG, so reading it off the original converts
-                    // straight back into "how many times Random has been
+                    // without any notion of time: `RandSeed` is one orbit of
+                    // an injective LCG, so reading it off the original
+                    // converts straight back into "how many times Random has
                     // called". Spawn N is spawn N in both runs, so comparing
-                    // the count AT each spawn needs no frame alignment - and
-                    // needs no breakpoint, which is what made this the usable
-                    // instrument after Z0 on the RTL turned out not to trap.
+                    // the count at each spawn needs no frame alignment and no
+                    // breakpoint. That is what made this the usable instrument
+                    // after Z0 on the RTL turned out not to trap.
                     std::printf("spawn %4d frame %5zu col %d type %2d rolls %zu\n",
                                 ++spawns, f, c, g.atom(c).colour, rolls.size());
                     born[c] = static_cast<int>(f);
                 }
                 if (g.dropsRemaining() != drops) {
-                    // A Bonus caught gives one BACK - `1000:180c` - so this is
+                    // A bonus caught gives one back - `1000:180c` - so this is
                     // not always a loss, and calling every change a miss made
                     // the trace read as three misses where one was a gain.
                     const bool gained = g.dropsRemaining() > drops;
@@ -3530,9 +3531,9 @@ int main(int argc, char** argv) {
                 }
                 if (!now && wasActive[c]) {
                     // The record going free is half the spawn rule: the column
-                    // is re-rolled up to ten times looking for a FREE slot, so
+                    // is re-rolled up to ten times looking for a free slot, so
                     // how long an atom occupies its record decides how often
-                    // the original retries - and the retry count is exactly
+                    // the original retries, and the retry count is exactly
                     // what the rig's roll count measures.
                     std::printf("free        frame %5zu col %d  after %d frames\n",
                                 f, c, static_cast<int>(f) - born[c]);
@@ -3588,8 +3589,8 @@ int main(int argc, char** argv) {
     tubes::Image background;
     tubes::Image foreground;
     bool haveBg = loadImage(res, opt.gameBg, background, -1);
-    // The briefing is NOT drawn over the play backdrop. `1000:86b8` loads
-    // GAMEBG for the wave that is about to START - into `[BP-0x86]`, which
+    // The briefing is not drawn over the play backdrop. `1000:86b8` loads
+    // GAMEBG for the wave that is about to start - into `[BP-0x86]`, which
     // `1000:3a67` blits at `1000:3c0b` - and draws its own text over a
     // blackboard scene instead. Confirmed by capturing the original.
     // The title screen's pair, and the four star frames the Pascal main
@@ -3607,7 +3608,7 @@ int main(int argc, char** argv) {
 
     // Every harness entry point - a screenshot, a scripted run, a recorded
     // demo, a captured state, an explicit wave - must stay deterministic, so
-    // only interactive play gets a clock seed. It also must not WRITE to the
+    // only interactive play gets a clock seed. It also must not write to the
     // player's game directory; see `saveHiScores`.
     const bool harness = !opt.screenshot.empty() || opt.autoFrames > 0 ||
                          opt.demo || opt.playDemo || !opt.renderState.empty() ||
@@ -3616,7 +3617,7 @@ int main(int argc, char** argv) {
     // `1b2e:0243`: read `TUBES.HSC` if it is there, otherwise fill both banks
     // with the twenty names the binary ships. The file lives beside the game
     // data, which is where the original writes it.
-    // The port's OWN settings - the toggles and the six bindings. Not in the
+    // The port's own settings - the toggles and the six bindings. Not in the
     // game directory: `SETUP.CFG` is the DOS install's hardware configuration
     // and belongs to `SETUP.EXE`, and the port does not read a byte of it.
     // `SDL_GetPrefPath` puts this where the platform keeps such things, which
@@ -3645,11 +3646,13 @@ int main(int argc, char** argv) {
     };
 
     // Which edition to be, resolved once and before anything opens a file -
-    // because the edition NAMES the save and high-score files. See `edition.h`.
+    // because the edition names the save and high-score files. See
+    // `edition.h`.
     //
     // Three sources, in this order:
     //
-    //   1. a `--shareware` / `--preview` flag, which wins and does not persist;
+    //   1. a `--shareware` / `--preview` flag, which wins and does not
+    //      persist;
     //   2. the settings file, if the question has been answered before;
     //   3. the player, asked once - `runEditionPrompt`.
     //
@@ -3665,13 +3668,14 @@ int main(int argc, char** argv) {
         opt.edition.edition = settings.edition;
     }
     // The third source, the prompt, needs a renderer and so cannot run here.
-    // It is below, and everything that depends on the edition - which is the
-    // two filenames - is below IT.
-    // Shown on EVERY interactive start, not only the first - the player's call,
-    // and the wording follows from it: this is "which would you like to play?",
-    // not "which do you own?". Both editions are on archive.org now, so owning
-    // one is no longer the question, and a launcher choice is a fair thing to
-    // ask every time as long as it costs one keypress.
+    // It is below, and everything that depends on the edition - the two
+    // filenames - is below it.
+    //
+    // Shown on every interactive start, not only the first - the player's
+    // call, and the wording follows from that: this is "which would you like
+    // to play?", not "which do you own?". Both editions are on archive.org
+    // now, so owning one is no longer the question, and a launcher choice is
+    // a fair thing to ask every time as long as it costs one keypress.
     //
     // It is still skipped for a flag and under `harness`, for the same reasons
     // as before: a capture that stopped on a question would hang.
@@ -3679,14 +3683,14 @@ int main(int argc, char** argv) {
         opt.editionPrompt >= 0 || (!opt.editionFromFlag && !harness);
 
     // One controller, the first one plugged in. Opened below, once SDL is
-    // actually up - this used to enumerate here, which is BEFORE `SDL_Init`,
+    // actually up - this used to enumerate here, which is before `SDL_Init`,
     // so `SDL_NumJoysticks` was asked on an uninitialised library and always
-    // said zero. No pad was ever opened at startup and the only way to get
-    // one was to unplug it and plug it back in. Reported from play.
+    // said zero. No pad was ever opened at startup; the only way to get one
+    // was to unplug it and plug it back in. Reported from play.
     SDL_GameController* gamepad = nullptr;
 
     // `1b2e:000a`: read `TUBES.SAV` if it is there. Unlike the high score
-    // table the game SHIPS one, zero-filled, and the reader zero-fills the
+    // table the game ships one, zero-filled, and the reader zero-fills the
     // banks before reading anyway - so a missing or malformed file is simply
     // five empty slots per bank rather than an error.
 
@@ -3695,8 +3699,8 @@ int main(int argc, char** argv) {
 
     // The slide's four corner clips, in the order `1b2e:097a` places them:
     // upper-left, upper-right, lower-left, lower-right. Each is 20 bytes - a
-    // header plus 4 x 4 - which is what pins them to the `2321:0711(4, 4, ...)`
-    // calls. Index 0 is transparent, since `2321:0711` is a masked blit.
+    // header plus 4 x 4 - which pins them to the `2321:0711(4, 4, ...)` calls.
+    // Index 0 is transparent, since `2321:0711` is a masked blit.
     tubes::Image slideCorner[4];
     bool haveCorner[4] = {false, false, false, false};
     for (int i = 0; i < 4; ++i) {
@@ -3718,22 +3722,21 @@ int main(int argc, char** argv) {
     tubes::Image booksArt, slideBar;
     const bool haveBooks = loadImage(res, "BOOKS.GFX", booksArt, 0);
     const bool haveBar = loadImage(res, "SLIDEBAR.GFX", slideBar, 0);
-    // The five mouths, MASKED. `1b2e:0cd1` draws them through `2000:3921`,
-    // which is the same thunk `1b2e:0510` uses for `POINTER0` and not the
-    // `2000:389d` the wave frames are stamped with - so index 0 is
-    // transparent. Loading them opaque left three black columns beside his
-    // chin, because the 12 x 8 the call passes is wider than the mouth in the
-    // art. Two call sites agree on which thunk is which, and a capture showed
-    // it besides.
+    // The five mouths, masked. `1b2e:0cd1` draws them through `2000:3921`,
+    // the same thunk `1b2e:0510` uses for `POINTER0` and not the `2000:389d`
+    // the wave frames are stamped with - so index 0 is transparent. Loading
+    // them opaque left three black columns beside his chin, because the 12 x 8
+    // the call passes is wider than the mouth in the art. Two call sites agree
+    // on which thunk is which, and a capture showed it.
     tubes::Image talkFrame[5];
     bool haveTalk[5] = {false, false, false, false, false};
     for (int i = 0; i < 5; ++i) {
         haveTalk[i] = loadImage(res, tubes::kTalkNames[i], talkFrame[i], 0);
     }
-    // `1b2e:084e`'s joke slide. Both go down through `2321:068d`, the OPAQUE
+    // `1b2e:084e`'s joke slide. Both go down through `2321:068d`, the opaque
     // blit - `FLASH.GFX` because it is a whole 172 x 132 transparency and
-    // covers the slide exactly, `POINTERT.GFX` because its 28 x 21 carries a
-    // patch of blackboard green behind the head it replaces.
+    // covers the slide exactly, and `POINTERT.GFX` because its 28 x 21
+    // carries a patch of blackboard green behind the head it replaces.
     tubes::Image flashArt, pointerTArt;
     const bool haveFlash = loadImage(res, "FLASH.GFX", flashArt, -1);
     const bool havePointerT = loadImage(res, "POINTERT.GFX", pointerTArt, -1);
@@ -3765,11 +3768,11 @@ int main(int argc, char** argv) {
     sceneArt.haveJump = haveJump;
     bool haveFg = loadImage(res, "GAMEFG.GFX", foreground, 0);
 
-    // ONE table, indexed by a beaker cell's raw value. The original's is at
+    // One table, indexed by a beaker cell's raw value. The original's is at
     // DS:0x1da6 and is indexed by `type + 19 * fadeFrame`, so the same lookup
     // serves a settled atom and a fading one and the drawing code never
     // branches on whether a cell is clearing. Frames past 6 are null and draw
-    // nothing, which is exactly what the original does with them.
+    // nothing, matching the original.
     tubes::Sprite atoms[kCellStates];
     bool haveAtom[kCellStates] = {};
     int loaded = 0;
@@ -3800,8 +3803,8 @@ int main(int argc, char** argv) {
     // TESTUBE1/2/3 are the tipping animation's three frames, indexed by the
     // tube's phase - upright, tilted, pouring. Their heights of 65/42/27 are
     // a tube going over, which is what they were for all along; the port read
-    // them as three difficulty capacities for several sessions, a guess the
-    // flat capacity of five already contradicted without explaining.
+    // them as three difficulty capacities for several sessions, but the flat
+    // capacity of five already contradicted that without explaining why.
     tubes::Sprite testTube[tubes::tubephase::kRelease + 1];
     bool haveTube[tubes::tubephase::kRelease + 1] = {false, false, false, false,
                                                      false};
@@ -3843,13 +3846,13 @@ int main(int argc, char** argv) {
     // setup selects a cell height of 8. The large one was identified by
     // pulling the digit `0` out of a captured HUD and comparing it against all
     // four `.816` fonts: `FUTURE.816` matches byte for byte and the other
-    // three do not come close.
+    // three are not close.
     tubes::Font bigFont, smallFont;
     const bool haveBig = loadFont(res, "FUTURE.816", 8, 7, bigFont);
-    // The "big font" is a SLOT, `DS:0x2110`, not one font: each stage loads
-    // what it wants into it. The HUD's is FUTURE.816, proven byte for byte
-    // against a captured digit. The MENU's and the BRIEFING TITLE's is
-    // STARTREK.816, matched the same way against captures of each - 344 lit
+    // The "big font" is a slot, `DS:0x2110`, not one font: each stage loads
+    // what it wants into it. The HUD's is `FUTURE.816`, proven byte for byte
+    // against a captured digit. The menu's and the briefing title's is
+    // `STARTREK.816`, matched the same way against captures of each - 344 lit
     // pixels hit / 7 missed for `Start Game`, and 187 / 187 with 27 missed for
     // `Wave 1` at exactly the y the port already used.
     tubes::Font headingFont;
@@ -3857,7 +3860,7 @@ int main(int argc, char** argv) {
     const bool haveSmall = loadFont(res, "TINY6X8.88", 6, 4, smallFont);
     // The fourth `.816`, and the last slot to be identified. `1000:aaba` loads
     // it into `DS:0x2114`, and `1000:96db` selects that slot for the high
-    // score list - so the table is written in CURSIVE, which is what the
+    // score list - so the table is written in `SCRIPT.816`, the cursive the
     // player sees on the viewer's chalkboard. Metrics from `23e7:013b`'s
     // `(ptr, 8, 0x10, 8, 8)`: advance 8, peak 8.
     tubes::Font scriptFont;
@@ -3874,8 +3877,8 @@ int main(int argc, char** argv) {
     // Loaded whether or not `--play-demo` asked for it, because View Demo and
     // the attract timeout both need it - `1000:5f4b` reads it inside the
     // session, and its two error strings ("Demo ResourceError", "Installing
-    // Demo Error") say the original treats a missing one as fatal there. Here
-    // a failure only costs the demo.
+    // Demo Error") say the original treats a missing one as fatal there. A
+    // failure here only costs the demo.
     tubes::Demo demo;
     bool haveDemo = false;
     {
@@ -3893,8 +3896,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    // `1000:9e53` IS the session: the menu leaves the title screen and the
-    // session is entered fresh, with the difficulty the player chose. So the
+    // `1000:9e53` is the session: the menu leaves the title screen and the
+    // session is entered fresh, with the difficulty the player chose. The
     // Game is owned rather than a local - starting a second game after a
     // Game Over has to build a new one, not reset the old one in place.
     // `harness` is computed above, where the high score table is loaded.
@@ -3921,9 +3924,9 @@ int main(int argc, char** argv) {
     // there is no briefing screen and no stats blackboard, so the loop below
     // just steps to the next wave when one is cleared.
     // `--make-save`, a test rig rather than a feature. The progression is
-    // what makes this worth doing in the engine instead of by hand: a record
-    // carries `WaveProgress`, so a save with wave 75 and wave-1 counters is
-    // NOT a wave 75 - it is the warp the reversing notes warn about. Stepping
+    // why this is done in the engine instead of by hand: a record carries
+    // `WaveProgress`, so a save with wave 75 and wave-1 counters is not a
+    // wave 75 - it is the warp the reversing notes warn about. Stepping
     // `advanceWave` is the only way to get the real numbers.
     //
     // It writes to the path it is given and nowhere else. `TUBES.SAV` is the
@@ -3957,7 +3960,7 @@ int main(int argc, char** argv) {
     }
     if (!opt.renderState.empty() && !loadState(opt.renderState, *game)) return 1;
 
-    // GAMECONTROLLER is not required: SDL_Init fails only on VIDEO, and a
+    // GameController is not required: SDL_Init fails only on video, and a
     // machine with no controller support still plays on the keyboard.
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
