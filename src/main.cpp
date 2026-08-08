@@ -3978,7 +3978,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    // `--scale` sizes the WINDOW for this run and is deliberately not written
+    // `--scale` sizes the window for this run and is deliberately not written
     // into `settings.graphics`: a capture script must be able to pin a size
     // without changing what the player chose in the game, and the graphics
     // screen saves on every keystroke, so a flag that landed in the struct
@@ -4025,9 +4025,9 @@ int main(int argc, char** argv) {
 
     // The edition's third and last source: ask the player, once. It lives here
     // rather than beside the other two because it needs a renderer, and the
-    // save and high-score files below need the ANSWER - the edition names them.
-    // That ordering is the whole reason this is a start-up question and not a
-    // menu item; see PLAN.md, "Where the edition switch should live".
+    // save and high-score files below need the answer - the edition names
+    // them. That ordering is the whole reason this is a start-up question and
+    // not a menu item; see PLAN.md, "Where the edition switch should live".
     if (mustAskEdition) {
         bool cancelled = false;
         // The remembered answer is the row the cursor starts on, so the common
@@ -4060,14 +4060,14 @@ int main(int argc, char** argv) {
         writeSettings();
     }
 
-    // The NAME is edition-dependent and the port's own rule - `TUBES.SAV`
+    // The name is edition-dependent and the port's own rule - `TUBES.SAV`
     // registered, `TUBESSW.SAV` shareware. The two files have identical
     // formats, so a cross-load would be silent; distinct names make it
     // impossible instead of detectable. `edition.h` carries the reasoning.
     //
-    // `opt.edition` is right here and `game->edition()` would not be: this runs
-    // before any session exists, and it is the EDITION that picks the file, not
-    // the Preview flag - a Preview run writes nothing at all.
+    // `opt.edition` is right here and `game->edition()` would not be: this
+    // runs before any session exists, and it is the edition that picks the
+    // file, not the Preview flag - a Preview run writes nothing at all.
     const std::string savePath =
         opt.gameDir + "/" + opt.edition.saveFileName();
     tubes::SaveFile saves;
@@ -4104,7 +4104,7 @@ int main(int argc, char** argv) {
         }
     }
     auto saveHiScores = [&]() {
-        // A HARNESS RUN MUST NOT WRITE TO THE GAME DIRECTORY. `--auto-advance`
+        // A harness run must not write to the game directory. `--auto-advance`
         // walks a whole session, so it reaches the end of a wave, qualifies,
         // and saved a real `TUBES.HSC` into the player's own game files -
         // which then changed what every later capture compared against. The
@@ -4166,14 +4166,14 @@ int main(int argc, char** argv) {
     // must not stop the game from being playable. Sound effects are the same,
     // and they do not need DRIVERS.RES at all - the .SFX resources are in
     // TUBES.RES and the driver only ever fed them to the card.
-    // DECLARATION ORDER MATTERS. The audio callback holds a bare pointer into
+    // Declaration order matters. The audio callback holds a bare pointer into
     // `sounds` while a voice is playing, and locals are destroyed in reverse,
-    // so `sounds` has to be declared FIRST - then `music` closes the device in
+    // so `sounds` has to be declared first - then `music` closes the device in
     // its destructor while the samples are still alive. The other way round is
     // a use-after-free on the audio thread on the way out.
     tubes::Sound sounds[tubes::sfx::kCount];
     // `CLAP.SFX` is not in the atom-indexed table - that table is keyed by
-    // atom TYPE - so it is loaded on its own for the high score viewer.
+    // atom type - so it is loaded on its own for the high score viewer.
     tubes::Sound clapSound;
     bool haveClapSound = false;
     // `SLIDE.SFX`, `DS:0x2124` - the projector advancing. `1b2e:084e` plays it
@@ -4215,8 +4215,8 @@ int main(int argc, char** argv) {
             std::printf("loaded %d/%d sound effects\n", loadedSfx, wanted);
         }
     }
-    // The device is opened here but NOTHING is played yet. `TUBES.MUS` is the
-    // TITLE screen's song - `1b2e:5238` loads it as one of that stage's own
+    // The device is opened here but nothing is played yet. `TUBES.MUS` is the
+    // title screen's song - `1b2e:5238` loads it as one of that stage's own
     // four resources - and starting it at boot put it over the Software
     // Creations splash, which `21d5:007b` runs in silence: it loads three
     // resources and not one of them is a song. The boot sequence's music is
@@ -4281,24 +4281,24 @@ int main(int argc, char** argv) {
                                        opt.screenshot);
         }
 
-        // `1000:b224`: the cutscene runs HERE - once, after the splashes and
+        // `1000:b224`: the cutscene runs here - once, after the splashes and
         // immediately before the title screen is first shown. The main loop's
         // own `JMP 1000:b236` goes back to the title call and not to this, so
         // it is a boot-time screen and not part of the cycle.
         //
-        // **It does not depend on the splashes.** `1b2e:11b0` is a `void`
+        // It does not depend on the splashes. `1b2e:11b0` is a `void`
         // procedure: it consumes each splash's return code to decide whether
-        // to run the SECOND splash and then throws it away, so `1000:b224` has
+        // to run the second splash and then throws it away, so `1000:b224` has
         // nothing to test. Both this call and the splash call at `1000:ac21`
         // are gated on one thing and it is the same thing - `2000:70fa`, which
         // reads the command tail's length out of the PSP at `ES:[0x80]` and is
-        // `ParamCount`. Starting the game with ANY argument skips both.
+        // `ParamCount`. Starting the game with any argument skips both.
         //
         // The port gated the cutscene on the first splash's key, so Enter on a
         // splash dropped the player straight to the menu. Reported from play.
         //
-        // ONE DEPARTURE, and it is the player's, agreed before it was written:
-        // **ESC on a splash skips the cutscene as well.** The original runs the
+        // One departure, and it is the player's, agreed before it was written:
+        // ESC on a splash skips the cutscene as well. The original runs the
         // cutscene whichever key ended the splash, and there is no way to say
         // "I have seen the intro" without also sitting through it. ESC already
         // means "leave this whole thing" inside the cutscene (`1b2e:112a`
@@ -4347,7 +4347,7 @@ int main(int argc, char** argv) {
     //
     // The distinction is the whole behaviour. An atom crossing lane 13 near
     // x=217 is clipped by the tube walls, because GAMEFG is solid there; the
-    // same atom rising at x=246 is NOT, because GAMEFG is transparent inside
+    // same atom rising at x=246 is not, because GAMEFG is transparent inside
     // the feed tubes and the walls there come from the furniture sprites,
     // which are drawn before the atom. Composing furniture into the stamp
     // buffer clipped the second case as well and was measurably worse.
@@ -4368,8 +4368,8 @@ int main(int argc, char** argv) {
     // The title screen is the one place the two editions' menus differ, and
     // they differ by two inserted items - see `SharewareMainItem`.
     menu.setEdition(opt.edition.edition);
-    // `1b2e:5427` onward: the slot pages are built from the file every time the
-    // title screen is entered, which is why a game saved this session shows up
+    // `1b2e:5427` onward: the slot pages are built from the file every time
+    // the title screen is entered, so a game saved this session shows up
     // without a restart.
     auto refreshSaveSlots = [&]() {
         for (int mode = 1; mode <= 2; ++mode) {
@@ -4389,8 +4389,9 @@ int main(int argc, char** argv) {
     int attractTimer = tubes::kAttractTimeout;
     float titleAccum = 0.0f;
     if (opt.titlePage > 0) {
-        // Navigate there the way a player would, rather than setting the page
-        // directly - so a capture can only show a page the menu really reaches.
+        // Navigate there the way a player would, rather than setting the
+        // page directly - so a capture can only show a page the menu really
+        // reaches.
         menu.raise();
         switch (opt.titlePage) {
         case 3: menu.select(); menu.select(); break;        // Start, Endurance
@@ -4448,7 +4449,7 @@ int main(int argc, char** argv) {
         shownPal = in ? pal : tubes::fadePalette(palRaw, 0, tubes::kFadeSteps);
     };
     // `TUBESEND.BIN`, the shareware sign-off. Loaded once - it is 3,680 bytes,
-    // and 23 rows of an 80 x 25 screen. Present in the REGISTERED archive too,
+    // and 23 rows of an 80 x 25 screen. Present in the registered archive too,
     // because `TUBES.RES` is byte-identical between the editions, but that
     // build never names it and the port does not show it there either.
     tubes::TextScreen exitBanner;
@@ -4481,7 +4482,7 @@ int main(int argc, char** argv) {
     // session at `1000:5efb` - and every screen reveals itself with the
     // fade-in once it has drawn. `[0x22de]` is the music half: it appears
     // exactly once in each of those six functions, always immediately before
-    // the palette fade, and it is NOT `StopMusic` (`[0x22da]`, which is used
+    // the palette fade, and it is not `StopMusic` (`[0x22da]`, which is used
     // in other places). Its driver entry is unread, so the port fades the
     // picture and leaves the music alone rather than guessing.
     auto changeScreen = [&]() {
@@ -4514,7 +4515,7 @@ int main(int argc, char** argv) {
     // `1000:86b8`: `repeat n := Random(10) + 1 until n <> DS:0x2056`. The
     // backdrop is re-rolled until it differs from the last one, so no two
     // consecutive waves share a backdrop - and the wave it is loaded for is
-    // the one ABOUT TO START, not the briefing being shown, which never blits
+    // the one about to start, not the briefing being shown, which never blits
     // it. `--gamebg` pins it so a capture can be matched.
     int lastBackdrop = tubes::kNoLastBackdrop;      // DS:0x2056, seeded 0xff
     const bool backdropPinned = opt.gameBg != "GAMEBG1.GFX";
@@ -4526,17 +4527,17 @@ int main(int argc, char** argv) {
         // way to reach it.
         const tubes::EditionState& ed = game->edition();
         if (ed.preview) {
-            // The Preview does not roll at all: `1000:7fc7` loads a FIXED
+            // The preview does not roll at all: `1000:7fc7` loads a fixed
             // background per wave, which is what the five `GAMEBG` literals in
             // the shareware image are and why it names them beside the
             // constructed prefix. Waves outside 1..5 cannot happen here - the
-            // Preview list is five arms - but fall back to the roll rather than
-            // indexing off the end.
+            // preview list is five arms - but fall back to the roll rather
+            // than indexing off the end.
             const int w = game->progress().wave;
             n = (w >= 1 && w <= tubes::kPreviewWaveCount) ? tubes::kPreviewBackdrop[w] : 1;
         } else {
             // `1000:86b8` registered, `1000:7fc7` shareware. The two builds
-            // differ by ONE OPERAND - `PUSH 0xa` against `PUSH 0x5` - so this
+            // differ by one operand - `PUSH 0xa` against `PUSH 0x5` - so this
             // is one call with an edition-dependent bound, not two code paths.
             const int bound = ed.backdropCount();
             n = lastBackdrop;
@@ -4551,14 +4552,14 @@ int main(int argc, char** argv) {
     };
 
     // `1b2e:0510` builds the classroom from nothing, and the projector screen
-    // ROLLS DOWN while it does. Which screens take that path is not a guess:
+    // rolls down while it does. Which screens take that path is not a guess:
     // `1000:86b8` reads `if (wave = 1) and not replay then 1b2e:0510 else
     // 1b2e:0656`, so a briefing rolls the screen only at the top of a session
     // and never after a Continue; `1b2e:2d63` and `1b2e:411b` call it
     // unconditionally, so the Instructions and the Credits roll every time.
     tubes::ScreenRoll screenRoll;
 
-    // The professor's idle. Every screen that waits runs TWO waits in order -
+    // The professor's idle. Every screen that waits runs two waits in order -
     // `1b2e:0cd1(bursts)` while he talks, and then, only if that timed out,
     // `1b2e:0e37(seconds)` while he waves - so `ProfessorIdle` owns both
     // phases and reports a mouth frame or a pointer frame, never both.
