@@ -66,4 +66,39 @@ struct SaveScreen {
     float written = 0.0f;         // `1000:3722`'s 20-retrace hold
 };
 
+
+// The three slide decks, the rebinding screen and the graphics screen. They
+// are grouped because they are one code path: Instructions `1b2e:2d63`,
+// Credits `1b2e:411b` and the shareware's Ordering Info `1ac3:4889` differ
+// only in their page table, and the two port-only screens sit beside them as
+// flags rather than as `Menu::Page` values - the page machine is the
+// original's and there is no page 8 in it.
+struct Decks {
+    bool instrOpen = false;
+    int instrSlide = 0;
+    const tubes::InstructionSlide* instrPages = tubes::kInstructionSlides;
+    int instrPageCount = tubes::kInstructionSlideCount;
+    bool instrNav = true;
+
+    bool rebindOpen = false;
+    int rebindRow = 0;                 // 0..5, the control being pointed at
+    bool rebindWaiting = false;        // armed, waiting for the press
+
+    bool graphicsOpen = false;         // the port's display options
+    int graphicsRow = 0;               // 0..kGraphicsRows-1
+
+    // The F1 help overlay, `1000:2e1c`. Blocks the loop like the save screen
+    // and Pause do, and leaves on any key at all.
+    bool helpScreen = false;
+
+    // `1000:ac01`: the shareware's Exit does not exit. It runs the Ordering
+    // Info deck first and only then Halts, so a quit that has been asked for
+    // waits for the deck to finish.
+    bool quitAfterOrdering = false;
+};
+
+// Swap in a deck's page table and go to its first slide.
+void openDeck(Decks& d, const tubes::InstructionSlide* pages, int count,
+              bool nav = true);
+
 }  // namespace tubes

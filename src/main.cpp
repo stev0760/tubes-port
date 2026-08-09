@@ -2374,53 +2374,40 @@ int main(int argc, char** argv) {
     // The rebinding screen. Port-only, so it is a flag beside the others
     // rather than a `Menu::Page` - the page machine is the original's and
     // there is no page 8 in it.
-    bool rebindOpen = opt.rebind;
+    tubes::Decks decks;
+    decks.rebindOpen = opt.rebind;
 
     // The Instructions slideshow, `1b2e:2d63` - a straight run of 21 slides
     // rather than a dispatch, so the state is just which one is up.
-    bool instrOpen = opt.instr >= 0 || opt.credits || opt.ordering >= 0 ||
-                     opt.registration;
+    decks.instrOpen = opt.instr >= 0 || opt.credits || opt.ordering >= 0 ||
+                      opt.registration;
     // `--instructions` / `--credits` open the screen the way the menu does,
     // roll-down and all, so a capture of the animation needs no other flag.
-    if (instrOpen) {
+    if (decks.instrOpen) {
         screenRoll.restart();
         profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
         if (opt.joke) joke.phase = 1;   // harness: show it without the roll
         else joke.maybeStart(sceneRng);
     }
-    int instrSlide = opt.ordering > 0 ? opt.ordering
-                                     : (opt.instr > 0 ? opt.instr : 0);
+    decks.instrSlide = opt.ordering > 0 ? opt.ordering
+                                        : (opt.instr > 0 ? opt.instr : 0);
     // The Credits, `1b2e:411b`: the same screen with a different table.
     // Which of the three decks is up. They differ only in their page table -
     // Instructions `1b2e:2d63`, Credits `1b2e:411b`, and the shareware's
     // Ordering Info `1ac3:4889` - so the screen is one code path with a
     // different table rather than three screens.
-    const tubes::InstructionSlide* instrPages = tubes::kInstructionSlides;
-    int instrPageCount = tubes::kInstructionSlideCount;
-    bool instrNav = true;
-    auto openDeck = [&](const tubes::InstructionSlide* pages, int count,
-                        bool nav = true) {
-        instrPages = pages;
-        instrPageCount = count;
-        instrNav = nav;
-        instrSlide = 0;
-    };
-    if (opt.credits) { instrPages = tubes::kCreditPages;
-                       instrPageCount = tubes::kCreditPageCount; }
-    if (opt.ordering >= 0) { instrPages = tubes::kOrderingPages;
-                             instrPageCount = tubes::kOrderingPageCount; }
-    if (opt.registration) { instrPages = tubes::kRegistrationPages;
-                            instrPageCount = tubes::kRegistrationPageCount;
-                            instrNav = false; }
+    if (opt.credits) { decks.instrPages = tubes::kCreditPages;
+                       decks.instrPageCount = tubes::kCreditPageCount; }
+    if (opt.ordering >= 0) { decks.instrPages = tubes::kOrderingPages;
+                             decks.instrPageCount = tubes::kOrderingPageCount; }
+    if (opt.registration) { decks.instrPages = tubes::kRegistrationPages;
+                            decks.instrPageCount = tubes::kRegistrationPageCount;
+                            decks.instrNav = false; }
     // `1000:ac01`: the shareware's Exit does not exit. It runs the Ordering
     // Info deck first and only then Halts, at which point the exit banner is
     // dumped over the text screen. So a quit that has been asked for waits for
     // the deck to finish; it is an ordinary screen in the frame loop.
-    bool quitAfterOrdering = false;
-    int rebindRow = 0;                 // 0..5, the control being pointed at
-    bool rebindWaiting = false;        // armed, waiting for the press
-    bool graphicsOpen = opt.graphics;  // the port's display options
-    int graphicsRow = 0;               // 0..kGraphicsRows-1
+    decks.graphicsOpen = opt.graphics;
 
     // `1b2e:0a11`'s slide drop, gated on `DS:0x210e`. The flag is cleared in
     // exactly one place - `entry`, at `1000:b1c6` - and set by `1b2e:0a11`
@@ -2490,7 +2477,7 @@ int main(int argc, char** argv) {
     // and does not come back until it is done.
     // The F1 help overlay, `1000:2e1c`. Blocks the loop like the save screen
     // and Pause do, and leaves on any key at all.
-    bool helpScreen = opt.f1;
+    decks.helpScreen = opt.f1;
 
     tubes::SaveScreen saveUi;
     saveUi.open = opt.f2;
@@ -2663,12 +2650,12 @@ int main(int argc, char** argv) {
             }
             // A controller press binds too, which is the whole point of the
             // screen accepting either.
-            if (ev.type == SDL_CONTROLLERBUTTONDOWN && rebindOpen &&
-                rebindWaiting) {
+            if (ev.type == SDL_CONTROLLERBUTTONDOWN && decks.rebindOpen &&
+                decks.rebindWaiting) {
                 settings.bindings.bindPad(
-                    static_cast<tubes::GameButton>(rebindRow),
+                    static_cast<tubes::GameButton>(decks.rebindRow),
                     ev.cbutton.button);
-                rebindWaiting = false;
+                decks.rebindWaiting = false;
                 writeSettings();
                 continue;
             }
@@ -2676,7 +2663,7 @@ int main(int argc, char** argv) {
             const bool livePlay = stage == Stage::kPlay &&
                                   sstage == tubes::SessionStage::kPlay &&
                                   !saveUi.open && !hs.active &&
-                                  !paused && !helpScreen;
+                                  !paused && !decks.helpScreen;
             SDL_Keycode k = SDLK_UNKNOWN;
             // Whether the input driver would have claimed this - see
             // `bindsKey` in `input.h`. Only the help overlay cares, but it has
@@ -2761,7 +2748,7 @@ int main(int argc, char** argv) {
             // words: "Press Button A, Button B, Enter, or Space to exit." On
             // the final page code 1 advances past the end and leaves, and code
             // 2 leaves outright, so all four do exit.
-            if (instrOpen) {
+            if (decks.instrOpen) {
                 const bool leave = k == SDLK_ESCAPE;               // code 2
                 const bool prev = k == SDLK_UP || k == SDLK_PAGEUP;   // code 5
                 const bool next = k == SDLK_DOWN || k == SDLK_PAGEDOWN ||
@@ -2769,23 +2756,23 @@ int main(int argc, char** argv) {
                                   k == SDLK_SPACE;                 // codes 4, 1
                 if (!leave && !prev && !next) continue;   // the wait ignores it
                 if (leave) {
-                    instrOpen = false;
+                    decks.instrOpen = false;
                 } else if (prev) {
-                    if (instrSlide > 0) --instrSlide;
-                } else if (++instrSlide >= instrPageCount) {
-                    instrOpen = false;
+                    if (decks.instrSlide > 0) --decks.instrSlide;
+                } else if (++decks.instrSlide >= decks.instrPageCount) {
+                    decks.instrOpen = false;
                 }
                 // Each slide is its own `1b2e:0cd1(35)` / `1b2e:0e37(30)`
                 // pair, so turning the page starts him talking again.
-                if (instrOpen) {
+                if (decks.instrOpen) {
                     profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
                     joke.maybeStart(sceneRng);
                 }
                 // Only leaving fades. Moving between slides does not - the
                 // original changes the slide inside one screen function and
                 // its fade-out is at the very end, on the way back.
-                if (!instrOpen) {
-                    if (quitAfterOrdering) {
+                if (!decks.instrOpen) {
+                    if (decks.quitAfterOrdering) {
                         // `1000:ac06` onward: the deck has returned, so the
                         // program ends. Music first - it is going down with
                         // everything else on the Halt - then the fade, then
@@ -2807,22 +2794,22 @@ int main(int argc, char** argv) {
             // The rebinding screen owns the keyboard while it is up. When it
             // is armed the next press is the binding, Esc included - there is
             // no other way to bind Escape, and no reason to forbid it.
-            if (rebindOpen) {
-                const auto g = static_cast<tubes::GameButton>(rebindRow);
-                if (rebindWaiting) {
+            if (decks.rebindOpen) {
+                const auto g = static_cast<tubes::GameButton>(decks.rebindRow);
+                if (decks.rebindWaiting) {
                     settings.bindings.bindKey(g, ev.key.keysym.scancode);
-                    rebindWaiting = false;
+                    decks.rebindWaiting = false;
                     writeSettings();
                 } else if (k == SDLK_UP) {
-                    rebindRow = rebindRow == 0 ? tubes::kGameButtons - 1
-                                               : rebindRow - 1;
+                    decks.rebindRow = decks.rebindRow == 0 ? tubes::kGameButtons - 1
+                                               : decks.rebindRow - 1;
                 } else if (k == SDLK_DOWN) {
-                    rebindRow = rebindRow == tubes::kGameButtons - 1
-                                    ? 0 : rebindRow + 1;
+                    decks.rebindRow = decks.rebindRow == tubes::kGameButtons - 1
+                                    ? 0 : decks.rebindRow + 1;
                 } else if (k == SDLK_RETURN) {
-                    rebindWaiting = true;
+                    decks.rebindWaiting = true;
                 } else if (k == SDLK_ESCAPE) {
-                    rebindOpen = false;
+                    decks.rebindOpen = false;
                     // The port's own screen, so this follows the house rule
                     // rather than a call site: it borrows the classroom the
                     // way Instructions does, and Instructions fades.
@@ -2837,14 +2824,14 @@ int main(int argc, char** argv) {
             // applied and saved at once - the point of a display option is
             // seeing what it does, and there is nothing here that can leave
             // the game in a state the player cannot get out of.
-            if (graphicsOpen) {
-                const auto r = static_cast<tubes::GraphicsRow>(graphicsRow);
+            if (decks.graphicsOpen) {
+                const auto r = static_cast<tubes::GraphicsRow>(decks.graphicsRow);
                 if (k == SDLK_UP) {
-                    graphicsRow = graphicsRow == 0 ? tubes::kGraphicsRows - 1
-                                                   : graphicsRow - 1;
+                    decks.graphicsRow = decks.graphicsRow == 0 ? tubes::kGraphicsRows - 1
+                                                   : decks.graphicsRow - 1;
                 } else if (k == SDLK_DOWN) {
-                    graphicsRow = graphicsRow == tubes::kGraphicsRows - 1
-                                      ? 0 : graphicsRow + 1;
+                    decks.graphicsRow = decks.graphicsRow == tubes::kGraphicsRows - 1
+                                      ? 0 : decks.graphicsRow + 1;
                 } else if (k == SDLK_LEFT || k == SDLK_RIGHT ||
                            k == SDLK_RETURN) {
                     tubes::cycleGraphics(settings.graphics, r,
@@ -2852,7 +2839,7 @@ int main(int argc, char** argv) {
                     tubes::applyDisplayOptions(win, ren, settings.graphics);
                     writeSettings();
                 } else if (k == SDLK_ESCAPE) {
-                    graphicsOpen = false;
+                    decks.graphicsOpen = false;
                     changeScreen();
                 }
                 continue;
@@ -2971,10 +2958,10 @@ int main(int argc, char** argv) {
                         break;
                     }
                     case tubes::MenuResult::kInstructions:
-                        instrOpen = true;
-                        openDeck(tubes::kInstructionSlides,
+                        decks.instrOpen = true;
+                        tubes::openDeck(decks, tubes::kInstructionSlides,
                                  tubes::kInstructionSlideCount);
-                        instrSlide = 0;
+                        decks.instrSlide = 0;
                         profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
                         joke.maybeStart(sceneRng);
                         // `1b2e:2d63` builds the scene with `1b2e:0510`, so
@@ -2987,8 +2974,8 @@ int main(int argc, char** argv) {
                         // `1000:abad`. The same deck the Exit path runs, but
                         // reached from the menu, so it comes back to the title
                         // instead of ending the program.
-                        instrOpen = true;
-                        openDeck(tubes::kOrderingPages,
+                        decks.instrOpen = true;
+                        tubes::openDeck(decks, tubes::kOrderingPages,
                                  tubes::kOrderingPageCount);
                         profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
                         joke.maybeStart(sceneRng);
@@ -3027,9 +3014,9 @@ int main(int argc, char** argv) {
                     }
                     case tubes::MenuResult::kCredits:
                         // `1000:b280`. Same screen, same keys, four pages.
-                        instrOpen = true;
-                        openDeck(tubes::kCreditPages, tubes::kCreditPageCount);
-                        instrSlide = 0;
+                        decks.instrOpen = true;
+                        tubes::openDeck(decks, tubes::kCreditPages, tubes::kCreditPageCount);
+                        decks.instrSlide = 0;
                         profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
                         joke.maybeStart(sceneRng);
                         screenRoll.restart();
@@ -3053,16 +3040,16 @@ int main(int argc, char** argv) {
                     case tubes::MenuResult::kRedefine:
                         // The port's own screen - see input.h for why this is
                         // re-implemented rather than transliterated.
-                        rebindOpen = true;
-                        rebindRow = 0;
-                        rebindWaiting = false;
+                        decks.rebindOpen = true;
+                        decks.rebindRow = 0;
+                        decks.rebindWaiting = false;
                         changeScreen();
                         break;
                     case tubes::MenuResult::kGraphics:
                         // The port's own row and its own screen - input.h
                         // again, one layer over.
-                        graphicsOpen = true;
-                        graphicsRow = 0;
+                        decks.graphicsOpen = true;
+                        decks.graphicsRow = 0;
                         changeScreen();
                         break;
                     case tubes::MenuResult::kQuit:
@@ -3081,16 +3068,16 @@ int main(int argc, char** argv) {
                         // and it does not quit. It calls the Ordering Info
                         // deck and only then Halts, which is where the banner
                         // comes from. So the port opens the deck and defers
-                        // the quit until it closes - see `quitAfterOrdering`.
+                        // the quit until it closes - see `decks.quitAfterOrdering`.
                         //
                         // The registered build has no such path: its exit arm
                         // quits outright and its executable never names
                         // TUBESEND, so this is gated on the edition.
                         if (opt.edition.edition == tubes::Edition::kShareware) {
-                            instrOpen = true;
-                            openDeck(tubes::kOrderingPages,
+                            decks.instrOpen = true;
+                            tubes::openDeck(decks, tubes::kOrderingPages,
                                      tubes::kOrderingPageCount);
-                            quitAfterOrdering = true;
+                            decks.quitAfterOrdering = true;
                             profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
                             joke.maybeStart(sceneRng);
                             screenRoll.restart();
@@ -3143,8 +3130,8 @@ int main(int argc, char** argv) {
             // `Press Any Key...` is what made that easy to get wrong: the
             // input driver has already eaten its six, so a control does
             // nothing here. Measured, not assumed - see `bindsKey`.
-            if (helpScreen) {
-                if (!boundControl) helpScreen = false;
+            if (decks.helpScreen) {
+                if (!boundControl) decks.helpScreen = false;
                 continue;
             }
 
@@ -3305,8 +3292,8 @@ int main(int argc, char** argv) {
                         // One page, and `1000:8df8` waits with `1ac3:0b8f` -
                         // the terminal wait, not the paging one - so it is
                         // shown through the deck screen and any key leaves.
-                        instrOpen = true;
-                        openDeck(tubes::kRegistrationPages,
+                        decks.instrOpen = true;
+                        tubes::openDeck(decks, tubes::kRegistrationPages,
                                  tubes::kRegistrationPageCount, false);
                         profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
                         screenRoll.restart();
@@ -3426,7 +3413,7 @@ int main(int argc, char** argv) {
             case tubes::GameAction::kHelp:
                 // `1000:2e1c`. An overlay over the frame the loop left up,
                 // dismissed by any key.
-                helpScreen = true;
+                decks.helpScreen = true;
                 break;
             default:
                 break;
@@ -3446,11 +3433,11 @@ int main(int argc, char** argv) {
         // stage dispatch on purpose: the instructions and the credits are
         // their own screen, and `--instructions` opens them from the harness
         // path, where `stage` is `kPlay` rather than `kTitle`.
-        if (instrOpen) screenRoll.tick(dt);
+        if (decks.instrOpen) screenRoll.tick(dt);
         // And the professor's idle with it. Same reason it sits outside the
         // stage dispatch: these two screens are reachable with `stage` set to
         // either, and the session's own clock below is the briefing's.
-        if ((instrOpen || rebindOpen || graphicsOpen) && !joke.active()) {
+        if ((decks.instrOpen || decks.rebindOpen || decks.graphicsOpen) && !joke.active()) {
             profIdle.tick(dt, sceneRng);
         }
         // `1b2e:0b8f` steps `DS:0x20fc` 1..3 every ten retraces while the
@@ -3487,7 +3474,7 @@ int main(int argc, char** argv) {
         // is no slide to move while the screen is still coming down. The two
         // are consecutive, not concurrent.
         const bool classroomUp =
-            briefingUp || instrOpen || endingPage > 0 ||
+            briefingUp || decks.instrOpen || endingPage > 0 ||
             sstage == tubes::SessionStage::kStats ||
             sstage == tubes::SessionStage::kContinue;
         if (classroomUp && !screenRoll.rolling() && !slideDropped) {
@@ -3513,7 +3500,7 @@ int main(int argc, char** argv) {
             // `1b2e:0e37` steps him every ten retraces, and he waves his
             // pointer while any of the three waits for a key.
             //
-            // This used to read `if (instrOpen)` around a copy of the render
+            // This used to read `if (decks.instrOpen)` around a copy of the render
             // section's slide draw, which ended the frame with its own
             // `continue` before the clock below could run - so the professor
             // stood still on the two screens the original animates him on, and
@@ -3535,7 +3522,7 @@ int main(int argc, char** argv) {
             // regardless, so a player halfway through binding a key could be
             // dropped into the demo. Reported from play.
             const bool onTitleProper =
-                !instrOpen && !rebindOpen && !graphicsOpen && !hsView.viewing;
+                !decks.instrOpen && !decks.rebindOpen && !decks.graphicsOpen && !hsView.viewing;
             for (int k = 0; k < steps; ++k) {
                 titleAtom.step();
                 if (menu.up()) menu.tick();
@@ -3583,7 +3570,7 @@ int main(int argc, char** argv) {
                                                       : 0);
                 }
             } else if (sstage == tubes::SessionStage::kPlay && !paused &&
-                       !saveUi.open && !helpScreen) {
+                       !saveUi.open && !decks.helpScreen) {
                 game->update(opt.demo ? scriptedInput(*game)
                                       : readInput(settings.bindings, gamepad),
                              dt);
@@ -3638,7 +3625,7 @@ int main(int argc, char** argv) {
 
             // The professor waves while any of the three screens is up -
             // `1b2e:0e37` steps `DS:0x20b0` every ten retraces, 1..5.
-            if (instrOpen || rebindOpen || graphicsOpen) {
+            if (decks.instrOpen || decks.rebindOpen || decks.graphicsOpen) {
                 // Already ticked above - the screen on top owns him.
             } else if (joke.active()) {
                 // `1b2e:084e` blocks - nothing else on the screen moves.
@@ -3731,9 +3718,9 @@ int main(int argc, char** argv) {
             // rebinding screen each replace the title while they are up, so
             // each ends the frame with its own `continue` before the title is
             // drawn.
-        if (instrOpen) {
-            drawInstructionSlide(screen, instrPages, instrPageCount,
-                                 instrSlide, instrNav, &blackboard, haveBlackboard,
+        if (decks.instrOpen) {
+            drawInstructionSlide(screen, decks.instrPages, decks.instrPageCount,
+                                 decks.instrSlide, decks.instrNav, &blackboard, haveBlackboard,
                                  sceneArt, scenePose(),
                                  smallFont, haveSmall, headingFont,
                                  haveHeading, atoms, haveAtom, testTube,
@@ -3742,15 +3729,15 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        if (rebindOpen) {
+        if (decks.rebindOpen) {
             // `bindingLabel` is the one part of this screen that needs SDL, so
             // it stayed here and the finished strings go across instead.
             std::string bindLabels[tubes::kGameButtons];
             for (int i = 0; i < tubes::kGameButtons; ++i) {
                 bindLabels[i] = bindingLabel(settings.bindings.b[i]);
             }
-            drawRebindScreen(screen, bindLabels, rebindRow,
-                             rebindWaiting, &blackboard, haveBlackboard,
+            drawRebindScreen(screen, bindLabels, decks.rebindRow,
+                             decks.rebindWaiting, &blackboard, haveBlackboard,
                              sceneArt, headingFont, haveHeading, scriptFont,
                              haveScript, smallFont, haveSmall,
                              tubes::pointerFrameFor(profIdle.wave));
@@ -3758,8 +3745,8 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        if (graphicsOpen) {
-            drawGraphicsScreen(screen, settings.graphics, graphicsRow,
+        if (decks.graphicsOpen) {
+            drawGraphicsScreen(screen, settings.graphics, decks.graphicsRow,
                                &blackboard, haveBlackboard, sceneArt,
                                headingFont, haveHeading, scriptFont,
                                haveScript, smallFont, haveSmall,
@@ -4070,7 +4057,7 @@ int main(int argc, char** argv) {
                            saveUi.desc, headingFont, haveHeading, scriptFont,
                            haveScript, &smallBall[1], haveSmallBall[1]);
         }
-        if (helpScreen) {
+        if (decks.helpScreen) {
             drawHelpScreen(screen, gameMode, headingFont, haveHeading,
                            smallFont, haveSmall);
         }
