@@ -303,11 +303,17 @@ arguments. Decompile the two together.
 works**, and so does the whole boot sequence: both splashes, the title, play,
 load, save (F2), Game Options with control rebinding, High Scores,
 Instructions, View Demo and Credits, with attract mode cycling on its own.
-What is left of the original program is
 
-**Every screen of the original is now ported.** What is left is the player's
-polish list in `PLAN.md` section 4.5 - three items rather than five, since the
-screen fade is found and ported and so are both splashes and the cutscene.
+**Every screen of the original is now ported**, and the player's polish list in
+`PLAN.md` section 4.5 is **done** - the classroom animations, the joke slide,
+the screen fade and the truncated sounds, all four. Its fifth item, ports to
+other platforms, was never a polish task: see `Portability`.
+
+So nothing of the original program is outstanding. What is left is the list at
+the top of `PLAN.md` - the player's full playthrough on Tubes 101, the GLDFADE
+question, a Credits slide of the port's own - and then **publishing**, whose
+checklist is the last section of `PLAN.md`. `LICENSE` and `README.md` are done;
+the `harness` flag is the one code item still on it.
 
 The rig is built and lives **outside this repo**, at `~/Dev/tubes-tooling/` -
 `docs/debug-rig.md` covers it. Three things to know before planning against it.

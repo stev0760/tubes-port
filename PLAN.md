@@ -475,17 +475,28 @@ changes a rule.
    near calls whose targets Ghidra renders with the 0x10000 bias, so the scan
    for a play vector cannot see them. It may be used elsewhere too.
 
-### 0. START HERE: the menu items that are reachable and inert
+### 0. ~~START HERE: the menu items that are reachable and inert~~ DONE
 
-**The next step is section 4B below.** The session loop is closed (4A, done)
-and so are High Scores and Save/Load, screens and all - F2 saves and Continue
-Saved Game loads a real DOS save.
+**This section is history, kept for the method at the end of it.** It is NOT
+the next step - see "The next step, in one place" at the top of this file,
+which is the only pointer worth trusting.
 
-**The menu is still not finished**, and it is what stands between here and a
-player sitting down with the whole program. Four of the eight items go
-nowhere: **Game Options** (both toggles AND Redefine Input Device - the player
-has flagged key/gamepad binding as important), **Instructions**, **View Demo**
-and **Credits**. 4B lists each with its address and what it needs.
+~~**The next step is section 4B below.**~~ ~~**The menu is still not
+finished**, and it is what stands between here and a player sitting down with
+the whole program. Four of the eight items go nowhere: **Game Options** (both
+toggles AND Redefine Input Device), **Instructions**, **View Demo** and
+**Credits**.~~
+
+All four landed, and so did the other four. Every menu item works: Game
+Options with its toggles and control rebinding (`--rebind`, `--graphics`),
+Instructions (`--instructions`), View Demo (`--play-demo`, and attract mode
+runs it unattended) and Credits (`--credits`), alongside play, High Scores,
+and Save/Load - F2 saves and Continue Saved Game loads a real DOS save.
+
+This heading survived as "START HERE" long after it stopped being true, which
+is the failure mode this file is most prone to: a section that was accurate
+when written and that nothing forces to be re-read. A reader arriving at a
+public repository would have taken it for the current state.
 
 `1000:3a67` itself is **done** - this section's original task - and the method
 below is what did it. Keep it.
