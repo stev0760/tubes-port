@@ -15,6 +15,7 @@ target_include_directories(nuked-opl3 PUBLIC third_party/nuked-opl3)
 add_executable(tubes-port
     src/main.cpp
     src/screens.cpp
+    src/uistate.cpp
     src/present.cpp
     src/boot.cpp
     src/res.cpp
@@ -56,7 +57,7 @@ add_executable(tubes-tests src/board_test.cpp src/board.cpp src/menu.cpp src/ses
                             src/ordering.cpp
     src/registration.cpp
     src/textscreen.cpp src/cp437_font.cpp
-    src/screens.cpp src/res.cpp
+    src/screens.cpp src/uistate.cpp src/res.cpp
                             src/sfx.cpp src/scr.cpp)
 target_include_directories(tubes-tests PRIVATE src)
 enable_testing()

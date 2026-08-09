@@ -21,6 +21,7 @@
 #include "font.h"
 #include "game.h"
 #include "textscreen.h"
+#include "uistate.h"
 #include "gfx.h"
 #include "hiscore.h"
 #include "input.h"
@@ -2480,15 +2481,9 @@ int main(int argc, char** argv) {
     // `1000:a6c1` runs it when the wave loop falls out and the session was not
     // aborted, the mode is not attract, and `DS:0x1d4b` is clear. The score is
     // then offered to the bank for the mode just played.
-    bool hsActive = opt.hsEntry;
-    std::string hsName;
-    int hsRow = opt.hsEntry ? 3 : 0;   // 1-based, as the original's display
-                                       // loop is
-    int hsCursor = tubes::kHsCursorMin;
-    int hsCursorDir = 1;
-    float hsCursorAccum = 0.0f;
-    // Counts out the applause between finishing the name and committing it.
-    float hsHold = 0.0f;
+    tubes::NameEntry hs;
+    hs.active = opt.hsEntry;
+    hs.row = opt.hsEntry ? 3 : 0;
 
     // The F2 save screen, `1000:2dd0`'s save arm. It blocks the frame loop the
     // same way Pause does - the original calls it from inside the loop body
@@ -2497,12 +2492,8 @@ int main(int argc, char** argv) {
     // and Pause do, and leaves on any key at all.
     bool helpScreen = opt.f1;
 
-    bool saveScreen = opt.f2;
-    int saveSlotSel = 1;              // `DS:0x1d4d`
-    bool saveTyping = false;
-    std::string saveDesc;
-    float saveWritten = 0.0f;         // `1000:3722`'s 20-retrace hold
-    tubes::HiScoreBank hsBank = tubes::HiScoreBank::kWave;
+    tubes::SaveScreen saveUi;
+    saveUi.open = opt.f2;
 
     // The standalone viewer the menu opens, `1b2e:61b6` - now decompiled, so
     // the layout is the original's rather than borrowed. Page 0 is Endurance
@@ -2513,26 +2504,26 @@ int main(int argc, char** argv) {
     // tells the frame loop to feed it the recording instead of the keyboard.
     bool attractDemo = false;
 
-    bool hsViewing = opt.hsPage >= 0;
-    int hsViewPage = opt.hsPage > 0 ? 1 : 0;
-    float hsViewTimer = tubes::kHsViewSeconds;   // the thirty-second give-up
+    tubes::HiScoreViewer hsView;
+    hsView.viewing = opt.hsPage >= 0;
+    hsView.page = opt.hsPage > 0 ? 1 : 0;
 
     // Every route out of a session goes through here, so the offer cannot be
     // skipped on one path and taken on another.
     auto endSession = [&]() {
-        hsBank = (gameMode == 1) ? tubes::HiScoreBank::kEndurance
+        hs.bank = (gameMode == 1) ? tubes::HiScoreBank::kEndurance
                                  : tubes::HiScoreBank::kWave;
         const uint32_t sc = static_cast<uint32_t>(game->score());
         if (!flags.aborted && gameMode != 0 && game->edition().canEnterHiScore() &&
-            tubes::qualifies(hiScores[hsBank], sc)) {
+            tubes::qualifies(hiScores[hs.bank], sc)) {
             // Seeded with the sentinel and typed over, exactly as the original
             // does - which is why the sentinel's tail survives in the file.
-            hsRow = tubes::insertHiScore(hiScores[hsBank], "", sc) + 1;
-            hsName.clear();
-            hsCursor = tubes::kHsCursorMin;
-            hsCursorDir = 1;
-            hsHold = 0.0f;
-            hsActive = true;
+            hs.row = tubes::insertHiScore(hiScores[hs.bank], "", sc) + 1;
+            hs.name.clear();
+            hs.cursor = tubes::kHsCursorMin;
+            hs.cursorDir = 1;
+            hs.hold = 0.0f;
+            hs.active = true;
             music.stop();
             changeScreen();
             return;
@@ -2684,7 +2675,7 @@ int main(int argc, char** argv) {
             // Live play polls the pad instead - see `menuKeyForPad`.
             const bool livePlay = stage == Stage::kPlay &&
                                   sstage == tubes::SessionStage::kPlay &&
-                                  !saveScreen && !hsActive &&
+                                  !saveUi.open && !hs.active &&
                                   !paused && !helpScreen;
             SDL_Keycode k = SDLK_UNKNOWN;
             // Whether the input driver would have claimed this - see
@@ -2706,8 +2697,8 @@ int main(int argc, char** argv) {
             // `1000:9744`'s typing loop. It owns the keyboard entirely while
             // it is up: printable characters append, backspace removes, and
             // Esc or Return finish - nothing else is looked at.
-            if (hsActive) {
-                if (hsHold > 0.0f) continue;   // the applause owns the screen
+            if (hs.active) {
+                if (hs.hold > 0.0f) continue;   // the applause owns the screen
                 if (k == SDLK_RETURN || k == SDLK_ESCAPE) {
                     // `1000:96db`'s tail: the row is redrawn in the settled
                     // colour with no cursor, the applause plays, and the
@@ -2715,18 +2706,18 @@ int main(int argc, char** argv) {
                     // 1.71 s - before the record is committed and the file
                     // written. The port committed and left in the same frame.
                     if (soundOn && haveClapSound) music.playSound(&clapSound);
-                    hsHold = tubes::kHsCommitSeconds;
+                    hs.hold = tubes::kHsCommitSeconds;
                 } else if (k == SDLK_BACKSPACE) {
-                    if (!hsName.empty()) hsName.pop_back();
+                    if (!hs.name.empty()) hs.name.pop_back();
                 } else if (k >= 0x20 && k <= 0x7e &&
-                           static_cast<int>(hsName.size()) <
+                           static_cast<int>(hs.name.size()) <
                                tubes::kHiScoreNameMax) {
                     // `1000:9718` gates on 0x20..0x7e and a length under 25.
                     const bool shift =
                         (SDL_GetModState() & KMOD_SHIFT) != 0;
                     char c = static_cast<char>(k);
                     if (shift && c >= 'a' && c <= 'z') c = c - 'a' + 'A';
-                    hsName.push_back(c);
+                    hs.name.push_back(c);
                 }
                 continue;
             }
@@ -2870,12 +2861,12 @@ int main(int argc, char** argv) {
             // `1b2e:6423`. The first page treats Esc specially - it leaves at
             // once - and any other key advances to the second. On the second
             // page every key leaves, Esc included.
-            if (hsViewing) {
-                if (hsViewPage == 0 && k != SDLK_ESCAPE) {
-                    hsViewPage = 1;
-                    hsViewTimer = tubes::kHsViewSeconds;
+            if (hsView.viewing) {
+                if (hsView.page == 0 && k != SDLK_ESCAPE) {
+                    hsView.page = 1;
+                    hsView.timer = tubes::kHsViewSeconds;
                 } else {
-                    hsViewing = false;
+                    hsView.viewing = false;
                     playSong("TUBES.MUS");
                     changeScreen();
                 }
@@ -3111,9 +3102,9 @@ int main(int argc, char** argv) {
                     case tubes::MenuResult::kHighScores:
                         // `1b2e:63c7`: the music becomes CLASS.MUS and the
                         // applause starts, on the Endurance page.
-                        hsViewing = true;
-                        hsViewPage = 0;
-                        hsViewTimer = tubes::kHsViewSeconds;
+                        hsView.viewing = true;
+                        hsView.page = 0;
+                        hsView.timer = tubes::kHsViewSeconds;
                         playSong(tubes::kHsViewMusic);
                         if (soundOn && haveClapSound) {
                             music.playSound(&clapSound);
@@ -3157,17 +3148,17 @@ int main(int argc, char** argv) {
                 continue;
             }
 
-            if (saveScreen) {
-                if (saveWritten > 0.0f) continue;      // the written hold
-                if (!saveTyping) {
+            if (saveUi.open) {
+                if (saveUi.written > 0.0f) continue;      // the written hold
+                if (!saveUi.typing) {
                     if (k == SDLK_DOWN) {
                         // 1000:3393: five slots, and it wraps.
-                        saveSlotSel = saveSlotSel == tubes::kSaveSlotsShown
-                                          ? 1 : saveSlotSel + 1;
+                        saveUi.slotSel = saveUi.slotSel == tubes::kSaveSlotsShown
+                                          ? 1 : saveUi.slotSel + 1;
                     } else if (k == SDLK_UP) {
-                        saveSlotSel = saveSlotSel == 1
+                        saveUi.slotSel = saveUi.slotSel == 1
                                           ? tubes::kSaveSlotsShown
-                                          : saveSlotSel - 1;
+                                          : saveUi.slotSel - 1;
                     } else if (k == SDLK_RETURN) {
                         // 1000:3448: the record is copied out and its
                         // description becomes the line being edited, so
@@ -3175,10 +3166,10 @@ int main(int argc, char** argv) {
                         const tubes::SaveBank b =
                             gameMode == 1 ? tubes::SaveBank::kEndurance
                                           : tubes::SaveBank::kWave;
-                        saveDesc = saves[b].slots[saveSlotSel - 1].description;
-                        saveTyping = true;
+                        saveUi.desc = saves[b].slots[saveUi.slotSel - 1].description;
+                        saveUi.typing = true;
                     } else if (k == SDLK_ESCAPE) {
-                        saveScreen = false;            // 1000:3435
+                        saveUi.open = false;            // 1000:3435
                     }
                     continue;
                 }
@@ -3189,19 +3180,19 @@ int main(int argc, char** argv) {
                     // `1000:3635` jumps straight to the exit: ESC out of the
                     // description abandons the save, it does not commit it
                     // with whatever has been typed.
-                    saveScreen = false;
-                    saveTyping = false;
+                    saveUi.open = false;
+                    saveUi.typing = false;
                 } else if (k == SDLK_RETURN) {
                     const tubes::SaveBank b =
                         gameMode == 1 ? tubes::SaveBank::kEndurance
                                       : tubes::SaveBank::kWave;
-                    tubes::SaveSlot& rec = saves[b].slots[saveSlotSel - 1];
+                    tubes::SaveSlot& rec = saves[b].slots[saveUi.slotSel - 1];
                     // 1000:3654 onward: the description first, then the
                     // fourteen session fields, then the whole record into the
                     // bank and the file out.
-                    rec.setDescription(saveDesc.empty()
+                    rec.setDescription(saveUi.desc.empty()
                                            ? tubes::kSaveUndescribed
-                                           : saveDesc);
+                                           : saveUi.desc);
                     game->saveInto(rec, totals);
                     // `1b2e:00ac` rolls two random numbers before writing, so
                     // saving perturbs the sequence - in the original too.
@@ -3209,17 +3200,17 @@ int main(int argc, char** argv) {
                         saves, game->rollForTest(tubes::kSaveNonceMax) + 1,
                         game->rollForTest(tubes::kSaveNonceMax) + 1);
                     writeSaves();
-                    saveTyping = false;
-                    saveWritten = tubes::kSaveWrittenSeconds;
+                    saveUi.typing = false;
+                    saveUi.written = tubes::kSaveWrittenSeconds;
                 } else if (k == SDLK_BACKSPACE) {
-                    if (!saveDesc.empty()) saveDesc.pop_back();
+                    if (!saveUi.desc.empty()) saveUi.desc.pop_back();
                 } else if (k >= 0x20 && k <= 0x7e &&
-                           static_cast<int>(saveDesc.size()) <
+                           static_cast<int>(saveUi.desc.size()) <
                                tubes::kSaveDescTyped) {
                     const bool shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
                     char c = static_cast<char>(k);
                     if (shift && c >= 'a' && c <= 'z') c = c - 'a' + 'A';
-                    saveDesc.push_back(c);
+                    saveUi.desc.push_back(c);
                 }
                 continue;
             }
@@ -3262,12 +3253,12 @@ int main(int argc, char** argv) {
                     bannerPhase == tubes::BannerPhase::kWait &&
                     code == tubes::gamekey::kF2 && gameMode != 0 &&
                     game->edition().canSave()) {
-                    saveScreen = true;
-                    saveTyping = false;
-                    saveWritten = 0.0f;
-                    if (saveSlotSel < 1 ||
-                        saveSlotSel > tubes::kSaveSlotsShown) {
-                        saveSlotSel = 1;
+                    saveUi.open = true;
+                    saveUi.typing = false;
+                    saveUi.written = 0.0f;
+                    if (saveUi.slotSel < 1 ||
+                        saveUi.slotSel > tubes::kSaveSlotsShown) {
+                        saveUi.slotSel = 1;
                     }
                     continue;
                 }
@@ -3425,11 +3416,11 @@ int main(int argc, char** argv) {
             case tubes::GameAction::kSave:
                 // `1000:3062`: the screen comes up on the slot the player last
                 // used, and the game is frozen until it is done.
-                saveScreen = true;
-                saveTyping = false;
-                saveWritten = 0.0f;
-                if (saveSlotSel < 1 || saveSlotSel > tubes::kSaveSlotsShown) {
-                    saveSlotSel = 1;
+                saveUi.open = true;
+                saveUi.typing = false;
+                saveUi.written = 0.0f;
+                if (saveUi.slotSel < 1 || saveUi.slotSel > tubes::kSaveSlotsShown) {
+                    saveUi.slotSel = 1;
                 }
                 break;
             case tubes::GameAction::kHelp:
@@ -3544,7 +3535,7 @@ int main(int argc, char** argv) {
             // regardless, so a player halfway through binding a key could be
             // dropped into the demo. Reported from play.
             const bool onTitleProper =
-                !instrOpen && !rebindOpen && !graphicsOpen && !hsViewing;
+                !instrOpen && !rebindOpen && !graphicsOpen && !hsView.viewing;
             for (int k = 0; k < steps; ++k) {
                 titleAtom.step();
                 if (menu.up()) menu.tick();
@@ -3592,7 +3583,7 @@ int main(int argc, char** argv) {
                                                       : 0);
                 }
             } else if (sstage == tubes::SessionStage::kPlay && !paused &&
-                       !saveScreen && !helpScreen) {
+                       !saveUi.open && !helpScreen) {
                 game->update(opt.demo ? scriptedInput(*game)
                                       : readInput(settings.bindings, gamepad),
                              dt);
@@ -3662,23 +3653,23 @@ int main(int argc, char** argv) {
             // `1000:9750`: the cursor colour walks 1..14 and back, one step a
             // frame, so it pulses rather than blinks. The hold after the name
             // is finished has no cursor at all.
-            if (hsActive && hsHold <= 0.0f) {
-                hsCursorAccum += dt * tubes::kRetraceHz;
-                while (hsCursorAccum >= 1.0f) {
-                    hsCursorAccum -= 1.0f;
-                    hsCursor += hsCursorDir;
-                    if (hsCursor >= tubes::kHsCursorMax) hsCursorDir = -1;
-                    if (hsCursor <= tubes::kHsCursorMin) hsCursorDir = 1;
+            if (hs.active && hs.hold <= 0.0f) {
+                hs.cursorAccum += dt * tubes::kRetraceHz;
+                while (hs.cursorAccum >= 1.0f) {
+                    hs.cursorAccum -= 1.0f;
+                    hs.cursor += hs.cursorDir;
+                    if (hs.cursor >= tubes::kHsCursorMax) hs.cursorDir = -1;
+                    if (hs.cursor <= tubes::kHsCursorMin) hs.cursorDir = 1;
                 }
-            } else if (hsActive) {
+            } else if (hs.active) {
                 // The applause plays out, and only then is the record
                 // committed and the file written.
-                hsHold -= dt;
-                if (hsHold <= 0.0f) {
-                    hsHold = 0.0f;
-                    hiScores[hsBank].rows[hsRow - 1].setName(hsName);
+                hs.hold -= dt;
+                if (hs.hold <= 0.0f) {
+                    hs.hold = 0.0f;
+                    hiScores[hs.bank].rows[hs.row - 1].setName(hs.name);
                     saveHiScores();
-                    hsActive = false;
+                    hs.active = false;
                     stage = Stage::kTitle;
                     menu.raise();
                     playSong("TUBES.MUS");
@@ -3688,11 +3679,11 @@ int main(int argc, char** argv) {
 
             // `1000:3722`: twenty retraces after the file is written, deaf,
             // and then the game resumes where it left off.
-            if (saveWritten > 0.0f) {
-                saveWritten -= dt;
-                if (saveWritten <= 0.0f) {
-                    saveWritten = 0.0f;
-                    saveScreen = false;
+            if (saveUi.written > 0.0f) {
+                saveUi.written -= dt;
+                if (saveUi.written <= 0.0f) {
+                    saveUi.written = 0.0f;
+                    saveUi.open = false;
                     refreshSaveSlots();
                 }
             }
@@ -3779,29 +3770,29 @@ int main(int argc, char** argv) {
 
         // come before the title draw - that path ends the frame with its own
         // `continue`.
-        if (hsViewing) {
+        if (hsView.viewing) {
             // `1b2e:63f2`: whenever the effects voice reports itself idle the
             // clap starts again, so the applause carries the whole screen.
             if (soundOn && haveClapSound && !music.soundBusy()) {
                 music.playSound(&clapSound);
             }
             // The give-up does exactly what a key does.
-            hsViewTimer -= dt;
-            if (hsViewTimer <= 0.0f) {
-                if (hsViewPage == 0) {
-                    hsViewPage = 1;
-                    hsViewTimer = tubes::kHsViewSeconds;
+            hsView.timer -= dt;
+            if (hsView.timer <= 0.0f) {
+                if (hsView.page == 0) {
+                    hsView.page = 1;
+                    hsView.timer = tubes::kHsViewSeconds;
                 } else {
-                    hsViewing = false;
+                    hsView.viewing = false;
                     playSong("TUBES.MUS");
                     changeScreen();
                 }
             }
             const tubes::HiScoreBank viewBank =
-                hsViewPage == 0 ? tubes::HiScoreBank::kEndurance
+                hsView.page == 0 ? tubes::HiScoreBank::kEndurance
                                 : tubes::HiScoreBank::kWave;
             drawHiScoreViewer(screen, hiScores[viewBank],
-                              tubes::kHsViewTitle[hsViewPage], &blackboard,
+                              tubes::kHsViewTitle[hsView.page], &blackboard,
                               haveBlackboard, &slideBar, haveBar, headingFont,
                               haveHeading, scriptFont, haveScript);
             presentFrame();
@@ -4048,7 +4039,7 @@ int main(int argc, char** argv) {
             drawContinue(screen, continuePrompt.ticksLeft(), headingFont,
                          haveHeading, bigFont, haveBig);
         }
-        if (hsActive) {
+        if (hs.active) {
             // `1000:96db` does not call `1b2e:0656` or `1b2e:0a11`. It draws
             // three things and they are all here:
             //
@@ -4067,16 +4058,16 @@ int main(int argc, char** argv) {
             if (haveBar) {
                 screen.blit(slideBar, tubes::kHsViewBarX, tubes::kHsViewBarY);
             }
-            drawHiScores(screen, hiScores[hsBank], headingFont, haveHeading,
-                         scriptFont, haveScript, hsRow, hsName,
-                         hsHold > 0.0f ? 0 : hsCursor);
+            drawHiScores(screen, hiScores[hs.bank], headingFont, haveHeading,
+                         scriptFont, haveScript, hs.row, hs.name,
+                         hs.hold > 0.0f ? 0 : hs.cursor);
         }
-        if (saveScreen) {
+        if (saveUi.open) {
             const tubes::SaveBank b = gameMode == 1
                                           ? tubes::SaveBank::kEndurance
                                           : tubes::SaveBank::kWave;
-            drawSaveScreen(screen, saves[b], b, saveSlotSel, saveTyping,
-                           saveDesc, headingFont, haveHeading, scriptFont,
+            drawSaveScreen(screen, saves[b], b, saveUi.slotSel, saveUi.typing,
+                           saveUi.desc, headingFont, haveHeading, scriptFont,
                            haveScript, &smallBall[1], haveSmallBall[1]);
         }
         if (helpScreen) {
