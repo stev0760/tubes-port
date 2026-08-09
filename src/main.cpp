@@ -1467,7 +1467,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 5; ++i) {
         haveTalk[i] = tubes::loadImage(res, tubes::kTalkNames[i], talkFrame[i], 0);
     }
-    // `1b2e:084e`'s joke slide. Both go down through `2321:068d`, the opaque
+    // `1b2e:084e`'s classroom.joke slide. Both go down through `2321:068d`, the opaque
     // blit - `FLASH.GFX` because it is a whole 172 x 132 transparency and
     // covers the slide exactly, and `POINTERT.GFX` because its 28 x 21
     // carries a patch of blackboard green behind the head it replaces.
@@ -1911,7 +1911,7 @@ int main(int argc, char** argv) {
     tubes::Sound clapSound;
     bool haveClapSound = false;
     // `SLIDE.SFX`, `DS:0x2124` - the projector advancing. `1b2e:084e` plays it
-    // last, as the joke slide is moved off.
+    // last, as the classroom.joke slide is moved off.
     tubes::Sound slideSound;
     bool haveSlideSound = false;
     tubes::MusicPlayer music;
@@ -2245,16 +2245,16 @@ int main(int argc, char** argv) {
     // holds until a key. `1000:632f` rolls its decorative ball, so that roll
     // belongs to the screen rather than to the wave.
     bool briefingUp = opt.wave > 0;
-    int8_t briefDecor = 1;
+    tubes::Classroom classroom;
+    classroom.briefDecor = 1;
     // `1000:86b8`: `repeat n := Random(10) + 1 until n <> DS:0x2056`. The
     // backdrop is re-rolled until it differs from the last one, so no two
     // consecutive waves share a backdrop - and the wave it is loaded for is
     // the one about to start, not the briefing being shown, which never blits
     // it. `--gamebg` pins it so a capture can be matched.
-    int lastBackdrop = tubes::kNoLastBackdrop;      // DS:0x2056, seeded 0xff
-    const bool backdropPinned = opt.gameBg != "GAMEBG1.GFX";
+    classroom.backdropPinned = opt.gameBg != "GAMEBG1.GFX";
     auto rollBackdrop = [&]() {
-        if (backdropPinned) return;
+        if (classroom.backdropPinned) return;
         int n;
         // Edition state is read from the session, not the CLI option, because
         // the Preview flag is set by the menu arm and `--preview` is only one
@@ -2274,10 +2274,10 @@ int main(int argc, char** argv) {
             // differ by one operand - `PUSH 0xa` against `PUSH 0x5` - so this
             // is one call with an edition-dependent bound, not two code paths.
             const int bound = ed.backdropCount();
-            n = lastBackdrop;
-            while (n == lastBackdrop) n = game->rollForTest(bound) + 1;
+            n = classroom.lastBackdrop;
+            while (n == classroom.lastBackdrop) n = game->rollForTest(bound) + 1;
         }
-        lastBackdrop = n;
+        classroom.lastBackdrop = n;
         tubes::Image next;
         if (tubes::loadImage(res, "GAMEBG" + std::to_string(n) + ".GFX", next, -1)) {
             background = std::move(next);
@@ -2291,7 +2291,6 @@ int main(int argc, char** argv) {
     // 1b2e:0656`, so a briefing rolls the screen only at the top of a session
     // and never after a Continue; `1b2e:2d63` and `1b2e:411b` call it
     // unconditionally, so the Instructions and the Credits roll every time.
-    tubes::ScreenRoll screenRoll;
 
     // The professor's idle. Every screen that waits runs two waits in order -
     // `1b2e:0cd1(bursts)` while he talks, and then, only if that timed out,
@@ -2302,8 +2301,7 @@ int main(int argc, char** argv) {
     // generator is a `Game` member and the Instructions screen has no Game, so
     // the scene gets a stream of its own off the boot seed. See the note above
     // `PascalRandom` for what that does and does not change.
-    tubes::ProfessorIdle profIdle;
-    tubes::PascalRandom sceneRng{bootSeed ? bootSeed : 1u};
+    classroom.sceneRng = tubes::PascalRandom{bootSeed ? bootSeed : 1u};
     // `1000:9499`. 0 is off, 1 the text and 2 the prize; `1b2e:0b8f` holds
     // each for thirty seconds or a key. `DS:0x20fc` is the hop frame, 1..3 on
     // the same ten-retrace clock the wave uses.
@@ -2315,16 +2313,15 @@ int main(int argc, char** argv) {
     // `1b2e:084e`, rolled from every `1b2e:0a11` and good for at most one
     // showing per run. `raiseScene` is where the port calls it, because that
     // is every place the original reaches `1b2e:0a11` from.
-    tubes::JokeSlide joke;
 
     auto raiseBriefing = [&](bool replay) {
         briefingUp = true;
-        briefDecor = static_cast<int8_t>(game->rollForTest(8) + 1);
+        classroom.briefDecor = static_cast<int8_t>(game->rollForTest(8) + 1);
         rollBackdrop();
-        if (game->progress().wave == 1 && !replay) screenRoll.restart();
+        if (game->progress().wave == 1 && !replay) classroom.screenRoll.restart();
         // `1000:86b8`: `k := 1b2e:0cd1($17)`, then `1b2e:0e37($1e)`.
-        profIdle.restart(tubes::kTalkBurstsBriefing, sceneRng);
-        joke.maybeStart(sceneRng);
+        classroom.profIdle.restart(tubes::kTalkBurstsBriefing, classroom.sceneRng);
+        classroom.joke.maybeStart(classroom.sceneRng);
     };
     if (briefingUp) raiseBriefing(false);
 
@@ -2384,10 +2381,10 @@ int main(int argc, char** argv) {
     // `--instructions` / `--credits` open the screen the way the menu does,
     // roll-down and all, so a capture of the animation needs no other flag.
     if (decks.instrOpen) {
-        screenRoll.restart();
-        profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
-        if (opt.joke) joke.phase = 1;   // harness: show it without the roll
-        else joke.maybeStart(sceneRng);
+        classroom.screenRoll.restart();
+        classroom.profIdle.restart(tubes::kTalkBurstsSlide, classroom.sceneRng);
+        if (opt.joke) classroom.joke.phase = 1;   // harness: show it without the roll
+        else classroom.joke.maybeStart(classroom.sceneRng);
     }
     decks.instrSlide = opt.ordering > 0 ? opt.ordering
                                         : (opt.instr > 0 ? opt.instr : 0);
@@ -2421,38 +2418,6 @@ int main(int argc, char** argv) {
     // slide, and the Credits four - counted in the disassembly, not assumed -
     // so opening either from a cold start is the first call, and the port
     // showed a slide already at rest. Reported from play.
-    bool slideDropped = false;
-    int slideFrame = 0;          // index into kSlideDrop while dropping
-    float slideAccum = 0.0f;
-    auto slideIsDropping = [&]() {
-        return !slideDropped && slideFrame < tubes::kSlideDropFrames;
-    };
-    auto slidePos = [&]() {
-        if (!slideIsDropping()) {
-            return tubes::SlideFrame{tubes::kSlideX, tubes::kSlideY};
-        }
-        return tubes::kSlideDrop[slideFrame];
-    };
-    // Everything about the classroom that moves, gathered once a frame. The
-    // slide's own position is in here rather than being a caller's business,
-    // because `1b2e:0a11` is the same routine on every screen that shows it.
-    auto scenePose = [&]() {
-        tubes::ScenePose p;
-        p.frameH = screenRoll.height();
-        p.slideDropping = slideIsDropping();
-        p.profFrame = tubes::pointerFrameFor(profIdle.wave);
-        // `1b2e:084e` is a blocking routine called from inside `1b2e:0a11`,
-        // which itself runs before the key wait - so while the gag is up the
-        // professor is not talking, and no mouth is stamped over the face it
-        // replaces.
-        p.mouthFrame = joke.active() ? 0 : profIdle.mouthFrame();
-        p.jokeSlide = joke.showFlash();
-        p.jokeFace = joke.showFace();
-        const tubes::SlideFrame s = slidePos();
-        p.slideX = s.x;
-        p.slideY = s.y;
-        return p;
-    };
 
     // Swapping the song for a stage. The seven names live in `1000:9e53`'s own
     // frame as far pointers four bytes apart - see reversing-notes.
@@ -2612,8 +2577,8 @@ int main(int argc, char** argv) {
         game->setChains(liveChains);
         playSong(tubes::kStatsMusic);
         // `1000:8da5`: `k := 1b2e:0cd1(10)`, then `1b2e:0e37($1e)`.
-        profIdle.restart(tubes::kTalkBurstsStats, sceneRng);
-        joke.maybeStart(sceneRng);
+        classroom.profIdle.restart(tubes::kTalkBurstsStats, classroom.sceneRng);
+        classroom.joke.maybeStart(classroom.sceneRng);
     };
     Uint32 last = SDL_GetTicks();
 
@@ -2765,8 +2730,8 @@ int main(int argc, char** argv) {
                 // Each slide is its own `1b2e:0cd1(35)` / `1b2e:0e37(30)`
                 // pair, so turning the page starts him talking again.
                 if (decks.instrOpen) {
-                    profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
-                    joke.maybeStart(sceneRng);
+                    classroom.profIdle.restart(tubes::kTalkBurstsSlide, classroom.sceneRng);
+                    classroom.joke.maybeStart(classroom.sceneRng);
                 }
                 // Only leaving fades. Moving between slides does not - the
                 // original changes the slide inside one screen function and
@@ -2962,12 +2927,12 @@ int main(int argc, char** argv) {
                         tubes::openDeck(decks, tubes::kInstructionSlides,
                                  tubes::kInstructionSlideCount);
                         decks.instrSlide = 0;
-                        profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
-                        joke.maybeStart(sceneRng);
+                        classroom.profIdle.restart(tubes::kTalkBurstsSlide, classroom.sceneRng);
+                        classroom.joke.maybeStart(classroom.sceneRng);
                         // `1b2e:2d63` builds the scene with `1b2e:0510`, so
                         // the projector screen comes down every time - no
                         // `DS:0x210e`-style gate on this one.
-                        screenRoll.restart();
+                        classroom.screenRoll.restart();
                         changeScreen();
                         break;
                     case tubes::MenuResult::kOrdering:
@@ -2977,9 +2942,9 @@ int main(int argc, char** argv) {
                         decks.instrOpen = true;
                         tubes::openDeck(decks, tubes::kOrderingPages,
                                  tubes::kOrderingPageCount);
-                        profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
-                        joke.maybeStart(sceneRng);
-                        screenRoll.restart();
+                        classroom.profIdle.restart(tubes::kTalkBurstsSlide, classroom.sceneRng);
+                        classroom.joke.maybeStart(classroom.sceneRng);
+                        classroom.screenRoll.restart();
                         changeScreen();
                         break;
                     case tubes::MenuResult::kPreview: {
@@ -3017,9 +2982,9 @@ int main(int argc, char** argv) {
                         decks.instrOpen = true;
                         tubes::openDeck(decks, tubes::kCreditPages, tubes::kCreditPageCount);
                         decks.instrSlide = 0;
-                        profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
-                        joke.maybeStart(sceneRng);
-                        screenRoll.restart();
+                        classroom.profIdle.restart(tubes::kTalkBurstsSlide, classroom.sceneRng);
+                        classroom.joke.maybeStart(classroom.sceneRng);
+                        classroom.screenRoll.restart();
                         changeScreen();
                         break;
                     case tubes::MenuResult::kViewDemo:
@@ -3078,9 +3043,9 @@ int main(int argc, char** argv) {
                             tubes::openDeck(decks, tubes::kOrderingPages,
                                      tubes::kOrderingPageCount);
                             decks.quitAfterOrdering = true;
-                            profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
-                            joke.maybeStart(sceneRng);
-                            screenRoll.restart();
+                            classroom.profIdle.restart(tubes::kTalkBurstsSlide, classroom.sceneRng);
+                            classroom.joke.maybeStart(classroom.sceneRng);
+                            classroom.screenRoll.restart();
                             changeScreen();
                             break;
                         }
@@ -3295,8 +3260,8 @@ int main(int argc, char** argv) {
                         decks.instrOpen = true;
                         tubes::openDeck(decks, tubes::kRegistrationPages,
                                  tubes::kRegistrationPageCount, false);
-                        profIdle.restart(tubes::kTalkBurstsSlide, sceneRng);
-                        screenRoll.restart();
+                        classroom.profIdle.restart(tubes::kTalkBurstsSlide, classroom.sceneRng);
+                        classroom.screenRoll.restart();
                         flags.gameOver = true;
                         stage = Stage::kTitle;
                         changeScreen();
@@ -3310,7 +3275,7 @@ int main(int argc, char** argv) {
                     // reaches the talk loop, so the stats screen's
                     // `1b2e:0cd1(10)` has to stop here rather than run on
                     // underneath the hop.
-                    profIdle.restart(0, sceneRng);
+                    classroom.profIdle.restart(0, classroom.sceneRng);
                     flags.gameOver = true;
                     continue;
                 }
@@ -3433,12 +3398,12 @@ int main(int argc, char** argv) {
         // stage dispatch on purpose: the instructions and the credits are
         // their own screen, and `--instructions` opens them from the harness
         // path, where `stage` is `kPlay` rather than `kTitle`.
-        if (decks.instrOpen) screenRoll.tick(dt);
+        if (decks.instrOpen) classroom.screenRoll.tick(dt);
         // And the professor's idle with it. Same reason it sits outside the
         // stage dispatch: these two screens are reachable with `stage` set to
         // either, and the session's own clock below is the briefing's.
-        if ((decks.instrOpen || decks.rebindOpen || decks.graphicsOpen) && !joke.active()) {
-            profIdle.tick(dt, sceneRng);
+        if ((decks.instrOpen || decks.rebindOpen || decks.graphicsOpen) && !classroom.joke.active()) {
+            classroom.profIdle.tick(dt, classroom.sceneRng);
         }
         // `1b2e:0b8f` steps `DS:0x20fc` 1..3 every ten retraces while the
         // ending waits, and each page gives up after thirty seconds.
@@ -3457,7 +3422,7 @@ int main(int argc, char** argv) {
         // lives inside `1b2e:0a11`, and `1b2e:0510` has returned before its
         // caller reaches that - the port arms both at the same instant, so
         // without this the gag would expire behind the rolling screen.
-        if (!screenRoll.rolling() && joke.tick(dt) && soundOn &&
+        if (!classroom.screenRoll.rolling() && classroom.joke.tick(dt) && soundOn &&
             haveSlideSound) {
             music.playSound(&slideSound);
         }
@@ -3469,7 +3434,7 @@ int main(int argc, char** argv) {
         // is only one of five callers. Whichever classroom the player reaches
         // first is the one that drops the slide.
         //
-        // It waits for the roll-down for the same reason the joke does:
+        // It waits for the roll-down for the same reason the classroom.joke does:
         // `1b2e:0510` returns before its caller reaches `1b2e:0a11`, so there
         // is no slide to move while the screen is still coming down. The two
         // are consecutive, not concurrent.
@@ -3477,12 +3442,12 @@ int main(int argc, char** argv) {
             briefingUp || decks.instrOpen || endingPage > 0 ||
             sstage == tubes::SessionStage::kStats ||
             sstage == tubes::SessionStage::kContinue;
-        if (classroomUp && !screenRoll.rolling() && !slideDropped) {
-            slideAccum += dt * tubes::kRetraceHz;
-            while (slideAccum >= tubes::kSlideDropRetraces) {
-                slideAccum -= tubes::kSlideDropRetraces;
-                if (++slideFrame >= tubes::kSlideDropFrames) {
-                    slideDropped = true;
+        if (classroomUp && !classroom.screenRoll.rolling() && !classroom.slideDropped) {
+            classroom.slideAccum += dt * tubes::kRetraceHz;
+            while (classroom.slideAccum >= tubes::kSlideDropRetraces) {
+                classroom.slideAccum -= tubes::kSlideDropRetraces;
+                if (++classroom.slideFrame >= tubes::kSlideDropFrames) {
+                    classroom.slideDropped = true;
                     break;
                 }
             }
@@ -3627,14 +3592,14 @@ int main(int argc, char** argv) {
             // `1b2e:0e37` steps `DS:0x20b0` every ten retraces, 1..5.
             if (decks.instrOpen || decks.rebindOpen || decks.graphicsOpen) {
                 // Already ticked above - the screen on top owns him.
-            } else if (joke.active()) {
+            } else if (classroom.joke.active()) {
                 // `1b2e:084e` blocks - nothing else on the screen moves.
             } else if (sstage == tubes::SessionStage::kBriefing ||
                        sstage == tubes::SessionStage::kStats ||
                        sstage == tubes::SessionStage::kContinue) {
-                profIdle.tick(dt, sceneRng);
+                classroom.profIdle.tick(dt, classroom.sceneRng);
             } else {
-                profIdle.restart(0, sceneRng);
+                classroom.profIdle.restart(0, classroom.sceneRng);
             }
 
             // `1000:9750`: the cursor colour walks 1..14 and back, one step a
@@ -3679,7 +3644,7 @@ int main(int argc, char** argv) {
             // wave 1 of a session that is not a replay, which is the condition
             // `1000:86b8` itself tests before choosing between `1b2e:0510` and
             // `1b2e:0656`.
-            if (briefingUp) screenRoll.tick(dt);
+            if (briefingUp) classroom.screenRoll.tick(dt);
 
             // `1000:8c38`'s countdown ticks on its own, so the prompt expires
             // whether or not the player touches anything.
@@ -3721,7 +3686,7 @@ int main(int argc, char** argv) {
         if (decks.instrOpen) {
             drawInstructionSlide(screen, decks.instrPages, decks.instrPageCount,
                                  decks.instrSlide, decks.instrNav, &blackboard, haveBlackboard,
-                                 sceneArt, scenePose(),
+                                 sceneArt, tubes::poseOf(classroom),
                                  smallFont, haveSmall, headingFont,
                                  haveHeading, atoms, haveAtom, testTube,
                                  haveTube, furn, haveFurn);
@@ -3740,7 +3705,7 @@ int main(int argc, char** argv) {
                              decks.rebindWaiting, &blackboard, haveBlackboard,
                              sceneArt, headingFont, haveHeading, scriptFont,
                              haveScript, smallFont, haveSmall,
-                             tubes::pointerFrameFor(profIdle.wave));
+                             tubes::pointerFrameFor(classroom.profIdle.wave));
             presentFrame();
             continue;
         }
@@ -3750,7 +3715,7 @@ int main(int argc, char** argv) {
                                &blackboard, haveBlackboard, sceneArt,
                                headingFont, haveHeading, scriptFont,
                                haveScript, smallFont, haveSmall,
-                               tubes::pointerFrameFor(profIdle.wave));
+                               tubes::pointerFrameFor(classroom.profIdle.wave));
             presentFrame();
             continue;
         }
@@ -3990,14 +3955,14 @@ int main(int argc, char** argv) {
         if (briefingUp) {
             drawBriefing(screen, *game, &blackboard, haveBlackboard, headingFont,
                          smallFont, haveBig, haveSmall, atoms, haveAtom, furn,
-                         haveFurn, briefDecor, sceneArt, scenePose());
+                         haveFurn, classroom.briefDecor, sceneArt, tubes::poseOf(classroom));
         }
 
         // `1000:9499` replaces the field the same way the stats screen does,
         // and comes first because the session it ends is still notionally on
         // the stats stage when it starts.
         if (endingPage > 0) {
-            tubes::ScenePose p = scenePose();
+            tubes::ScenePose p = tubes::poseOf(classroom);
             p.jumpFrame = jumpFrame;
             drawEnding(screen, endingPage, &blackboard, haveBlackboard,
                        sceneArt, p, headingFont, haveHeading, smallFont,
@@ -4012,7 +3977,7 @@ int main(int argc, char** argv) {
              sstage == tubes::SessionStage::kContinue)) {
             drawStats(screen, statsRows, &blackboard, haveBlackboard, sceneArt,
                       headingFont, smallFont, bigFont, haveHeading, haveSmall,
-                      haveBig, scenePose());
+                      haveBig, tubes::poseOf(classroom));
         }
         if (sstage == tubes::SessionStage::kBanner) {
             // `1000:5ec9`: the `F2` hint appears only on the abort arm, and

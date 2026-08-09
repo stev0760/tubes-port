@@ -29,6 +29,7 @@
 #include "session.h"
 #include "edition.h"
 #include "textscreen.h"
+#include "uistate.h"
 #include "wave.h"
 
 namespace {
@@ -4173,6 +4174,77 @@ void testCornersCurveTowardTheNextLeg() {
 
 }  // namespace
 
+
+// ---------------------------------------------------------------------------
+// The classroom's moving parts, `1b2e:0a11`
+// ---------------------------------------------------------------------------
+//
+// These three were lambdas inside `main()` until the state they read was
+// grouped, so nothing had ever checked them - `main.cpp` is not in this
+// binary and cannot be, since it links SDL.
+
+void testTheSlideDropsForSixFramesThenRests() {
+    tubes::Classroom c;
+    // Fresh: frame 0 of the drop, so it is on its way down and sits at the
+    // first wobble rather than at rest.
+    check(tubes::slideIsDropping(c), "slide starts dropping");
+    check(tubes::slidePos(c).x == tubes::kSlideDrop[0].x &&
+          tubes::slidePos(c).y == tubes::kSlideDrop[0].y,
+          "slide starts at drop frame 0");
+
+    // Every one of the six frames is a distinct wobble, and each is reported.
+    for (int f = 0; f < tubes::kSlideDropFrames; ++f) {
+        c.slideFrame = f;
+        check(tubes::slideIsDropping(c), "still dropping at frame " + std::to_string(f));
+        check(tubes::slidePos(c).x == tubes::kSlideDrop[f].x &&
+              tubes::slidePos(c).y == tubes::kSlideDrop[f].y,
+              "drop frame " + std::to_string(f) + " is its own position");
+    }
+
+    // Past the last frame it rests, whatever the counter says.
+    c.slideFrame = tubes::kSlideDropFrames;
+    check(!tubes::slideIsDropping(c), "not dropping past the last frame");
+    check(tubes::slidePos(c).x == tubes::kSlideX &&
+          tubes::slidePos(c).y == tubes::kSlideY, "rests at kSlideX/kSlideY");
+
+    // `slideDropped` ends it early - that is what the frame loop sets when the
+    // slide has landed, and it wins over the frame counter.
+    c.slideDropped = true;
+    c.slideFrame = 0;
+    check(!tubes::slideIsDropping(c), "slideDropped ends the drop early");
+    check(tubes::slidePos(c).x == tubes::kSlideX, "and parks it at rest");
+}
+
+void testThePoseSuppressesTheMouthWhileTheJokeIsUp() {
+    tubes::Classroom c;
+    c.profIdle.restart(tubes::kTalkBurstsSlide, c.sceneRng);
+
+    // `1b2e:084e` is a blocking routine called from inside `1b2e:0a11`, which
+    // runs before the key wait - so while the gag is up the professor is not
+    // talking and no mouth is stamped over the face it replaces.
+    c.joke.phase = 1;
+    check(c.joke.active(), "joke is up");
+    check(tubes::poseOf(c).mouthFrame == 0, "no mouth while the joke is up");
+
+    c.joke = tubes::JokeSlide{};
+    check(!c.joke.active(), "joke is down");
+    check(tubes::poseOf(c).mouthFrame == c.profIdle.mouthFrame(),
+          "mouth is the professor's own once the joke is down");
+}
+
+void testThePosePassesTheRollHeightAndSlideThrough() {
+    tubes::Classroom c;
+    const tubes::ScenePose rolled = tubes::poseOf(c);
+    check(rolled.frameH == c.screenRoll.height(), "frameH is the roll's height");
+    check(rolled.slideDropping == tubes::slideIsDropping(c),
+          "pose agrees with slideIsDropping");
+    check(rolled.slideX == tubes::slidePos(c).x &&
+          rolled.slideY == tubes::slidePos(c).y,
+          "pose carries the slide position");
+    check(rolled.profFrame == tubes::pointerFrameFor(c.profIdle.wave),
+          "profFrame comes from the idle wave");
+}
+
 int main() {
     testHorizontal();
     testInertSpecialsDoNotMatch();
@@ -4324,6 +4396,10 @@ int main() {
 
     testTheSharewareMenuInsertsTwoItems();
     testTheSharewareMenuIsLaidOutForTenRows();
+    testTheSlideDropsForSixFramesThenRests();
+    testThePoseSuppressesTheMouthWhileTheJokeIsUp();
+    testThePosePassesTheRollHeightAndSlideThrough();
+
     testTheSharewareMenuDispatchesByItsOwnNumbering();
     testThePreviewChoosesItsOwnModeAndDifficulty();
 

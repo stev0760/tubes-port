@@ -101,4 +101,30 @@ struct Decks {
 void openDeck(Decks& d, const tubes::InstructionSlide* pages, int count,
               bool nav = true);
 
+
+// Everything about the classroom that moves. `1b2e:0a11` is the same routine
+// on every screen that shows the projector, so the slide's position belongs
+// with the professor and the roll rather than to whichever screen is up.
+struct Classroom {
+    int8_t briefDecor = 1;
+    int lastBackdrop = tubes::kNoLastBackdrop;   // DS:0x2056, seeded 0xff
+    bool backdropPinned = false;
+    tubes::ScreenRoll screenRoll;
+    tubes::ProfessorIdle profIdle;
+    tubes::PascalRandom sceneRng{1u};
+    tubes::JokeSlide joke;
+    bool slideDropped = false;
+    int slideFrame = 0;          // index into kSlideDrop while dropping
+    float slideAccum = 0.0f;
+};
+
+// The slide is still on its way down.
+bool slideIsDropping(const Classroom& c);
+
+// Where the slide sits this frame: its rest position, or a step of the drop.
+tubes::SlideFrame slidePos(const Classroom& c);
+
+// The classroom's moving parts, gathered once a frame.
+tubes::ScenePose poseOf(const Classroom& c);
+
 }  // namespace tubes
