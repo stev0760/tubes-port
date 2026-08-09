@@ -1681,10 +1681,26 @@ rendering. The work is entirely code.
 The repository has never contained game data and `.gitignore` is aggressive
 about keeping it that way, so publishing is mostly a matter of paperwork:
 
-- **`main.cpp` needs breaking up, and it is the one structural job left.**
-  6348 lines, of which `main()` is 3102 - it starts at line 3246 and runs to
-  the end of the file. It holds **25 `[&]` lambdas that are really functions**,
-  capturing the enclosing frame instead of taking arguments:
+- **`main.cpp` is split up; `main()` itself is still 3100 lines.** DONE, in
+  part. The file went 6359 -> 4109 lines in three moves, each verified by
+  capturing all 74 screens to BMPs before and after and comparing with `cmp`:
+
+      src/screens.cpp   1177 lines, every screen the port draws, NO SDL,
+                        and compiled into tubes-tests - so the port's
+                        rendering is covered by a check for the first time
+      src/boot.cpp       980 lines, the screens that run their own blocking
+                        loop: both splashes, the cutscene, the edition
+                        prompt, the sign-off
+      src/present.cpp     67 lines, the shared present path and g_display
+
+  `tools/screen_sweep.sh` is what made that safe and is the thing to reach for
+  next time: `tubes-tests` links no SDL, so nothing in `main.cpp` has ever been
+  covered, and the only proof available is that every screen still renders the
+  same pixels.
+
+  **What is left is `main()` itself**, still 3100 of the remaining 4109 lines.
+  It holds **25 `[&]` lambdas that are really functions**, capturing the
+  enclosing frame instead of taking arguments:
 
       writeSettings  newSession      saveHiScores    writeSaves
       startBootMusic refreshSaveSlots blitAndPresent runFade
@@ -1694,9 +1710,10 @@ about keeping it that way, so publishing is mostly a matter of paperwork:
       endEndingPage  raiseBanner     leaveBannerWait startDemo
       enterStats
 
-  Above `main()` sit 50 free functions, so the file is not undisciplined
-  throughout - the problem is concentrated in the one function, and it grew
-  that way because each screen was ported into the loop that already existed.
+  The problem is concentrated in that one function, and it grew that way
+  because each screen was ported into the loop that already existed. The file
+  around it is not undisciplined - everything that could be lifted out by
+  moving it already has been.
 
   This is **not** a transliteration question. The original's structure is
   Pascal units and nested procedures, and `1000:9e53` with `1000:3a67` inside

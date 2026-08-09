@@ -112,6 +112,8 @@ without committing loses its reasoning even if the code survives.
 | Path | Contents |
 |---|---|
 | `src/` | the engine (C++17, SDL2) |
+| `src/screens.cpp` | every screen the port draws - NO SDL, and in `tubes-tests` |
+| `src/main.cpp`, `boot.cpp`, `present.cpp`, `opl.cpp` | the SDL edge, and the only files that may include it |
 | `src/instructions.cpp`, `credits.cpp`, `cutscene.cpp` | GENERATED - see "extract, do not transcribe" |
 | `tools/` | Python decoders, one per format, plus `unpack.sh` |
 | `ghidra_scripts/` | Java `GhidraScript` files for headless analysis |
@@ -126,16 +128,32 @@ project is at `../ghidra-project` — outside this repo on purpose, since it is
 derived from copyrighted data. So is the debugging rig and everything it
 captures, at `~/Dev/tubes-tooling/`.
 
-`src/` splits platform-agnostic logic from the SDL edge, and the split is load
-bearing: only `main.cpp` and `opl.cpp` include SDL. `board`, `game`, `wave`,
-`menu`, `session`, `hiscore`, `save`, `res`, `gfx`, `mus`, `font` and `screen`
-are all portable and must stay that way.
+`src/` splits platform-agnostic logic from the SDL edge, and the split is what
+makes a port to another platform tractable at all. **Four files include SDL and
+no others may: `main.cpp`, `boot.cpp`, `present.cpp` and `opl.cpp`.** `board`,
+`game`, `wave`, `menu`, `session`, `hiscore`, `save`, `res`, `gfx`, `mus`,
+`font`, `screen` and `screens` are portable and must stay that way.
+
+The edge is small and each file has one job. `present.cpp` puts a finished
+frame on the window and owns the display options. `boot.cpp` holds the screens
+that run their own blocking loop - both splashes, the cutscene, the edition
+prompt, the sign-off. `main.cpp` is the CLI, the setup and the frame loop.
+
+`screens.cpp` is the one to know about: it is every screen the port draws, it
+has no SDL in it, and it is compiled into `tubes-tests` as well as
+`tubes-port`. Until it was split out of `main.cpp` none of the port's rendering
+could be tested at all, because `tubes-tests` links no SDL and `main.cpp` was
+one translation unit with `SDL_Init` in it. Keep it that way: a screen that
+needs an SDL call is a screen whose caller should do that call and pass the
+result in. `drawRebindScreen` is the worked example - it takes the six finished
+key names rather than the `Bindings` they come from, because only
+`SDL_GetScancodeName` knows what a key is called.
 
 ## Build, test, run
 
     cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
     cmake --build build -j
-    ./build/tubes-tests                      # 600 checks, and rising
+    ./build/tubes-tests                      # 995 checks, and rising
     ./build/tubes-port --gamedir ..
 
 Music is verified by diffing register streams, not by listening:
