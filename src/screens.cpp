@@ -1155,4 +1155,27 @@ void drawTaskDisplay(tubes::Screen& screen, const tubes::Game& game,
     tubes::drawText(screen, big, x, 10, 127, tubes::textmode::kFadeDown, n);
 }
 
+bool loadImage(const tubes::Archive& res, const std::string& name,
+               tubes::Image& out, int transparent) {
+    tubes::Bytes raw;
+    std::string err;
+    if (!res.read(name, raw, err) || !tubes::decodeGfx(raw, out, err)) {
+        std::fprintf(stderr, "  %s: %s\n", name.c_str(), err.c_str());
+        return false;
+    }
+    out.transparent = transparent;
+    return true;
+}
+
+bool loadSprite(const tubes::Archive& res, const std::string& name,
+                tubes::Sprite& out) {
+    tubes::Bytes raw;
+    std::string err;
+    if (!res.read(name, raw, err) || !tubes::decodeCsp(raw, out, err)) {
+        std::fprintf(stderr, "  %s: %s\n", name.c_str(), err.c_str());
+        return false;
+    }
+    return true;
+}
+
 }  // namespace tubes

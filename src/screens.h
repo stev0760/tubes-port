@@ -221,4 +221,12 @@ void drawTaskDisplay(tubes::Screen& screen, const tubes::Game& game,
                      const tubes::Sprite* furn, const bool* haveFurn,
                      const tubes::Sprite* smallBall, const bool* haveSmallBall);
 
+// Archive to art. Portable, and shared: main.cpp loads the game's own
+// sprites with these and boot.cpp loads the cutscene's.
+bool loadImage(const tubes::Archive& res, const std::string& name,
+               tubes::Image& out, int transparent);
+
+bool loadSprite(const tubes::Archive& res, const std::string& name,
+                tubes::Sprite& out);
+
 }  // namespace tubes
