@@ -15,6 +15,7 @@ target_include_directories(nuked-opl3 PUBLIC third_party/nuked-opl3)
 add_executable(tubes-port
     src/main.cpp
     src/screens.cpp
+    src/present.cpp
     src/res.cpp
     src/gfx.cpp
     src/screen.cpp
