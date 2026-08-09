@@ -1793,9 +1793,14 @@ about keeping it that way, so publishing is mostly a matter of paperwork:
   not self-explanatory. Fix the design and the comment has nothing left to
   say, which is the sign it was standing in for structure.
 
-- **The licence is chosen: MIT**, for this project's own code. The `LICENSE`
-  file is still to be written. The reasoning below is what the choice was made
-  against and is kept because it is what a reader will want to check.
+- **The licence is chosen: MIT**, and `LICENSE` is **written**. It carries the
+  MIT grant for this project's own code, then names the vendored terms it does
+  NOT supersede - `nuked-opl3` LGPL-2.1-or-later, `moderndos-8x16` dual MIT or
+  CC0-1.0 - and closes by saying the original game is not covered. Both
+  vendored claims were re-checked against the files rather than taken from this
+  note. Copyright line is `stev0760`, the handle the repository will be
+  published under; the reasoning below is what the choice was made against and
+  is kept because it is what a reader will want to check.
 
   **Choose a licence.** `third_party/nuked-opl3` is
   **LGPL-2.1-or-later** - checked in the file, not from memory: `opl3.c` says
