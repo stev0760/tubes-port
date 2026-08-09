@@ -113,6 +113,7 @@ without committing loses its reasoning even if the code survives.
 |---|---|
 | `src/` | the engine (C++17, SDL2) |
 | `src/screens.cpp` | every screen the port draws - NO SDL, and in `tubes-tests` |
+| `src/uistate.h` | the frame loop's own state, grouped - NO SDL, and in `tubes-tests` |
 | `src/main.cpp`, `boot.cpp`, `present.cpp`, `opl.cpp` | the SDL edge, and the only files that may include it |
 | `src/instructions.cpp`, `credits.cpp`, `cutscene.cpp` | GENERATED - see "extract, do not transcribe" |
 | `tools/` | Python decoders, one per format, plus `unpack.sh` |
@@ -132,7 +133,7 @@ captures, at `~/Dev/tubes-tooling/`.
 makes a port to another platform tractable at all. **Four files include SDL and
 no others may: `main.cpp`, `boot.cpp`, `present.cpp` and `opl.cpp`.** `board`,
 `game`, `wave`, `menu`, `session`, `hiscore`, `save`, `res`, `gfx`, `mus`,
-`font`, `screen` and `screens` are portable and must stay that way.
+`font`, `screen`, `screens` and `uistate` are portable and must stay that way.
 
 The edge is small and each file has one job. `present.cpp` puts a finished
 frame on the window and owns the display options. `boot.cpp` holds the screens
@@ -153,7 +154,7 @@ key names rather than the `Bindings` they come from, because only
 
     cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
     cmake --build build -j
-    ./build/tubes-tests                      # 995 checks, and rising
+    ./build/tubes-tests                      # 1021 checks, and rising
     ./build/tubes-port --gamedir ..
 
 Music is verified by diffing register streams, not by listening:

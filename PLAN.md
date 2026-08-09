@@ -1698,15 +1698,40 @@ about keeping it that way, so publishing is mostly a matter of paperwork:
   covered, and the only proof available is that every screen still renders the
   same pixels.
 
-  **What is left is `main()` itself**, still 3100 of the remaining 4109 lines.
-  It holds **25 `[&]` lambdas that are really functions**, capturing the
+  **The self-contained state is grouped too.** `src/uistate.{h,cpp}` holds
+  `NameEntry`, `HiScoreViewer`, `SaveScreen`, `Decks` and `Classroom` - about
+  45 loose locals - and four lambdas became free functions taking them:
+  `openDeck`, and the three pure ones `slideIsDropping`, `slidePos` and
+  `poseOf`. Those three are the payoff: they are portable, so they are in
+  `tubes-tests` and now have 26 checks on them, having previously been
+  untestable by construction.
+
+  **What is deliberately NOT grouped, and why:**
+
+  - the **session** cluster (`sstage`, banner, stats, Continue, paused). Its
+    lambdas are the obstacle: `endSession` alone touches six clusters and
+    mutates five, and `startDemo` resets session, demo, title and audio at
+    once. Worse, those exact screens have no capture flag, so
+    `tools/screen_sweep.sh` cannot prove a change to them is harmless. That is
+    a refactor with no verification, which is not one worth doing blind.
+  - the **art** cluster. `SceneArt` holds twelve bare pointers into twelve art
+    locals; move them into a struct that is ever copied or returned by value
+    and every pointer dangles silently.
+  - the **audio** cluster. The callback holds a bare pointer into `sounds` and
+    `music` must be destroyed first. Declaration order is the whole safety
+    argument, and a struct would hide it.
+
+  Anyone picking this up should read those three reasons before deciding the
+  remaining locals are simply untidy.
+
+  **What is left is `main()` itself**, still ~3050 of the remaining 4041 lines.
+  It holds **21 `[&]` lambdas that are really functions**, capturing the
   enclosing frame instead of taking arguments:
 
       writeSettings  newSession      saveHiScores    writeSaves
       startBootMusic refreshSaveSlots blitAndPresent runFade
       changeScreen   presentFrame    rollBackdrop    raiseBriefing
-      persistAudio   refreshOptionRows openDeck      slideIsDropping
-      slidePos       scenePose       playSong        endSession
+      persistAudio   refreshOptionRows playSong      endSession
       endEndingPage  raiseBanner     leaveBannerWait startDemo
       enterStats
 
