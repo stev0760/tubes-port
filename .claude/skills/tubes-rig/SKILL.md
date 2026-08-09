@@ -72,12 +72,17 @@ GAMEFG pixel erased and we do not know why.
 ## Decompile
 
 Ghidra 12.2 **will not run `.py`** - write Java `GhidraScript`. Absolute paths
-only.
+only: a leading `./` is rejected outright, for both `-scriptPath` and the
+project directory. Set the two below to your own, and let the shell expand
+them - what Ghidra receives has to be absolute.
+
+    REPO=~/path/to/tubes-port
+    PROJ=~/path/to/ghidra-project     # outside the repo, deliberately
 
     /opt/ghidra/support/analyzeHeadless \
-      /home/steve/Games/GAMES/tubes/ghidra-project tubes \
+      "$PROJ" tubes \
       -process TUBES_UNP.EXE -noanalysis \
-      -scriptPath /home/steve/Games/GAMES/tubes/tubes-port/ghidra_scripts \
+      -scriptPath "$REPO/ghidra_scripts" \
       -postScript DecompileFuncs.java 1000:3a67 1000:9e53
 
 Output is prefixed `INFO  <Script>.java> `; strip it before parsing.
