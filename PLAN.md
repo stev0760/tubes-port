@@ -433,12 +433,28 @@ the measurement were only ever half of it: the flicker was never visible in this
 environment, so nothing short of the report could close it - the same way the
 report of the picker flickering is what opened it.
 
-### The version picker's wording - open, and the player's call
+### The version picker's wording - settled
 
-The screen is right; the words on it are not finished. `Choose Version`,
-`Registered` / `Shareware`, and the `Current Set-Up` summary lines - waves,
-special atoms, extras - are all first drafts, and the player has said they may
-want to refine them.
+The summary was reworded on 2026-08-15 and the screen is finished. Two rows
+changed, both for the same reason: **every heading must have a value that means
+something in both editions.**
+
+* the fourth row was `Extras`, answered `Preview Registered` in the shareware
+  and **`None`** in the registered - so the edition with more in it read as the
+  one missing something. It is now `Menu`, which is what actually differs:
+  `Adds Preview and Ordering Info` against `The standard eight items`. The
+  shareware inserts item 3 and item 8, so its main menu holds ten;
+* the first row said `Version` twice - heading `Version`, value
+  `Shareware Version` - under a title block already reading `Choose Version`.
+  The value is now `Shareware` / `Registered`, the same words as the buttons
+  the player is moving between.
+
+The test moved with it, and the way it had to move is worth knowing. It used to
+search the whole screen for `Shareware Version`; with the value shortened to
+`Shareware` that search would match the **button** and pass while proving
+nothing. It now finds the `Version` heading and reads the value two rows under
+it, asserts the pane names the highlighted edition and **not** the other, and
+checks the fourth row answers in both editions. 1034 -> 1040 checks.
 
 Worth knowing before editing them. The **layout** is `SETUP.EXE`'s and is pinned
 by a test, but the **strings** are the port's own and nothing is transliterated,

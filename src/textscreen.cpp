@@ -248,17 +248,29 @@ void buildEditionPrompt(TextScreen& ts, int selected) {
     blueBlock(ts, kRightX + 2, 1, kRightW - 5, 1);
     sayMid(ts, kRightX + 2, kRightW - 5, 2, "Current Set-Up", kOnBlue);
 
+    // Four headings, each with a value that means something in BOTH editions.
+    // That is the rule the fourth row is written to. It used to read `Extras`,
+    // which had the registered edition answering `None` - so the edition with
+    // more in it looked like the one missing something. What actually differs
+    // is the menu: the shareware inserts Preview Registered at item 3 and
+    // Ordering Info at item 8, which is why its main menu has ten items and
+    // the registered one eight. See `SharewareMainItem`.
+    //
+    // The `Version` row says `Shareware`, not `Shareware Version` - the
+    // heading has already said the word, and the value now matches the button
+    // the player is moving between on the left.
     const bool sw = selected == 1;
     struct Line { int row; const char* text; uint8_t attr; };
     const Line kLines[] = {
         {5,  "Version", kHead},
-        {7,  sw ? "Shareware Version" : "Registered Version", kLit},
+        {7,  sw ? "Shareware" : "Registered", kLit},
         {9,  "Waves", kHead},
         {11, sw ? "25" : "75", kLit},
         {13, "Special Atoms", kHead},
         {15, sw ? "None in normal play" : "Bonus and AntiMatter", kLit},
-        {17, "Extras", kHead},
-        {19, sw ? "Preview Registered" : "None", kLit},
+        {17, "Menu", kHead},
+        {19, sw ? "Adds Preview and Ordering Info"
+                : "The standard eight items", kLit},
     };
     for (const Line& l : kLines) {
         sayMid(ts, kRightX + 1, kRightW - 2, l.row, l.text, l.attr);

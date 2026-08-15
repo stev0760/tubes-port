@@ -2173,13 +2173,40 @@ void testTheEditionPromptMarksExactlyTheChosenAnswer() {
         // The right pane must agree with the left. It is the only thing on the
         // screen that says what the choice means, so a pane describing the
         // other edition would be worse than no pane at all.
+        //
+        // The Version value reads `Shareware` / `Registered`, the same words
+        // as the buttons, so searching the whole screen for one would pass on
+        // the BUTTON and prove nothing. The row is found through its heading
+        // instead - value two rows under it, the spacing every pair uses -
+        // which also survives the pane being re-laid-out.
         std::string pane;
         for (int row = 0; row < tubes::kTextRows; ++row) pane += rowText(ts, row);
-        check(pane.find(sel == 1 ? "Shareware Version" : "Registered Version") !=
+        int headingRow = -1;
+        for (int row = 0; row < tubes::kTextRows; ++row) {
+            const std::string t = rowText(ts, row);
+            if (t.find("Version") != std::string::npos &&
+                t.find("Choose Version") == std::string::npos) {
+                headingRow = row;
+                break;
+            }
+        }
+        check(headingRow >= 0, "the summary has a Version heading");
+        const std::string versionValue =
+            headingRow >= 0 ? rowText(ts, headingRow + 2) : std::string();
+        check(versionValue.find(sel == 1 ? "Shareware" : "Registered") !=
                   std::string::npos,
               "the summary names the highlighted edition");
+        check(versionValue.find(sel == 1 ? "Registered" : "Shareware") ==
+                  std::string::npos,
+              "and does not also name the other one");
         check(pane.find(sel == 1 ? "25" : "75") != std::string::npos,
               "and its wave count");
+        // The fourth row is the one that used to read `Extras` / `None`, which
+        // made the edition with MORE in it look like the one lacking
+        // something. Both editions must answer it with something real.
+        check(pane.find(sel == 1 ? "Adds Preview" : "The standard eight") !=
+                  std::string::npos,
+              "and says what its menu holds, in both editions");
     }
 
     // Row and edition must agree in both directions. The picker preselects the
