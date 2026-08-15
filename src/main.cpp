@@ -33,6 +33,7 @@
 #include "menu.h"
 #include "mus.h"
 #include "opl.h"
+#include "playerfiles.h"
 #include "res.h"
 #include "screen.h"
 #include "boot.h"
@@ -1338,11 +1339,21 @@ int main(int argc, char** argv) {
 
     // Every harness entry point - a screenshot, a scripted run, a recorded
     // demo, a captured state, an explicit wave - must stay deterministic, so
-    // only interactive play gets a clock seed. It also must not write to the
-    // player's game directory; see `saveHiScores`.
+    // only interactive play gets a clock seed, and it must skip the timed
+    // screens so a capture does not race an animation.
+    //
+    // It must also write none of the player's files, and that rule is no
+    // longer read off this flag: `playerFiles` below carries it instead, so a
+    // writer cannot forget to ask.
     const bool harness = !opt.screenshot.empty() || opt.autoFrames > 0 ||
                          opt.demo || opt.playDemo || !opt.renderState.empty() ||
                          opt.wave > 0;
+
+    // The gate on every file the player owns - both game-directory files and
+    // the port's own settings. See `playerfiles.h` for why this is a value
+    // rather than a guard at each writer.
+    tubes::PlayerFiles playerFiles =
+        harness ? tubes::PlayerFiles::blocked() : tubes::PlayerFiles::writing();
 
     // `1b2e:0243`: read `TUBES.HSC` if it is there, otherwise fill both banks
     // with the twenty names the binary ships. The file lives beside the game
@@ -1370,9 +1381,7 @@ int main(int argc, char** argv) {
         }
     }
     auto writeSettings = [&]() {
-        if (harness || settingsPath.empty()) return;
-        std::ofstream cf(settingsPath);
-        if (cf) cf << tubes::encodeSettings(settings);
+        playerFiles.writeText(settingsPath, tubes::encodeSettings(settings));
     };
 
     // Which edition to be, resolved once and before anything opens a file -
@@ -1834,27 +1843,13 @@ int main(int argc, char** argv) {
         }
     }
     auto saveHiScores = [&]() {
-        // A harness run must not write to the game directory. `--auto-advance`
-        // walks a whole session, so it reaches the end of a wave, qualifies,
-        // and saved a real `TUBES.HSC` into the player's own game files -
-        // which then changed what every later capture compared against. The
-        // unit tests were careful about this from the start; the harness was
-        // not, because nothing in it used to write anything.
-        if (harness) return;
-        const std::vector<uint8_t> raw = tubes::encodeHiScores(hiScores);
-        std::ofstream hf(hiScorePath, std::ios::binary);
-        if (hf) hf.write(reinterpret_cast<const char*>(raw.data()),
-                         static_cast<std::streamsize>(raw.size()));
+        playerFiles.writeBytes(hiScorePath, tubes::encodeHiScores(hiScores));
     };
 
-    // `1b2e:00ac`. Same harness guard as the high score table, and for the
+    // `1b2e:00ac`. Through the same gate as the high score table, and for the
     // same reason: this is the player's own game directory.
     auto writeSaves = [&]() {
-        if (harness) return;
-        const std::vector<uint8_t> raw = tubes::encodeSaves(saves);
-        std::ofstream sf(savePath, std::ios::binary);
-        if (sf) sf.write(reinterpret_cast<const char*>(raw.data()),
-                         static_cast<std::streamsize>(raw.size()));
+        playerFiles.writeBytes(savePath, tubes::encodeSaves(saves));
     };
 
 

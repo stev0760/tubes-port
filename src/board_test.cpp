@@ -9,7 +9,11 @@
 // So a test that wants a cleared board has to step the board, not call a
 // "resolve" that runs to completion.
 
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -26,6 +30,7 @@
 #include "save.h"
 #include "menu.h"
 #include "ordering.h"
+#include "playerfiles.h"
 #include "session.h"
 #include "edition.h"
 #include "textscreen.h"
@@ -4245,6 +4250,87 @@ void testThePosePassesTheRollHeightAndSlideThrough() {
           "profFrame comes from the idle wave");
 }
 
+// The gate on the player's own files. `main.cpp` used to carry this rule as
+// three hand-written `if (harness) return;` guards, which is why it was once
+// missed - `--auto-advance` wrote a real `TUBES.HSC` into the game directory.
+// These are the first checks on it, and they are only possible because the
+// gate is a portable value rather than a branch inside `main()`.
+std::string tempPath(const std::string& name) {
+    const char* dir = std::getenv("TMPDIR");
+    return std::string(dir && *dir ? dir : "/tmp") + "/" + name;
+}
+
+bool fileContents(const std::string& path, std::string& out) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return false;
+    std::stringstream ss;
+    ss << f.rdbuf();
+    out = ss.str();
+    return true;
+}
+
+void testABlockedWriterWritesNothingAndSaysSo() {
+    const std::string path = tempPath("tubes-blocked-write.bin");
+    std::remove(path.c_str());
+    tubes::PlayerFiles files = tubes::PlayerFiles::blocked();
+    check(!files.writes(), "a blocked writer knows it is blocked");
+    const bool wrote = files.writeBytes(path, {1, 2, 3});
+    check(!wrote, "a blocked write reports that it wrote nothing");
+    check(!files.writeText(path, "text"), "and refuses text as well");
+    std::string got;
+    check(!fileContents(path, got), "no file appears");
+    // The count is the stronger half: an absent file could also mean the
+    // write was never attempted, which is exactly the bug that let
+    // `--auto-advance` through.
+    check(files.refusals() == 2, "both refusals are counted");
+}
+
+void testAWritingWriterWritesExactlyWhatItWasGiven() {
+    const std::string path = tempPath("tubes-allowed-write.bin");
+    std::remove(path.c_str());
+    tubes::PlayerFiles files = tubes::PlayerFiles::writing();
+    const std::vector<uint8_t> raw = {0x00, 0x54, 0xff, 0x0a};
+    check(files.writeBytes(path, raw), "a writing writer writes");
+    std::string got;
+    check(fileContents(path, got), "the file is there");
+    check(got.size() == raw.size(), "and is the length it was given");
+    check(std::equal(raw.begin(), raw.end(), got.begin(),
+                     [](uint8_t a, char b) {
+                         return a == static_cast<uint8_t>(b);
+                     }),
+          "byte for byte, embedded NUL included");
+    check(files.refusals() == 0, "nothing was refused");
+    std::remove(path.c_str());
+}
+
+void testAnEmptyPathIsAFailureAndNotARefusal() {
+    // `settingsPath` is empty when `SDL_GetPrefPath` fails, and that is a
+    // different thing from a scripted run: nothing was blocked, there was
+    // simply nowhere to write.
+    tubes::PlayerFiles files = tubes::PlayerFiles::writing();
+    check(!files.writeText("", "settings"), "an empty path writes nothing");
+    check(files.refusals() == 0, "and is not counted as a refusal");
+}
+
+// The three files this gate exists for, named here so the list is a check
+// rather than a comment: both editions' high score tables and saves are the
+// player's, and so is the port's settings file.
+void testEveryPlayerOwnedFileGoesThroughTheGate() {
+    const tubes::EditionState reg{tubes::Edition::kRegistered, false};
+    const tubes::EditionState shw{tubes::Edition::kShareware, false};
+    tubes::PlayerFiles blocked = tubes::PlayerFiles::blocked();
+    for (const tubes::EditionState& ed : {reg, shw}) {
+        blocked.writeBytes(std::string("/nonexistent-dir/") +
+                               ed.hiScoreFileName(), {1});
+        blocked.writeBytes(std::string("/nonexistent-dir/") +
+                               ed.saveFileName(), {1});
+    }
+    blocked.writeText("/nonexistent-dir/settings.cfg", "x");
+    // Five writes at paths that could not have succeeded anyway - the point
+    // is that the gate refused them before the filesystem was ever asked.
+    check(blocked.refusals() == 5, "all five player-file writes are refused");
+}
+
 int main() {
     testHorizontal();
     testInertSpecialsDoNotMatch();
@@ -4416,6 +4502,11 @@ int main() {
     testEachEditionEndsOnItsOwnWave();
     testAPreviewRunCanNeitherBeSavedNorPlace();
     testGameEditionReflectsPreviewForSessionGates();
+
+    testABlockedWriterWritesNothingAndSaysSo();
+    testAWritingWriterWritesExactlyWhatItWasGiven();
+    testAnEmptyPathIsAFailureAndNotARefusal();
+    testEveryPlayerOwnedFileGoesThroughTheGate();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
