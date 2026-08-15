@@ -1632,9 +1632,9 @@ path `edition.h` warns about.
 Two invariants that must hold if this is ever revisited. The edition is **fixed
 before the first file is opened**, since it names the save and high-score files -
 that ordering is the whole reason this is a start-up question rather than a menu
-item. And the prompt is skipped under `harness`: a capture script that stopped
-on a question would hang, and `writeSettings` refuses to write there anyway, so
-an answer given in a harness run could not be remembered.
+item. And the prompt is skipped on a `scripted` run: a capture script that
+stopped on a question would hang, and `playerFiles` refuses the settings write
+there anyway, so an answer given in one could not be remembered.
 
 ### The work, in order
 
@@ -1834,10 +1834,29 @@ cheap as that operation ever gets.
   with 18k words of prose changes is reviewable as neither. The comment sweep
   is going through in nine slices and records what it did per slice.
 
-- **`harness` is one flag doing three jobs, and its name says none of them.**
-  `main.cpp:3613` computes it from six unrelated CLI flags - `--screenshot`,
+- ~~**`harness` is one flag doing three jobs, and its name says none of them.**~~
+  **DONE.** The flag is `scripted`, and the write rule is out of it: every write
+  to a file the player owns goes through `tubes::PlayerFiles`
+  (`src/playerfiles.{h,cpp}`), which a scripted run is handed **blocked** and an
+  interactive one **writing**. The three writers - `writeSettings`,
+  `saveHiScores`, `writeSaves` - no longer test anything; the three
+  `if (harness) return;` guards are gone. A refused write is **counted**, which
+  is what makes the rule testable: proving no file appeared is weaker than
+  proving a write was attempted and stopped, since a file can be absent because
+  the path was never reached - exactly how `--auto-advance` got through.
+
+  The gate is portable, so it is in `tubes-tests` for the first time: 13 checks,
+  1021 -> 1034. Verified end to end on one command line either side of the
+  classification - `--f2 --auto-advance` against a scratch game directory wrote
+  a 960-byte `TUBES.SAV`, and the same command with `--wave 5` added wrote
+  nothing. `tools/screen_sweep.sh`: 74 identical, 0 differing. `--demo-trace`
+  unmoved at 71 spawns, score 13,000.
+
+  What the item said, kept because it is the reasoning:
+
+  `main.cpp` computed it from six unrelated CLI flags - `--screenshot`,
   `--auto`, `--demo`, `--play-demo`, `--render-state`, `--wave` - and then
-  uses it for three separate things:
+  used it for three separate things:
 
   1. seed from a constant instead of the clock, so a run is deterministic
   2. skip timed screens, so a capture does not race an animation
@@ -1865,9 +1884,11 @@ cheap as that operation ever gets.
     three behaviours then read as consequences of it rather than as a
     grab-bag.
 
-  The comment above `if (harness) return;` exists because that early return is
-  not self-explanatory. Fix the design and the comment has nothing left to
-  say, which is the sign it was standing in for structure.
+  The comment above `if (harness) return;` existed because that early return
+  was not self-explanatory. Fix the design and the comment has nothing left to
+  say, which is the sign it was standing in for structure - and that is what
+  happened: all three writers are now one line with no comment on them, and the
+  reasoning lives in `playerfiles.h` where a new writer will meet it.
 
 - **The licence is chosen: MIT**, and `LICENSE` is **written**. It carries the
   MIT grant for this project's own code, then names the vendored terms it does

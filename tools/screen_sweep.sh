@@ -12,9 +12,9 @@
 # regression signal from the suite, and the only proof available is that every
 # screen still renders the same pixels.
 #
-# It can be exact rather than approximate because `--screenshot` sets the port's
-# `harness` flag, which pins the seed to 0x9E3779B9, disables fades and blocks
-# every file write. Two builds of an unchanged renderer must produce identical
+# It can be exact rather than approximate because `--screenshot` marks the run
+# `scripted`, which pins the seed to 0x9E3779B9, disables fades and hands the
+# run a blocked `PlayerFiles` so no file of the player's is written. Two builds of an unchanged renderer must produce identical
 # bytes, so the comparison is `cmp`, not a tolerance. Verified before this
 # script was written: the same capture run twice is byte-identical, play frames
 # included.

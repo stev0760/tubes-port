@@ -275,7 +275,7 @@ struct Options {
     std::string demoCsv;        // with --demo-trace: per-frame state, for the rig
     std::string gameBg = "GAMEBG1.GFX";   // backdrop, for matching a capture
     // True when the edition came from the command line rather than from the
-    // settings file. The flags are the developer's and the harness's override:
+    // settings file. The flags are the developer's and a capture's override:
     // they win, they do not persist, and they suppress the first-run prompt -
     // so a capture script never blocks on a question and never rewrites the
     // player's answer.
@@ -285,7 +285,8 @@ struct Options {
     // flag View Demo and the attract loop set. See edition.h.
     tubes::EditionState edition{};
     // Open the shareware exit screen directly, for capture. Like every other
-    // harness flag it must never write to the game directory.
+    // capture flag it must never write to the game directory - which is
+    // `playerFiles`' job rather than this flag's, see `playerfiles.h`.
     bool exitScreen = false;
     // Open the shareware's Ordering Info deck at page N, for capture.
     int ordering = -1;
@@ -303,7 +304,7 @@ struct Options {
     int editionPrompt = -1;
     int instr = -1;             // open the Instructions on slide N, for capture
     bool credits = false;       // open the Credits, for capture
-    // Harness only. `--screenshot` captures the first frame drawn, which can
+    // Capture flags. `--screenshot` takes the first frame drawn, which can
     // never show a screen that is reached by playing - the banners, the stats
     // screen and the Continue prompt are all past a game over. These two run
     // the real loop to get there instead of adding entry points that the
@@ -323,7 +324,7 @@ struct Options {
     std::string makeSave;       // write a `TUBES.SAV` for --wave N and exit
     bool hsEntry = false;       // open the high score entry screen, `1000:96db`
     bool autoAdvance = false;   // synthesise `RETURN` whenever a stage waits
-    uint32_t seed = 0;          // 0 = clock for play, fixed for the harnesses
+    uint32_t seed = 0;          // 0 = clock for play, fixed on a scripted run
     bool help = false;
 };
 
@@ -1337,23 +1338,30 @@ int main(int argc, char** argv) {
                                 stars[i], 0);
     }
 
-    // Every harness entry point - a screenshot, a scripted run, a recorded
-    // demo, a captured state, an explicit wave - must stay deterministic, so
-    // only interactive play gets a clock seed, and it must skip the timed
-    // screens so a capture does not race an animation.
+    // This run is a script, not a person playing: a screenshot, a scripted
+    // player, a recorded demo, a captured state, an explicit wave. Three
+    // things follow from it, and they are three separate things rather than
+    // one - the flag used to be called `harness`, which said none of them and
+    // read as the DOSBox rig at `~/Dev/tubes-tooling/`, a different program
+    // entirely:
     //
-    // It must also write none of the player's files, and that rule is no
-    // longer read off this flag: `playerFiles` below carries it instead, so a
-    // writer cannot forget to ask.
-    const bool harness = !opt.screenshot.empty() || opt.autoFrames > 0 ||
-                         opt.demo || opt.playDemo || !opt.renderState.empty() ||
-                         opt.wave > 0;
+    //   1. seed from a constant instead of the clock, so a run repeats;
+    //   2. skip the timed screens, so a capture does not race an animation;
+    //   3. write none of the player's files.
+    //
+    // Only the third is a safety rule, and it is the one that does not live
+    // here any more - `playerFiles` below carries it, so a writer cannot
+    // forget to ask. The other two are read off this flag at the point they
+    // apply.
+    const bool scripted = !opt.screenshot.empty() || opt.autoFrames > 0 ||
+                          opt.demo || opt.playDemo || !opt.renderState.empty() ||
+                          opt.wave > 0;
 
     // The gate on every file the player owns - both game-directory files and
     // the port's own settings. See `playerfiles.h` for why this is a value
     // rather than a guard at each writer.
     tubes::PlayerFiles playerFiles =
-        harness ? tubes::PlayerFiles::blocked() : tubes::PlayerFiles::writing();
+        scripted ? tubes::PlayerFiles::blocked() : tubes::PlayerFiles::writing();
 
     // `1b2e:0243`: read `TUBES.HSC` if it is there, otherwise fill both banks
     // with the twenty names the binary ships. The file lives beside the game
@@ -1395,10 +1403,10 @@ int main(int argc, char** argv) {
     //   2. the settings file, if the question has been answered before;
     //   3. the player, asked once - `tubes::runEditionPrompt`.
     //
-    // The prompt is skipped under `harness` along with every other timed
+    // The prompt is skipped on a scripted run along with every other timed
     // screen. That is not a convenience: a capture script that stopped on a
-    // question would hang, and `writeSettings` already refuses to write under
-    // the harness, so an answer given there could not be remembered anyway.
+    // question would hang, and `playerFiles` refuses the settings write on
+    // such a run anyway, so an answer given there could not be remembered.
     if (opt.editionFromFlag) {
         // Nothing to store and nothing to ask. The flag is an override, so it
         // deliberately leaves `editionChosen` alone - running `--shareware`
@@ -1416,10 +1424,10 @@ int main(int argc, char** argv) {
     // now, so owning one is no longer the question, and a launcher choice is
     // a fair thing to ask every time as long as it costs one keypress.
     //
-    // It is still skipped for a flag and under `harness`, for the same reasons
+    // It is still skipped for a flag and under `scripted`, for the same reasons
     // as before: a capture that stopped on a question would hang.
     const bool mustAskEdition =
-        opt.editionPrompt >= 0 || (!opt.editionFromFlag && !harness);
+        opt.editionPrompt >= 0 || (!opt.editionFromFlag && !scripted);
 
     // One controller, the first one plugged in. Opened below, once SDL is
     // actually up - this used to enumerate here, which is before `SDL_Init`,
@@ -1639,7 +1647,7 @@ int main(int argc, char** argv) {
     // session is entered fresh, with the difficulty the player chose. The
     // Game is owned rather than a local - starting a second game after a
     // Game Over has to build a new one, not reset the old one in place.
-    // `harness` is computed above, where the high score table is loaded.
+    // `scripted` is computed above, where the high score table is loaded.
     std::unique_ptr<tubes::Game> game;
     auto newSession = [&](tubes::Difficulty diff, uint32_t seed,
                           const tubes::EditionState& ed) {
@@ -1652,7 +1660,7 @@ int main(int argc, char** argv) {
     // letterforms was always the same blue.
     const uint32_t kFixedSeed = 0x9E3779B9u;
     uint32_t bootSeed = kFixedSeed;
-    if (!harness && !opt.playDemo) {
+    if (!scripted && !opt.playDemo) {
         bootSeed = static_cast<uint32_t>(std::time(nullptr)) * 2654435761u + 1u;
     }
     if (opt.seed) bootSeed = opt.seed;   // reproduce a specific run
@@ -1979,9 +1987,9 @@ int main(int argc, char** argv) {
     // shows, and a skip in the first splash cancels the second - which is the
     // original's own behaviour, not a concession: `if k <> 1 and k <> 2`.
     //
-    // Skipped under `harness` with every other timed screen, so no capture
+    // Skipped under `scripted` with every other timed screen, so no capture
     // waits three seconds to reach the frame it wants.
-    if ((!harness || opt.splashFrame >= 0 || opt.splash2Step >= 0 ||
+    if ((!scripted || opt.splashFrame >= 0 || opt.splash2Step >= 0 ||
          opt.cutscenePage >= 0) && !opt.noSplash) {
         tubes::SkipWatch skip;
         const bool capturing = opt.splashFrame >= 0 || opt.splash2Step >= 0 ||
@@ -2086,9 +2094,9 @@ int main(int argc, char** argv) {
     titleFgScene.clear(0);
     if (haveTitleFg) titleFgScene.blit(titleFg);
 
-    // `1b2e:52bf`. Every harness entry point goes straight to the session, so
+    // `1b2e:52bf`. Every scripted entry point goes straight to the session, so
     // the flags keep working exactly as they did.
-    Stage stage = (harness && opt.titlePage < 0) ? Stage::kPlay : Stage::kTitle;
+    Stage stage = (scripted && opt.titlePage < 0) ? Stage::kPlay : Stage::kTitle;
     tubes::Menu menu;
     // The title screen is the one place the two editions' menus differ, and
     // they differ by two inserted items - see `SharewareMainItem`.
@@ -2156,10 +2164,10 @@ int main(int argc, char** argv) {
     // running no game logic, which is why the whole thing is a plain loop
     // rather than a state in the frame loop.
     //
-    // Skipped wholesale under `harness`: every capture and every pixel diff
+    // Skipped wholesale under `scripted`: every capture and every pixel diff
     // presents the first composed frame, and 41 dimmed copies of it in front
     // would change which frame `--screenshot` writes.
-    const int fadeSteps = harness ? 0 : opt.fadeSteps;
+    const int fadeSteps = scripted ? 0 : opt.fadeSteps;
     auto runFade = [&](bool in) {
         if (fadeSteps > 0) {
             for (int i = 0; i <= fadeSteps; ++i) {
@@ -2374,7 +2382,7 @@ int main(int argc, char** argv) {
     if (decks.instrOpen) {
         classroom.screenRoll.restart();
         classroom.profIdle.restart(tubes::kTalkBurstsSlide, classroom.sceneRng);
-        if (opt.joke) classroom.joke.phase = 1;   // harness: show it without the roll
+        if (opt.joke) classroom.joke.phase = 1;   // for capture: no roll first
         else classroom.joke.maybeStart(classroom.sceneRng);
     }
     decks.instrSlide = opt.ordering > 0 ? opt.ordering
@@ -2574,7 +2582,7 @@ int main(int argc, char** argv) {
     Uint32 last = SDL_GetTicks();
 
     while (running) {
-        // Harness only: press Return periodically so a headless run walks
+        // Capture only: press Return periodically so a headless run walks
         // through the screens that hold for a key. Periodic rather than every
         // frame, so each screen is on display long enough to be captured.
         if (opt.autoAdvance && ++autoAdvanceTick % 40 == 0) {
@@ -3387,7 +3395,7 @@ int main(int argc, char** argv) {
         // `1b2e:0510` runs before the first slide is written, so the screen
         // finishes coming down while the slideshow waits. This is outside the
         // stage dispatch on purpose: the instructions and the credits are
-        // their own screen, and `--instructions` opens them from the harness
+        // their own screen, and `--instructions` opens them from the scripted
         // path, where `stage` is `kPlay` rather than `kTitle`.
         if (decks.instrOpen) classroom.screenRoll.tick(dt);
         // And the professor's idle with it. Same reason it sits outside the

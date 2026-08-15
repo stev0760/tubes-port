@@ -141,7 +141,7 @@ private:
 // nagging. It is a launcher choice, like picking a difficulty, and it costs
 // one keypress because the cursor starts on the remembered answer. It is
 // skipped entirely for `--shareware` / `--registered`, which is the
-// developer's and the harness's way past it.
+// developer's and a capture script's way past it.
 //
 // Why a text screen, and not one inside the game. Putting the question on the
 // title screen in the `Exit Tubes?` page's idiom, or on the projector slide in

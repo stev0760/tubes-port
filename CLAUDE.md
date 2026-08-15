@@ -80,7 +80,7 @@ blindly.
 
 The rule has a second half that is easy to miss: **do not write to the player's
 game directory either.** `TUBES.HSC` and `TUBES.SAV` are the player's files,
-the port writes both, and a harness run has already created one by accident -
+the port writes both, and a scripted run has already created one by accident -
 see "Build, test, run". Reproduce captured data in a test from the constants
 instead; that is how the `TUBES.HSC` sentinel residue is pinned without the
 capture being in the repo.
@@ -172,12 +172,18 @@ a specific screen for capture, and `--dump-save FILE` decodes a `TUBES.SAV` and
 re-encodes it, so the C++ reader can be diffed against `tools/sav_decode.py`
 rather than trusted.
 
-**A harness flag must never write to the game directory.** `--auto-advance`
+**A capture flag must never write to the game directory.** `--auto-advance`
 walks a whole session, so it once qualified for a high score and saved a real
 `TUBES.HSC` into the player's own game files - which then silently changed what
-every later capture compared against. `saveHiScores` returns early under
-`harness` for that reason. Any NEW write path has to be checked against every
-entry point that runs a session, not just the ones that look like tests.
+every later capture compared against.
+
+That rule is no longer a guard to remember. **Every write to a file the player
+owns goes through `tubes::PlayerFiles`** (`src/playerfiles.h`), which a scripted
+run is handed blocked and an interactive run writing; the writers do not ask
+which they hold. A new write path that opens its own `ofstream` is the bug the
+class exists to make visible. The flag that classifies the run is `scripted` in
+`main.cpp` - it was called `harness`, which named the DOSBox rig rather than
+anything in this program.
 
 ## Toolchain gotchas
 
@@ -312,8 +318,9 @@ other platforms, was never a polish task: see `Portability`.
 So nothing of the original program is outstanding. What is left is the list at
 the top of `PLAN.md` - the player's full playthrough on Tubes 101, the GLDFADE
 question, a Credits slide of the port's own - and then **publishing**, whose
-checklist is the last section of `PLAN.md`. `LICENSE` and `README.md` are done;
-the `harness` flag is the one code item still on it.
+checklist is the last section of `PLAN.md`. `LICENSE`, `README.md` and the
+`harness` flag are all done, so what is left there is the identity rewrite and
+the repository check - paperwork rather than code.
 
 The rig is built and lives **outside this repo**, at `~/Dev/tubes-tooling/` -
 `docs/debug-rig.md` covers it. Three things to know before planning against it.

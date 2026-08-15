@@ -105,7 +105,7 @@ tubes::Edition runEditionPrompt(SDL_Renderer* ren, int fadeSteps,
 
     // `--edition-prompt` captures the screen and leaves, the same way every
     // other screen in this port can be opened for a capture without walking to
-    // it. It answers nothing: the caller treats a capture as a harness run.
+    // it. It answers nothing: the caller treats a capture as a scripted run.
     if (!screenshot.empty()) {
         SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormatFrom(
             rgba.data(), tubes::kTextScreenW, tubes::kTextScreenH, 32,
