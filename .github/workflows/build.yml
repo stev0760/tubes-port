@@ -24,7 +24,7 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # SDL2 is the port's one dependency; Nuked-OPL3 is vendored in
       # third_party/ and needs nothing installed.

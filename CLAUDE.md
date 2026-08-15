@@ -87,9 +87,22 @@ capture being in the repo.
 
 ## Commit discipline: small, atomic, and as you go
 
-There is **no remote**. This history is the only copy, so a working tree that
-has drifted from the last commit is unbacked work, and a session that ends
-without committing loses its reasoning even if the code survives.
+**The repository is published**, at `github.com/stev0760/tubes-port`, `main`
+tracking `origin/main`. That is new as of 2026-08-15 and it changes two of the
+assumptions this file used to carry.
+
+A working tree that has drifted from the last commit is still unbacked work,
+and a session that ends without committing still loses its reasoning even if
+the code survives - so commit as you go, exactly as before. What changed is
+that **a commit is not backed up until it is pushed**, and that **history is no
+longer free to rewrite**. The identity rewrite that was cheap on 2026-08-08
+would now break every clone and every hash anyone has quoted. Rewrite nothing
+that has been pushed.
+
+Anything committed from here also lands in public. `git config --local` is the
+noreply address, so authorship is fine; what needs the same care as ever is the
+no-game-data rule, which a push makes irreversible in a way a local commit
+never did.
 
 - **Commit each landing, not each session.** One finding, one fix, or one
   transliterated routine is a commit. If a change needs "and also" to describe

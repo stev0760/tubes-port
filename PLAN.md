@@ -94,7 +94,12 @@ asked for, and then publishing:
    **Where the edition switch lives is settled too**: a first-run prompt, a
    remembered setting, and the flags kept as the override. See "Where the
    edition switch should live" below.
-6. **Publishing**, which is the last section of this file and is gated on a
+6. ~~**Publishing**~~ - **DONE, 2026-08-15**: `github.com/stev0760/tubes-port`,
+   public, 334 commits on `main`, CI green. See "Published" at the end of this
+   file for what was checked and the one step left, which is the player's to do
+   in GitHub's settings. What follows is what the item said while it was open.
+
+   **Publishing**, which is the last section of this file and is gated on a
    comment and documentation pass, a repository check and a final code review.
    **The player has a specific method in mind for the review and lint pass, so
    do not start one unprompted.** The licence is decided: **MIT** for this
@@ -1687,17 +1692,54 @@ rendering. The work is entirely code.
 
 ---
 
-## Before publishing to GitHub
+## Published
 
-The repository has never contained game data and `.gitignore` is aggressive
-about keeping it that way, so publishing is mostly a matter of paperwork:
+**`github.com/stev0760/tubes-port`, public, 2026-08-15.** 334 commits on
+`main`, and CI green on the first run - 1034 checks, 0 failures, 44 seconds.
+
+The checklist below is **done except for step 3, which is the player's to do in
+the GitHub web UI** and is the one that stops this being needed again. Kept in
+full because it is the record of what was checked and how.
+
+What ran, with the numbers:
+
+* **step 1** - credit line `stev0760`, the account handle, which `LICENSE`
+  already carried;
+* **step 2** - the identity rewrite, on this repository this time. Root tree
+  hash `37a11a27075a18e814cb6d9f738760c93c5a283a` before and after, so not one
+  byte of content moved; 334 of 334 commits rewritten, author and committer
+  both, and `git log origin/main --format=%ae | sort -u` returns exactly one
+  address. The pre-rewrite history is still at
+  `refs/original/refs/heads/master`, which is **not** pushed - `refs/original`
+  is outside `refs/heads`. Delete it once you are happy;
+* **step 3** - **OPEN, and yours**: turn on "Block command line pushes that
+  expose my email" in GitHub's email settings;
+* **step 4** - `master` renamed to `main`, and it is the default branch;
+* **step 5** - the repository check, run **before** the rewrite so nothing
+  could surprise the push. 111 tracked files; every path ever added is `.cpp`,
+  `.h`, `.py`, `.md`, `.java`, `.txt`, `.sh`, `.c`, `.js`, `.PAS`, `LICENSE` or
+  `.gitignore`; no `.RES`, `.EXE`, `.GFX`, `.SAV`, `.HSC` or `assets-extracted`
+  path has ever existed in the history. The one `git grep /home/steve` hit is
+  this file describing the check.
+
+Two things landed with it. `.gitignore` gained `*.HSC` and `*.BIN`, which it
+had never covered - `*.SAV` was there from the first commit and the high score
+table was not, an accident of which file the port learned to write first. And
+`.github/workflows/build.yml` builds on ubuntu-latest and runs `tubes-tests`;
+its header says what CI cannot check here, which is everything needing the
+player's own game data - the screen sweep, `--demo-trace` and the pixel diff
+all stay on the machine that owns the game.
+
+**History is no longer free to rewrite.** See CLAUDE.md's commit discipline,
+which is updated: a commit is not backed up until it is pushed, and a rewrite
+now breaks every clone.
 
 ### The pre-push checklist - do these in order, once, before `git push`
 
-Everything here is **free now and expensive after the first push**, which is
-the only reason it is a checklist rather than a paragraph. There is no remote
-and no tag, and `master` is the only branch, so a history rewrite here is as
-cheap as that operation ever gets.
+Everything here was **free before the first push and expensive after**, which
+is the only reason it was a checklist rather than a paragraph. There was no
+remote and no tag, and `master` was the only branch, so the history rewrite was
+as cheap as that operation ever gets.
 
 1. **Decide the credit line.** Open, and deliberately not settled in a hurry.
    It governs two places: the author name in every commit, and the copyright
