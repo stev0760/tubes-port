@@ -43,6 +43,7 @@
 #include "wave_text.h"
 #include "scr.h"
 #include "sfx.h"
+#include "version.h"
 
 namespace {
 
@@ -325,6 +326,7 @@ struct Options {
     bool hsEntry = false;       // open the high score entry screen, `1000:96db`
     bool autoAdvance = false;   // synthesise `RETURN` whenever a stage waits
     uint32_t seed = 0;          // 0 = clock for play, fixed on a scripted run
+    bool version = false;       // print the version and exit
     bool help = false;
 };
 
@@ -567,6 +569,11 @@ Options parseArgs(int argc, char** argv) {
             o.noSplash = true;
         } else if (a == "--fade-steps" && i + 1 < argc) {
             o.fadeSteps = std::atoi(argv[++i]);
+        } else if (a == "--version") {
+            // Long form only. This CLI has exactly two short flags, `-g` and
+            // `-h`, and `-v` conventionally means verbose - taking it here
+            // would fence that off for no gain.
+            o.version = true;
         } else if (a == "--help" || a == "-h") {
             o.help = true;
         } else {
@@ -579,7 +586,7 @@ Options parseArgs(int argc, char** argv) {
 
 void usage() {
     std::printf(
-        "tubes-port - SDL reimplementation of Tubes\n"
+        "%s - SDL reimplementation of Tubes\n"
         "\n"
         "  --gamedir DIR     directory holding your TUBES.RES (default: .)\n"
         "  --scale N         integer scale factor for this run, overriding the\n"
@@ -633,12 +640,14 @@ void usage() {
         "                    twenty roll per slide and fires at most once a run\n"
         "  --wave N          start Wave mode on wave N (1..75) instead of\n"
         "                    Endurance, briefing included.\n"
+        "  --version         print the version and exit\n"
         "  --help\n"
         "\n"
         "Controls: left/right move the test tube, Down speeds the atom,\n"
         "Ctrl or Space releases a held atom into the beaker, Esc quits.\n"
         "\n"
-        "You need your own copy of Tubes; no game data ships with this.\n");
+        "You need your own copy of Tubes; no game data ships with this.\n",
+        tubes::kVersionLine);
 }
 
 
@@ -981,6 +990,12 @@ int renderSong(const tubes::Archive& drivers, const tubes::Bytes& song,
 
 int main(int argc, char** argv) {
     Options opt = parseArgs(argc, argv);
+    // Before `--help`, one line, on stdout, and before SDL is touched: this
+    // answer is meant to be read by a script as often as by a person.
+    if (opt.version) {
+        std::printf("%s\n", tubes::kVersionLine);
+        return 0;
+    }
     if (opt.help) {
         usage();
         return 0;

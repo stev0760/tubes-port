@@ -32,6 +32,7 @@
 #include "ordering.h"
 #include "playerfiles.h"
 #include "session.h"
+#include "version.h"
 #include "edition.h"
 #include "textscreen.h"
 #include "uistate.h"
@@ -2199,8 +2200,26 @@ void testTheEditionPromptMarksExactlyTheChosenAnswer() {
         check(versionValue.find(sel == 1 ? "Registered" : "Shareware") ==
                   std::string::npos,
               "and does not also name the other one");
-        check(pane.find(sel == 1 ? "25" : "75") != std::string::npos,
+        // The wave count is read the same way, off the row under its own
+        // heading, and NOT by searching the whole screen. It used to be a
+        // whole-screen search, which the port's version line has now made
+        // vacuous-in-waiting: `0.9.25` would satisfy the shareware assertion
+        // without the pane saying 25 anywhere. That is the search that could
+        // not have failed, which this project has recorded five of.
+        int wavesRow = -1;
+        for (int row = 0; row < tubes::kTextRows; ++row) {
+            if (rowText(ts, row).find("Waves") != std::string::npos) {
+                wavesRow = row;
+                break;
+            }
+        }
+        check(wavesRow >= 0, "the summary has a Waves heading");
+        const std::string wavesValue =
+            wavesRow >= 0 ? rowText(ts, wavesRow + 2) : std::string();
+        check(wavesValue.find(sel == 1 ? "25" : "75") != std::string::npos,
               "and its wave count");
+        check(wavesValue.find(sel == 1 ? "75" : "25") == std::string::npos,
+              "and not the other edition's");
         // The fourth row is the one that used to read `Extras` / `None`, which
         // made the edition with MORE in it look like the one lacking
         // something. Both editions must answer it with something real.
@@ -2289,6 +2308,112 @@ void testTheEditionPromptStaysInsideSetupsPalette() {
         }
     }
     check(used >= 8, "and most of that palette is actually drawn with");
+}
+
+// The picker is the one screen the port signs, because it is the one screen
+// the port invented. Three things can go wrong with a signature there, and
+// each has a check: a colour `SETUP.EXE` never uses, a line that lands on top
+// of something, and the word `Version` - which on this screen already means
+// EDITION, and which two tests find by searching the rendered text.
+void testThePickerSignsItselfWithoutSayingVersion() {
+    auto rowText = [](const tubes::TextScreen& ts, int row) {
+        std::string out;
+        for (int c = 0; c < tubes::kTextCols; ++c) {
+            out += static_cast<char>(ts.at(c, row).ch);
+        }
+        return out;
+    };
+    const std::string line = tubes::kVersionLine;
+    const int row = tubes::kTextRows - 2;
+
+    for (int sel = 0; sel < tubes::kEditionAnswers; ++sel) {
+        tubes::TextScreen ts;
+        tubes::buildEditionPrompt(ts, sel);
+
+        const std::string bottom = rowText(ts, row);
+        const size_t at = bottom.find(line);
+        check(at != std::string::npos, "the version is on the screen's last line");
+        // The key hints share that row, one pane over. Named rather than
+        // implied: an overlap would eat one of them, and the survivor would
+        // still contain the other's substring.
+        check(bottom.find("ESC/Exit") != std::string::npos &&
+              bottom.find("ENTER/Play") != std::string::npos,
+              "and has not landed on the key hints");
+
+        // Its own attribute, per cell. The palette test above is aggregated by
+        // design and would only ever say "some cell is wrong".
+        bool dim = at != std::string::npos;
+        for (size_t i = 0; at != std::string::npos && i < line.size(); ++i) {
+            if (ts.at(static_cast<int>(at + i), row).attr != 0x78) dim = false;
+        }
+        check(dim, "and is drawn in the installer's idle grey");
+
+        // Clear of `Current Set-Up`'s list, so it cannot read as a fifth
+        // heading/value pair - and so a row added to that list later cannot
+        // quietly collide with it.
+        bool gap = true;
+        for (int r = 20; r < row; ++r) {
+            for (int c = tubes::kPickerRightX + 1; c < tubes::kTextCols - 1; ++c) {
+                if (ts.at(c, r).ch != ' ') gap = false;
+            }
+        }
+        check(gap, "and the summary list stops three rows above it");
+
+        // The word itself. Three uses on this screen and all three are the
+        // EDITION sense: `Choose Version` in the title block, the summary
+        // heading, and `/Version Select` in the hints. A fourth means either
+        // the port's line has grown the word - which would make the heading
+        // search in `testTheEditionPromptMarksExactlyTheChosenAnswer` find the
+        // wrong row - or the screen has been reworded and both searches want
+        // re-reading.
+        check(bottom.find("Version") == std::string::npos,
+              "the port's own version line does not use the word Version");
+        int uses = 0;
+        for (int r = 0; r < tubes::kTextRows; ++r) {
+            const std::string t = rowText(ts, r);
+            for (size_t p = t.find("Version"); p != std::string::npos;
+                 p = t.find("Version", p + 1)) {
+                ++uses;
+            }
+        }
+        check(uses == 3, "and the word still means edition, in three places");
+    }
+}
+
+// The three numbers and the string are one fact stated twice, and the
+// preprocessor assembles the second from the first - so they cannot be edited
+// apart. What they CAN do is come out malformed and still compile:
+// `#define TUBES_VERSION_MINOR (9)` stringifies to `(9)`, and `0.(9).0` is a
+// version nothing can compare. So the string is PARSED BACK here rather than
+// compared against a literal, which would only be a third copy of the same
+// fact and would agree with a wrong one just as happily.
+void testTheVersionStringIsTheThreeNumbers() {
+    int major = -1, minor = -1, patch = -1;
+    char tail = '\0';
+    const int n = std::sscanf(tubes::kVersion, "%d.%d.%d%c",
+                              &major, &minor, &patch, &tail);
+    check(n == 3, "the version string is three dotted fields and no more");
+    check(major == tubes::kVersionMajor && minor == tubes::kVersionMinor &&
+          patch == tubes::kVersionPatch,
+          "and they are the three numbers the header declares");
+    check(major >= 0 && minor >= 0 && patch >= 0, "none of them negative");
+
+    // `sscanf` would take ` +9` as a field. Digits and dots, nothing else.
+    const std::string v = tubes::kVersion;
+    int dots = 0;
+    bool clean = !v.empty();
+    for (const char c : v) {
+        if (c == '.') ++dots;
+        else if (c < '0' || c > '9') clean = false;
+    }
+    check(clean && dots == 2, "and it is digits and exactly two dots");
+
+    // One constant, two surfaces. `--version` and the `--help` banner print
+    // this, and `main.cpp` is not in this binary and cannot be - it includes
+    // SDL - so checking the constant is the only coverage the CLI's version
+    // line can have.
+    check(std::string(tubes::kVersionLine) == "tubes-port " + v,
+          "the printed line is the program's name and that string");
 }
 
 // Foreground where the glyph has a bit, background where it does not, MSB
@@ -4500,6 +4625,7 @@ int main() {
     testABinDumpLoadsItsRowsAndLeavesTheRestBlank();
     testTheEditionPromptMarksExactlyTheChosenAnswer();
     testTheEditionPromptStaysInsideSetupsPalette();
+    testThePickerSignsItselfWithoutSayingVersion();
     testThePromptLandsInTheRowsTheDumpLeavesBlank();
     testGlyphsRenderForegroundOverBackground();
     testTheBlinkBitDoesNotBecomeABrightBackground();
@@ -4534,6 +4660,8 @@ int main() {
     testAWritingWriterWritesExactlyWhatItWasGiven();
     testAnEmptyPathIsAFailureAndNotARefusal();
     testEveryPlayerOwnedFileGoesThroughTheGate();
+
+    testTheVersionStringIsTheThreeNumbers();
 
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

@@ -180,6 +180,14 @@ constexpr int kEditionAnswers = 2;
 // Index 0 is registered and 1 shareware, matching `Edition`'s own order.
 extern const char* const kEditionAnswerText[kEditionAnswers];
 
+// The two panes, at `SETUP.EXE`'s own coordinates: a 26-column pane on the
+// left, a 53-column one on the right, one blank column between them carrying
+// the left pane's shadow. Out here beside `editionAnswerRow` and for the same
+// reason - a test that reads the right pane back has to know where it is,
+// without a second copy of the number.
+constexpr int kPickerRightX = 27;
+constexpr int kPickerRightW = 53;
+
 // Draws the whole prompt into `ts`, with answer `selected` marked. Everything
 // on the screen is redrawn, so moving the selection is one more call.
 void buildEditionPrompt(TextScreen& ts, int selected);

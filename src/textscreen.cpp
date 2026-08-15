@@ -1,5 +1,7 @@
 #include "textscreen.h"
 
+#include "version.h"
+
 namespace tubes {
 
 // The 16 text-mode colours in 6-bit DAC units. That is how the VGA stores
@@ -141,11 +143,11 @@ constexpr uint8_t kBL = 0xC0, kBR = 0xD9;
 constexpr uint8_t kUpper = 0xDF, kLower = 0xDC;                  // Half blocks
 constexpr uint8_t kArrowUp = 0x18, kArrowDown = 0x19;            // Arrows
 
-// The two panels, at `SETUP.EXE`'s own coordinates: a 26-column pane on the
-// left, a 53-column one on the right, one blank column between them carrying
-// the left pane's shadow.
+// The two panels, at `SETUP.EXE`'s own coordinates. The right pane's numbers
+// are in the header, where a test can read them; the left pane's are here,
+// since nothing outside this file needs them.
 constexpr int kLeftX = 0, kLeftW = 26;
-constexpr int kRightX = 27, kRightW = 53;
+constexpr int kRightX = kPickerRightX, kRightW = kPickerRightW;
 
 // The buttons, 22 wide at column 2, three rows each and stacked touching. That
 // matches the installer's `Select Graphics` / `Select Music` / ... column.
@@ -275,6 +277,30 @@ void buildEditionPrompt(TextScreen& ts, int selected) {
     for (const Line& l : kLines) {
         sayMid(ts, kRightX + 1, kRightW - 2, l.row, l.text, l.attr);
     }
+
+    // The port signs the one screen that is its own. Row 23 is this screen's
+    // chrome line - what the player can press on the left, what program is
+    // asking on the right - and both are true whichever button is lit, which
+    // is what separates them from everything above.
+    //
+    // Three rows clear of `Current Set-Up`'s list on purpose. That list is
+    // written to a rule, every heading answered in BOTH editions, and the
+    // port's own version answers no question about the edition at all; sitting
+    // in it would read as a fifth pair.
+    //
+    // Dark grey is the installer's colour for a label that is not the thing
+    // being chosen - it is the unselected button's colour, which is exactly
+    // what this is. Yellow belongs to keys the player can press, cyan to
+    // headings, white to values that answer one; any of the three would claim
+    // this line is part of the question.
+    //
+    // And it never says `Version`. On this screen that word means EDITION -
+    // the title block, the buttons and the first summary heading all use it
+    // that way - so a second sense of it here would be a real ambiguity for
+    // the player, and a false match for the test that finds that heading by
+    // searching the rendered text.
+    say(ts, kRightX + kRightW - 2 - len(kVersionLine), kTextRows - 2,
+        kVersionLine, kDim);
 }
 
 }  // namespace tubes
