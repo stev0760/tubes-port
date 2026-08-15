@@ -1,0 +1,44 @@
+# Build the port and run the test suite.
+#
+# What this can check, and what it cannot. `tubes-tests` links no SDL and reads
+# no game data, so it runs anywhere - that is why 1000-odd checks live in it and
+# why keeping `src/screens.cpp` free of SDL was worth the split. Everything
+# else this project verifies with needs the player's own copy of Tubes:
+# `tools/screen_sweep.sh` opens `TUBES.RES`, `--demo-trace` replays `DEMO.SCR`,
+# and the pixel diff drives DOSBox-X against the original binary. None of that
+# can run here, and none of it should - the game is copyrighted and this
+# repository has never contained a byte of it.
+#
+# So CI proves the build is not broken and the rules still pass their tests.
+# The rendering checks stay on the machine that owns the game.
+
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # SDL2 is the port's one dependency; Nuked-OPL3 is vendored in
+      # third_party/ and needs nothing installed.
+      - name: Install SDL2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev
+
+      - name: Configure
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j
+
+      # Prints "N checks, M failures" and exits non-zero if any failed.
+      - name: Test
+        run: ./build/tubes-tests

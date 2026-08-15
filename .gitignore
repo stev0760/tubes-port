@@ -8,6 +8,13 @@
 *.res
 *.SAV
 *.sav
+# The player's high score table, and the text-mode screens the archive carries.
+# `*.SAV` was here from the start and `*.HSC` was not, which is an accident of
+# which file the port learned to write first - both are the player's.
+*.HSC
+*.hsc
+*.BIN
+*.bin
 *.DOC
 *.doc
 *.CFG
