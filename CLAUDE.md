@@ -95,14 +95,16 @@ A working tree that has drifted from the last commit is still unbacked work,
 and a session that ends without committing still loses its reasoning even if
 the code survives - so commit as you go, exactly as before. What changed is
 that **a commit is not backed up until it is pushed**, and that **history is no
-longer free to rewrite**. The identity rewrite that was cheap on 2026-08-08
-would now break every clone and every hash anyone has quoted. Rewrite nothing
-that has been pushed.
+longer free to rewrite**: a rewrite now breaks every clone and every hash
+anyone has quoted. Rewrite nothing that has been pushed.
 
-Anything committed from here also lands in public. `git config --local` is the
-noreply address, so authorship is fine; what needs the same care as ever is the
-no-game-data rule, which a push makes irreversible in a way a local commit
-never did.
+- **A commit message is about the PROJECT and nothing else** - the code, the
+  binary, the rule it came from, the numbers that check it. Not the repository's
+  administration, not the account it lives under, and never anything about the
+  author. A message is permanent, public, and cannot be edited after a push
+  without rewriting history; a note that belongs in a conversation must stay in
+  the conversation. The same goes for the tracked files: `PLAN.md` is the plan
+  for the port, not a place to record account settings.
 
 - **Commit each landing, not each session.** One finding, one fix, or one
   transliterated routine is a commit. If a change needs "and also" to describe

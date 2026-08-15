@@ -1694,110 +1694,26 @@ rendering. The work is entirely code.
 
 ## Published
 
-**`github.com/stev0760/tubes-port`, public, 2026-08-15.** 334 commits on
-`main`, and CI green on the first run - 1034 checks, 0 failures, 44 seconds.
+**`github.com/stev0760/tubes-port`, 2026-08-15.** 334 commits on `main`, and CI
+green on the first run - 1034 checks, 0 failures, 44 seconds.
 
-The checklist below is **done except for step 3, which is the player's to do in
-the GitHub web UI** and is the one that stops this being needed again. Kept in
-full because it is the record of what was checked and how.
+The repository check that gated the push, because it is the one worth repeating
+before every release: 111 tracked files, and every path ever added is source,
+docs, scripts or vendored code. No `.RES`, `.EXE`, `.GFX`, `.SAV`, `.HSC` or
+`assets-extracted` path has existed in the history at any point. `git grep
+/home/steve` finds nothing but this file describing the check.
 
-What ran, with the numbers:
-
-* **step 1** - credit line `stev0760`, the account handle, which `LICENSE`
-  already carried;
-* **step 2** - the identity rewrite, on this repository this time. Root tree
-  hash `37a11a27075a18e814cb6d9f738760c93c5a283a` before and after, so not one
-  byte of content moved; 334 of 334 commits rewritten, author and committer
-  both, and `git log origin/main --format=%ae | sort -u` returns exactly one
-  address. The pre-rewrite history is still at
-  `refs/original/refs/heads/master`, which is **not** pushed - `refs/original`
-  is outside `refs/heads`. Delete it once you are happy;
-* **step 3** - **OPEN, and yours**: turn on "Block command line pushes that
-  expose my email" in GitHub's email settings;
-* **step 4** - `master` renamed to `main`, and it is the default branch;
-* **step 5** - the repository check, run **before** the rewrite so nothing
-  could surprise the push. 111 tracked files; every path ever added is `.cpp`,
-  `.h`, `.py`, `.md`, `.java`, `.txt`, `.sh`, `.c`, `.js`, `.PAS`, `LICENSE` or
-  `.gitignore`; no `.RES`, `.EXE`, `.GFX`, `.SAV`, `.HSC` or `assets-extracted`
-  path has ever existed in the history. The one `git grep /home/steve` hit is
-  this file describing the check.
-
-Two things landed with it. `.gitignore` gained `*.HSC` and `*.BIN`, which it
-had never covered - `*.SAV` was there from the first commit and the high score
-table was not, an accident of which file the port learned to write first. And
+Two things landed with it. `.gitignore` gained `*.HSC` and `*.BIN`, which it had
+never covered - `*.SAV` was there from the first commit and the high score table
+was not, an accident of which file the port learned to write first. And
 `.github/workflows/build.yml` builds on ubuntu-latest and runs `tubes-tests`;
 its header says what CI cannot check here, which is everything needing the
-player's own game data - the screen sweep, `--demo-trace` and the pixel diff
-all stay on the machine that owns the game.
+player's own game data - the screen sweep, `--demo-trace` and the pixel diff all
+stay on the machine that owns the game.
 
-**History is no longer free to rewrite.** See CLAUDE.md's commit discipline,
-which is updated: a commit is not backed up until it is pushed, and a rewrite
-now breaks every clone.
-
-### The pre-push checklist - do these in order, once, before `git push`
-
-Everything here was **free before the first push and expensive after**, which
-is the only reason it was a checklist rather than a paragraph. There was no
-remote and no tag, and `master` was the only branch, so the history rewrite was
-as cheap as that operation ever gets.
-
-1. **Decide the credit line.** Open, and deliberately not settled in a hurry.
-   It governs two places: the author name in every commit, and the copyright
-   holder in `LICENSE` (currently `stev0760`, the account the repository will
-   live under).
-
-   **This decision does NOT block step 2.** The noreply address is keyed to the
-   GitHub account *ID*, not to a name - GitHub attributes a commit by the
-   address alone, whatever display name sits in front of it. So the name can be
-   anything, and can change later, without touching the privacy fix.
-
-2. **Rewrite the author identity across all history.** 325 of the commits are
-   `a personal address`, a personal address. `git config --local` is
-   already set to the replacement, so anything committed from now on is fine -
-   it is the back catalogue that needs the pass:
-
-       NAME="stev0760"                                       # step 1's answer
-       MAIL="77158740+stev0760@users.noreply.github.com"
-
-       git filter-branch -f --env-filter "
-         export GIT_AUTHOR_NAME='$NAME'
-         export GIT_AUTHOR_EMAIL='$MAIL'
-         export GIT_COMMITTER_NAME='$NAME'
-         export GIT_COMMITTER_EMAIL='$MAIL'
-       " --tag-name-filter cat -- --branches --tags
-
-   Every hash changes. `git filter-branch` leaves the old history at
-   `refs/original/refs/heads/master`, so it is reversible until that ref is
-   deleted - check `git log` before dropping it. Run it again for free if the
-   answer to step 1 changes; nothing depends on the hashes while there is no
-   remote.
-
-   **That exact command was tested**, on a throwaway clone rather than on this
-   repository, and the check was the one this project always reaches for: the
-   root tree hash is `77a8669b363ce1d54dc696efe359fca9ffa53ce4` both before and
-   after, so not one byte of content moved - only the metadata. All 330 commits
-   were rewritten, the count was preserved, the messages survived intact and
-   the backup ref was created. A count and a hash, not an impression.
-
-   Context for why this matters, measured rather than assumed: as of
-   2026-08-08 the address is **already public** in two other repositories under
-   the same account - two other repositories. Those
-   are the player's to scrub. This step is about not adding 325 more, which
-   would make this the largest single exposure of the three.
-
-3. **Turn on "Block command line pushes that expose my email"** in GitHub's
-   email settings. "Keep my email addresses private" is already on and is *not*
-   the same control - it governs what the web UI uses, not what a command-line
-   push is allowed to carry. The block setting is what makes step 2 unnecessary
-   next time.
-
-4. **Rename `master` to `main`.** `git branch -m master main`. Conventional on
-   GitHub, and trivial while there is no remote.
-
-5. **Re-run the repository check.** `git log --all --diff-filter=A --name-only`
-   should list only source, docs, scripts and vendored code. It was clean at
-   330 commits. Also `git grep /home/steve`, which found the Ghidra invocation
-   in `.claude/skills/tubes-rig/SKILL.md` and should now find nothing.
+**History is no longer free to rewrite.** See CLAUDE.md's commit discipline: a
+commit is not backed up until it is pushed, and a rewrite now breaks every
+clone.
 
 - **`main.cpp` is split up; `main()` itself is still 3100 lines.** DONE, in
   part. The file went 6359 -> 4109 lines in three moves, each verified by
