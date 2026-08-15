@@ -1,5 +1,19 @@
 cmake_minimum_required(VERSION 3.16)
-project(tubes-port C CXX)
+
+# One source of truth: src/version.h. CMake reads the numbers out of it rather
+# than carrying a second copy that can drift from the one the program prints.
+# The FATAL_ERROR is the point of the loop - without it, renaming a macro would
+# yield project(VERSION ..) with empty fields and no complaint at all.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/src/version.h" _tubes_version_h)
+foreach(_part MAJOR MINOR PATCH)
+    if(NOT _tubes_version_h MATCHES "#define TUBES_VERSION_${_part} ([0-9]+)")
+        message(FATAL_ERROR "src/version.h has no TUBES_VERSION_${_part}")
+    endif()
+    set(_tubes_${_part} "${CMAKE_MATCH_1}")
+endforeach()
+
+project(tubes-port VERSION ${_tubes_MAJOR}.${_tubes_MINOR}.${_tubes_PATCH}
+        LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
