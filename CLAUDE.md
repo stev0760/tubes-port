@@ -330,12 +330,16 @@ Instructions, View Demo and Credits, with attract mode cycling on its own.
 the screen fade and the truncated sounds, all four. Its fifth item, ports to
 other platforms, was never a polish task: see `Portability`.
 
-So nothing of the original program is outstanding. What is left is the list at
-the top of `PLAN.md` - the player's full playthrough on Tubes 101, the GLDFADE
-question, a Credits slide of the port's own - and then **publishing**, whose
-checklist is the last section of `PLAN.md`. `LICENSE`, `README.md` and the
-`harness` flag are all done, so what is left there is the identity rewrite and
-the repository check - paperwork rather than code.
+So nothing of the original program is outstanding, and **publishing is done** -
+the repository is at `github.com/stev0760/tubes-port` with CI running the suite
+on every push. What is left is the short list at the top of `PLAN.md`: the
+player's full playthrough on Tubes 101, and the GLDFADE question, which is a
+"think about it" item rather than a queued one.
+
+**The port adds no Credits slide of its own**, and that is a decision rather
+than an omission: the Credits screen is the 1994 team's, this project's
+attribution is in `LICENSE` and `README.md`, and leaving `1b2e:411b` at its
+four shipped pages is the more faithful answer anyway. Do not propose it again.
 
 The rig is built and lives **outside this repo**, at `~/Dev/tubes-tooling/` -
 `docs/debug-rig.md` covers it. Three things to know before planning against it.
