@@ -46,7 +46,11 @@ asked for, and then publishing:
    rebinding one, all render-side.
 2. **A FULL PLAYTHROUGH on Tubes 101** - the player's, and it is the item that
    matters most, because it is the only thing that exercises all 25 objective
-   templates in sequence. It has already paid for itself: wave 8 asked for
+   templates in sequence. **It is also what earns 1.0.0.** The port is
+   **0.9.0** (`src/version.h`, which carries what the digits mean), and the
+   major digit is a claim rather than a milestone: every screen ported, every
+   rule read rather than fitted, and this playthrough completed clean. Nothing
+   else moves it. It has already paid for itself: wave 8 asked for
    marked atoms and could not be passed, and neither could the other **eight**
    mode-6 waves, because the objective counter was decremented by nothing. See
    the worklog. Every live mode now has a test that carries a wave to COMPLETE
