@@ -19,12 +19,15 @@ You supply the game data. Point the port at the folder holding your `TUBES.RES`:
 Those two files are all the port opens. It never touches the game's own
 executable, so the LZEXE packing on it makes no difference.
 
-The first run asks whether you have the 25-wave shareware release or the 75-wave
-registered one, since `TUBES.RES` is identical in both. `--shareware` and
-`--registered` answer it from the command line.
+Each run asks which edition to play, the 25-wave shareware release or the
+75-wave registered one, starting on your last answer. `TUBES.RES` is identical
+in both, so one copy of the data plays either and switching costs a keypress.
+`--shareware` and `--registered` answer from the command line.
 
-Saving writes `TUBES.HSC` and `TUBES.SAV` into that same folder, in the formats
-the 1994 game uses, so both programs read each other's files.
+Saving writes into that same folder in the formats the 1994 game uses, so both
+programs read each other's files: `TUBES.SAV` and `TUBES.HSC` for the registered
+edition, `TUBESSW.SAV` and `TUBESSW.HSC` for the shareware one, which keeps the
+two editions' progress apart.
 
 **Controls.** Left and Right slide the test tube, Down speeds up the atom above
 it, Ctrl or Space tips the tube into the beaker. F1 help, F2 save, F5 pause, Esc
