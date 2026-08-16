@@ -349,6 +349,15 @@ than an omission: the Credits screen is the 1994 team's, this project's
 attribution is in `LICENSE` and `README.md`, and leaving `1b2e:411b` at its
 four shipped pages is the more faithful answer anyway. Do not propose it again.
 
+**The comment-cleanup tooling also lives outside this repo**, at
+`~/Dev/tubes-tooling/writing/` - `comment_pass.sh`, its brief, and
+`comment_lint.py`. It is not needed to work on the port and it depends on
+things the port does not: OpenCode, an Ollama Cloud subscription, and the
+prose-lint skill. `docs/worklog.md` records the sweeps it did, so a search for
+it in `tools/` will come back empty and that is not evidence it never existed.
+Run it from the repository, naming a file in it; it finds the repo from the
+file's own git root.
+
 The rig is built and lives **outside this repo**, at `~/Dev/tubes-tooling/` -
 `docs/debug-rig.md` covers it. Three things to know before planning against it.
 It runs `assets-extracted/TUBES_UNP.EXE`, the unpacked image Ghidra analysed,
