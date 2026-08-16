@@ -81,6 +81,17 @@ The binary is **Borland Pascal 7.0**, not C. Evidence:
 - The binary refuses to run below an 80286, consistent with the `enter`
   prologues seen at the entry point.
 
+**The game states its own version, on the title screen.** `1b2e:5780` draws
+`Copyright 1994 Absolute Magic` centred at y 190 and `v1.0` at x 294 on the
+same row, both in the small font that `1b2e:576b` selects immediately before.
+So the copy being reversed here is **v1.0**, which settles a question the
+release metadata could not: v1.0 shipped June 1994 under Software Creations and
+v1.1 in November under Impulse Software, and nothing outside the binary said
+which of the two this was. The port transliterates the string
+(`src/screens.cpp`, `drawTitle`), so that `v1.0` on the title screen is the
+GAME's version and has nothing to do with the port's own - which is why the
+port's version appears only on screens the original does not draw.
+
 Consequences for decompilation:
 
 - BP7 is a non-optimizing, highly deterministic single-pass compiler. Code
