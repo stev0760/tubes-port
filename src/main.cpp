@@ -1785,10 +1785,8 @@ int main(int argc, char** argv) {
                                          tubes::kScreenWidth,
                                          tubes::kScreenHeight);
 
-    // The edition's third and last source: ask the player - on every
-    // interactive start, not only the first, as the comment on
-    // `mustAskEdition` explains. It lives here rather than beside the other
-    // two because it needs a renderer, and the
+    // The edition's third and last source: ask the player. It lives here
+    // rather than beside the other two because it needs a renderer, and the
     // save and high-score files below need the answer - the edition names
     // them. That ordering is the whole reason this is a start-up question and
     // not a menu item; see PLAN.md, "Where the edition switch should live".
