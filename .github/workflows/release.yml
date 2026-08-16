@@ -1,0 +1,133 @@
+# Build a Linux binary and publish it as a GitHub Release, on a `v*` tag.
+#
+# The build happens here rather than on a developer's machine for one concrete
+# reason: a binary carries the glibc of whatever built it. A machine running a
+# rolling distribution produces something most people cannot run at all, and the
+# failure is a loader error at startup rather than anything the port could
+# report. An ubuntu-latest runner is a known, older baseline.
+#
+# SDL2 is linked dynamically and is NOT bundled, so the tarball needs SDL2
+# installed on the target. Bundling it would mean shipping the LGPL library
+# alongside, and a distribution's own package is better maintained than a copy
+# frozen at release time.
+#
+# The release ships no game data, which is the whole rule of this repository -
+# the binary is inert without the player's own TUBES.RES.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and release'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Install SDL2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev
+
+      # The tag and src/version.h must agree. They are one fact in two places
+      # the moment a tag exists, and a release whose binary prints a different
+      # number than the tag it came from is worse than no release.
+      - name: Check the tag against src/version.h
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          MAJOR=$(sed -n 's/^#define TUBES_VERSION_MAJOR \([0-9]*\).*/\1/p' src/version.h)
+          MINOR=$(sed -n 's/^#define TUBES_VERSION_MINOR \([0-9]*\).*/\1/p' src/version.h)
+          PATCH=$(sed -n 's/^#define TUBES_VERSION_PATCH \([0-9]*\).*/\1/p' src/version.h)
+          VER="$MAJOR.$MINOR.$PATCH"
+          echo "tag=$TAG header=$VER"
+          [ "$TAG" = "v$VER" ] || { echo "::error::tag $TAG does not match src/version.h ($VER)"; exit 1; }
+          echo "VER=$VER" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+
+      - name: Test
+        run: ./build/tubes-tests
+
+      # The binary must also agree, which is a different check from the one
+      # above: that compared two files, this asks the program what it thinks.
+      - name: Check the binary reports the same version
+        run: |
+          OUT=$(./build/tubes-port --version)
+          echo "$OUT"
+          [ "$OUT" = "tubes-port $VER" ] || { echo "::error::binary reports '$OUT'"; exit 1; }
+
+      - name: Package
+        run: |
+          DIR="tubes-port-$VER-linux-x86_64"
+          mkdir "$DIR"
+          cp build/tubes-port README.md LICENSE "$DIR/"
+          strip "$DIR/tubes-port"
+          tar czf "$DIR.tar.gz" "$DIR"
+          sha256sum "$DIR.tar.gz" | tee "$DIR.tar.gz.sha256"
+          echo "DIR=$DIR" >> "$GITHUB_ENV"
+
+      # The static markdown is a QUOTED heredoc, so its backticks stay
+      # backticks instead of running as commands. The measured values are
+      # appended after it, which is also why they are measured rather than
+      # written down: the glibc floor is a property of this runner, not a
+      # number anyone should be maintaining by hand.
+      - name: Write the release notes
+        run: |
+          cat > notes.md <<'EOF'
+          An SDL/C++ reimplementation of Tubes, a 1994 DOS puzzle game,
+          translated out of the original binary.
+
+          ## You need your own copy of the game
+
+          No game data ships here, and none ever will. Unpack the archive and
+          point the port at the folder holding your `TUBES.RES`:
+
+              ./tubes-port --gamedir /path/to/your/tubes
+
+          `DRIVERS.RES` beside it adds FM music. The game's own executable is
+          never opened, so its LZEXE packing does not matter.
+
+          ## What this build needs
+
+          SDL2 installed (`libsdl2-2.0-0` on Debian and Ubuntu). It is linked
+          dynamically and deliberately not bundled, because a distribution's own
+          package is better maintained than a copy frozen at release time.
+
+          On an older glibc than the one below, build from source instead: three
+          commands, needing only SDL2, CMake 3.16 or newer, and a C++17
+          compiler. See the README.
+          EOF
+          {
+            echo
+            echo "---"
+            echo
+            echo "Built on \`ubuntu-latest\` against SDL $(pkg-config --modversion sdl2),"
+            echo "glibc $(ldd --version | head -1 | grep -oE '[0-9]+\.[0-9]+$') (the floor for this binary)."
+            echo "Tests: $(./build/tubes-tests | tail -1)."
+          } >> notes.md
+          cat notes.md
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          gh release create "$TAG" \
+            --title "tubes-port $VER" \
+            --notes-file notes.md \
+            "$DIR.tar.gz" "$DIR.tar.gz.sha256"

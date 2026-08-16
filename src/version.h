@@ -57,7 +57,7 @@
 // than carrying a second copy that can drift.
 #define TUBES_VERSION_MAJOR 0
 #define TUBES_VERSION_MINOR 9
-#define TUBES_VERSION_PATCH 0
+#define TUBES_VERSION_PATCH 1
 
 #define TUBES_VERSION_STRINGIFY_(x) #x
 #define TUBES_VERSION_STRINGIFY(x) TUBES_VERSION_STRINGIFY_(x)
