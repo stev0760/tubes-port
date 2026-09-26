@@ -54,6 +54,18 @@ SDL2, CMake 3.16 or newer, and a C++17 compiler.
     cmake --build build -j
     ./build/tubes-tests          # 1061 checks; runs without game data
 
+On Windows, with Visual Studio and [vcpkg](https://vcpkg.io), from a Developer
+PowerShell:
+
+    vcpkg install sdl2:x64-windows-static
+    cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+          -DVCPKG_TARGET_TRIPLET=x64-windows-static -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+    cmake --build build --config Release
+    .\build\Release\tubes-tests.exe
+
+That links SDL2 and the C runtime statically, so `tubes-port.exe` runs on its
+own. It is the configuration CI builds and the release ships.
+
 ## How it works
 
 Every gameplay rule in `src/` was decompiled out of the original executable and
