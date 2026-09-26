@@ -1,0 +1,3 @@
+# Read by Notepad on a player's Windows machine, so its line endings are
+# CRLF on every checkout, not whatever the cloning platform prefers.
+packaging/*.txt text eol=crlf

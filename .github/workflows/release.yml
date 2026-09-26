@@ -168,13 +168,16 @@ jobs:
           [ "$OUT" = "tubes-port $VER" ] || { echo "::error::binary reports '$OUT'"; exit 1; }
 
       # SDL2 is linked in, so its notice ships beside the LICENSE that
-      # already names this project's other vendored terms.
+      # already names this project's other vendored terms. HOW TO PLAY.txt is
+      # for the player who opens the zip and nothing else: README.md asks
+      # Windows which program to use, and a .txt opens in Notepad.
       - name: Package
         run: |
           DIR="tubes-port-$VER-windows-x86_64"
           SDL_SHARE="$VCPKG/installed/x64-windows-static/share/sdl2"
           mkdir "$DIR" dist
           cp build/Release/tubes-port.exe README.md LICENSE "$DIR/"
+          cp "packaging/HOW TO PLAY.txt" "$DIR/"
           cp "$SDL_SHARE/copyright" "$DIR/LICENSE-SDL2.txt"
           7z a -tzip "dist/$DIR.zip" "$DIR"
           (cd dist && sha256sum "$DIR.zip" | tee "$DIR.zip.sha256")
@@ -215,26 +218,31 @@ jobs:
           An SDL/C++ reimplementation of Tubes, a 1994 DOS puzzle game,
           translated out of the original binary.
 
-          ## You need your own copy of the game
+          ## You need a copy of the game
 
-          No game data ships here, and none ever will. Unpack the archive and
-          point the port at the folder holding your `TUBES.RES`. `DRIVERS.RES`
-          beside it adds FM music. The game's own executable is never opened,
-          so its LZEXE packing does not matter.
+          No game data ships here, and none ever will. The port plays the files
+          from a copy of Tubes. **Any copy works**, including the free
+          shareware release, which the Internet Archive hosts:
+          <https://archive.org/details/msdos_TUBES_shareware>. Unzip it, and
+          the folder with `TUBES.RES` in it is your Tubes folder.
 
           ## Windows
 
-          Unzip, then either run it from a command prompt:
+          1. Download the `windows-x86_64.zip` below and unzip it.
+          2. Copy `tubes-port.exe` into your Tubes folder, next to `TUBES.RES`.
+          3. Double-click it.
 
-              tubes-port.exe --gamedir C:\path\to\your\tubes
-
-          or copy `tubes-port.exe` into the game's folder and double-click it,
-          since the game directory defaults to the one it starts in. A console
-          window opens beside the game; that is where errors are reported.
+          Or drag your Tubes folder onto `tubes-port.exe`. It remembers where
+          the game is, so a desktop shortcut works after the first start. If
+          Windows says "Windows protected your PC", click **More info**, then
+          **Run anyway**: it says that about any unsigned download. The zip's
+          `HOW TO PLAY.txt` has the same steps and the controls.
 
           ## Linux
 
-              ./tubes-port --gamedir /path/to/your/tubes
+              ./tubes-port /path/to/your/tubes
+
+          Or run it from inside your Tubes folder with no argument.
 
           Needs SDL2 installed (`libsdl2-2.0-0` on Debian and Ubuntu). It is
           linked dynamically and deliberately not bundled, because a

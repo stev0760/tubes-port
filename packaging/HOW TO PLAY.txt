@@ -1,0 +1,48 @@
+TUBES - how to play
+===================
+
+This is a new version of Tubes, the 1994 DOS puzzle game, that runs on
+modern Windows. It plays the files from a copy of the original game, and
+does not include them.
+
+1. GET THE GAME
+
+   Any copy of Tubes works, including the free shareware release. It is on
+   the Internet Archive:
+
+       https://archive.org/details/msdos_TUBES_shareware
+
+   Download TUBES.zip and unzip it. The folder you get is your Tubes
+   folder - it has a file called TUBES.RES in it.
+
+2. PUT tubes-port.exe IN YOUR TUBES FOLDER
+
+   Copy tubes-port.exe into that folder, next to TUBES.RES.
+
+   (Or skip this and drag the Tubes folder onto tubes-port.exe instead.)
+
+3. DOUBLE-CLICK tubes-port.exe
+
+   If Windows says "Windows protected your PC", click "More info", then
+   "Run anyway". Windows says that about programs downloaded from the
+   internet that are not signed with a paid certificate.
+
+   After the first time it remembers where the game is, so you can make a
+   shortcut to it on your desktop.
+
+CONTROLS
+
+   Left / Right   move the test tube
+   Down           speed up the atom above it
+   Ctrl or Space  tip the tube into the beaker
+   F1 help   F2 save   F5 pause   Esc quit
+
+   Keys can be changed in Game Options. A gamepad works if one is plugged in.
+
+IF SOMETHING GOES WRONG
+
+   If it cannot find the game, a window tells you where it looked. The
+   black console window beside the game shows messages; closing it closes
+   the game.
+
+   More: https://github.com/stev0760/tubes-port
