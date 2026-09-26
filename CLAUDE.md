@@ -13,7 +13,7 @@ Mode X (unchained VGA 320x200x256).
 Two goals, in tension occasionally — the first one wins:
 
 1. **Learn how decompilation works.** The original binary is the point, not
-   an obstacle. Do not "just rewrite it" to save time; that was proposed
+   an obstacle. Do not "just rewrite it" to save time. That was proposed
    early on and rejected for good reason.
 2. Produce a playable port.
 
@@ -34,28 +34,28 @@ run and writing code that reproduces what you saw is not porting. It has
 already been tried, in the session that measured the drops model, and it was
 lossy in ways that were invisible from the inside:
 
-- a scoring rule was fitted to two observed awards and was **wrong**, while the
-  real rule sat in the game's own Instructions;
+- A scoring rule was fitted to two observed awards and was **wrong**, while the
+  real rule sat in the game's own Instructions.
 - Flashium's wildcard was **wrong in two different ways** until a player
-  described what the game actually does;
-- an "unresolved ambiguity in the original" was written up that was really a
+  described what the game actually does.
+- An "unresolved ambiguity in the original" was written up that was really a
   **bug in our own matcher**.
 
 Each was caught by a human noticing, not by the method. Observation yields
-samples; the binary yields the function. A rule that has never been exercised
+samples. The binary yields the function. A rule that has never been exercised
 on screen cannot be sampled at all, and you will not know it is missing.
 
 **So the order of authority is:**
 
-1. the **decompiled code** — the only thing that settles a rule;
-2. the game's own text (Instructions, briefings, Credits) — good corroboration,
+1. The **decompiled code**, the only thing that settles a rule.
+2. The game's own text (Instructions, briefings, Credits), good corroboration,
    and it has now **three times** held an answer that was being derived the
    hard way, most recently the Credits stating outright that Tubes "was written
    in Borland Pascal v7, and uses a planar 320x200x256" - the two assumptions
    this file's first paragraph has carried since day one. **Read the
    Instructions and the Credits early.** They cost nothing and this project
-   left them until last;
-3. **live measurement** — for *locating* and *validating*, never for deriving.
+   left them until last.
+3. **Live measurement**, for *locating* and *validating*, never for deriving.
 
 Measurement keeps a large role, just not that one. Measured addresses say
 *where* to look in the disassembly (see the DS-offset table in
@@ -65,13 +65,13 @@ same standard already applied to music, where the sequencer is verified by
 diffing register streams rather than by listening.
 
 If a rule cannot yet be decompiled, leave it **explicitly marked as a
-placeholder** — as `src/game.cpp` does at the top — rather than shipping a
+placeholder**, as `src/game.cpp` does at the top, rather than shipping a
 plausible invention that later reads as settled.
 
 ## Hard rule: no game data in this repository
 
 The game is still copyrighted. Assets are read at runtime from the user's own
-copy; the engine takes `--gamedir`. `.gitignore` is deliberately aggressive
+copy. The engine takes `--gamedir`. `.gitignore` is deliberately aggressive
 about `*.RES`, `*.EXE`, `assets-extracted/`, and rendered output.
 
 **Always check `git diff --cached --name-only` before committing.** It has
@@ -82,7 +82,7 @@ The rule has a second half that is easy to miss: **do not write to the player's
 game directory either.** `TUBES.HSC` and `TUBES.SAV` are the player's files,
 the port writes both, and a scripted run has already created one by accident -
 see "Build, test, run". Reproduce captured data in a test from the constants
-instead; that is how the `TUBES.HSC` sentinel residue is pinned without the
+instead. That is how the `TUBES.HSC` sentinel residue is pinned without the
 capture being in the repo.
 
 ## Commit discipline: small, atomic, and as you go
@@ -109,7 +109,7 @@ anyone has quoted. Rewrite nothing that has been pushed.
   binary, the rule it came from, the numbers that check it. Not the repository's
   administration, not the account it lives under, and never anything about the
   author. A message is permanent, public, and cannot be edited after a push
-  without rewriting history; a note that belongs in a conversation must stay in
+  without rewriting history. A note that belongs in a conversation must stay in
   the conversation. The same goes for the tracked files: `PLAN.md` is the plan
   for the port, not a place to record account settings.
 
@@ -124,7 +124,7 @@ anyone has quoted. Rewrite nothing that has been pushed.
   is the second copy of `docs/reversing-notes.md` and has been read as one.
 - **Leave the tree clean.** Untracked scratch is not free: it hides the one
   file that should have been added. Either commit it or add it to
-  `.gitignore`; do not let it accumulate.
+  `.gitignore`. Do not let it accumulate.
 - Tests and the pixel diff run **before** the commit, and the numbers go in the
   message. "111 checks, 0.02% to 0.22%" is how a later session knows whether
   its own regression was already there.
@@ -155,7 +155,7 @@ checkout** (`tubes-tooling`: the debugging rig, everything it captures, and the
 comment-cleanup scripts). Where they sit differs from one machine to the next,
 so this file does not say. **`CLAUDE.local.md` does** - it is gitignored, Claude
 Code loads it beside this one, and it is the place for one machine's paths. If
-it is missing, ask where they are rather than guessing; a path that worked on
+it is missing, ask where they are rather than guessing. A path that worked on
 another machine is not evidence of anything on this one.
 
 `src/` splits platform-agnostic logic from the SDL edge, and the split is what
@@ -207,7 +207,7 @@ match `tools/mus_decode.py` exactly. All 10 songs currently do. That check is
 independent of the OPL emulator, so a synthesis bug can never be mistaken for
 a sequencer bug. `--render-mus NAME OUT.wav` renders offline.
 
-`--screenshot FILE` renders one frame to a BMP and exits; it works headless
+`--screenshot FILE` renders one frame to a BMP and exits. It works headless
 under `SDL_VIDEODRIVER=dummy`. `--auto N` runs N frames of a scripted player
 first, so a headless capture shows a populated beaker. Together these are how
 rendering gets verified without a display. `--title N`, `--hiscores [0|1]`,
@@ -223,7 +223,7 @@ every later capture compared against.
 
 That rule is no longer a guard to remember. **Every write to a file the player
 owns goes through `tubes::PlayerFiles`** (`src/playerfiles.h`), which a scripted
-run is handed blocked and an interactive run writing; the writers do not ask
+run is handed blocked and an interactive run writing. The writers do not ask
 which they hold. A new write path that opens its own `ofstream` is the bug the
 class exists to make visible. The flag that classifies the run is `scripted` in
 `main.cpp` - it was called `harness`, which named the DOSBox rig rather than
@@ -233,18 +233,18 @@ anything in this program.
 
 - **Ghidra 12.2 will not run `.py` scripts.** Jython ships as an uninstalled
   extension and PyGhidra wants an interactive venv install. Write Java
-  `GhidraScript` files; they compile on the fly with no setup.
+  `GhidraScript` files. They compile on the fly with no setup.
 - Ghidra needs **absolute paths** for both `-scriptPath` and the project
   directory. A leading `./` is rejected outright.
 - Set `__stdcall16far` on game functions before decompiling. Pascal is
-  callee-cleans; Ghidra's inferred cdecl signatures come out wrong.
+  callee-cleans. Ghidra's inferred cdecl signatures come out wrong.
 - **A function taking an open array decompiles to garbage.** Turbo Pascal
   copies conformant arrays onto the stack at entry, and Ghidra renders the copy
   loops as a wall of `puVar`. `1b2e:0f46` is the example. Read the listing -
   its one timing literal was visible in a single grep.
 - Ghidra creates no xrefs for DS-relative globals in 16-bit segmented code.
   Use `ghidra_scripts/FindScalarRefs.java` to chase them.
-- Turbo Pascal 7.0 runs headless under DOSBox; `TPC.EXE` is the scriptable
+- Turbo Pascal 7.0 runs headless under DOSBox. `TPC.EXE` is the scriptable
   compiler, `TURBO.EXE` is the IDE and is not.
 
 ## Verification standards
@@ -257,7 +257,7 @@ paid off. Keep it up.
   difference" and blamed on unread page bookkeeping. One `Counter` over the
   differing pixels said `(0,0,0) x 144` - the original was BLACK there and the
   port was showing something, the opposite way round from the write-up - and
-  the cause fell out in minutes. A pixel count says where; the values say what.
+  the cause fell out in minutes. A pixel count says where. The values say what.
 - **A size check is not a correctness check.** Every `.CSP` decoded to the
   right pixel count while having completely wrong geometry, because C++
   integer division truncates toward zero where Python floors. It rendered as
@@ -268,7 +268,7 @@ paid off. Keep it up.
   *every* format, since a subtly wrong ring buffer would still produce
   correct-length output.
 - **Cross-check new decoders against the Python tools.** `csp_decode.py INFO`
-  prints dimensions, origin and pixel count; comparing against it located the
+  prints dimensions, origin and pixel count. Comparing against it located the
   floor-division bug immediately.
 - **Separate proven from guessed, in writing.** `docs/reversing-notes.md`
   marks which constants are measured and which are invented. Do not let those
@@ -290,7 +290,7 @@ through the same code path as live play.
 
 Everything BELOW it is DOS plumbing. `KEYBOARD.DRV`, `JOYSTK1/2.DRV` and
 `MOUSE.DRV` exist because 1994 had no abstraction over an XT keyboard, a
-gameport and a serial mouse; SDL is that abstraction, so porting a driver
+gameport and a serial mouse. SDL is that abstraction, so porting a driver
 chooser would be transliterating the *absence* of SDL. `src/input.h` carries
 the full reasoning. `SETUP.CFG` is deliberately not written - it is the DOS
 install's hardware config and `SETUP.EXE` owns it.
@@ -303,7 +303,7 @@ was written. Do not treat it as a precedent for gameplay.
 Far less than there used to be. `1000:3a67`, `1000:0f80` and `1000:9e53` are
 all transliterated, so the geometry, the atom state machine, the dispenser, the
 drops pool, the scoring ramp, the wave table and the whole progression are read
-rather than fitted. `PLAN.md` carries the list; do not duplicate it here.
+rather than fitted. `PLAN.md` carries the list. Do not duplicate it here.
 
 What is worth knowing before touching gameplay:
 
@@ -338,7 +338,7 @@ points past the image and is not DGROUP (which is Ghidra segment `2785`), and
 one unit sets `DS = CS` so its `ds:0x1e` is unrelated to the game's.
 
 `ghidra_scripts/MapProgram.java` dumps the call graph plus the strings each
-function references; that is what identified every interface stage (splashes,
+function references. That is what identified every interface stage (splashes,
 menu, blackboard cutscene, game session). Re-run it rather than guessing at
 what a function does.
 
@@ -377,7 +377,7 @@ checkout's `writing/` - `comment_pass.sh`, its brief, and `comment_lint.py`. It 
 things the port does not: OpenCode, an Ollama Cloud subscription, and the
 prose-lint skill. `docs/worklog.md` records the sweeps it did, so a search for
 it in `tools/` will come back empty and that is not evidence it never existed.
-Run it from the repository, naming a file in it; it finds the repo from the
+Run it from the repository, naming a file in it. It finds the repo from the
 file's own git root.
 
 The rig is built and lives **outside this repo**, in the tooling checkout -
@@ -396,13 +396,13 @@ structural pixels and masks the atoms, because a gameplay frame has a random
 backdrop and things moving during the capture. A menu-side screen has none of
 that, so `diff_hiscores.py` compares all 64,000 pixels with no mask - and both
 high-score pages come back at 0. Reach for the exact comparison on any static
-screen; it has already caught a bug that had nothing to do with rendering.
+screen. It has already caught a bug that had nothing to do with rendering.
 
 The segment mapping is settled: DGROUP is Ghidra `0x2785` = `L + 0x1785`, and
 `L` is `CS` at the entry breakpoint. Proven against the file, not guessed.
 
 Ports to other platforms are an eventual goal - Windows is the first one done -
-so keep SDL at the platform edge; it is the portability layer, not something
+so keep SDL at the platform edge. It is the portability layer, not something
 to avoid. See `Layout` for
 which files may include it.
 
@@ -449,7 +449,7 @@ Ranked by how often it produced the answer:
 2. **Read the code, don't stare at the bytes.** LZSS, the container, and the
    `.MUS` event grammar all came off the disassembly directly. Every
    histogram-and-stride guess was wrong.
-3. **Extract data mechanically; never transcribe it.** The Instructions are
+3. **Extract data mechanically. Never transcribe it.** The Instructions are
    152 strings and the Credits 36, and typing them would have been 188 chances
    to mistype a line of the game's own documentation and never notice.
    `tools/gen_instructions.py` reads the disassembly and emits the tables,

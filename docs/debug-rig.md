@@ -49,7 +49,7 @@ Fork base is DOSBox-X **2025.12.01** (the distro package on this machine is
 
 `--disable-avcodec` is not cosmetic: this machine has ffmpeg 8.1, and the AUR
 recipe needed an ffmpeg-4.4 shim even for the 2022 release. Video recording is
-irrelevant here; screenshots go through libpng and are unaffected.
+irrelevant here. Screenshots go through libpng and are unaffected.
 `--disable-libfluidsynth --disable-mt32` follow the MCP's own instructions.
 
 `build-debug` implies `--enable-debug=heavy`, so `C_HEAVY_DEBUG=1` - this
@@ -67,14 +67,14 @@ Leave it at DOSBox-X's default of `true` and the game prints
 and stops. At `21ea:0249` it issues `INT 2Fh AX=1680h` - the Windows/DPMI
 cooperative-yield call - and bails if `AL` comes back `0`. DOSBox-X services
 that call so it can idle the host CPU (`src/dos/dos_misc.cpp:443` sets
-`reg_al = 0`); with the setting off, `AL` stays `0x80` and the check passes.
+`reg_al = 0`). With the setting off, `AL` stays `0x80` and the check passes.
 `docs/reversing-notes.md` has the full disassembly.
 
 Two things this cost, worth not repeating:
 
 - It is **not** about `SETUP.EXE`. The game's first check does name `SETUP.EXE`
   in its error text, but tests for **`SETUP.CFG`**. Copying the executable
-  achieves nothing; the config file must exist in the current directory.
+  achieves nothing. The config file must exist in the current directory.
   `gamedrive/` has it.
 - It is **not** an unpacking artifact. The shipped packed binary fails
   identically from the same drive - which is how it was ruled out. One A/B run
@@ -97,12 +97,12 @@ real mode `(seg << 4) + offset`. The `eip` reported back is already linearised.
 Two ways to drive it:
 
 - **`bringup_tubes.py`** - a plain Python script against the fork's own
-  `tests/integration/dosbox_debug.py`. No Claude Code restart needed; best for
-  iterating on an experiment.
+  `tests/integration/dosbox_debug.py`. It needs no Claude Code restart,
+  which makes it the one for iterating on an experiment.
 - **the MCP** - 24 `dosbox_*` tools, registered local-scope to this project
   directory. Best for exploratory work driven conversationally.
 
-## Config choices that are load-bearing
+## Config choices the experiments depend on
 
 `tubes.conf` is deliberately deterministic, because every experiment in
 `PLAN.md` is "save state, change one variable, re-run":
@@ -122,7 +122,7 @@ Two ways to drive it:
 
 `assets-extracted/TUBES_UNP.EXE` is what Ghidra analysed and what every address
 in the notes refers to, so that is what the rig runs. `gamedrive/TUBES.EXE`
-symlinks to it; the shipped LZEXE-packed original is present as
+symlinks to it. The shipped LZEXE-packed original is present as
 `TUBESPKD.EXE` for reference only.
 
 This matters for the entry breakpoint. Run the *packed* binary and
@@ -133,7 +133,7 @@ image-relative segment 0.
 
 ### The segment mapping, proven statically
 
-Ghidra's base segment is an arbitrary `0x1000`; DGROUP is Ghidra segment
+Ghidra's base segment is an arbitrary `0x1000`. DGROUP is Ghidra segment
 `0x2785`. So DGROUP is `0x1785` paragraphs into the image, at file offset
 `0x1785 * 16 + 0x2200` (header) `= 0x19a50`. Reading the waypoint-target table
 at `DS:0x26` straight out of the file gives `104, 122, 140, 158, 176, 194` -
@@ -148,17 +148,17 @@ Only the load segment `L` needs measuring at runtime:
 
 `bringup_tubes.py` establishes it two independent ways and requires agreement:
 **A** breaks at entry, checks `EIP - CS*16 == 0xaaba` (proof we stopped in the
-right program), and reads back `DS:0x26`; **B** free-runs, then scans
+right program), and reads back `DS:0x26`. **B** free-runs, then scans
 conventional RAM for the 24 bytes the file holds at `DS:0x1a` - verified to
 occur exactly once in the image - and checks the hit lands where A predicted.
-A alone could be a wrong-but-consistent guess about the load address; B alone
+A alone could be a wrong-but-consistent guess about the load address. B alone
 finds an address without proving what it is.
 
 ### Do not invent a signature - read the notes first
 
 The obvious signature is wrong. `DS:0x1a` does **not** hold the columns
 ascending. It holds two *descending* triples, `143, 125, 107, 197, 179, 161`,
-which columns 1..6 index in the order 3, 2, 1, 6, 5, 4;
+which columns 1..6 index in the order 3, 2, 1, 6, 5, 4.
 `docs/reversing-notes.md` documents this. The familiar
 `107, 125, 143, 161, 179, 197` is the mapping after that permutation, not a byte
 run. A scan for it finds nothing. The real 24 bytes at `DS:0x1a` are:
@@ -172,7 +172,7 @@ file before running the emulator - which is the cheaper order of operations.
 ## The watchpoint gap - read this before planning Experiment 3
 
 `PLAN.md`'s highest-value experiment is "set a memory *write* breakpoint on
-atom record 0's `+0x00`; whatever traps is the mover". The GDB stub **cannot do
+atom record 0's `+0x00`. Whatever traps is the mover". The GDB stub **cannot do
 that**. From `src/debug/gdbserver.cpp`, `handle_breakpoint`:
 
         if (bp_type != 0) {  // Only software breakpoints supported
@@ -180,7 +180,7 @@ that**. From `src/debug/gdbserver.cpp`, `handle_breakpoint`:
             return;
         }
 
-So `Z0` (software execution breakpoint) only; `Z2`/`Z3`/`Z4` - write, read and
+So `Z0` (software execution breakpoint) only. `Z2`/`Z3`/`Z4` - write, read and
 access watchpoints - are silently declined. `qSupported` advertises `hwbreak+`,
 which is misleading. The MCP inherits this: `dosbox_set_breakpoint` hardcodes
 `Z0` in `dosbox_debug.py:281`.
@@ -204,7 +204,7 @@ Three routes, in order of preference:
    interactive - it cannot be driven by an agent, which is the whole point of
    installing this rig.
 3. **Step and diff.** Break on a known per-frame address, then single-step
-   while re-reading the four bytes. Works with what exists; thousands of RSP
+   while re-reading the four bytes. Works with what exists. Thousands of RSP
    round-trips per frame, so slow but bounded.
 
 Experiments 1, 2 and 4 in `PLAN.md` need none of this - they are memory reads,
@@ -223,7 +223,7 @@ execution breakpoints and save states, all supported today.
 
 **Do not hardcode `L = 0x0824`.** It is a function of the DOS memory layout, so
 it moves if the conf, the DOS version or anything resident changes. Measure it
-at the entry breakpoint every session; the script does.
+at the entry breakpoint every session. The script does.
 
 Mode 13h is what the BIOS reports even though the game runs Mode X - Mode X is
 reached by reprogramming the CRTC out of mode 13h, which does not change the
@@ -263,7 +263,7 @@ both High Scores pages come back at **0 differing pixels**.
 That is a much sharper instrument than the gameplay diff and should be the
 first thing reached for on any other static screen. It also means the only
 calibration that carries over is the DAC expansion (`v<<2` against `v*255/63`,
-tolerance 6); everything else in `diff_frame.py` is there for the noise a
+tolerance 6). Everything else in `diff_frame.py` is there for the noise a
 static screen does not have.
 
 The capture side needs one habit: **run the screen twice, once per key path.**
@@ -286,7 +286,7 @@ game writes.
 
 ### Screenshot quirks
 
-- **The capture always succeeds; the path reporting races.** The PNG reliably
+- **The capture always succeeds. The path reporting races.** The PNG reliably
   lands in the `captures` directory as `tubes_NNN.png`, but
   `CAPTURE_GetLastScreenshotPath()` is read on a different thread from the write,
   so the reply - and the copy to a requested `path` - intermittently fails with
@@ -330,7 +330,7 @@ Two things that cost time there and will again:
 
 - **A timed-out tool call desynchronises the GDB stream.** After the screenshot
   timeout above, every register came back as `0` - the RSP framing was out of
-  step, not the guest. There is no resync; `dosbox_restart` is the fix. Treat
+  step, not the guest. There is no resync. `dosbox_restart` is the fix. Treat
   all-zero registers as "the connection is broken", never as guest state.
 - **Mode X planes are not visible at `0xa0000`.** Reading there through the stub
   returned all zeros mid-cutscene, so framebuffer content cannot be used as a
@@ -357,7 +357,7 @@ unclaimable atom step size, and a "clean" 4 px step that was luck.
 The textbook fix - breakpoint once per frame so the guest waits - **did not work
 in this game**:
 
-- The Mode X page flip at image `0x1335f` is never executed; it belongs to unused
+- The Mode X page flip at image `0x1335f` is never executed. It belongs to unused
   code. Zero breakpoint hits.
 - The only page-index site that does execute during play, image `0x11aa2`, fires
   thousands of times per frame. Servicing it never completed one frame in five
@@ -405,7 +405,7 @@ suspect again, and doubled step values are the tell.
   `Enter` (No). Two play sessions have already been lost to ESC.
 - **One client at a time.** The GDB stub services a single connection.
   Two MCP instances, or the MCP plus a `gdb`, will fight.
-- **Listener up != DOS ready.** The TCP ports open about a second after launch;
+- **Listener up != DOS ready.** The TCP ports open about a second after launch.
   DOS needs several more. Wait for an explicit signal - the `C:\>` prompt, or
   the BDA video-mode byte at linear `0x449` leaving `0x03`.
 - **Halting stops everything.** No timer ticks, no keyboard polling while
@@ -470,7 +470,7 @@ frozen for its whole run and no drop was ever lost.
 - MCP: <https://github.com/jdmichaud/dosbox-mcp>
 - protocol reference: the fork's `docs/REMOTEDEBUG.md`
 
-Neither is vendored into this repo; both are upstream clones, unmodified so
+Neither is vendored into this repo. Both are upstream clones, unmodified so
 far. If route 1 above is taken, the patch should be kept as a tracked diff
 somewhere in `~/Dev/tubes-tooling/` so a fresh clone can be brought back up.
 
@@ -519,11 +519,11 @@ exist.
 
 ### What it found immediately
 
-- the test tube is misplaced: our wall sits at x=166 where the original's is at
-  172, over the tube's full 57 px height;
-- a handful of vertical pieces in the arcs that the original draws and we do
-  not;
-- and nothing else - the rest of the network matches within tolerance.
+- The test tube is misplaced: our wall sits at x=166 where the original's is at
+  172, over the tube's full 57 px height.
+- A handful of vertical pieces in the arcs that the original draws and we do
+  not.
+- Nothing else. The rest of the network matches within tolerance.
 
 **Do not fix an offset from one edge.** Shifting the tube by the measured 6 px
 made the diff *worse*, 4.6% to 8.5%, because the sprite has more than one wall

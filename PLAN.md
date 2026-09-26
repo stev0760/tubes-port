@@ -27,7 +27,7 @@ code is a normal C++/SDL codebase - portable, testable, modifiable - rather than
 Two consequences that shape every decision here:
 
 * **Rules come from the decompiled code, never from watching the game.** See
-  the prime directive in `CLAUDE.md`. Observation gives samples; the binary
+  the prime directive in `CLAUDE.md`. Observation gives samples. The binary
   gives the function.
 * **"Close enough" is not the bar.** The pixel-diff harness exists so that
   "virtually identical" is a measured number rather than an impression.
@@ -93,7 +93,7 @@ asked for, and then publishing:
    wave-25 registration screen, the Exit path that runs the deck before halting,
    `TUBESEND.BIN` dumped to the terminal, the `Random(5)` backdrop roll, and
    separate save and high-score files. `--shareware` and `--preview` are the
-   switches; `edition.h` is the whole model.
+   switches. `edition.h` is the whole model.
 
    **Two things this item claimed that were wrong**, both retracted with the
    evidence in `docs/reversing-notes.md`. The Instructions are **not**
@@ -136,11 +136,11 @@ leads it carried were both pointing at the wrong routine:
 
 * the **projector screen roll-down** is `1b2e:0510`, not `1b2e:0a11`'s
   `DS:0x210e` animation, and nothing gates it - what varies is which screens
-  call `1b2e:0510` at all;
+  call `1b2e:0510` at all.
 * **Professor Lanny's mouth** is `TALK1..5.GFX` driven by `1b2e:0cd1`, a
   SECOND key wait every screen runs before `1b2e:0e37`, not a fourth arm of
   `1b2e:0656`. `DS:0x20c8` is never written by anything, so `0656`'s clap arm
-  is unreachable in this build, and `DS:0x20e3` is set by `1000:9499`;
+  is unreachable in this build, and `DS:0x20e3` is set by `1000:9499`.
 * the **joke slide** is `1b2e:084e` and `FLASH.GFX`, which this project's own
   notes had quoted as "a one-in-twenty easter egg" without asking what it was.
 
@@ -206,7 +206,7 @@ player, and the screen fade that was open from the first session.
   **shareware exit screen**. Nothing reads it: "TUBESEND" appears exactly once
   in the whole game directory, in the archive's own directory entry. It is the
   shareware build's sign-off carried in a shared archive. `tools/bin_decode.py`
-  renders it; see the notes for what it settles
+  renders it. See the notes for what it settles
 
 ### The engine: ~90%
 
@@ -239,9 +239,9 @@ Working, and transliterated rather than invented:
   column, the Convertor converting by type board-wide, and the four consumables
   going inert if they settle
 - **the catch-side specials**: the Bonus becoming Flashium, granting a drop and
-  paying a 1000 award that *grows by 1000 every time*; the Multiplier topping
-  the tube up to five with 1..8 rolls; the Evil Multiplier doing the same with
-  Xenon; and the Filler parking an untippable type 17 in the bottom slot
+  paying a 1000 award that *grows by 1000 every time*. The Multiplier tops the
+  tube up to five with 1..8 rolls, the Evil Multiplier does the same with
+  Xenon, and the Filler parks an untippable type 17 in the bottom slot
 - **the tube as a stack**, tipping the atom caught last, and refusing a 17
 - **the tipping animation**: four phases on a 2-frame divider, `TESTUBE1/2/3`
   chosen by the phase, the contents bunching and pouring on per-slot literals
@@ -384,7 +384,7 @@ Listed first because building on them wastes work.
    their own.
    Cell values are therefore **not** limited to 1..7 - the table runs to 19.
    Behaviours for 8-16 come from published descriptions whose ordering matches
-   the measured type order exactly; 17 is still unknown. **19 is solved** and is
+   the measured type order exactly. 17 is still unknown. **19 is solved** and is
    not a ball - see the row above.
 
 ---
@@ -393,7 +393,7 @@ Listed first because building on them wastes work.
 
 ### SOLVED: the text screens flickered - a palette expanded twice
 
-**Found and fixed.** Seven attempts; the first six all blamed presentation and
+**Found and fixed.** Seven attempts. The first six all blamed presentation and
 none of them was it. The cause was arithmetic, and it was in plain sight in a
 line that had a correct-sounding comment on it.
 
@@ -438,9 +438,9 @@ screen a quarter as bright as it should be.
 Two lessons worth keeping. **The comment was the camouflage** - `// 6-bit DAC to
 8-bit, the same v * 255 / 63 the rest of the port uses` is true, cites a real
 note in `docs/debug-rig.md`, and describes the wrong operation for one of the two
-palettes reaching it. And **a symptom described in terms of timing was not about
+palettes reaching it. And **a symptom described as timing was not about
 timing**: "flickers", "for a split second", "settles" all sound like presentation
-and the report was accurate; the inference from it was not.
+and the report was accurate. The inference from it was not.
 
 **Confirmed fixed by the player on hardware, 2026-08-02.** The derivation and
 the measurement were only ever half of it: the flicker was never visible in this
@@ -457,14 +457,14 @@ something in both editions.**
   and **`None`** in the registered - so the edition with more in it read as the
   one missing something. It is now `Menu`, which is what actually differs:
   `Adds Preview and Ordering Info` against `The standard eight items`. The
-  shareware inserts item 3 and item 8, so its main menu holds ten;
+  shareware inserts item 3 and item 8, so its main menu holds ten.
 * the first row said `Version` twice - heading `Version`, value
   `Shareware Version` - under a title block already reading `Choose Version`.
   The value is now `Shareware` / `Registered`, the same words as the buttons
   the player is moving between.
 
 The test moved with it, and the way it had to move is worth knowing. It used to
-search the whole screen for `Shareware Version`; with the value shortened to
+search the whole screen for `Shareware Version`. With the value shortened to
 `Shareware` that search would match the **button** and pass while proving
 nothing. It now finds the `Version` heading and reads the value two rows under
 it, asserts the pane names the highlighted edition and **not** the other, and
@@ -495,7 +495,7 @@ again without a recording or an X11 comparison.
 ### Player-reported differences, still open
 
 Observed by the player against the original, so **real** - but not yet
-decompiled, and deliberately not guessed at. Presentation only; none of them
+decompiled, and deliberately not guessed at. Presentation only. None of them
 changes a rule.
 
 1. ~~**Screens cross-fade.**~~ **DONE - and it was where the player said it
@@ -517,7 +517,7 @@ changes a rule.
    keypress that ended the wave from dismissing the banner it caused - a player
    reported wave 1's banner never appearing at all.
 3. **`SELECT.SFX` plays on SELECTING a menu item**, not on moving between them.
-   Implemented from the player's account; the call sites in `1b2e:4d80` are
+   Implemented from the player's account. The call sites in `1b2e:4d80` are
    near calls whose targets Ghidra renders with the 0x10000 bias, so the scan
    for a play vector cannot see them. It may be used elsewhere too.
 
@@ -582,8 +582,8 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
 **In priority order:**
 
 1. **DONE: the demo replay matches, end to end.** `--demo-trace` replays
-   `DEMO.SCR` headless; `--demo-csv FILE` writes the per-frame state the rig
-   diffs against; `--play-demo` runs it through the live loop.
+   `DEMO.SCR` headless. `--demo-csv FILE` writes the per-frame state the rig
+   diffs against. `--play-demo` runs it through the live loop.
 
    The port now reproduces the original's whole attract-mode session and stops on
    **the same byte the original does**:
@@ -612,7 +612,7 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
      the Left/Right handler moves the stop (`1000:4534`);
    * a `.SCR` is **one byte per IDLE frame**, because `1000:44f0` skips the input
      read while the tube is busy and the demo reader is that read;
-   * the catch tests the tube's **actual x** (`rec.x = tube.x + 3`), not its stop;
+   * the catch tests the tube's **actual x** (`rec.x = tube.x + 3`), not its stop.
    * the **endurance ramp** `1000:235c` - five frames off the dispense interval
      per ten runs, with the velocity climbing 0x20 - and it is a **loop, once per
      RUN**, `1000:240a`/`240d`.
@@ -635,7 +635,7 @@ interval was what it claimed to be. See `docs/reversing-notes.md`.
    fitting through the origin manufactures a phantom drift.
 
 2. **Wave structure - now DECOMPILED, and next to transliterate.** The whole
-   objective system came apart in one pass; `docs/reversing-notes.md` has it
+   objective system came apart in one pass. `docs/reversing-notes.md` has it
    under "Wave mode, decompiled". In short:
 
    * `1000:86b8` is the briefing screen and **its body is the wave table** - a
@@ -686,7 +686,7 @@ initialise to **(303, 186)** - x=303 is off the right of the play area, which
 ends at 245. **Measured:** that is the initial value of a *never-used slot*, not
 a parked state and not a recycle target - over 382 frames of play, **no** record
 ever transitioned into or out of it. The twelve records are a pool of slots,
-reused by overwriting x/y directly; the large positional jumps in the per-frame
+reused by overwriting x/y directly. The large positional jumps in the per-frame
 data are allocation, not motion. A lost atom's record simply keeps its final
 position until the slot is reallocated.
 
@@ -695,7 +695,7 @@ deposited in the beaker. That is a "drop", and it is what the drop allowance
 counts. The beaker fills *only* by catching atoms in the test tube and tipping
 them in with Button A - nothing reaches it without passing through the tube.
 
-**Implemented so far:** the tube stacks, A dumps one at a time, B accelerates.
+Implemented so far: the tube stacks, A dumps one at a time, B accelerates.
 Capacity 5/3/2 by difficulty, inferred from the `TESTUBE1/2/3` sprite heights
 of 65/42/27 at the 13px row pitch - which sprite goes with which difficulty is
 not proven.
@@ -759,7 +759,7 @@ top, just above the test tube at 69.
 | +0x14, +0x16 | saved x, one per video page (dirty-rect erase) |
 | +0x18, +0x1a | saved y, one per video page |
 
-**Corrected:** `+0x1e` and `+0x1f` are *not* atom fields - `0x1f` = 31 does not
+**Corrected.** `+0x1e` and `+0x1f` are *not* atom fields - `0x1f` = 31 does not
 fit in 28 bytes. They belong to the **test tube** struct and were merged in by
 mistake. The atom record tops out at `+0x1b`, which fits exactly.
 
@@ -790,8 +790,8 @@ Five things corroborate it, none of which fit a travelling atom:
 
 ### The test tube's state machine - **confirmed live**
 
-Struct at **`0x245d0`**; x `+0x00`, state `+0x04`, waypoint index `+0x1e`,
-target x `+0x1f`, all bytes. Driving each input and reading `+0x04`:
+Struct at **`0x245d0`**, all bytes: x `+0x00`, state `+0x04`, waypoint index
+`+0x1e`, target x `+0x1f`. Driving each input and reading `+0x04`:
 
 | `+0x04` | meaning | observed |
 |---|---|---|
@@ -822,7 +822,7 @@ boost (`0x480`, nine px/frame, applied to one atom and never reset), and the
 tipping animation. It is a per-record field after all, written whole at spawn -
 which is why the "the x/y are never incremented, so speed must be a divisor on
 a shared counter" reasoning below went nowhere. Kept as a record of the wrong
-turn; skip to `docs/reversing-notes.md` for the answer.
+turn. Skip to `docs/reversing-notes.md` for the answer.
 
 Ruled out so far:
 
@@ -830,7 +830,7 @@ Ruled out so far:
   divider threshold and 4-phase limit both hardcoded, and the struct is the
   tube, not an atom.
 - **Not in a sibling function.** All 18 of the `*28` atom-array accesses are
-  in `3a67`; `86b8`, `8da5`, `8c38`, `9499`, `9111` and `96db` contain none.
+  in `3a67`. `86b8`, `8da5`, `8c38`, `9499`, `9111` and `96db` contain none.
 - **The atom array's x/y are never incremented.** They are written whole by
   `mov` - the spawn at `0x6b94` sets `x = ax` and `y = 187`. So atoms are
   positioned from other state each frame rather than stepped.
@@ -908,9 +908,9 @@ Cheap and high-impact once the mechanic is settled.
 
 - **Scoring is solved**, from the in-game Instructions (`docs/reversing-notes.md`):
   vertical chain **250**, horizontal **500**, diagonal **1000** (two diagonals, so
-  "4 chains"); chains = atoms - 2 (3 atoms = 1 chain, 4 = 2, 5 = 3); forming
-  multiple chains at once applies a **chain bonus multiplier**; a Bonus atom adds
-  **1000** to the Bonus Jackpot and awards it. `kScorePerAtom` and `kChainBonus`
+  "4 chains"). Chains = atoms - 2 (3 atoms = 1 chain, 4 = 2, 5 = 3). Forming
+  multiple chains at once applies a **chain bonus multiplier**, and a Bonus atom
+  adds **1000** to the Bonus Jackpot and awards it. `kScorePerAtom` and `kChainBonus`
   in `src/game.cpp` can be replaced with real values.
 - **Atom speed is solved.** "Press Button B **or Down** to increase the speed of
   any atoms in the tube **directly above the test tube**." So the boost is
@@ -920,17 +920,17 @@ Cheap and high-impact once the mechanic is settled.
   `GOLDBALL` is additionally fast by type.
 - **The test tube is a LIFO stack** - atoms leave from the top, so speeding a
   source tube is how the player controls which atom ends up on top. Capacity is a
-  flat **5**; `FILLBALL` permanently adds an occupying atom to the bottom.
-- **Lose condition:** dropping more atoms than the difficulty allows, in both
-  modes.
+  flat **5**. `FILLBALL` permanently adds an occupying atom to the bottom.
+- **The lose condition** is dropping more atoms than the difficulty allows, in
+  both modes.
 - the remaining unknowns: wave objectives, and the difficulty-to-drop-limit
   pairing
 - the difficulty progression - seeds `3, 30, 2, 0, 3, 8` plus globals 50 and
   25, stepping every 15 and every 20 levels, with level bands at
-  30 / 60 / 75 / 90 / 95 / 101. Variables not yet named; trace them from
+  30 / 60 / 75 / 90 / 95 / 101. Variables not yet named. Trace them from
   `9e53` into `3a67` through the Pascal static link. **The endurance half of
   this is now done** - `1000:235c` takes five frames off the dispense interval
-  and adds 0x20 to the velocity every ten MATCHES; see
+  and adds 0x20 to the velocity every ten MATCHES. See
   `docs/reversing-notes.md`. What is still unread is the WAVE progression at
   `1000:a616` / `a630` / `a646`, which moves the same variables per level.
 - **wave definitions.** A wave briefing carries an objective ("live through 30
@@ -940,7 +940,7 @@ Cheap and high-impact once the mechanic is settled.
 - **drops are a persistent pool, not part of the wave definition** - now proven,
   with each mechanism measured on its own. The live counter is a u8 at
   **`0x245bc`**, confirmed against the HUD (memory read 8 while the display read
-  `8 Drops`). A miss decrements it; a **Bonus atom increments it**; and
+  `8 Drops`). A miss decrements it, a **Bonus atom increments it**, and
   **clearing a wave leaves it untouched** - it read 8 on both sides of the wave
   52/53 boundary, and wave 53's briefing then announced "8 drops allocated".
   That last point is the confirming test the notes had queued, delivered by play
@@ -954,7 +954,7 @@ Cheap and high-impact once the mechanic is settled.
   one is the seed and the other is a run that collected Bonuses. There is **no
   cap** (a wave 6 save started at 12), so the port should treat drops as a plain
   byte counter seeded once per game.
-- special atoms; Endurance vs Wave mode selection sits under a Game Mode menu,
+- special atoms. Endurance vs Wave mode selection sits under a Game Mode menu,
   and saved games are filtered by mode
 - save/load. `TUBES.SAV` is 960 bytes and **structurally decoded**: two `0x1e0`
   banks, one per game mode, each holding five `0x50` slots plus a trailer.
@@ -980,11 +980,11 @@ The wave loop, the three end-of-session banners, the stats screen
 the title. Two things in it are **marked as stand-ins, not derived**:
 
 - the stats screen's background - `2321:068d` blits a held image to `(0, 12)`,
-  not `GAMEBG` at the origin, and nothing decompiled writes `DS:0x2058`;
+  not `GAMEBG` at the origin, and nothing decompiled writes `DS:0x2058`.
 - ~~the Continue countdown's tick length~~ **SETTLED**: `23e7:0024` is
   `Delay(n)` in vertical retraces, so `param * 7` iterations of `Delay(10)` is
   `param` seconds exactly - one count a second, which is what the port had
-  assumed. The stats background still wants a capture of the original;
+  assumed. The stats background still wants a capture of the original.
   `--screenshot-after N` plus `--auto-advance` is how the port side is
   captured.
 
@@ -1009,7 +1009,7 @@ to B) - a defaults question, deliberately not changed here.
 F2 is done, both ways in: during play, and from the abort banner's own offer.
 
 **B. The menu items that currently do nothing.** Each is reachable and inert,
-which is worse than absent - it looks broken. **The menu is NOT finished**; four
+which is worse than absent - it looks broken. **The menu is NOT finished**. Four
 of the eight items still go nowhere.
 
 DONE:
@@ -1036,15 +1036,15 @@ DONE:
   **deliberately re-implemented rather than transliterated**: the original
   picks a DRIVER because DOS gave it no abstraction, and SDL is that
   abstraction, so the port rebinds the six controls instead - keyboard and
-  gamepad at once, which the original could not do. `SETUP.CFG` is NOT written;
-  it is the DOS install's hardware config and belongs to `SETUP.EXE`. See
+  gamepad at once, which the original could not do. `SETUP.CFG` is NOT written.
+  It is the DOS install's hardware config and belongs to `SETUP.EXE`. See
   input.h for the reasoning.
 - **High scores** - `src/hiscore.{h,cpp}`, the entry screen `1000:96db` and the
   viewer `1b2e:61b6`. `TUBES.HSC` round-trips byte-exact against a real file,
   and both viewer pages diff against the original at **0 pixels of 64,000**,
-  unmasked. The entry screen has no capture yet; it needs a qualifying score.
+  unmasked. The entry screen has no capture yet. It needs a qualifying score.
 - **Save / load**, both halves - `src/save.{h,cpp}`, Continue Saved Game, and
-  F2. `TUBES.SAV` is fully decoded and re-encodes byte-exact; the slot list
+  F2. `TUBES.SAV` is fully decoded and re-encodes byte-exact. The slot list
   diffs at 252 of 64,000 pixels (all star-rotation phase) and the F2 screen
   carries 99% of the original's ink at the same coordinates.
 
@@ -1128,7 +1128,7 @@ Instructions and the Credits - and the sizes prove it: slots 0..9 are the
 what the two page groups pass.
 
 `1000:b224` runs it ONCE, after the splashes and immediately before the title
-screen is first shown; the main loop's `JMP 1000:b236` returns to the title
+screen is first shown. The main loop's `JMP 1000:b236` returns to the title
 call, not to this. Its music is `CLASS.MUS`. `--cutscene N` captures any page.
 
 **Captured and diffed against the original.** `grab_cutscene.py` sweeps the
@@ -1142,7 +1142,7 @@ at every tick of a page: **0 pixels of 64,000, whole screen, on every page**.
 The captures also confirm the durations independently - 2, 18, 4, 12 and 10
 seconds, measured off the page boundaries in a run captured from its start.
 
-**Enter turns the page; ESC leaves.** `1b2e:112a` onward: Enter or Space sets
+**Enter turns the page. ESC leaves.** `1b2e:112a` onward: Enter or Space sets
 the page's countdown to 1, so that PAGE ends and the next begins, and ESC does
 the same but also sets the return code to 2, which is what leaves the
 cutscene. The port had every key ending the whole thing, which made Enter a
@@ -1157,7 +1157,7 @@ original had blacked something out and the port let it show through.
 `1b2e:0f46` blits every frame OPAQUELY (`2000:389d`), so a 28x66 frame's
 transparent bottom rows land as black over the base pose. The frame lists were
 loading with index 0 transparent and the figures lived in an overlay that
-cannot tell "wrote black" from "wrote nothing". Both fixed; **all five pages
+cannot tell "wrote black" from "wrote nothing". Both fixed. **All five pages
 now diff at 0 with nothing masked**.
 
 The page bookkeeping was read as well and is in the notes - it is all real and
@@ -1170,14 +1170,14 @@ nothing else needs.
 
 ### 4.5 FINAL POLISH - the player's list, recorded before it is worked
 
-Five items, given in one go so none of them gets lost. None is a rule; all are
+Five items, given in one go so none of them gets lost. None is a rule. All are
 things a player notices and the port currently does not do.
 
 **1. Every screen with an animation should have it. DONE**, and both leads
 recorded here pointed at the wrong routine - which is the useful part.
 
 * the **projector screen roll-down** is **`1b2e:0510`**, and it has nothing to
-  do with `DS:0x210e`. `1b2e:0a11`'s six-frame animation moves the SLIDE; the
+  do with `DS:0x210e`. `1b2e:0a11`'s six-frame animation moves the SLIDE. The
   screen behind it is rolled down by the routine that builds the classroom
   from nothing, 15 frames of `Delay(3)` over a word table at `DS:0xb9c` that
   overshoots its resting height by five and comes back. Nothing gates it.
@@ -1196,7 +1196,7 @@ recorded here pointed at the wrong routine - which is the useful part.
 
   Of the two flags this list asked about: **`DS:0x20c8` is written by nothing**
   except the start-up clear, so `1b2e:0656`'s clap arm is unreachable in the
-  shipped build - which is why `CLAP1..3.GFX` are never seen either;
+  shipped build - which is why `CLAP1..3.GFX` are never seen either.
   **`DS:0x20e3` is set by `1000:9499`**, the wave-75 ending, and cleared again
   on the way out. So the jump arm belongs to the one screen nobody has reached.
 
@@ -1211,7 +1211,7 @@ one-in-twenty easter egg, not ported" without asking what the egg was.
 particular: it is a mandatory effect, it lives in a graphics unit rather than
 in the game, and it is about half a second. `23e7:0097` / `23e7:00ce`, 41 DAC
 uploads a retrace apart. See the fade section in `docs/reversing-notes.md`.
-Ported, with `--fade-steps N` (default 40, the original's; 0 cuts) since the
+Ported, with `--fade-steps N` (default 40, the original's, and 0 cuts it) since the
 player sanctioned speeding it up.
 
 **4. Sound is clipped or truncated. DONE**, and it was BOTH candidates.
@@ -1245,7 +1245,7 @@ optional extras are wanted, and the architecture should not preclude them:
   went in on the rebinding screen's terms: a screen the port OWNS rather than
   transliterates, for the reason `src/input.h` gives for the input half. The
   original chooses a DRIVER because DOS gave it no abstraction, SDL *is* that
-  abstraction; the display is the same story one layer over, since Mode X was
+  abstraction. The display is the same story one layer over, since Mode X was
   the only mode the original had and `SETUP.EXE` owned whatever choice existed.
 
   Five rows, all render-side: **Display** (windowed / fullscreen desktop),
@@ -1312,14 +1312,14 @@ worth making.
 
 ## Portability
 
-Running on other platforms is a goal in itself; PSP is the first candidate
+Running on other platforms is a goal in itself. PSP is the first candidate
 because its homebrew scene is active and SDL is already available there, but
 it is an example rather than the target. Keep these in mind while writing code
 rather than retrofitting later. None of it justifies contorting the code now -
 it justifies *not* painting into a corner.
 
-- **SDL is the plan - keep it at the edge.** SDL *is* the portability layer;
-  the point is to confine it to the platform boundary rather than thread it
+- **SDL is the plan - keep it at the edge.** SDL *is* the portability layer.
+  The point is to confine it to the platform boundary rather than thread it
   through the game. Today four files include it - `main.cpp`, `boot.cpp`,
   `present.cpp` and `opl.cpp` - and `screen.cpp` is not one of them, being a
   plain indexed framebuffer with a `toRgba()` at the end. This already pays
@@ -1339,8 +1339,8 @@ it justifies *not* painting into a corner.
   expensive for a 333 MHz MIPS chip. If it proves too slow, the register
   stream is the interface - swap the core, keep the sequencer. That separation
   already exists via `RegisterSink` and is worth defending.
-- **Prefer integers and floats over doubles.** The PSP FPU is single-precision;
-  doubles are emulated. `MusicPlayer` currently uses `double` for the tick
+- **Prefer integers and floats over doubles.** The PSP FPU is single-precision.
+  Doubles are emulated. `MusicPlayer` currently uses `double` for the tick
   accumulator, which is fine on desktop and easy to change later.
 - **Watch memory.** 32 MB on the original PSP. Loading the whole `.RES` is
   fine (524 KB), but decoding all 73 backgrounds at once would not be.
@@ -1378,7 +1378,7 @@ shareware build and it is not the registered game with fifty waves removed: it
 has **an extra menu item, an extra slide deck, an extra ending path and its own
 Instructions layout**. So "shareware support" is no longer a mode flag over
 shared code - it is a second program to decompile, the same way the registered
-one was. See "What shareware mode actually is" below; the measurements in this
+one was. See "What shareware mode actually is" below. The measurements in this
 section still stand and are what that work builds on.
 
 **MEASURED, against both editions.** Two real images have now been pulled from
@@ -1417,13 +1417,13 @@ sense that nothing crashes. It does not work in the sense that matters, because
 running the port against a shareware install currently gives the player the
 **registered** game: 75 waves, both special atoms, no Preview, no ordering
 slides, no exit screen. The edition living in the executable does not mean
-there is nothing to do; it means **all** of the work is in the executable.
+there is nothing to do. It means **all** of the work is in the executable.
 
 ---
 
 ## What shareware mode actually is
 
-**Decided:** the port gets a `--shareware` switch - a flag for now, with where
+**Decided.** The port gets a `--shareware` switch - a flag for now, with where
 it eventually belongs (auto-detect from the install, a menu choice, or both)
 left open until the behaviour is in. The goal is that **a player who only ever
 had the shareware disc can play the game they remember**, which is a fitting
@@ -1465,7 +1465,7 @@ the shape of the work:
   briefing routines, every repeat in the same place, identical text 25 of 25 -
   so the shareware's 25 ARE the registered's first 25 and one `kWaveTable` is
   right for both. See `docs/reversing-notes.md`, "The Instructions are NOT
-  re-wrapped";
+  re-wrapped".
 * ~~**the backgrounds are split, not merely fewer.**~~ **READ, and the guess
   here was wrong in both halves** - which is why it was written down as a
   guess. Normal shareware play is `Random(5)+1`, so `GAMEBG1..5` rolled with no
@@ -1490,7 +1490,7 @@ session, or the reverse, silently reinterpreted.
 
 This is the **highest-risk item in the whole plan**, because it is the only one
 that can damage files the player owns. `CLAUDE.md`'s second rule - do not write
-to the player's game directory - is about accidents; this is about a write that
+to the player's game directory - is about accidents. This is about a write that
 looks entirely intentional and lands in the wrong schema.
 
 So, in order:
@@ -1518,7 +1518,7 @@ So, in order:
    combination and should write `TUBES.SAV` faithfully, with a port-owned name
    only for the mismatched case. **The port cannot tell the two apart.**
    `TUBES.RES` is byte-identical between the editions, so `--gamedir` says
-   nothing about which edition an install came from; there is no native
+   nothing about which edition an install came from. There is no native
    combination to recognise. The edition is only ever the port's flag.
 
    So the split is on the flag, unconditionally:
@@ -1565,7 +1565,7 @@ registered player's own game files**, unreferenced. Showing it is displaying a
 resource they have, not fabricating one. So it belongs behind a **port-owned
 affordance** that does not pretend to be the original - the same category as
 the fifth Credits page in section 4 of this file, and for the same reason. An
-explicit `--exit-screen`, or a Credits-side item, is fine; the registered
+explicit `--exit-screen`, or a Credits-side item, is fine. The registered
 game's own quit path stays silent, as it is.
 
 The rule that keeps this straight: **the port may show the player their own
@@ -1575,7 +1575,7 @@ data, but it may not claim the original showed it.**
 
 **Decided and shipped: the settings file is the storage, a first-run prompt is
 the discovery, and the flags stay as the override.** That was option 1 + 3 of
-the three written up here; the reasoning below is kept because it is what the
+the three written up here. The reasoning below is kept because it is what the
 choice was made against.
 
 **Auto-detection is impossible, and that is settled rather than assumed.**
@@ -1599,7 +1599,7 @@ The three candidates were:
    **Taken, as the discovery.**
 
 So the resolution order is: a `--shareware` / `--registered` / `--preview` flag
-wins and does not persist; otherwise **the player is asked, every interactive
+wins and does not persist. Otherwise **the player is asked, every interactive
 start**, with the cursor already on the remembered answer.
 
 **It asks every time, and asks the right question.** The first version of this
@@ -1728,8 +1728,8 @@ there anyway, so an answer given in one could not be remembered.
    the Preview path too**, reads `[0x1d4b]` at addresses identical to the
    shareware's, and writes it exactly once - to zero, at startup. So the two
    builds are one source, and `preview = false` in registered mode is not the
-   port approximating anything; it is what the original does.
-5. **Read the save and high-score routines** - see above; this gates any write
+   port approximating anything. It is what the original does.
+5. **Read the save and high-score routines** - see above. This gates any write
    path.
 6. **Then port it**, behind `--shareware`, with the generated tables extracted
    mechanically rather than transcribed.
@@ -1764,7 +1764,7 @@ stay on the machine that owns the game.
 commit is not backed up until it is pushed, and a rewrite now breaks every
 clone.
 
-- **`main.cpp` is split up; `main()` itself is still 3100 lines.** DONE, in
+- **`main.cpp` is split up. `main()` itself is still 3100 lines.** DONE, in
   part. The file went 6359 -> 4109 lines in three moves, each verified by
   capturing all 74 screens to BMPs before and after and comparing with `cmp`:
 
@@ -1846,7 +1846,7 @@ clone.
   to a file the player owns goes through `tubes::PlayerFiles`
   (`src/playerfiles.{h,cpp}`), which a scripted run is handed **blocked** and an
   interactive one **writing**. The three writers - `writeSettings`,
-  `saveHiScores`, `writeSaves` - no longer test anything; the three
+  `saveHiScores`, `writeSaves` - no longer test anything. The three
   `if (harness) return;` guards are gone. A refused write is **counted**, which
   is what makes the rule testable: proving no file appeared is weaker than
   proving a write was attempted and stopped, since a file can be absent because
@@ -1903,7 +1903,7 @@ clone.
   CC0-1.0 - and closes by saying the original game is not covered. Both
   vendored claims were re-checked against the files rather than taken from this
   note. Copyright line is `stev0760`, the handle the repository will be
-  published under; the reasoning below is what the choice was made against and
+  published under. The reasoning below is what the choice was made against and
   is kept because it is what a reader will want to check.
 
   **Choose a licence.** `third_party/nuked-opl3` is
@@ -1916,7 +1916,7 @@ clone.
   Two things to watch. **Apache-2.0 is the awkward one** (its patent-termination
   clause is the known one-way incompatibility with GPLv2/LGPLv2.1), so pick it
   only after deciding deliberately. And **static linking is fine** under
-  LGPL-2.1 §6 as long as the pieces needed to relink are available; that
+  LGPL-2.1 §6 as long as the pieces needed to relink are available. That
   matters for a PSP build, where dynamic linking is not really on the table.
   Also note the emulator is `RegisterSink`-swappable, so a target that cannot
   take LGPL at all can drop in a different core without touching anything
@@ -1930,7 +1930,7 @@ clone.
   - "In a lab far far away in the Great White North... Dr. Lanny B. Brilliant
   was completing his work on the creation of 8 new elements not yet included
   on the periodic table." So the story is not something this project lifted
-  out of a binary that was never meant to be read; the publisher shipped it in
+  out of a binary that was never meant to be read. The publisher shipped it in
   a text file meant to travel with the game.
 
   Two things to be straight about, because this file's job is to separate
@@ -1938,7 +1938,7 @@ clone.
   did not lapse because the company stopped selling it - so the argument that
   carries weight is the shareware one, not that one. And neither `TUBES.DOC`
   nor `CATALOG.TXT` in this copy contains an explicit distribution notice, so
-  there is no licence text to point at; the terms are inferred from the
+  there is no licence text to point at. The terms are inferred from the
   release model.
 
   The **assets** rule is untouched and is the one that matters: no `.RES`, no
@@ -1950,7 +1950,7 @@ clone.
   generators make it cheap, since the table layout would not change. It is an
   option, not a plan.
 - `README.md` already leads with "you need your own copy" and explains why.
-  Keep that first; it is the thing that makes the project defensible.
+  Keep that first. It is the thing that makes the project defensible.
 - Re-read `.gitignore` before the first push, and check `git log --stat` for
   anything game-derived that slipped in early. `git ls-files` should show only
   source, docs, scripts and the vendored emulator.
