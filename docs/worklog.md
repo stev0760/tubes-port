@@ -5052,3 +5052,78 @@ differs" and sent the next hour somewhere useless.
 
 995 checks / 0 failures, up from 978. `--demo-trace` unmoved: 71 spawns, score
 13,000, game over.
+
+## 2026-09-26 - 0.10.0: a Windows build, released from CI beside Linux
+
+Nothing had ever compiled this code on Windows. The question was whether to
+build a release by hand on a Windows machine or in CI. The glibc argument that
+put the Linux release in CI does not apply on Windows, so a local build would
+have run fine elsewhere. CI still won, for the version guards and a repeatable
+tag-to-release path, and because a Windows job in `build.yml` checks every push
+from now on rather than only the day of a release.
+
+**What had to change was one line of test code.** `tempPath()` in
+`board_test.cpp` read `TMPDIR` and fell back to `/tmp`. Neither exists on
+Windows, so the `PlayerFiles` tests would have failed there for a reason
+unrelated to the gate they check. It now asks
+`std::filesystem::temp_directory_path()`, which still consults `TMPDIR` first on
+POSIX. Before any Windows run, every source file was put through
+`clang++ -std=c++17 -pedantic`: clean, and all ASCII, so there was no GNU
+extension or codepage problem waiting for MSVC. The first MSVC build bore that
+out with no errors and **no warnings**, and 1061 checks with 0 failures, the
+same count as Linux.
+
+`CMakeLists.txt` needed nothing, which was not obvious going in. `main.cpp`
+defines `main()` under `SDL.h`, so Windows needs `SDL2main` linked, and SDL2's
+own `SDL2Config.cmake` already puts `SDL2::SDL2main` into `SDL2_LIBRARIES`. It
+also aliases `SDL2::SDL2` to `SDL2::SDL2-static` when only the static library
+is installed. Read in the config file rather than assumed.
+
+**The Windows build is one file.** vcpkg's `x64-windows-static` triplet plus
+`CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded` links both SDL2 and the C runtime
+statically, so the zip needs neither `SDL2.dll` nor the VC++ redistributable.
+The check was the import table, not the zip listing: `objdump -p` on the
+released `.exe` shows only ADVAPI32, GDI32, IMM32, KERNEL32, ole32, OLEAUT32,
+SETUPAPI, SHELL32, USER32, VERSION and WINMM, all of which ship with Windows. A
+listing would only have shown that no DLL was packed, not that none was needed.
+SDL2's licence text ships as `LICENSE-SDL2.txt`.
+
+**A comment in `release.yml` had SDL2's licence wrong.** It said bundling SDL2
+"would mean shipping the LGPL library". SDL2 is zlib-licensed and has been since
+2.0. The LGPL component here is Nuked-OPL3, which `LICENSE` already covers. The
+decision it justified, not bundling SDL2 on Linux, stands on its other reason:
+a distribution's package is better maintained than a frozen copy.
+
+**The release became four jobs.** `version` checks the tag against
+`src/version.h` once; `linux` and `windows` each build, test, ask the binary for
+its `--version` and package; `publish` needs all three. A tag can no longer
+produce a release page carrying one platform's files. Each build job writes its
+measured facts (SDL version, the glibc floor on Linux, the test line) to a
+fragment that `publish` appends to the notes, so the values are still measured
+on the runner that built the binary.
+
+The version is **0.10.0**. By `version.h`'s rules this is MINOR: something
+gained, nothing changed for any existing consumer. README and PLAN still said
+0.9.0 after the 0.9.1 bump and now carry the current number.
+
+Verified: `v0.10.0` ran all four jobs green; both archives downloaded from the
+release matched their `.sha256`; the Windows job's `--version` check printed
+`tubes-port 0.10.0` on a real Windows runner; and the player ran the released
+`.exe` under Wine against their own game data, and it played. It has not yet
+been played on native Windows.
+
+Two follow-ups from that run, done the same day:
+
+- **The release runner is pinned to `ubuntu-24.04`.** `ubuntu-latest` moves to
+  Ubuntu 26 from 2026-10-19, and the Linux binary's glibc floor (2.39 for
+  0.10.0) would have risen with it without any commit here saying so.
+  `build.yml` stays on `latest`, because its job is to catch what a newer
+  toolchain rejects.
+- **Every action now runs on Node 24:** `checkout` v7, `upload-artifact` v7,
+  `download-artifact` v8. The release notes of each major in between were read
+  against how these workflows use them, and none of the breaks apply.
+
+**Both follow-ups are unexercised.** The pin and the two artifact actions live
+only in `release.yml`, which runs on a tag, so the next release is their first
+real run. If it fails, fix and re-run it from the Actions tab against the same
+tag rather than moving the tag.
