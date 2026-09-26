@@ -148,10 +148,15 @@ anyone has quoted. Rewrite nothing that has been pushed.
 | `PLAN.md` | roadmap, current status, and what is known-wrong |
 | `.github/workflows/` | `build.yml` on every push, `release.yml` on a `v*` tag |
 
-The original game files live in the parent directory, `..`. The Ghidra
-project is at `../ghidra-project` — outside this repo on purpose, since it is
-derived from copyrighted data. So is the debugging rig and everything it
-captures, at `~/Dev/tubes-tooling/`.
+Three things this repository needs live outside it, on purpose, because each
+is or derives from copyrighted data: **the game directory** (the player's own
+copy, holding `TUBES.RES`), **the Ghidra project**, and **the tooling
+checkout** (`tubes-tooling`: the debugging rig, everything it captures, and the
+comment-cleanup scripts). Where they sit differs from one machine to the next,
+so this file does not say. **`CLAUDE.local.md` does** - it is gitignored, Claude
+Code loads it beside this one, and it is the place for one machine's paths. If
+it is missing, ask where they are rather than guessing; a path that worked on
+another machine is not evidence of anything on this one.
 
 `src/` splits platform-agnostic logic from the SDL edge, and the split is what
 makes a port to another platform tractable at all. **Four files include SDL and
@@ -179,7 +184,7 @@ key names rather than the `Bindings` they come from, because only
     cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
     cmake --build build -j
     ./build/tubes-tests                      # 1061 checks, and rising
-    ./build/tubes-port --gamedir ..
+    ./build/tubes-port --gamedir /path/to/game
 
 The port builds on **Linux and Windows**, and CI holds both: `build.yml` runs
 the suite under GCC on ubuntu-latest and under MSVC on windows-latest for every
@@ -367,16 +372,15 @@ than an omission: the Credits screen is the 1994 team's, this project's
 attribution is in `LICENSE` and `README.md`, and leaving `1b2e:411b` at its
 four shipped pages is the more faithful answer anyway. Do not propose it again.
 
-**The comment-cleanup tooling also lives outside this repo**, at
-`~/Dev/tubes-tooling/writing/` - `comment_pass.sh`, its brief, and
-`comment_lint.py`. It is not needed to work on the port and it depends on
+**The comment-cleanup tooling also lives outside this repo**, in the tooling
+checkout's `writing/` - `comment_pass.sh`, its brief, and `comment_lint.py`. It is not needed to work on the port and it depends on
 things the port does not: OpenCode, an Ollama Cloud subscription, and the
 prose-lint skill. `docs/worklog.md` records the sweeps it did, so a search for
 it in `tools/` will come back empty and that is not evidence it never existed.
 Run it from the repository, naming a file in it; it finds the repo from the
 file's own git root.
 
-The rig is built and lives **outside this repo**, at `~/Dev/tubes-tooling/` -
+The rig is built and lives **outside this repo**, in the tooling checkout -
 `docs/debug-rig.md` covers it. Three things to know before planning against it.
 It runs `assets-extracted/TUBES_UNP.EXE`, the unpacked image Ghidra analysed,
 presented to DOS as `TUBES.EXE` - debugging the shipped packed binary would

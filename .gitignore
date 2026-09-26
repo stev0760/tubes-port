@@ -41,6 +41,10 @@ compile_commands.json
 20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.txt
 session-ses_*.md
 
+# One machine's paths to the game directory, the Ghidra project and the
+# tooling checkout. CLAUDE.md is tracked and names none of them.
+CLAUDE.local.md
+
 # Python
 __pycache__/
 *.pyc
