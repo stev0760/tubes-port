@@ -1,7 +1,7 @@
 # Tubes — reverse engineering notes
 
 Running notes on the original DOS build. Facts here are derived from the
-binary and the shipped documentation; no original game data lives in this
+binary and the shipped documentation. No original game data lives in this
 repository.
 
 ## Original files
@@ -18,7 +18,7 @@ repository.
 ## TUBES.EXE — LZEXE v0.91
 
 Signature `LZ91` at offset `0x1C`. Nothing in the file is analyzable until
-it is decompressed; run `tools/unpack.sh`.
+it is decompressed. Run `tools/unpack.sh`.
 
 Packed MZ header:
 
@@ -54,7 +54,7 @@ Forward LZ77 over an LSB-first bit stream buffered as little-endian words:
 - `01` — long match, 13-bit distance (−1..−8192), 3-bit length
 
 When the 3-bit length field is zero, an extra byte follows: `0` ends the
-stream and `1` is a segment-normalization no-op; any other value is
+stream and `1` is a segment-normalization no-op. Any other value is
 `length + 1`.
 
 Two traps, both of which cost time here:
@@ -114,14 +114,14 @@ signal than playtesting, and does not require reaching late-game content.
 ## Toolchain reproduction
 
 Turbo Pascal 7.0 (BIN dated 1992-10-30) runs headless under DOSBox and
-compiles successfully, which makes an automated compile-and-diff loop
+compiles, which makes an automated compile-and-diff loop
 possible:
 
     SDL_VIDEODRIVER=dummy dosbox -noconsole \
       -c "mount c <dir>" -c "c:" -c "cd work" \
       -c "..\\tp7\\bin\\tpc.exe HELLO.PAS" -c "exit"
 
-`TPC.EXE` is the command-line compiler and the one to automate; `TURBO.EXE`
+`TPC.EXE` is the command-line compiler and the one to automate. `TURBO.EXE`
 is the IDE and cannot be scripted. Note the shipped `SOURCE/` directory is
 Turbo Vision and WinDos only - the core System / Crt / Dos units exist solely
 as compiled code inside `TURBO.TPL`.
@@ -142,7 +142,7 @@ the two programs.
 
 Caveats worth keeping in mind:
 
-- Tubes is dated 1994 and TP 7.01 exists; if individual routines refuse to
+- Tubes is dated 1994 and TP 7.01 exists. If individual routines refuse to
   match later, a point-release codegen difference is the first suspect.
 - The reference was a hello-world, so it only pulls in the slice of System
   that `WriteLn` needs. Real RTL usage in Tubes (Crt, Dos, more of System)
@@ -193,7 +193,7 @@ offset 0.
 
 Cross-checking against `rtl_match.py` confirms the split. The largest RTL
 cluster spans image `0x160a9`..`0x16690`, which coincides almost exactly with
-`CODE_19` (`0x16070`..`0x16690`); the remaining clusters all fall inside
+`CODE_19` (`0x16070`..`0x16690`). The remaining clusters all fall inside
 `CODE_22` (`0x16850`..`0x17850`), which is therefore the System unit.
 
 So roughly **84KB of game code across 16 units, and 16KB of RTL** that can be
@@ -209,7 +209,7 @@ all of it.
 
 `ghidra_scripts/FindPascalStrings.java` handles this: pass 1 finds a length
 byte `n` followed by exactly `n` printable bytes and defines it as
-`PascalString255`; pass 2 synthesises cross-references. Result: **811 strings
+`PascalString255`. Pass 2 synthesises cross-references. Result: **811 strings
 and 709 references across 75 functions**, versus 50 strings and 0 references
 from stock analysis.
 
@@ -243,9 +243,9 @@ major functions do:
 String references expose the asset names inside `TUBES.RES`, which is a
 strong lead for the container format work. Two extensions are in use:
 
-- `*.GFX` - graphics; includes `STAR1`/`STAR2`, `WRITE0`..`WRITE7` (font
+- `*.GFX` - graphics. Includes `STAR1`/`STAR2`, `WRITE0`..`WRITE7` (font
   glyph pages), `GAMEFG` (and the `GAMEBG` seen earlier)
-- `*.CSP` - appears to be a sprite format; includes `TESTUBE1`..`TESTUBE3`,
+- `*.CSP` - appears to be a sprite format. Includes `TESTUBE1`..`TESTUBE3`,
   `TESTUBES`, `BEAKER`, `BEAKERS`, `TUBEH`
 
 The paired plain/`S` naming (`BEAKER`/`BEAKERS`, `TESTUBE1`/`TESTUBES`)
@@ -370,7 +370,7 @@ Five shadow sprites (`TUBEVS`, `TUBEVRS`, `TUBEVLS`, ...) do exactly this.
 
 `al` holds the VGA sequencer map mask and starts at `0x11`. Rotating left
 gives `0x11 -> 0x22 -> 0x44 -> 0x88 -> 0x11`, so carry-out is set exactly
-once per four planes and `adc si,0` advances one byte per four pixels; the
+once per four planes and `adc si,0` advances one byte per four pixels. The
 sequencer only reads the low nibble, making the plane `bit_index(al & 0x0f)`.
 
 Screen mapping with a Mode X plane stride of 80 bytes (320 / 4):
@@ -543,7 +543,7 @@ function in the binary, i.e. the main game loop.
 ### The seed is proven, and `DS:0xd24` is RandSeed
 
 `1000:5fd9` reads four bytes out of the demo and `1000:6008` stores them into
-`DS:0xd24`. That location was previously written up as "the demo pointer"; it
+`DS:0xd24`. That location was previously written up as "the demo pointer". It
 is Turbo Pascal's **`RandSeed`** - the RTL's own generator reads it at
 `2000:75bb`. So attract mode is deterministic from a cold boot because the
 recording carries the exact generator state it was made against.
@@ -558,8 +558,8 @@ left, `$08` is right, and `$02` or `$20` is the speed boost. That confirms the
 inference below and settles `$01` as up by elimination.
 
 The original reasoning, kept because it was right: The reasoning: `0x04` and `0x08` have near-identical run
-statistics as a left/right pair should; only `0x02` is held for long
-stretches; and across 11,970 frames the impossible combinations never occur -
+statistics as a left/right pair should. Only `0x02` is held for long
+stretches. And across 11,970 frames the impossible combinations never occur -
 `0x03` (up+down) and `0x0c` (left+right) are entirely absent - while the four
 combinations that do appear (`0x05`, `0x06`, `0x0a`, `0x18`) are all legal
 diagonals or direction+button. This matches the manual's cursor-keys plus
@@ -584,7 +584,7 @@ anyone realised the "new game" was the demo.
 That makes it the answer to the problem that has shaped this whole phase of the
 work - **human latency**. Every live-play measurement so far has been paced by a
 person typing, pausing and reporting, which is why transitions kept being missed
-and why a pause key became load-bearing. The demo removes the human entirely:
+and why everything came to depend on a pause key. The demo removes the human entirely:
 
 - **deterministic.** Same recording, same seed, same run - so a measurement can
   be repeated and a suspicious result re-checked under identical conditions,
@@ -605,7 +605,7 @@ scoring** - are all rate measurements that need a long, repeatable trace.
 It is also the shape of the port's regression test: feed the same `DEMO.SCR` to
 this engine, replay it frame by frame, and diff the resulting state against a
 trace captured from the original. The notes already call `DEMO.SCR` safe to use
-as the correctness oracle; this is how that gets cashed in.
+as the correctness oracle. This is how that gets cashed in.
 
 Caveat to establish first: the header's u32 is *inferred* to be the RNG seed and
 has never been confirmed against the playback code. Determinism is the whole
@@ -637,7 +637,7 @@ columns, `TINY6X8` uses 7 of its 8.
 with the lower 8 rows blank, i.e. a genuine 8x8 font padded into the larger
 cell. The extension describes the storage, not the design.
 
-Glyph coverage: the four `.816` fonts define 253 of 256 codes; `TINY6X8`
+Glyph coverage: the four `.816` fonts define 253 of 256 codes. `TINY6X8`
 defines only 97, essentially the printable ASCII range.
 
     tools/fnt_decode.py INFO   <font>...
@@ -672,7 +672,7 @@ document themselves - "Smack!", "Glass Clink", "Bubbles!", "Wooosshh!",
 
 The byte at `0x24` is zero everywhere, so the shipped data cannot constrain
 its meaning. It may be a format flag or the high byte of a wider length
-field; nothing distinguishes those when every sound is under 64KB.
+field. Nothing distinguishes those when every sound is under 64KB.
 
 Conversion to WAV is direct - WAV 8-bit is also unsigned, so the sample data
 is copied verbatim.
@@ -767,7 +767,7 @@ the rows' mode turned the edited line into a scrambled ramp rather than white,
 which is what a player saw: `2000:35ec` steps the palette index once per
 scanline, and index $0f is the top of its grey ramp, so the walk went straight
 out of the greys into whatever follows them. Flat and $0f renders as pure
-white; walked and $0f renders as a mess.
+white. Walked and $0f renders as a mess.
 
 ### There is no way to DELETE a save - and an empty name will not do it either
 
@@ -776,18 +776,18 @@ because a negative is only as good as the search that produced it. Five,
 pointing the same way:
 
 * **no menu item.** The seven pages at DGROUP `0x00ca` are transcribed in full
-  and pages 4 and 5 are five slots and `Exit`;
+  and pages 4 and 5 are five slots and `Exit`.
 * **no in-game key.** `1000:2dd0` dispatches `ESC` and `$bb`..`$bf` only, and
-  every one is accounted for - help, save, music, sound, pause;
+  every one is accounted for - help, save, music, sound, pause.
 * **nothing writes an empty record.** Exactly five sites in the whole program
   reach the two banks at `0x18d8` and `0x1ab8`, found by scanning both game
   segments for the literals: the in-game slot list (`1000:315f` / `31f0`), the
   F2 editor's copy-in (`3457` / `3473`), the F2 store (`36f4` / `3710`), and
   the menu's two Continue arms (`1b2e:4f5e` / `4fc0`). Four of the five only
-  READ, and the fifth writes a full 0x50-byte record;
+  READ, and the fifth writes a full 0x50-byte record.
 * **no string for it.** 666 strings in the `MapProgram` dump, and nothing
   matching delete, erase, clear, remove or wipe outside the wave objectives'
-  own prose;
+  own prose.
 * **and the one loophole is explicitly closed.** A slot counts as live when
   its first byte - the description's ShortString length - is non-zero, so a
   blank name would read as an empty slot and would be a delete in all but
@@ -842,11 +842,11 @@ the reason is one byte in the catch path.
 so a Bonus is a Flashium before it can be tipped. Every other route into the
 beaker is closed too, and all of them are transliterated:
 
-* the **pre-fill** (`1000:035e`) places `n mod 7 + 1`, so types 1..7 only;
+* the **pre-fill** (`1000:035e`) places `n mod 7 + 1`, so types 1..7 only.
 * the **morph** (`1000:4bf6`) skips anything `>= 8`, so it rotates 1..7 and
-  cannot produce a 10;
+  cannot produce a 10.
 * the **spawn** can roll a 10, but that atom is either caught - and converted -
-  or missed, and a missed atom is lost rather than deposited;
+  or missed, and a missed atom is lost rather than deposited.
 * and `1000:2790` turns a settled Bonus into **Xenon**, which is the original
   itself closing the case a fourth time.
 
@@ -874,7 +874,7 @@ on catch instead, and what survived was the sound - repurposed - and six
 sprites nobody removed.
 
 **Do not "fix" this in the port.** The unreachability is the original's
-behaviour and is closed four ways in code; reaching it would mean changing a
+behaviour and is closed four ways in code. Reaching it would mean changing a
 rule. It is written up as a candidate ENHANCEMENT in `PLAN.md` section 5,
 behind a switch and after the port is faithful - which is where a thing the
 original never shows anybody belongs.
@@ -934,7 +934,7 @@ both take `@handle` and read past it, so the caller's variable is
     TSprite = record data: Pointer; frame, x, y: Word end   { 10 bytes }
 
 with `frame` **1-based**. `23e7:0105(var s, var w, var h, var count)` fetches
-the current frame's dimensions and the strip's length; `2321:09d0(var s)`
+the current frame's dimensions and the strip's length. `2321:09d0(var s)`
 draws it at the record's own x, y. Its inner loop is `LODSB; OR AL,AL; JZ` -
 **index 0 is transparent**, read from the code rather than inferred from the
 way the sprites look. The marker word's HIGH byte is a draw mode: 0 is this
@@ -953,7 +953,7 @@ same bytes again **descending from offset 63,999**. So the bottom of the
 screen is the cloud band rotated 180 degrees and rows 83..116 stay black - the
 band the logo sits in. `21d0:0000` then de-chunks the buffer into Mode X
 planes (`w div 4` bytes per plane row, four passes at stride 4) and
-`2321:0792` blits it; both temporaries are freed straight afterwards, and page
+`2321:0792` blits it. Both temporaries are freed straight afterwards, and page
 0 is copied to pages 1 and 3, so page 3 is the pristine backdrop every
 dirty-rect erase restores from.
 
@@ -1016,13 +1016,13 @@ The player, in full, is `21d5:0000`:
 Two things follow, and both shape the port:
 
 * **three retraces per frame**, so the animation runs at 70/3 = 23.3 Hz and
-  its 23 frames take almost exactly one second;
+  its 23 frames take almost exactly one second.
 * **frames are deltas**. Each blob paints only what changed, so they have to
   be replayed in order over the still image beneath - `SOFT.GFX`, drawn first
   by the splash.
 
 A blob starts by adding its own code length to SI, which lands SI on the
-literal pixels stored *after* its `RETF`; the `movs` runs then copy from
+literal pixels stored *after* its `RETF`. The `movs` runs then copy from
 there. So the bytes past the RETF are data, not code, and a decoder that
 insists a resource ends at its RETF - as the `.CSP` decoder rightly does -
 rejects every frame.
@@ -1056,16 +1056,16 @@ from off screen and gathering above the "Software Creations" lettering.
 `DRIVERS.RES` contains real 8086 code — `55 8B EC ... CA 02 00`
 (`push bp; mov bp,sp; ... retf 2`), i.e. far-called driver entry points for
 the PC speaker / Sound Blaster / Adlib backends. **These are not needed for
-the port**; SDL replaces them entirely.
+the port**. SDL replaces them entirely.
 
 ## Game design (from TUBES.DOC)
 
 Falling-atom puzzler in the Columns lineage. Catch atoms from dispenser
-tubes with a player-controlled test tube and place them into a beaker;
-match 3+ of a colour horizontally, vertically, or diagonally.
+tubes with a player-controlled test tube and place them into a beaker.
+Match 3+ of a colour horizontally, vertically, or diagonally.
 
 - Two modes: **Wave** (clear a task count) and **Endurance**
-- Difficulty 101 / 201 / 301 → 9 / 6 / 3 drops allowed; also sets atom
+- Difficulty 101 / 201 / 301 → 9 / 6 / 3 drops allowed. Also sets atom
   fall speed and spawn rate
 - Loss conditions: exceeding the drop limit, or filling the beaker
 - Registered version adds ANTI-MATTER and BONUS atom types
@@ -1078,8 +1078,8 @@ additionally reference `DEMO.SCR` and a `GAMEBG` resource name.
 
 ## `SETUP.CFG` - partly decoded (65 bytes)
 
-Read straight out of the user's own file. Two blocks stand out of the zeros;
-everything else is still unread.
+Read straight out of the user's own file. Two blocks stand out of the zeros.
+Everything else is still unread.
 
         offset  bytes          reading
         0x00    01 02 01 02    four device selections           guessed
@@ -1152,7 +1152,7 @@ Two details worth keeping:
 
 - The game **patches the table at load time** from `SETUP.CFG`. The shipped
   driver has the slots zeroed with its own defaults sitting in the *high* byte
-  of each word; live memory has the `SETUP.CFG` values in the low bytes. The
+  of each word. Live memory has the `SETUP.CFG` values in the low bytes. The
   shipped defaults also have Ctrl and Alt the other way round, so `SETUP.CFG`
   is what governs.
 - The driver's live base is not fixed: take it from the **INT 9 vector**
@@ -1175,7 +1175,7 @@ messages sit together at file `0x0c8d0`, and a sixth in the driver-install unit:
 | `This game requires complete control of your computer.  Please run from DOS!` | a multitasker answered the DPMI/Windows yield call - see below |
 
 Note the first one names `SETUP.EXE` but tests for `SETUP.CFG` (opened at
-`0x149b1`). Copying `SETUP.EXE` next to the game does nothing; the *config
+`0x149b1`). Copying `SETUP.EXE` next to the game does nothing. The *config
 file* is what has to exist.
 
 ### The multitasker guard, at `21ea:0249`
@@ -1193,7 +1193,7 @@ The one that actually blocks emulation. Read straight off the disassembly:
         mov  di, 0x167           ; "This game requires complete control..."
 
 `INT 2Fh AX=1680h` is the Windows/DPMI cooperative-yield call. Under Windows 3.x
-enhanced mode, a DOS task switcher or a DPMI host, it returns `AL = 0`; on bare
+enhanced mode, a DOS task switcher or a DPMI host, it returns `AL = 0`. On bare
 DOS nothing claims the interrupt so `AL` keeps the `0x80` it came in with. So
 the game is asking "is anything time-slicing me?" and refuses if so - reasonable
 for a program that is about to hook interrupts and reprogram the VGA into Mode X.
@@ -1211,7 +1211,7 @@ is already recorded above as the `DEMO.SCR` pointer.
 - `TUBES.RES` directory structure and compression scheme
 - Scoring tables, chain multipliers, wave progression curves
 - Atom spawn RNG and distribution
-- `SETUP.CFG`: the selection bytes at `0x00` and `0x2e`; and the
+- `SETUP.CFG`: the selection bytes at `0x00` and `0x2e`, and the
   scancode-order-vs-`.SCR`-bit-order contradiction above
 - `TUBES.SAV` layout (960 bytes)
 
@@ -1221,7 +1221,7 @@ Traps encountered building the C++ renderer that the Python tools did not hit:
 
 - **Negative offsets need floor division.** A `.CSP` addresses pixels either
   side of its base pointer, so plane offsets go negative. Python's `//` and
-  `%` floor toward negative infinity; C++ truncates toward zero. Using the
+  `%` floor toward negative infinity. C++ truncates toward zero. Using the
   native operators maps `off = -128` to row -1, column -48 instead of row -2,
   column 32, which silently produces a 334x12 sprite with origin (-190,-1)
   instead of 16x13 at (128,-2). The pixel *count* stays correct, so only the
@@ -1275,8 +1275,8 @@ An earlier note called this the playfield renderer. It is not. It:
 
 1. loads the play-area art - `TESTUBE1..3`, `GAMEFG`, `BEAKER`, `BEAKERS`,
    `TUBEH`, and the `GAMEBG1..10` series, the last built by concatenating
-   `GAMEBG` with a loop counter into a 19-entry-per-index pointer table;
-2. seeds the difficulty state, either from a saved game or from defaults;
+   `GAMEBG` with a loop counter into a 19-entry-per-index pointer table.
+2. seeds the difficulty state, either from a saved game or from defaults.
 3. runs the frame loop, calling `1000:3a67`.
 
 `1000:3a67` takes no arguments yet reads its caller's stack frame, which
@@ -1292,7 +1292,7 @@ segment per unit and leaves literals in plain sight, so "which function shows
 the menu" is usually answerable by asking what text and resource names it
 touches.
 
-23 units, 297 functions. `entry @ 1000:aaba` is the Pascal main program; it
+23 units, 297 functions. `entry @ 1000:aaba` is the Pascal main program. It
 loads the shared sprites (the eight balls, `ANTIBALL`, `GOLDBALL`, `XENBALL`,
 `STAR1..4`) and then calls each stage in turn:
 
@@ -1310,7 +1310,7 @@ loads the shared sprites (the eight balls, `ANTIBALL`, `GOLDBALL`, `XENBALL`,
 Two useful consequences:
 
 - `SOFT.ANM` is consumed by the developer splash. That is the one `.ANM` in
-  the game and it had never been examined; now there is a reason to.
+  the game and it had never been examined. Now there is a reason to.
 - `1b2e:1651` is the teacher-at-the-blackboard sequence, which is where the
   instructions and inter-level story live.
 
@@ -1389,7 +1389,7 @@ those offsets finds only one site - which turned out to be **a different
 segment entirely**, a function that does `mov ax, cs / mov ds, ax` and stores
 far-pointer pairs at the same offsets. Same numbers, unrelated storage.
 
-The values are not written at runtime at all; they are initialised data.
+The values are not written at runtime at all. They are initialised data.
 DGROUP is Ghidra segment `2785`, load-relative `0x1785`, so `DS:0x1a` is at
 image offset `0x1785 * 16 + 0x1a`. Reading there gives the table directly.
 
@@ -1443,7 +1443,7 @@ each one controls still has to be traced into `3a67`:
 
 A saved game restores these from globals at `0x1d10`..`0x1d19` instead.
 
-**Caution recorded deliberately:** this function compares a level counter
+**A caution, recorded deliberately.** This function compares a level counter
 against `0x4a` = 74, which is also the playfield's left edge in pixels. The
 two are unrelated. Grepping decompiler output for a known constant will find
 coincidences, so every hit needs its surrounding context read before it is
@@ -1491,7 +1491,7 @@ The low nibble is the channel.
 | `0xf0` | 0 | inline | end of song |
 
 `delta` counts timer ticks. A delta of `0` means "still this tick", so any
-number of events can share a timestamp; the tick routine loops back to `0x835`
+number of events can share a timestamp. The tick routine loops back to `0x835`
 until it reads a non-zero delta.
 
 `0xf0` sets the read offset back to `0` and does **not** stop playback, so
@@ -1511,7 +1511,7 @@ The driver enables OPL2 **rhythm mode** permanently - `reg 0xBD = 0xE0` at
 
 The operator table at `cs:0x3a` is `00 01 02 08 09 0a 10 14 12 15 11`, which
 is the standard AdLib slot map: melodic modulators, then bass drum, snare,
-tom, cymbal, hi-hat. Channels 0..6 are two-operator; 7..10 are single
+tom, cymbal, hi-hat. Channels 0..6 are two-operator. 7..10 are single
 operator, which is why the loader guards every carrier write with
 `cmp bh,6 / ja`.
 
@@ -1522,7 +1522,7 @@ impossible for a 9-voice chip until you find the rhythm-mode table.
 
 - `[0]` **General MIDI program number** for melodic channels, or a **GM
   percussion note number** for channels 6..10. The FM driver skips this byte
-  outright (`inc si` at `0x847` before calling the loader); `GMMUSIC.DRV`
+  outright (`inc si` at `0x847` before calling the loader). `GMMUSIC.DRV`
   sends it as a Program Change at `0xf4`.
 - `[1..11]` the 11 classic AdLib registers, written in operator pairs:
   `20/23`, `40/43`, `60/63`, `80/83`, `E0/E3`, then `C0`. For single-operator
@@ -1541,7 +1541,7 @@ KSL bits. `attenuation` is a 128-entry table at `cs:0x29a` running 63 down to
 
 ### Pitch
 
-The note byte is a MIDI note number; the driver subtracts 12, so its note 0 is
+The note byte is a MIDI note number. The driver subtracts 12, so its note 0 is
 MIDI 12 = C0. Frequency comes from three tables:
 
 | table | at | size | contents |
@@ -1678,7 +1678,7 @@ So `12 records x 28 bytes` is confirmed, and `(303, 186)` is the spawn marker
 rather than the "parked sentinel" it was first read as.
 
 **Still open: the frame-relative offset.** `PLAN.md` records the base as
-`parent - 0x163`; that is *not* verified. The obstacle is that
+`parent - 0x163`. That is *not* verified. The obstacle is that
 **`1000:3a67`'s first call is the difficulty-selection screen**, not the game
 loop - its parent frame at that call holds the strings `Tubes 101`, `Tubes 201`,
 `Tubes 301`, `ifficu`(lty) and `Exit`. So breaking at `3a67` and reading the
@@ -1729,8 +1729,8 @@ not yet included on the periodic table".
 Eight named elements, against grid cells that cycle **1..7** with 0 empty. The
 odd one out is most likely `Flashium` - the name suggests a flashing or wildcard
 atom rather than an eighth ordinary colour, which would fit the `ANTIBALL` /
-`GOLDBALL` / `XENBALL` sprites that `entry` loads and nothing uses. Not proven;
-the cell encoding is what to check.
+`GOLDBALL` / `XENBALL` sprites that `entry` loads and nothing uses. Not proven.
+The cell encoding is what to check.
 
 The in-play HUD reads **`Chains`** top-left and **`Drops`** top-right, with two
 counters between them.
@@ -1752,12 +1752,12 @@ Dimensions from the rendered `.CSP` output. The split is exact and informative:
 
 `SRBALL` `SGBALL` `SBBALL` `SCBALL` `SPBALL` `SYBALL` `SPNKBALL` `SWBALL` -
 exactly half the playfield size, so `S` = small. Seven match the ordinary
-colours; the eighth, `SWBALL`, is pale/white with no full-size counterpart.
+colours. The eighth, `SWBALL`, is pale/white with no full-size counterpart.
 Where they are drawn is **not established** - a next-ball preview in the HUD and
 the stack inside the test tube are both plausible.
 
 The letter balls are grey spheres with a dark red character on them. Rendering
-them is what identified the set; the names alone are ambiguous.
+them is what identified the set. The names alone are ambiguous.
 
 ### Special ball behaviour (reported from play, not yet read from the binary)
 
@@ -1901,7 +1901,7 @@ unambiguous:
 ### `DROP` ties the drop limits to the HUD
 
 Three separate findings turn out to be one thing. `DROP` is the sound for
-**missing** a ball; the in-play HUD is labelled **`Drops`** at top right; and
+**missing** a ball. The in-play HUD is labelled **`Drops`** at top right. And
 `9 / 6 / 3` "drop limits" were measured in the binary long before either was
 known. So a "drop" is a missed ball, and the limit is **how many misses a
 difficulty allows** before the game ends - not a count of atoms dumped into the
@@ -1972,7 +1972,7 @@ Three corrections to the play-derived notes:
 - `GOLDBALL` (Bonus) turns into **Flashium** when caught and grants a bonus drop -
   not a random ordinary ball.
 - The test tube holds **five** atoms. Both published descriptions say five
-  outright, which undercuts the 5/3/2-by-difficulty guess in `PLAN.md`; and
+  outright, which undercuts the 5/3/2-by-difficulty guess in `PLAN.md`. And
   `FILLBALL` *permanently reduces capacity by one*, which is a far better
   explanation for varying capacity than difficulty is.
 
@@ -1998,14 +1998,14 @@ Worth recording, because it sets how much weight each claim carries. The
 gameplay accounts above come from the user playing the **shareware** release,
 not the full version, so coverage is uneven:
 
-- **Reliable:** `GOLDBALL` and `ANTIBALL`. The shareware had preview modes that
-  demonstrated both in action.
-- **Partial:** `GOLDBALL` becoming a random ordinary ball once captured is
+- `GOLDBALL` and `ANTIBALL` are **reliable**. The shareware had preview modes
+  that demonstrated both in action.
+- `GOLDBALL` becoming a random ordinary ball once captured is **partial**:
   believed but not certain.
-- **Unknown:** `CRYSTAL`, `MARKER`, the six letter balls, and whatever `XENBALL`
-  is properly called - it behaves as an inert grey sphere.
+- `CRYSTAL`, `MARKER`, the six letter balls, and whatever `XENBALL` is properly
+  called are **unknown**. `XENBALL` behaves as an inert grey sphere.
 
-None of this is a substitute for reading the code; it is a set of hypotheses to
+None of this is a substitute for reading the code. It is a set of hypotheses to
 aim the debugger at, which is much cheaper than finding them blind.
 
 
@@ -2014,7 +2014,7 @@ aim the debugger at, which is much cheaper than finding them blind.
 Captured under the debugger from the main menu's **Instructions** entry, which is
 a slide show ("The Detailed Instructions", paged with Up/Down). This is the
 game's own documentation, so it outranks both play recollection and third-party
-descriptions. `grab_instructions.py`; captures in the tooling `capture/instr/`.
+descriptions. `grab_instructions.py`. Captures in the tooling `capture/instr/`.
 
 ### Controls - and the atom-speed mechanism, stated outright
 
@@ -2029,7 +2029,7 @@ things fall out:
 1. **Both Button B and Down do it.** Which retro-explains the `.SCR` demo's long
    runs of bit `0x02`: the recorded player was holding **Down to speed atoms**,
    not "holding down to drop faster" as the behavioural reading guessed. The bit
-   assignment was right; the interpretation of what the player was doing was not.
+   assignment was right. The interpretation of what the player was doing was not.
 2. **It is positional** - only atoms *in the tube directly above the test tube*
    are accelerated. So speed is a per-atom property gated on the atom's column
    matching the tube's column, not a global rate.
@@ -2074,7 +2074,7 @@ Also: "in combination with Flashium atoms" is the game confirming the wildcard.
 ### Flashium matches three-of-a-kind on its own - reported from play
 
 **Three Flashium with no element of their own DO form a chain.** This was
-briefly written up here as an open question; it is not one, and the answer had
+briefly written up here as an open question. It is not one, and the answer had
 been reported in play before that - it was simply never written down, and was
 lost when the session's context was compacted. Recording it properly is the
 fix, and the lesson is that anything learned from play belongs in this file the
@@ -2157,14 +2157,14 @@ Filler "adds an atom to the bottom of the test tube" that cannot be removed, and
 play reports "a sticky black one that cannot be dumped from the tube".
 `OBSTBALL` is a near-black sphere, has **no fade family** in the measured type
 table - correct for something that lives in the tube and is never matched in the
-beaker - and its name reads as *obstruction*. Strongly supported, not proven; the
+beaker - and its name reads as *obstruction*. Strongly supported, not proven. The
 proof is to catch a Filler and read the tube contents.
 
 ### Slide order corroborates the type numbering again
 
 The Penalty Atoms are presented as Multiplier, Evil Multiplier, Convertor,
 Blocker, Filler - which is **exactly** measured types 12, 13, 14, 15, 16, in
-order. Third-party prose already matched types 9..16; the game's own slides match
+order. Third-party prose already matched types 9..16. The game's own slides match
 12..16. Three independent orderings agreeing.
 
 Not documented in the slides: `MYSTBALL` (type 19) and the crystal (type 18).
@@ -2318,7 +2318,7 @@ The trailer's `+0x2b` byte differs between samples (`0xeb` -> `0xe2`,
 `0xf3` -> `0xbc`) including in the bank that stayed empty, so it is **not** a
 checksum over slot contents. Purpose unknown.
 
-**Consequence for every earlier experiment:** the wave byte at `0x206` that the
+**This changes every earlier experiment.** The wave byte at `0x206` that the
 level-warp sweep edited is **bank 1, slot 0's** wave field - not a global. A
 save in a different slot is warped by a different address, `0x230 + 0x26` for
 slot 1. This never bit the sweep because only one slot was occupied at the time.
@@ -2396,7 +2396,7 @@ Two arithmetic checks fall out of that and are worth keeping, because they
 confirm two fields at once from a file nobody wrote for the purpose:
 
 * the warped save reads **wave 75** at `+0x26`, the byte the level-warp sweep
-  edited at file offset `0x206` - which is bank 1, slot 0, `+0x26`;
+  edited at file offset `0x206` - which is bank 1, slot 0, `+0x26`.
 * an unwarped slot reads **wave 4, interval 67**, and `70 - (4 - 1) = 67` is
   exactly `1000:a616`'s `Dec(interval)` once per wave cleared.
 
@@ -2548,7 +2548,7 @@ Experiment 2 recovered the path's *shape* but explicitly refused to claim a step
 size, because the sampler was wall-clock paced and slower than a frame. This
 measures it properly.
 
-**The problem is a ratio.** An RSP read costs 40-80 ms; a frame is ~15 ms. Any
+**The problem is a ratio.** An RSP read costs 40-80 ms. A frame is ~15 ms. Any
 wall-clock sampler is slower than the thing it measures, so motion aliases - the
 failure behind three separate wrong or unclaimable results in this work.
 
@@ -2604,7 +2604,7 @@ right by luck. It is now right by measurement.
 
 Note the contrast with the **test tube**, which static analysis showed moving
 `x -= 6` / `x += 6` per frame. The tube travels at 6 px/frame and atoms at 4 -
-different rates, which is worth carrying into the port.
+different rates, and the port must keep them different.
 
 
 ## Atoms have two speeds: 4 px/frame in the tubes, 18 px/frame falling
@@ -2631,7 +2631,7 @@ So:
 | descending a play column | **18 px/frame** |
 | the test tube sliding on its rail (static analysis) | **6 px/frame** |
 
-`+36` is two descent steps across a missed sampling boundary; `+29` and `+11`
+`+36` is two descent steps across a missed sampling boundary. `+29` and `+11`
 are compound and partial steps seen around y = 48-49, where an atom is
 transitioning into the descent.
 
@@ -2643,16 +2643,16 @@ global. The trace above ends with the atom holding at 176 for several frames,
 which is presumably where it settles before becoming a grid cell.
 
 Note the descent lattice is **not** the beaker's 13 px row pitch. Falling is free
-motion at 18 px/frame; the conversion to a settled grid cell happens separately.
+motion at 18 px/frame. The conversion to a settled grid cell happens separately.
 
-**Not established:** the frames where position does not change (`0` deltas in the
+**Not established.** The frames where position does not change (`0` deltas in the
 trace above) could be a genuine movement cadence - 18 px every other frame,
 averaging 9 - or sampling artefacts. The sampler detects frames from the page
 index and was running at ~5 reads/frame, so a spurious repeat is possible.
 Distinguishing them needs either a higher oversampling ratio or a real per-frame
 breakpoint.
 
-Three speeds in one game, all different, is worth carrying into the port: the
+Three speeds in one game, all different, and the port must keep all three: the
 current `fallSpeed` constant in `src/game.cpp` cannot be right for both phases.
 
 
@@ -2687,7 +2687,7 @@ So the accelerated step is **18 px/frame**, applied in whatever direction the
 atom is travelling, against a normal **4 px/frame**.
 
 **The `-4` count does not fall to zero under Down - it drops to 66.** That is the
-load-bearing detail. A global speed-up would eliminate it; its persistence is
+detail everything rests on. A global speed-up would eliminate it. Its persistence is
 exactly what the Instructions predict: "increase the speed of any atoms in the
 tube **directly above the test tube**". Some atoms accelerate, the rest carry on
 at 4. The measurement independently confirms the wording.
@@ -2845,7 +2845,7 @@ column-major. So tip into column 1, move one column right, tip again:
     column 1 filled  0x2432c
     column 2 filled  0x2432d      <- exactly +1
 
-`+1` for adjacent columns is row-major with 6 cells per row; column-major would
+`+1` for adjacent columns is row-major with 6 cells per row. Column-major would
 have put it 5 away. And two atoms stacked in one column landed at `0x24326` and
 `0x2432c` - exactly 6 apart, one row.
 
@@ -2890,7 +2890,7 @@ does not obviously bear that out:
   empty arrays would look exactly like that with only ordinary atoms settled, so
   they are plausible candidates, but zeroes are not evidence.
 
-So the type array is confirmed and located; whether two companion arrays sit
+So the type array is confirmed and located. Whether two companion arrays sit
 immediately below it is **open**. The test is to settle a *special* - the flag
 that distinguishes one, if it exists, should appear in one of those blocks while
 the type array holds the special's type.
@@ -3000,9 +3000,9 @@ The experiment needs an injected atom to be **caught**, which needs the atom and
 the tube in the same column at the same moment. Four attempts failed on timing:
 
 - an atom descends at 18 px/frame, so the window between "high in a column" and
-  "past the mouth" is a couple of seconds even on a slowed guest;
-- steering the tube costs ~1 s per column, which is longer than that window;
-- parking first and waiting means the tube's column may simply receive no atom;
+  "past the mouth" is a couple of seconds even on a slowed guest.
+- steering the tube costs ~1 s per column, which is longer than that window.
+- parking first and waiting means the tube's column may simply receive no atom.
 - and **the wave ends after 11 drops**, which with a parked tube arrives in
   under a minute - two runs ended with nothing moving and the grid reading
   garbage, because the locals had been repurposed.
@@ -3029,7 +3029,7 @@ and no amount of playing wave 6 would ever have shown it.
 
 Validated on consecutive waves - 10, 11 and 12 give different briefings - so the
 byte genuinely selects the definition. (Waves 10 and 15 happen to share an
-objective; that is a coincidence, not a warp failure.)
+objective. That is a coincidence, not a warp failure.)
 
 ### Objective types seen
 
@@ -3063,7 +3063,7 @@ matching**. That resolves an apparent oddity in the type table: type 18 has a
 full `CRFADE` family despite never forming a chain. A fade family means a thing
 can be **cleared**, which is not the same as **matched** - and the earlier note
 calling types 1-10 plus 18 "the matchable set" was too strong. Corrected: 1-10
-are matchable; 18 is clearable by AntiMatter.
+are matchable. 18 is clearable by AntiMatter.
 
 ### `MARKER` is the marked-atom indicator - solved
 
@@ -3086,8 +3086,8 @@ naming one.
 `BUBBLE` was the last unknown, and it is **not a gameplay sound**: it belongs to
 the intro cutscene, where the beaker foams and bubbles as Lanny's elements go
 unstable. Three things had already pointed away from gameplay without settling
-it - it is **0.865 s**, far longer than the blips the game uses for actions; its
-internal name is *"Bubbles"*, plural; and it was the only sound with no
+it - it is **0.865 s**, far longer than the blips the game uses for actions. Its
+internal name is *"Bubbles"*, plural. And it was the only sound with no
 counterpart anywhere else in the resources. The blackboard cutscene also already
 owned `CLAP`, `NOOOO` and `WHATTHE`, and its resource list is `WRITE0..9.GFX`
 plus **`EXPLOD1..4.GFX`** - an explosion sequence, which is exactly that scene.
@@ -3227,9 +3227,9 @@ which read `+0x0b` and therefore reported 0/1 throughout.
 
 Everything that used only `+0x00`/`+0x02`, which are confirmed:
 
-- the dispenser path and its coordinates;
-- the speed table (4 travelling, 18 boosted and falling, 6 for the tube);
-- caught vs missed;
+- the dispenser path and its coordinates.
+- the speed table (4 travelling, 18 boosted and falling, 6 for the tube).
+- caught vs missed.
 - the record lifecycle - slots overwritten, never recycled through the marker.
 
 And everything measured independently of the record: the beaker grid, the tube
@@ -3305,8 +3305,8 @@ out-of-range wave should either refuse to load or produce a degenerate briefing.
 ## Correction to the correction: the record layout was right, the base was not
 
 The previous section claimed the atom record layout in these notes was wrong
-because `+0x0b` never varied. **That claim is withdrawn.** The layout is correct;
-the *array base* was wrong by six bytes, which shifted every field I read.
+because `+0x0b` never varied. **That claim is withdrawn.** The layout is correct.
+The *array base* was wrong by six bytes, which shifted every field I read.
 
 Read at the corrected base `0x241a4`, records decode immediately:
 
@@ -3339,12 +3339,12 @@ x and saved y. Saved positions are last frame's drawn position, kept for the
 dirty-rect erase - so they trace **the same path, one frame behind**, and
 frame-to-frame deltas of a lagged sequence are identical to the original's.
 
-**Survives unchanged:** the dispenser path and its coordinates, the speed table
+**What survives unchanged** is the dispenser path and its coordinates, the speed table
 (4 travelling / 18 boosted and falling / 6 for the tube), caught vs missed, and
 the slot lifecycle. All of those measured trajectory shape and per-frame deltas,
 which a one-frame lag does not affect.
 
-**Was broken:** every reading of the type. My `+0x0b` was really `+0x05`, which
+**What was broken** is every reading of the type. My `+0x0b` was really `+0x05`, which
 is why it never left 0/1, and the `MYSTBALL` injection wrote to `+0x05` rather
 than the type. Those experiments stay void - but for this reason, not because the
 documented layout was wrong.
@@ -3372,7 +3372,7 @@ so it is placed as initial contamination, not delivered through a tube.
 
 **It teleports.** Over 99 seconds of play it moved once, r5c3 -> r5c2, seen in
 memory as type 18 leaving one cell and appearing in another between consecutive
-samples. The destination cell had held a Yellowium; a Yellowium appears one row
+samples. The destination cell had held a Yellowium. A Yellowium appears one row
 above 0.4 s later, which is consistent with the crystal displacing it upward,
 though a newly-landed atom cannot be ruled out from one event.
 
@@ -3410,7 +3410,7 @@ the beaker and are gone, and anything destroyed by AntiMatter borrows `AFADE`.
 
 ## Live confirmations from the same session
 
-**Vertical chain = 250 points, measured.** Cyanium sat at r4c5 and r5c5; a third
+**Vertical chain = 250 points, measured.** Cyanium sat at r4c5 and r5c5. A third
 was tipped into column 5, both cells cleared, and the score went
 **24500 -> 24750, exactly +250** - the value the Instructions state, now observed
 in play.
@@ -3447,8 +3447,8 @@ This answers a question left open since the record-lifecycle work: **caught atom
 do not leave the array.** They persist, motionless, at their catch position.
 
 It also re-explains the earlier caught-vs-missed measurement. That run saw 226
-frames of dwell in the `y 40..75` band at the tube's column and none below y=120;
-the dwell is caught atoms freezing there, which is why nothing appeared deeper.
+frames of dwell in the `y 40..75` band at the tube's column and none below y=120.
+The dwell is caught atoms freezing there, which is why nothing appeared deeper.
 The conclusion of that experiment - caught atoms halt at the mouth, missed ones
 continue at 18 px/frame - stands. Only my later "queued at tube exits" gloss was
 wrong.
@@ -3461,7 +3461,7 @@ every wave sampled announced **11 drops** and no per-wave drops table could be
 found in the image. Both observations were real. The conclusion was wrong, and
 the experiment that produced it could not have found otherwise.
 
-**The blind spot:** the wave sweep warped by editing **only** the wave byte at
+**The blind spot.** The wave sweep warped by editing **only** the wave byte at
 `TUBES.SAV 0x206`. The drops byte at `0x207` was left at 11 in every single run.
 So all fifty briefings echoed the same number because they were all loading the
 same drop count - the sweep had no way to show variation. A negative result is
@@ -3482,7 +3482,7 @@ This also explains, without any special pleading, why no per-wave drops table
 exists in the binary: **there is nothing to store.** The number lives in the save
 and in the session, and waves do not set it.
 
-It makes the Bonus atom considerably more valuable than a scoring pickup - it is
+It makes the Bonus atom worth more than a scoring pickup - it is
 the only known way to replenish a resource that otherwise only decreases, i.e.
 an extra life.
 
@@ -3502,7 +3502,7 @@ Found by scanning DGROUP for the HUD's current value and keeping only bytes that
 
 Confirmed against the game's own display rather than against itself: with the
 logger reading `0x245bc = 8`, a screenshot taken in the same script showed
-`8 Drops` on the HUD. Reading back a value you predicted is evidence; reading
+`8 Drops` on the HUD. Reading back a value you predicted is evidence. Reading
 back a value you *wrote* is not, which is the trap the `MYSTBALL` injection fell
 into.
 
@@ -3512,7 +3512,7 @@ parked-tube experiment recorded, and dismissed as noise:
     0x245bc:   9 ->  8 ->  7 ->  6 ->  5 -> ... -> 1
 
 With the tube parked in one column every atom missed, so a steady countdown to
-zero is exactly what the drop counter must do. The observation was right; only
+zero is exactly what the drop counter must do. The observation was right. Only
 the label was missing.
 
 It sits inside the session locals, just below the tube:
@@ -3545,7 +3545,7 @@ announced "8 drops allocated". Confirmed from the display, not just from memory.
 The two `+1`s are what produced the "back to 11" impression: they land
 *mid-wave*, twelve seconds apart, with a populated beaker - Bonus atoms, not a
 wave clear. Attributing a change to the event you happened to notice is the same
-error as reading fifty identical briefings as a constant; in both cases the real
+error as reading fifty identical briefings as a constant. In both cases the real
 cause was never the one being watched.
 
 Settled, with each mechanism measured separately:
@@ -3598,7 +3598,7 @@ So the full model, every part measured:
     the briefing    reports the current value, it does not set it
 
 **There is no cap at 11.** A cap was floated here after gains stopped at 11
-twice; that was sampling, not a ceiling - "no further Bonus appeared" explains
+twice. That was sampling, not a ceiling - "no further Bonus appeared" explains
 it identically. Play reports starting a wave 6 save at **12**, and the field is
 a whole byte in both the save and the session. The reading is withdrawn.
 
@@ -3696,7 +3696,7 @@ offsets - at that ratio, fields rise monotonically by chance. Checking the full
 series killed both: `0x24dc0` reads 2568, 2319, 1553, 513 across one trace.
 
 That is this project's recurring lesson pointed the other way. The standing rule
-is "when a search comes back empty, suspect the search"; the same scepticism is
+is "when a search comes back empty, suspect the search". The same scepticism is
 owed to a search that comes back **full**. The tell was available immediately -
 a frame counter that disagrees with itself is not a finding, it is a filter
 artefact.
@@ -3764,7 +3764,7 @@ segmented code, but `ghidra_scripts/FindScalarRefs.java` chases them by value:
 | score | `0x245e7` | **`DS:0x4b57`** |
 
 This is the bridge back from observation to decompilation. Static analysis of
-`1000:3a67` stalled because nothing indicated which code touched what; the code
+`1000:3a67` stalled because nothing indicated which code touched what. The code
 that writes `DS:0x4884` **is** the match-and-clear routine, and the code that
 writes `DS:0x4b57` **is** the scoring routine. They no longer have to be found
 by reading 9,382 bytes of disassembly in order.
@@ -3781,13 +3781,13 @@ approach outright, and this session demonstrated why rather than merely
 asserting it -
 
 - a scoring rule was fitted to two data points and was simply wrong, while the
-  real rule sat in the Instructions;
+  real rule sat in the Instructions.
 - the Flashium wildcard was wrong in two different ways until a player
-  described the actual behaviour;
+  described the actual behaviour.
 - an "ambiguity in the original" was written up that turned out to be a bug in
   the port's own loop.
 
-Each was caught by a person, not by the method. Sampling yields points; the
+Each was caught by a person, not by the method. Sampling yields points. The
 binary yields the function. The traces keep their value - they are the oracle a
 decompiled implementation must reproduce - but the *rules* should come from the
 code.
@@ -3827,7 +3827,7 @@ link. The addresses now confirm it from the data side.
 
 **Consequences for the logic transfer:**
 
-- Searching DGROUP offsets for gameplay state is futile; the values to chase are
+- Searching DGROUP offsets for gameplay state is futile. The values to chase are
   **BP-relative displacements**, and they are negative. A past session already
   lost 38 stack mutations to a regex that only matched positive displacements.
 - The measured *linear* addresses are only valid for one run's frame layout.
@@ -3844,7 +3844,7 @@ project is: it is derived from copyrighted data.
 ## `1000:3a67` decompiled: the beaker grid and atom array, from the code
 
 First gameplay structures recovered from the **code** rather than from watching
-memory. Both were already known from observation; what is new is that their
+memory. Both were already known from observation. What is new is that their
 shape is now read off the program, which is what settles details sampling
 cannot reach.
 
@@ -3894,14 +3894,14 @@ grid, because it is a different array.
     FUN_2685_0f9b(0x1c, &local_1c8 + n * 7, ...)   // 28-byte record copy
 
 `&local_1c8 + n * 7` on an `undefined4` base is `n * 28` bytes, so **the array
-base is `local_1c8`**; Ghidra also exposes overlapping views of it
+base is `local_1c8`**. Ghidra also exposes overlapping views of it
 (`local_1c4`, `local_1b0`) at fixed field offsets. Initialisation writes `0xba`
 = **186** to fields `+0` and `+2`, matching the spawn-marker pair and the
 x/saved-x/y/saved-y record shape found when the array base was corrected.
 
 Note `local_18e` is **not** the atom array - it is a 2-byte drawing coordinate.
 It was briefly taken for the array because its number matched an offset
-prediction; Ghidra's `local_N` naming does not map onto BP displacement that
+prediction. Ghidra's `local_N` naming does not map onto BP displacement that
 way, and offset arithmetic is not an identification. Shapes are: a 28-byte
 stride, a bound of 12, a 30-byte FillChar.
 
@@ -3957,9 +3957,9 @@ independent derivations, arrived at years apart in this project, agree exactly.
 representation level**, not merely incomplete:
 
 - a clearing cell holds an out-of-range value that is a table index, so any code
-  treating a cell as a type must exclude cells flagged in plane B;
+  treating a cell as a type must exclude cells flagged in plane B.
 - the port has no second plane at all, so it has nowhere to record that a cell
-  is mid-animation;
+  is mid-animation.
 - and the clear animation is not a separate effects system - it *is* the cell
   value walking the table.
 
@@ -4025,7 +4025,7 @@ The tube network is **not one static backdrop**. It is assembled per layout from
 individual segment sprites, and `0x1d4e` chooses the layout - so the arc an atom
 travels differs between layouts, which is why a single hard-coded path cannot be
 right. The port currently invents a three-leg route (rise, cross, descend) with
-entry columns picked at random from observed dwell points; the original walks
+entry columns picked at random from observed dwell points. The original walks
 whatever network the current layout drew.
 
 And the port's tube rendering is wrong for the same reason: it does not compose
@@ -4056,7 +4056,7 @@ block can close early and leave following draws unconditional, and the `== 5`
 range swallowed 47 calls that are unlikely to all be inside it. Grouping needs
 brace-aware parsing of the decompiler output, or reading each block directly.
 
-Recording it this way on purpose. The coordinates are evidence; the grouping is
+Recording it this way on purpose. The coordinates are evidence. The grouping is
 an artefact of how they were gathered, and a table of "layout 5 draws these
 segments" would look equally authoritative while being unverified.
 
@@ -4089,7 +4089,7 @@ line range between successive conditions, which attributes shared code to
 whichever layout was tested last. It was flagged as unverified when written,
 and it was wrong. Worth noting the direction of the error: it implied the port
 needed per-layout networks and layout-dependent atom routing, which is
-substantially more work than the truth - one fixed network, drawn in layers.
+far more work than the truth - one fixed network, drawn in layers.
 
 **Caveat on the coordinates.** The extractor takes the last two numeric tokens
 of each call, which is only correct when the arguments are literals. The
@@ -4128,7 +4128,7 @@ independent semantic checks:
 
 - `-0x16e` maps to `MARKER.CSP`, and `-0x16e` is exactly the sprite the plane C
   overlay draws on flagged cells - which is what the **red X marks** on beaker
-  balls are;
+  balls are.
 - `-0x8a` maps to `BEAKER.CSP`, drawn at `y=134, x=103`, and the port already
   draws the beaker at `(103, 134)` from geometry measured independently.
 
@@ -4150,13 +4150,13 @@ All twelve names are present in `TUBES.RES`, a third confirmation.
     BEAKER    y=134  x = 103
 
 Reading the suffixes: **`S` = shadow**, always drawn in an earlier pass than the
-solid piece it sits under; **`L`/`R`** are left and right elbow variants;
+solid piece it sits under. **`L`/`R`** are left and right elbow variants.
 `H`/`V` horizontal and vertical. The network is therefore built shadow-layer
 first, then solids, over two lanes at `y=13` and `y=26` - which is why a single
 composited backdrop cannot reproduce it.
 
-Draws whose coordinates are expressions rather than literals are omitted here;
-those are the moving atoms and the test tube, not furniture.
+Draws whose coordinates are expressions rather than literals are omitted here.
+Those are the moving atoms and the test tube, not furniture.
 
 ### The render order - why the tubes look hollow
 
@@ -4212,9 +4212,9 @@ That is exactly the reading the wave 30 briefing implied - "atoms hidden until
 they leave a tube" - and it explains every earlier failure to find it:
 
 - **it is not a type**, so scanning the atom array for the value 19 could never
-  find it, no matter how the sampler was written;
+  find it, no matter how the sampler was written.
 - injecting 19 into a record's type byte could not produce it either, because
-  the branch is on a *separate flag*, not on the type;
+  the branch is on a *separate flag*, not on the type.
 - and it never appears in the beaker, which is why type 19 has no fade family -
   a concealment sprite resolves before landing and never needs a clear
   animation.
@@ -4421,7 +4421,7 @@ sequence of whole-sprite draws can produce.
 
 So the furniture passes decompiled out of `1000:3a67` are **dirty-rectangle
 restoration**, not the primary drawing. The original never blits the whole
-foreground; it repaints the pieces around moving atoms, which is why those
+foreground. It repaints the pieces around moving atoms, which is why those
 draws exist at all and why they are interleaved with the atom draws.
 
 The error was reasonable and still wrong: the draw list is real, the ordering is
@@ -4436,8 +4436,8 @@ Removing the passes and keeping only the per-atom overlay reproduces the
 original's look.
 
 The per-atom overlay is still required, and is the same mechanism: after drawing
-an atom, repaint the pipe over it. In the original that is part of the restore;
-in a full-blit renderer it is the only part that is still needed, because the
+an atom, repaint the pipe over it. In the original that is part of the restore.
+In a full-blit renderer it is the only part that is still needed, because the
 atom is the only thing that damaged the foreground.
 
 `kFurniture` in `src/main.cpp` is retained as the record of the original's
@@ -4577,7 +4577,7 @@ each bound to one slot:
 
 That is the network's mirror symmetry. Columns 1 and 6 are fed by the
 outermost tubes at x = 10 and 294, which take the lowest lane and cross
-furthest, so they are the deepest layer; 2/5 and 3/4 nest inside them.
+furthest, so they are the deepest layer. 2/5 and 3/4 nest inside them.
 
 Each site is the same three steps:
 
@@ -4591,7 +4591,7 @@ Each site is the same three steps:
 **The second stamp is what makes an atom look like it is inside glass**, and it
 is selective in a way no guessed overlay reproduces. GAMEFG is solid along the
 long horizontal runs between the arcs, so an atom crossing lane 13 near x=217
-is clipped by them; GAMEFG is *transparent* inside the feed tubes, so the same
+is clipped by them. GAMEFG is *transparent* inside the feed tubes, so the same
 atom rising at x=246 is not clipped by the horizontals at all - the walls there
 come from the furniture sprites, drawn before the atom. Both behaviours were
 measured against the original and both are reproduced.
@@ -4621,7 +4621,7 @@ sit between two layers of glass.
 
 ### The test tube's record and its state machine
 
-Base `parent - 0x16a`; its contents array is a field of it at `parent - 0x163`,
+Base `parent - 0x16a`. Its contents array is a field of it at `parent - 0x163`,
 which is why the two are seven bytes apart.
 
     +0x00 x     +0x02 y (0x44 = 68)     +0x04 state     +0x05 tip phase
@@ -4661,7 +4661,7 @@ atom used that column while sampling. It is measured now, and it was right.
 | 201 | 6 | 0x180 = 3 px/frame | 60 frames |
 | 301 | 3 | 0x200 = 4 px/frame | 50 frames |
 
-Per wave the period drops by one; every fifteenth wave the velocity gains
+Per wave the period drops by one. Every fifteenth wave the velocity gains
 `0x20` and the period gains twelve. Every twentieth, four more counters step.
 
 This retires `kSpawnIntervalFrames`, which was an outright invention, and
@@ -4672,8 +4672,8 @@ the easiest setting, not the base value.
 
 Searched over the whole procedure, so this is a closed list:
 
-* the spawn, `= the difficulty's value`;
-* the Down/B boost, `= 0x480` (nine pixels a frame);
+* the spawn, `= the difficulty's value`.
+* the Down/B boost, `= 0x480` (nine pixels a frame).
 * the tipping animation, `= 0x52` for the atoms in the tube.
 
 **There is no assignment when an atom starts descending.** An atom comes down at
@@ -4690,7 +4690,7 @@ test tube".
 `1000:4534` it is:
 
 * **inside** `if tube.state = 0`, so a tube that is sliding or tipping grants no
-  boost at all - the port ran it unconditionally, every frame;
+  boost at all - the port ran it unconditionally, every frame.
 * **before** the Left/Right handler at `1000:4583` updates `tube.stop`, so on
   the frame a direction is pressed the boost still goes to the slot the tube is
   *leaving* - the port moved the tube first and boosted after.
@@ -4728,7 +4728,7 @@ ordinary member of the pool and has no rate of its own.
 `capture_frame.py` read the array at `0x241A4`. The emitted index then ran
 exactly two behind each record's own column field, on every sample - and the
 spawn indexes the array by the column, so the two have to agree. The first
-element is at **`0x24188`**; `0x241A4` is `array[2]`.
+element is at **`0x24188`**. `0x241A4` is `array[2]`.
 
 Caught by the port keying its draw slot off the emitted index. Nothing in the
 old harness could have noticed, because it never compared the two.
@@ -4802,7 +4802,7 @@ Four things fall out of this that were previously guessed or wrong:
   candidate type - the wave modifier "an element that still spawns but cannot
   be cleared", found rather than inferred.
 * **The award is per SEED, not per run.** A run of four has two seed positions
-  and pays twice; a run of five pays three times. "4 atom molecules count as 2
+  and pays twice. A run of five pays three times. "4 atom molecules count as 2
   chains" in the Instructions is a literal description of the scan.
 
 Each matcher also increments one of three chain counters, but only when the
@@ -4821,7 +4821,7 @@ distinct run however many seeds it has. Both diagonals share a counter.
     end
 
 `rampSteps` is set to 6 by any matcher, and `1000:58c5` counts it down one a
-frame; when it hits zero the remainder is flushed and `pending` and
+frame. When it hits zero the remainder is flushed and `pending` and
 `multiplier` are cleared. So the money is **`pending * multiplier`**, paid over
 six frames, and the multiplier is the number of distinct runs formed at once.
 
@@ -4829,7 +4829,7 @@ That is the "chain bonus point multiplier" the Instructions mention without
 quantifying, and it had been left unimplemented for want of a number.
 
 **One conflict, recorded rather than resolved.** An earlier live measurement had
-a diagonal run of four paying 1000; this model pays 2000 (two seeds x 1000,
+a diagonal run of four paying 1000. This model pays 2000 (two seeds x 1000,
 multiplier 1). That measurement came from the black-box session whose
 conclusions have already been overturned twice, and the code is the authority -
 but it is worth a targeted check when the HUD exists to read the score off.
@@ -4924,7 +4924,7 @@ every value exactly `1 + 19k`, and the run ends at 134 (`134 + 19 = 153 > 152`)
 before emptying. Eight steps, as the code says.
 
 The sampling is coarser than the game frame, so intermediate values were
-skipped; and the marked plane read 0 alongside `cells = 134`, which is a torn
+skipped. And the marked plane read 0 alongside `cells = 134`, which is a torn
 read rather than a finding - the two planes are fetched in separate GDB
 requests while the game runs. The stride, the step count and the terminal
 clear are what this confirms.
@@ -4958,7 +4958,7 @@ Two consequences, both reported from play before they were found in code:
 
 **This overturned a claim made one session earlier**, that the velocity field
 had "exactly three writers" and nothing reset it, so the boost was permanent.
-The search behind that was over `1000:3a67` only; the fourth writer is here, in
+The search behind that was over `1000:3a67` only. The fourth writer is here, in
 a function that had never been disassembled. The search was sound and the
 conclusion was still false, because a list is only closed over what was
 searched. `CLAUDE.md` already warns "when a search comes back empty, suspect
@@ -5018,7 +5018,7 @@ block and therefore destroys itself.
 AntiMatter's own type, the single `ball[cell]` lookup draws `AFADE` over all of
 them and the blast animation needs no special case anywhere in the renderer.
 That is also why `AFADE` is a fade family without being a "can be cleared"
-marker - the notes had guessed exactly this; here is the code doing it.
+marker - the notes had guessed exactly this. Here is the code doing it.
 
 The cells cannot re-trigger the blast on the next frame because the fade pass
 runs first and moves them from 9 to 28.
@@ -5044,7 +5044,7 @@ from a published description. Only the cells at and *above* it.
     end
 
 **This is stronger than the published description.** "Turns the atoms it lands
-on into Xenons" suggests a local effect; the code takes the type of the single
+on into Xenons" suggests a local effect. The code takes the type of the single
 cell directly below and converts *every* atom of that type anywhere on the
 board. The victim must be an ordinary type (1..10), so it will not chain off a
 Xenon or another special.
@@ -5192,7 +5192,7 @@ type 17's identity as `FILLBALL` - previously "almost certainly" - is settled.
 
 ### The ramp's clock is not part of the beaker update
 
-`1000:22a6` pays one sixth of the award (`1000:2410`); the decrement and the
+`1000:22a6` pays one sixth of the award (`1000:2410`). The decrement and the
 flush are a **separate statement** in `1000:3a67`'s body, at `1000:58c5`. The
 frame order is what makes that matter:
 
@@ -5208,7 +5208,7 @@ Bonus **seven** sixths of its award. A match was unaffected, because its award
 is raised inside the beaker update itself, which is why the fusion looked right
 for as long as only matches paid.
 
-`1000:1c63` also does **not** clear the increment; the only zero into it is at
+`1000:1c63` also does **not** clear the increment. The only zero into it is at
 `1000:58d2`, when the ramp runs out. An award landing mid-ramp therefore
 extends the ramp at the rate already running.
 
@@ -5235,7 +5235,7 @@ how long the animation takes to hand the state back.
     end
 
 Every position is a literal per slot, not computed from an angle. Phase 2 is
-the tube tilting and the contents bunching toward the middle; phase 3 is it
+the tube tilting and the contents bunching toward the middle. Phase 3 is it
 pouring, with all five stacked on the same pixel.
 
 ### The tube sprite is indexed by the phase
@@ -5251,7 +5251,7 @@ reaches it resets the phase to 1 before the frame is rendered. So the rendered
 sequence over a tip is 1, 2, 2, 3, 3, 1.
 
 **This retires the difficulty-capacity reading of those heights.** They were
-taken for several sessions as the tube holding 5/3/2 by difficulty; the flat
+taken for several sessions as the tube holding 5/3/2 by difficulty. The flat
 capacity of 5 in the Instructions contradicted that without explaining it.
 They are a tube going over.
 
@@ -5349,7 +5349,7 @@ state for the rest of the session.
 
 ### A `.SCR` holds one byte per IDLE frame, not one per frame
 
-The single most load-bearing thing about the replay, and it is a consequence of
+The replay depends on this more than on anything else, and it is a consequence of
 where the input read sits rather than of anything in the demo format.
 `1000:44f0`:
 
@@ -5372,7 +5372,7 @@ original would have held back.
 
 **Measured, and it is exact.** The demo's first Left presses are at stream
 indices 16, 17 and 20. Under the idle gate the original consumes them at three
-separate idle frames and ends at stop 3; consumed one-per-frame the middle one
+separate idle frames and ends at stop 3. Consumed one-per-frame the middle one
 lands mid-slide and is lost, ending at stop 4. Modelling both against six
 sampled `(atom y -> tube x)` pairs read off the running original - the atom's
 own 4 px/frame rise serving as the frame clock - the idle-gated model matches
@@ -5426,7 +5426,7 @@ uses):
     end
                                                       { 1000:240d JMP 2342 }
 
-The counter is `[BP+0xfe84]`, seeded to 0 at `1000:a4e4`; the two latches are
+The counter is `[BP+0xfe84]`, seeded to 0 at `1000:a4e4`. The two latches are
 `[fe46]` and `[fe47]` and exist so a crossing fires once. Every tenth run the
 two adjustments cancel, so the net shape is **five frames off the dispense
 interval per ten runs**, with the network velocity climbing 0x20 alongside. The
@@ -5683,7 +5683,7 @@ renderer - it **rewrites the ball table**:
 
 Both counters start at 1 in the session prologue, so it advances every **four**
 frames - about 4.5 times a second at 18.2 Hz, which is the "~4x/sec" a play
-session measured. The cycle was known from watching; this is the code doing it.
+session measured. The cycle was known from watching. This is the code doing it.
 
 Only the bare slot 8 is rewritten. A fading Flashium cell holds `8 + 19*frame`,
 whose table slot is `FFADE` and is left alone - which is why a Flashium always
@@ -5736,7 +5736,7 @@ whatever is at the mouth.
 
 The target is recomputed **every frame**, so an atom already on its way down
 lands correctly if the column settles under it. Row 1's 131 is three pixels
-above where the cell actually draws (134); every other row is exact, and no
+above where the cell actually draws (134). Every other row is exact, and no
 reason for it has turned up.
 
 `rec.dest` is the same `+0x0d` field the tube used for the slot offset, and
@@ -5746,7 +5746,7 @@ reuse is the original's.
 A **full column destroys the atom and costs a drop** - it does not sit on top
 and it does not bounce. A Bonus is exempt.
 
-### The grid array is left to right; the network's columns are not
+### The grid array is left to right, and the network's columns are not
 
 Worth stating because it was nearly read the other way. `1000:1761` writes
 `grid[r, c]` at `BP - 0x25 + 6r + c`, and the draw loop at `1000:599b` pairs
@@ -5762,7 +5762,7 @@ The tube's stop index is left to right too, so `rec.col := tube.stop` at
 
 ## Records 7..12
 
-`1000:47fe` runs the router over `atom[1..12]` in one loop; nothing
+`1000:47fe` runs the router over `atom[1..12]` in one loop. Nothing
 distinguishes the two halves except the states their records are in. The
 tipping code allocates from 7..12 by the first record whose state is 0, and
 **halts the game** if none is free. Six slots against six columns and a fall of
@@ -5831,7 +5831,7 @@ byte and the other three are not close.
 
 ### The HUD itself
 
-Labels once at session setup, `1000:42ae`; numbers every frame, `1000:5707`.
+Labels once at session setup, `1000:42ae`. Numbers every frame, `1000:5707`.
 
     SetFont(small);
     OutText(  1, 1, 127, $81, 'Chains');
@@ -5879,7 +5879,7 @@ cell and dimming again:
 The port reproduces the HUD band exactly - every ink and shadow pixel of
 `Chains`, `Drops`, the score and the counters - **except two**: the shadow at
 `(36, 4)` and `(36, 7)`, both cast by the `s` of `Chains`. Every shadow pixel
-at x <= 35 is present in both; x = 36 is present only in the port.
+at x <= 35 is present in both, and x = 36 is present only in the port.
 
 The cause is not established. It is not a per-character effect - `Drops` also
 ends in `s` and matches completely - and the dirty-rect restore over the chains
@@ -6000,7 +6000,7 @@ replays the same wave with the same objective** rather than rolling a new one.
 ### The objective record - `1000:9e53`'s frame
 
 Two groups. The **wave-independent counters** are seeded once per game and
-stepped by the progression; the **per-wave objective** is rewritten by the
+stepped by the progression. The **per-wave objective** is rewritten by the
 briefing every wave.
 
 | offset | field |
@@ -6142,7 +6142,7 @@ One counter, `[BP-0x1b0]` in `1000:3a67`, seeded **720** at `1000:3b00` and
 reloaded at `1000:4b6d`. On expiry:
 
 * if `rotateOnTimer`, step whichever of colour and chain the wave rotates, and
-  play a sound;
+  play a sound.
 * if `morphBeaker`, walk the beaker and morph its cells.
 
 720 frames against the game's own frame beat is the "every 45 seconds" the
@@ -6201,8 +6201,8 @@ leaves that arm waiting for a key, which is a deliberate deviation and is
 marked as one at the call site.
 
 **The decrement is AFTER the test, and one frame of clear animation depends on
-it.** A match sets the timer to 10 at `1000:1c70`, which is early in the frame;
-the tail then tests it at 10 and steps it to 9. The port ran the decrement at
+it.** A match sets the timer to 10 at `1000:1c70`, which is early in the frame.
+The tail then tests it at 10 and steps it to 9. The port ran the decrement at
 the end of its beaker update instead, so the same frame tested 9 and every
 clear animation was judged one frame short. Cheap to get wrong, and invisible
 except as a wave that ends slightly too soon.
@@ -6284,7 +6284,7 @@ the three bytes are three different things that all look alike in C:
 The loop is `repeat ... until aborted or gameOver`, so a Continue that clears
 `gameOver` re-enters it, and `replay` is what stops `1000:a616` from stepping
 the wave on the way round. Only `-0x1fe` is written inside `3a67`
-(`1000:47f8` and `1000:5d0a`); **`-0x1fd` is written only by the key handler**
+(`1000:47f8` and `1000:5d0a`). **`-0x1fd` is written only by the key handler**
 `1000:2dd0`, which is why searching `3a67` for it finds nothing.
 
 ### `1000:2dd0` is the in-game key handler
@@ -6343,15 +6343,15 @@ is inert - the only key in the game that does nothing". It is the `$bb` arm of
 Four things fall out of the listing and none needed a capture:
 
 * **there is no fade.** Neither `23e7:0097` nor `23e7:00ce` is called, so this
-  is the one full-screen change in the game that is instant;
+  is the one full-screen change in the game that is instant.
 * **the dismissing key is discarded** - `1000:3026` stores it in the same local
   the dispatch switched on and then jumps to the common exit at `1000:39c4`, so
   it is never re-classified. F5 out of Help does not pause and ESC does not
-  abort;
+  abort.
 * `21ea:072a` writes `DS:0x0d40`, the session's frame period, back into the
   timing unit at `2000:0009` - the original re-arms its tick after a blocking
   wait so it does not fast-forward through the frames the player spent reading.
-  The port clamps `dt` and needs no equivalent;
+  The port clamps `dt` and needs no equivalent.
 * the string constants are in the **code** segment, pushed `PUSH CS; PUSH ofs`,
   which is why a DGROUP dump of `2b96` fails outright. The same is already true
   of the banners at `1000:3a12`.
@@ -6377,7 +6377,7 @@ have made", `<> 1` says "The number of tasks remaining", which is the same
 `1000:2f9c` pushes `2c6e` in the Wave note and `1000:2f4b` pushes it in the
 drops note - **the compiler pooled one literal across both**, because both
 blocks really do read `remaining.` followed by five spaces and `When`. A
-transcriber would have normalised that; `testTheHelpScreenKeepsTheOriginals-
+transcriber would have normalised that. `testTheHelpScreenKeepsTheOriginals-
 IrregularLayout` pins it, along with ESC's two spaces of padding against
 F1..F5's three.
 
@@ -6402,15 +6402,15 @@ That also names the driver's map, which was not previously known: the four
 arrows plus **Ctrl and Space** as the two buttons. Which of the pair is A and
 which is B is *not* settled here - only that the set is those six. Note the
 port's own default binds Ctrl to A and **Alt** to B, so it differs from the
-original's driver; that is a defaults question, not a Help question, and is
+original's driver. That is a defaults question, not a Help question, and is
 left alone.
 
-Two consequences worth carrying:
+Two consequences follow:
 
 * the same swallowing must apply to every other bare `ReadKey` in the game.
   The save screen's description editor is one (`1000:35d1`), which would mean a
   **space cannot be typed into a save description**. Not tested - flagged here
-  rather than assumed either way;
+  rather than assumed either way.
 * under `JOYSTK1.DRV` or `MOUSE.DRV` the driver claims the stick or the mouse
   instead and the whole keyboard stays live, so this behaviour is
   driver-dependent in the original. The port expresses it as "bound to a
@@ -6423,7 +6423,7 @@ specification, and the only thing that separated them was pressing keys.
 
 #### Verified against the original, both arms
 
-`grab_f1.py` and `grab_f1_wave.py` capture it; the overlay can be shot without
+`grab_f1.py` and `grab_f1_wave.py` capture it. The overlay can be shot without
 the Pause key because the `ReadKey` blocks the game loop while the emulator
 keeps running, which is the one screen in the game where that is true.
 
@@ -6436,7 +6436,7 @@ The one apparent disagreement was worth the discipline this file keeps
 preaching. The Endurance key-list band differed at `x` 60..71, `y` 127..139 -
 and those columns are left of the list's own `x` 76. It was a Pinkium in the
 port's backdrop passing a loose "purple" filter, not a glyph. A count would
-have said "the key list differs"; the extents said where, and the where was
+have said "the key list differs". The extents said where, and the where was
 outside the text.
 
 ### The end-of-session banners, `1000:5d64`
@@ -6456,7 +6456,7 @@ separate string constants at `1000:3a12`, `1000:3a20`, `1000:39f8`, `1000:3a2c`
 and `1000:3a36`.
 
 The first two then wait on `repeat until KeyPressed or timeout`. The abort
-banner does not wait; instead, when `mode <> 0` and `[0x1d4b] = 0` it adds
+banner does not wait. Instead, when `mode <> 0` and `[0x1d4b] = 0` it adds
 
     F2 to Save Game, ESC for Main Menu!
 
@@ -6514,9 +6514,9 @@ Two things are easy to miss and both change what is drawn:
   **The port had this wrong and it was reported from play.** `SessionTotals`
   and `Game::chains_` are two copies of that one byte, because the port splits
   the simulation from the screens, and only the screen's copy was ever zeroed.
-  So the HUD's Chains never reset between waves; each wave's "Molecule Chains"
-  was really the session's running count; "Total Molecule Chains" summed those
-  and re-counted every earlier wave; and the inflated number went into the save
+  So the HUD's Chains never reset between waves. Each wave's "Molecule Chains"
+  was really the session's running count. "Total Molecule Chains" summed those
+  and re-counted every earlier wave. And the inflated number went into the save
   at `+0x28`, which is why a save carried from the port into the original
   started a wave with chains already on it - the original was reading the field
   correctly. `enterStatsScreen` in `session.h` is now the single crossing
@@ -6601,8 +6601,8 @@ copy of the backdrop, and anything that moves is erased by copying its old
 rectangle back from page 3.** Three routines do nothing else:
 
 * `1b2e:0510`'s roll-down: `CopyRect(3, DS:0x2376, 57, 26, SLIDEBAR.w, 150)`
-  before each new bar position;
-* `1b2e:0b8f`'s jump: the same call around the professor's box;
+  before each new bar position.
+* `1b2e:0b8f`'s jump: the same call around the professor's box.
 * `1b2e:1188`, which is exactly `Flip; CopyRect(3, DS:0x2376, x, y, w, h);
   Flip` and nothing else - a four-argument "put the background back here".
 
@@ -6612,7 +6612,7 @@ back to the live page for the professor and the bar.
 
 **`DS:0x2058` is `BLACKBRD.GFX`**, loaded at `1000:ae0b` into the record
 `{ptr @0x2058, w @0x205c, h @0x205e}`. It was carried as the stats screen's
-"stand-in background" needing explanation; there is nothing to explain, it is
+"stand-in background" needing explanation. There is nothing to explain, it is
 the blackboard, and the port already draws it at `(0, 12)`.
 
 ### Open: which page `1b2e:0656` snapshots FROM
@@ -6634,7 +6634,7 @@ depends on it: the port composes whole frames.
 The measurement section above records that `2321:014f` at image `0x1335f` got
 **zero breakpoint hits** and concludes it "belongs to code this game does not
 use". The zero was real and the conclusion was too broad. That probe ran during
-PLAY, where `1000:3a67` flips inline; `2321:014f` is what the CLASSROOM screens
+PLAY, where `1000:3a67` flips inline. `2321:014f` is what the CLASSROOM screens
 use, and `1b2e:0510`, `1b2e:084e`, `1b2e:0a11` and `1b2e:1188` all call it.
 The claim holds for the game loop and not for the program.
 
@@ -6817,7 +6817,7 @@ The **sprite sizes settle the rest**, and they are the whole trick:
 So the professor is **two draws stacked**: `1b2e:0656` lays down the full
 `POINTER0` masked, and `1b2e:0e37` - the key wait - stamps a 44 x 39 wave frame
 **opaquely** (`2321:068d`) over his top half. Drawing only the wave frame
-erases him from the waist down; drawing it *masked* leaves the base pose's arm
+erases him from the waist down. Drawing it *masked* leaves the base pose's arm
 showing through it. Both were tried and both are visible in a capture.
 
 ### The wave is a ping-pong, and it is why the key wait will not exit early
@@ -6839,7 +6839,7 @@ finishes the gesture before letting the screen change.
 `1000:aaba` loads `ULCORNER`, `URCORNER`, **`DLCORNER`**, **`DRCORNER`** into
 `DS:0x20fe`, `0x2102`, `0x2106`, `0x210a`. `LLCORNER.GFX` and `LRCORNER.GFX`
 also exist in the archive and are *not* these - a plausible guess that the load
-table disproves. The loader is `2000:2264(name, ptrSlot, wSlot, hSlot)`; the
+table disproves. The loader is `2000:2264(name, ptrSlot, wSlot, hSlot)`. The
 corners pass `DS:0x1d70` for both size slots, discarding them, because they are
 known 4 x 4.
 
@@ -6855,7 +6855,7 @@ Against `capture/ref-briefing-wave1.png`, **whole screen**, not just the slide:
 | the spurious `BOOKS` draw removed | 1.14% |
 | `POINTER0` base + the wave frame over it | **0.00%** |
 
-0.00% is at the animation phase the capture caught; sampling six phases gives
+0.00% is at the animation phase the capture caught. Sampling six phases gives
 0.00%, 0.19% and 0.22%, and the residue is his arm moving. That is the same
 band as the play field's 0.02..0.22%.
 
@@ -6930,9 +6930,9 @@ Three things pin the drawing down independently:
 * the size is a **literal in the call**, `12 x 8`, not the resource header -
   which is why the five records at `DS:0x20b2` hold a far pointer and nothing
   else, the loader throwing their width and height into the `DS:0x1d70`
-  scratch. `TALK1..5.GFX` measure exactly 12 x 8, so literal and art agree;
+  scratch. `TALK1..5.GFX` measure exactly 12 x 8, so literal and art agree.
 * `(276, 133)` is inside the professor's own 44-wide box at `(267, 121)` - his
-  mouth, nine right and twelve down from his origin;
+  mouth, nine right and twelve down from his origin.
 * it draws through **`2000:3921`**, the masked thunk `1b2e:0510` uses for
   `POINTER0`, not the `2000:389d` the wave frames are stamped with. Loading the
   mouths opaque leaves three black columns beside his chin, because the 12 x 8
@@ -6957,7 +6957,7 @@ the animation is back on frame 1:
 | 3 | the timer expiring |
 | 4 / 5 | Down / Up |
 
-The Continue screen acts on 1 and 2 only; 3, 4 and 5 fall through to its own
+The Continue screen acts on 1 and 2 only. 3, 4 and 5 fall through to its own
 countdown. **The length of an iteration is now settled, and the port's
 assumption was right.** `23e7:0024` is `Delay(n)` and its unit is the
 VERTICAL RETRACE: the body is `23e7:0016` - wait for the current vblank to
@@ -7025,8 +7025,8 @@ its purpose **by name**, which a wrong frame-offset reading could not produce.
   in the program left unread.
 * Where `-0x14f`, the number of Continues, is seeded.
 * The beaker morph body at `1000:4bf6`.
-* Whether the shareware really carries all 75 arms or the later ones are dead;
-  the dispatch has them, and published notes claim the registered version
+* Whether the shareware really carries all 75 arms or the later ones are dead.
+  The dispatch has them, and published notes claim the registered version
   "adds 50 waves".
 
 
@@ -7085,17 +7085,17 @@ attribution was withdrawn with `1000:2894` named as the candidate. Reading
 Display's.
 
 * modes **4, 5 and 6** - a count objective - draw ONE full-size ball from
-  `DS:0x1da6`, in `2a4a` itself;
+  `DS:0x1da6`, in `2a4a` itself.
 * modes **2 and 3** - a chain objective - call `1000:2894`, which draws
   **three small balls from `DS:0x200a`** in the shape of the required chain.
 
 The loader at `1000:ad41` names them: `SRBALL`, `SGBALL`, `SBBALL`, `SCBALL`,
 `SPBALL`, `SYBALL`, `SPNKBALL` - the seven colours again, in the same order,
-half size. `1000:2894` is their only consumer in the game session; `1000:2dd0`
+half size. `1000:2894` is their only consumer in the game session. `1000:2dd0`
 uses `[0x200a]` itself, type 1's, for something of its own.
 
 The lesson stands even though the guess came out right. Shape and count made
-the attribution *plausible*; only the draw site made it true, and in between it
+the attribution *plausible*. Only the draw site made it true, and in between it
 was withdrawn for exactly the right reason.
 
 ### `1000:2894` - the chain illustration
@@ -7170,7 +7170,7 @@ three more things - all of them presentation, all of them wave mode:
 So **when the wave requires no particular colour the Task Display ball cycles
 the seven**, on the same clock and from the same variable as Flashium. That is
 the rotating counter the wave 6 sampling measured and wrote up as an effect of
-its own; it needs no separate mechanism, and mode 4 is in the list, which is
+its own. It needs no separate mechanism, and mode 4 is in the list, which is
 why wave 6 in particular showed it.
 
 And **when the orientation is free the chain illustration cycles too**, through
@@ -7178,7 +7178,7 @@ diagonal, horizontal, vertical. The two rotations are the same idea applied to
 the two halves of a task, and both are cosmetic: they move `taskColour` and
 `taskChain` in `1000:3a67`'s frame, never `reqColour` or `reqChain`.
 
-`2000:3b15` and `2321:0905` remain two different sprite entry points; nothing
+`2000:3b15` and `2321:0905` remain two different sprite entry points. Nothing
 here distinguishes them beyond the caller.
 
 
@@ -7329,7 +7329,7 @@ So the animation the notes guessed at is exactly right, and now derived: the
 crystal **marks its own cell** so the ordinary fade pass runs `CRFADE` forward
 over it, then reappears at the destination on frame 6 of the same family and
 walks it **backwards** to frame 0. One sprite family, played out and then in.
-`CRFADE1` being its static sprite is not an oddity; frame 0 is where it rests.
+`CRFADE1` being its static sprite is not an oddity. Frame 0 is where it rests.
 
 Two consequences worth stating. The destination is chosen to be **an occupied
 cell holding an ordinary atom**, and landing there **overwrites it** - so a
@@ -7362,7 +7362,7 @@ matching": nothing else calls it. The teleport is `1000:0560`, above.
 ### `1000:04ca` - and the record follows its cell down
 
 The gravity pass calls it at `1000:2750` whenever a cell holding type 18 falls
-a row, with the old and new positions; it finds the record at the old position
+a row, with the old and new positions. It finds the record at the old position
 and rewrites its `col`/`row`. Without it a crystal that settled a row would
 become invulnerable, because `041c` would look for it where it no longer is.
 
@@ -7409,9 +7409,9 @@ network slots, in the original's interleaved draw order, and nothing else.
 `1000:3a67` makes 21 sprite-table draws. The six above are the only ones that
 test the flag, so:
 
-* the atoms travelling the tubes are concealed;
-* the test tube's contents are **not**;
-* records 7..12, falling out of the tube into the beaker, are **not**;
+* the atoms travelling the tubes are concealed.
+* the test tube's contents are **not**.
+* records 7..12, falling out of the tube into the beaker, are **not**.
 * the settled beaker is **not**.
 
 So the concealment ends the instant an atom is caught, which is exactly what
@@ -7618,7 +7618,7 @@ came back uniformly mediocre.
 The projector slide is a **measured** rectangle - palette index 17 over
 `x 74..245, y 31..162`, read off the capture rather than decompiled, and marked
 as such in `main.cpp`. `2000:389d` at `1000:8774` and `1000:bcf1` are the two
-routines that would settle it; `SLIDEBAR.GFX` is a 208x11 roller bar, so
+routines that would settle it. `SLIDEBAR.GFX` is a 208x11 roller bar, so
 `bcf1` is almost certainly the screen rolling down.
 
 Also absent: the professor - `1000:86b8` calls `1000:b7f0` on wave one and
@@ -7681,7 +7681,7 @@ the five letters. Each leg moves 4 px a frame along `dirH` until it passes its
 limit, and within 10 px of the limit the cross-axis is displaced by 7, 6, 3, 2,
 1, which is what rounds the **corners of the letterforms** rather than turning
 square. Leg 10 additionally re-stamps foreground at `x` 0xb0 and 0xc8, which is
-a crossing where one stroke passes over another; the exact rect wants the
+a crossing where one stroke passes over another. The exact rect wants the
 listing, since the argument order of `2321:0874` is not settled here.
 
 The four tables are **one contiguous block, `0x30`..`0xc9`**, and the menu page
@@ -7750,15 +7750,15 @@ recomputed from `0x1d72`/`0x1d74`/`0x1d76` by `func_0x0002f8e7`, which is
 therefore "place the stars against item N" and is called both at entry and on
 every selection change inside `4d80`.
 
-**Not settled:** Ghidra renders the sprite lookup as `[0x1d79*8 + 0x1d76]`,
+**Not settled.** Ghidra renders the sprite lookup as `[0x1d79*8 + 0x1d76]`,
 which collides with `0x1d76` used as the y. One of the two readings is a
-decompiler artifact; the stride wants the listing, not the decompiler.
+decompiler artifact. The stride wants the listing, not the decompiler.
 
 The loop ends one of two ways, and returns the reason in `AL`:
 
 - **timeout.** `local_1c6` seeds at `0x2d0` = **720 frames**, is reset to 720 on
-  every keypress, and on reaching zero returns **9**. Nine is not a menu item;
-  it is the attract-mode arm, which is how `DEMO.SCR` gets played without a
+  every keypress, and on reaching zero returns **9**. Nine is not a menu item.
+  It is the attract-mode arm, which is how `DEMO.SCR` gets played without a
   keypress.
 - **a menu choice**, returned as the item number that `4d80` stored.
 
@@ -7809,7 +7809,7 @@ Read out:
 | 7 | `Exit Tubes?` | Yes / No |
 
 `Endurace Mode` is the game's own spelling and is reproduced as such. Pages 4
-and 5 hold `(Unavailable)` in the image; the live text is copied over each slot
+and 5 hold `(Unavailable)` in the image. The live text is copied over each slot
 from the save records at `0x18d8` (endurance) and `0x1ab8` (wave), `slot*0x50`,
 by the `2685:08e3` block move of 0x50 bytes into `0x1ce8`.
 
@@ -7905,7 +7905,7 @@ reading rather than a coincidence. And leg 10's two extra calls are
 with `DS:0x238e` pointed at **TUBESBG** for the duration and restored to
 TUBESFG afterwards, so those two columns get *background* where every other
 column gets foreground. Reading that as "the atom shows through at the two
-crossings" is inference; the exact visual wants a render.
+crossings" is inference. The exact visual wants a render.
 
 ### The star sprite, and `0x1d76`'s double duty - settled
 
@@ -7927,7 +7927,7 @@ and the star is **12 x 10**, packed and masked.
 
 `0x1d76` really is used two ways - as a bare scalar it is the stars' `y`, and
 as `[DI + 0x1d76]` it is the base of a stride-8 pointer array whose element 0
-would land on that same `y`. Ghidra was not confused; the code is genuinely
+would land on that same `y`. Ghidra was not confused. The code is genuinely
 written that way, and since `f` is never 0 the overlap is harmless. This is the
 third table in this screen with an unused element 0 - the menu pages and the
 path tables are the others.
@@ -7994,21 +7994,21 @@ Call site, `1b2e:5332`:
 What it does:
 
 - `REP MOVSB` **0x18c bytes** - one whole page, 11 entries of 36 - from the
-  argument into the parent's `[BP-0x190]`, via `2000:7133`;
+  argument into the parent's `[BP-0x190]`, via `2000:7133`.
 - `parent[-4] := parent[-3]` then `parent[-3] := pageId`, so `[-4]` is the
-  **page to go back to** and `[-3]` the current one;
+  **page to go back to** and `[-3]` the current one.
 - `[0x1d44] := 1`, *except* that arriving at page 1 restores the remembered
-  main-menu item from `[0x1d43]`;
-- `parent[-0x191] := count`;
+  main-menu item from `[0x1d43]`.
+- `parent[-0x191] := count`.
 - then **`INC byte ptr [BP+6]`** - the count is bumped *before* the next step,
-  which is easy to miss and changes the answer by six pixels;
+  which is easy to miss and changes the answer by six pixels.
 - `parent[-0x194] := (180 - 16*(count+1)) div 2`, the y origin - the block is
   **vertically centred in 180 rows at 16 px a row**, or 26 px a row on page 6.
   The `+1` is the page **title**, entry 0, which occupies a row of its own, so
   a page of `n` items is laid out as `n+1` rows.
 
 **The page id is an explicit parameter, not derived from the pointer.** The
-earlier note here inferred `pageId = (ptr - 0xca) div 0x18c + 1`; that formula
+earlier note here inferred `pageId = (ptr - 0xca) div 0x18c + 1`. That formula
 does hold at **all 21 call sites**, which is good evidence the seven pages are
 one array, but it is a check on the reading rather than what the code computes.
 
@@ -8046,7 +8046,7 @@ many runs it created.
 `DS:0x2110` is not "the big font", it is the *current* big font, and each stage
 loads what it wants into it through `2000:3fab`. The HUD's was identified as
 `FUTURE.816` by pulling a digit out of a captured frame and matching it byte
-for byte; that is still right, and it is right **for the HUD**.
+for byte. That is still right, and it is right **for the HUD**.
 
 The title screen's is not the same file. Rendering `Start Game` from each of
 the four `.816` fonts and scoring lit pixels against the menu capture:
@@ -8066,7 +8066,7 @@ Together with `peakRow` 9 that takes the band from 19.9% to **0.00%**.
 
 An earlier run of this same test on the briefing reported the opposite, because
 its lit-pixel predicate was written for bright-text-on-black and the briefing is
-dark-text-on-light. See the title band section above; the correction matters
+dark-text-on-light. See the title band section above. The correction matters
 more than the result.
 
 The general lesson: **do not assume one font per size**, and when reusing a
@@ -8167,7 +8167,7 @@ the residue is not error: it concentrates on leg 10 - the crossings leg, where
 the atom legitimately passes *behind* a wall - and on the `D` legs, which cross
 the letterforms' horizontal strokes. The network is full of junctions, so
 "centre over an opaque pixel" and "outside the pipe" are simply different
-things. The listing plus the hand-over invariant settle this; the pixel proxy
+things. The listing plus the hand-over invariant settle this. The pixel proxy
 cannot.
 
 ### Stages do NOT all run at the play session's frame rate
@@ -8198,7 +8198,7 @@ i.e. `1193182/16384` = 72.83 Hz, exactly four times the BIOS tick - the usual
 reprogram-and-chain arrangement. But `72.83/9` is 8.09 Hz, nowhere near the
 session's established 18.2 Hz, so `[0x0d40]` is not simply ticks-per-frame and
 `21ea:06ba`'s `145 div elapsed` estimate is not simply fps. The **ratio** is
-what was measured and it does not depend on resolving that; the port carries
+what was measured and it does not depend on resolving that. The port carries
 `kTitleHz = kFrameHz * 1.5` and says so.
 
 Worth noting for later: 18.2 Hz for the session has never actually been
@@ -8267,13 +8267,13 @@ Two things this does and does not change:
   why `--demo-trace` still ends on score 13000 and every pixel diff is
   unmoved. It changes only how fast the port runs in real time.
 - it retires the reasoning that produced 18.2. "~17 state changes a second" was
-  the better evidence and 16.18 sits closer to it than 18.2 ever did; the
+  the better evidence and 16.18 sits closer to it than 18.2 ever did. The
   number was fitted to the nearest famous constant instead of to the data.
 
-**Still not resolved:** how 145 relates to the PIT divisor the game actually
+**Still not resolved** is how 145 relates to the PIT divisor the game actually
 writes, which is `16384` = 72.83 Hz, exactly four times the BIOS tick.
 `72.83/9` is 8.09 Hz and the measurement contradicts it flatly, so the tick
-that `[0x0d40]` counts is not simply that interrupt. The rate is settled; the
+that `[0x0d40]` counts is not simply that interrupt. The rate is settled. The
 mechanism behind the 145 is not.
 
 **Method note.** The previous session read `145/9 = 16.11` off this very
@@ -8308,7 +8308,7 @@ saved *Wave* game, and the new entry landed at bank 1 slot 1. Bank 0 was left
 untouched, still holding ten defaults and an empty eleventh.
 
 The table is **sorted descending and insert-and-shift**. Before the run both
-banks held ten names scoring 1000, 900 ... 100 with an empty eleventh; the new
+banks held ten names scoring 1000, 900 ... 100 with an empty eleventh. The new
 34000 went in at the top of bank 1 and pushed everything down one, filling that
 bank's spare slot. So eleven is the real capacity, not ten.
 
@@ -8492,7 +8492,7 @@ the row - the small red ball from the Task Display's own set, loaded into
 
 RETURN copies the record out to the scratch, takes its description as the line
 to edit, clears the cell and lets the player type. **There is no cursor.** The
-high score screen pulses a 4 x 4 block at `1000:9757`; this loop draws
+high score screen pulses a 4 x 4 block at `1000:9757`. This loop draws
 characters and erases an 8-wide cell on backspace, and that is all. It was
 given one by analogy for a revision, which is the invention the prime directive
 exists to prevent.
@@ -8502,7 +8502,7 @@ exists to prevent.
 * **RETURN** commits - an empty description becomes `Undescribed`
   (`CS:0x2d92`), the fourteen session fields are filled in, the whole 0x50-byte
   record is `Move`d into the bank, `1b2e:00ac` writes the file, and
-  `1000:3722` holds for 20 retraces before the game resumes;
+  `1000:3722` holds for 20 retraces before the game resumes.
 * **ESC** at `1000:3635` jumps straight past all of it to the exit. It abandons
   the save rather than committing what has been typed.
 
@@ -8543,7 +8543,7 @@ key, returning the same codes `1b2e:0e37` does:
 | 1 | 'Congratulations' in STARTREK.816 at y 38, its rule at 41, then ten lines of TINY6X8 story text from y 60 |
 | 2 | `1b2e:0a11` again - which wipes the slide - then `PRIZE.GFX` at `((320 - w) div 2, (200 - h) div 2)` |
 
-`PRIZE.GFX` is 52 x 125 and lands at (134, 37); the original computes the
+`PRIZE.GFX` is 52 x 125 and lands at (134, 37). The original computes the
 centring rather than passing a literal, which is what says it is meant to be
 centred rather than placed.
 
@@ -8579,7 +8579,7 @@ Twelve strings is few enough that typing them looks harmless, which is exactly
 why `tools/gen_ending.py` exists. The game spells it **"prove the existance of
 the new elements"**, and a silent correction of that is a transcription error
 nobody would ever catch. The generator reads the push sequences and the string
-pool and emits `src/ending.cpp`; `2000:3fab`'s argument names the font, since
+pool and emits `src/ending.cpp`. `2000:3fab`'s argument names the font, since
 the slot it is handed is `DS:0x2110` for STARTREK.816 and `DS:0x2118` for
 TINY6X8.88.
 
@@ -8604,7 +8604,7 @@ The second call at `1000:b28b` is the attract arm and is a different thing.
 PSP - `MOV ES,[0xd1e]; MOV DI,0x80; MOV CL,ES:[DI]` - so `TUBES.EXE` started
 with any argument at all skips both intros. That is why the gate is the same
 test in both places and why it looks like a debug switch: it is one. The port
-takes `--gamedir` on every run, so it deliberately does NOT transliterate this;
+takes `--gamedir` on every run, so it deliberately does NOT transliterate this.
 `--no-splash` is the analogue and it is opt-in.
 
 **The splashes do not decide whether the cutscene runs.** `1b2e:11b0` is a
@@ -8860,7 +8860,7 @@ and what is on the page stays there.
 ### Captured off the original, and the two things it caught
 
 `grab_cutscene.py` sweeps the original with a screendump every ~1.4 s from
-boot; `diff_cutscene.py` then finds, for each of the port's five pages, the
+boot. `diff_cutscene.py` then finds, for each of the port's five pages, the
 capture that matches best. The sweep is deliberate - the cutscene cannot be
 paused into, because it reads the input driver once a frame and acts only on
 1 and 2, so the game's own Pause key is simply ignored.
@@ -8923,7 +8923,7 @@ opposite way round from "the original holds more". So nothing was accumulating.
 `2321:068d` - the OPAQUE member of the blit family, the same one `1b2e:0e37`
 stamps the professor's wave frames with. An opaque blit writes the whole
 `w x h` box including the pixels the art leaves at index 0, and those land as
-colour 0. So a frame REPLACES its box; it does not merge into it.
+colour 0. So a frame REPLACES its box. It does not merge into it.
 
 The strip is where that shows. `WRITE1..5.GFX` are 28 x 41 and `WRITE6..9.GFX`
 are 28 x 66, and page 4 is the first to use the tall ones. Their bottom rows
@@ -8950,12 +8950,12 @@ needed:
 * `1b2e:0f46` calls `Flip` once per tick, and then - only when track A has
   stopped and B has not - toggles `DS:0x2376` a SECOND time and re-selects the
   draw page, so a lone track animates on the shown page instead of being
-  double-buffered;
+  double-buffered.
 * `1b2e:1188` is `Flip; CopyRect(3, DS:0x2376, x, y, w, h); Flip`, and every
   page ends with one. The rectangle differs per page, read off the four call
   sites: `(0, 25, 320, 20)`, `(0, 4, 320, 95)`, `(0, 25, 320, 20)`,
   `(0, 4, 320, 50)`. The 95-tall one is page 2's, because its band has to
-  reach the eight elements' atoms at y 60..72;
+  reach the eight elements' atoms at y 60..72.
 * `1b2e:1e58`..`1e84` copy both animation boxes from the other page, and only
   the FOURTH page does it.
 
@@ -9010,7 +9010,7 @@ computed addresses were very likely not the intended code at all.
 `CLAUDE.md` already says a negative result is only as good as the filter that
 produced it. This is that failure exactly: "no breakpoint fired" was reported
 by an instrument that had never been checked against the run it was measuring.
-**Read `CS` at an entry breakpoint for the run in hand; never carry a load
+**Read `CS` at an entry breakpoint for the run in hand. Never carry a load
 address across configurations.**
 
 ## `.BIN` decoded - the last format, and it is an orphan
@@ -9117,7 +9117,7 @@ rather than the binary, and both worth keeping since the tool is now in `tools/`
 
 * a flat 11-byte stride reported **62** arms for the image known to hold 75.
   The arms nearest the tail reach it with a 2-byte `EB`, so the run broke at
-  the first short jump;
+  the first short jump.
 * allowing both jumps reported **74**. The last arm has no `JMP` at all - the
   tail follows it directly - so it is 8 bytes with `JNZ 4`.
 
@@ -9138,10 +9138,10 @@ So **the edition lives entirely in the executable**, and three consequences
 follow:
 
 1. the port already reads a shareware install's data correctly, because there
-   is nothing different in it to read;
+   is nothing different in it to read.
 2. there is nothing for the engine to *detect*. "Supporting the shareware
    edition" can only mean offering its 25-wave progression as a choice, which
-   is a mode and not a compatibility layer;
+   is a mode and not a compatibility layer.
 3. the earlier reading of `..` as registered - "all three additions are
    present in the archive" - was **wrong in its premises** and right only by
    luck. What actually says registered is `PRIZE.GFX`, the ending text with
@@ -9149,7 +9149,7 @@ follow:
 
 ### The shareware build DOES show the exit screen
 
-Both shareware images name `TUBESEND`; the registered one does not. So the lead
+Both shareware images name `TUBESEND`. The registered one does not. So the lead
 recorded when `.BIN` was decoded is answered: the exit screen is a real screen
 of the shareware edition, shown on the way out, and rendering it would be
 faithful **for that edition**. It stays unported while the port targets the
@@ -9164,7 +9164,7 @@ consequence was wrong.** The premise was right - the data really is identical -
 but "the difference is all in the executable" was read as "the difference is
 small", and those are not the same statement. Reading the conclusion back to
 its evidence would have shown that nothing in the measurement bounded the size
-of the difference at all; it only located it.
+of the difference at all. It only located it.
 
 What corrected it was the player running the shareware build. Everything below
 is **player-reported and string-corroborated. None of it is decompiled yet**,
@@ -9175,14 +9175,14 @@ which is the role measurement is allowed to play.
 ### What the shareware build does that the registered one does not
 
 * **an extra main-menu item, "Preview Registered"**, which plays waves drawn
-  from the registered additions - the first of them the Mischief Crystal wave;
+  from the registered additions - the first of them the Mischief Crystal wave.
 * **no Bonus and no AntiMatter atoms in normal play**, though both sprites ship
-  in its `.RES`. They appear in the Preview;
-* **an "Ordering Info" slide deck**, reachable from the menu;
+  in its `.RES`. They appear in the Preview.
+* **an "Ordering Info" slide deck**, reachable from the menu.
 * **a registration deck on the way out** - quitting does not quit, it shows
-  the pitch first;
+  the pitch first.
 * **and then `TUBESEND.BIN` is dumped to the DOS screen** as the program
-  exits;
+  exits.
 * **no wave-75 ending**, which follows from there being 25 waves.
 
 ### The strings, which are the corroboration
@@ -9241,8 +9241,8 @@ line is exactly the kind of coincidence this project has been caught by before.
 
 ### What this means for the save formats
 
-Unresolved and now load-bearing. `TUBES.SAV` is two banks by game mode in the
-registered image; whether the shareware layout matches is unknown, and a
+Unresolved, and now it matters. `TUBES.SAV` is two banks by game mode in the
+registered image. Whether the shareware layout matches is unknown, and a
 Preview mode with its own progression is a plausible third thing to store. The
 shareware ships a 792-byte `TUBES.HSC`, the same size as the registered one,
 which is suggestive and is not proof - the earlier `GAMEBG`/atom/wave count
@@ -9328,7 +9328,7 @@ Read it as two independent size changes:
 
 * segment `1000` is **smaller** by 0x6b paragraphs - about 1.7 KB - which is
   the 50 missing dispatch arms and the wave-75 ending gone, minus the three new
-  functions above that live in `1000`. That is what drags `1ac3` down;
+  functions above that live in `1000`. That is what drags `1ac3` down.
 * the interface unit is **larger**, by enough that the segment after it still
   lands 0x12 paragraphs - 288 bytes - higher than the registered layout. That
   growth is the Ordering Info deck and the exit-screen dump.
@@ -9396,9 +9396,9 @@ returned by `2000:0625`:
 session with `0x1d4b` set and clear it on return, and they differ only in the
 mode bytes: arm 3 sets `0x1d4e=2, 0x1d4f=0`, arm 7 sets `0x1d4e=0,
 0x1d4f=2`. Both set `0x1d4c=1`. The player reported *one* extra menu item, so
-either one arm is reached another way or the item leads to a submenu; **not
+either one arm is reached another way or the item leads to a submenu. **Not
 resolved, and not guessed at here.** `0x1d4e` is set to 1 at boot and looks
-like the game mode, `0x1d4f` a sub-selector; neither is pinned yet.
+like the game mode, `0x1d4f` a sub-selector. Neither is pinned yet.
 
 The boot defaults are at `1000:aad4`, and they are worth having written down:
 
@@ -9513,7 +9513,7 @@ ones.
 > The **gate** roll `Random(100)+1` is spent either way - that much was true.
 > The **fallback** `Random(8)+1` is spent only when the special is REJECTED.
 > The registered game grants a share of its 9s and 10s and skips the fallback
-> each time; shareware normal play rejects every one and always spends it. So
+> each time. Shareware normal play rejects every one and always spends it. So
 > a rate of 0 spends strictly MORE calls. Measured from seed 12345 over 200
 > dispenses: **280 calls registered against 301 shareware, first difference at
 > call 21.**
@@ -9526,11 +9526,11 @@ ones.
 > 280, identical throughout**.
 >
 > And that is very likely **why those two arms set the flag at all**. One
-> `DEMO.SCR` ships in a `.RES` byte-identical between the editions; played at
+> `DEMO.SCR` ships in a `.RES` byte-identical between the editions. Played at
 > rate 0 it would desync exactly as measured. The marketing reading recorded
 > earlier - the demo is the advertisement - and this technical necessity
 > coincide, and only the second one is forced. So the flag on `View Demo` is
-> not a marketing choice that happens to work; it is required.
+> not a marketing choice that happens to work. It is required.
 
 #### The registered build has the Preview flag too, and never sets it
 
@@ -9545,7 +9545,7 @@ The control comparison is the good part. `FindScalarRefs` for `0x1d4b` over the
 So the registered executable reads the flag in the same three places, at
 addresses identical to the shareware's, and writes it exactly once - to 0, at
 startup, never again. **The two builds are the same Pascal source compiled with
-the Preview path present in both**; the registered one simply has no menu arm
+the Preview path present in both**. The registered one simply has no menu arm
 that turns it on. That is why `1000:5ed0`'s save-prompt gate and the rate
 branch both exist over there as unreachable code.
 
@@ -9597,10 +9597,10 @@ segment is 0x6b paragraphs shorter. Not one structural difference:
 
 * the high-score bank is `0x18c` = **396 bytes**, twice, at `DS:0x1610` and
   `DS:0x179c` - 792 total, which is exactly the size of both editions'
-  shipped `TUBES.HSC`;
+  shipped `TUBES.HSC`.
 * the record stride is `0x24` = 36 bytes, 11 of them per bank (10 entries plus
-  the working slot);
-* the bank is chosen by **`[0x1d4e] == 1`** in both;
+  the working slot).
+* the bank is chosen by **`[0x1d4e] == 1`** in both.
 * the same 10-entry bubble sort, the same 25-character name limit (`0x19`), the
   same backspace and Escape/Return handling.
 
@@ -9667,7 +9667,7 @@ So **the shareware's ending is the registration deck at wave 25**, and it is
 *not* gated on the Preview flag - it fires in normal play, which is what the
 player saw. `1000:8df8` is the structural counterpart of the registered
 `1000:9499`. The Preview additionally shows the ordering prompt when its run
-ends or at **wave 5**, which reads as the Preview being a five-wave run; that
+ends or at **wave 5**, which reads as the Preview being a five-wave run. That
 last inference is from one comparison against the literal 5 and is **not
 confirmed** by a wave list yet.
 
@@ -9716,7 +9716,7 @@ rolled:
 Two things fall out of that table that no amount of guessing would have got:
 
 * **`GAMEBG8` is never shown by the shareware at all** - not in normal play,
-  which only rolls 1..5, and not in the Preview;
+  which only rolls 1..5, and not in the Preview.
 * **`GAMEBG5` is shown by both** - it is inside the normal roll AND is Preview
   wave 2's fixed background.
 
@@ -9748,7 +9748,7 @@ The player's report - *"the first level is the mischief crystal one"* - is arm
 1 exactly.
 
 **And the list explains the spawn branch.** Preview waves 1 and 2 both require
-AntiMatter to complete; they are literally unplayable without type 9. That is
+AntiMatter to complete. They are literally unplayable without type 9. That is
 why `1000:9718` restores `[0x1d49]` and `[0x1d4a]` to the registered 50 and 25
 under the Preview flag rather than leaving them zeroed. The rate branch and the
 wave list were read hours apart, by different routes, and each is the other's
@@ -9825,7 +9825,7 @@ reported one extra menu item, so either one arm is reached another way or the
 item leads to a submenu - not resolved, and not guessed at here". Neither
 option, as it turns out:
 
-* **arm 3 is the menu item `Preview Registered`**;
+* **arm 3 is the menu item `Preview Registered`**.
 * **arm 7 is `View Demo`**, and arm 11 is the attract-mode demo. Both set the
   Preview flag on top of the demo triple that the registered build sets without
   it.
@@ -9890,13 +9890,13 @@ and the tell was there to be seen: a re-wrap would change *one* string in
 `1ac3:2d0a` is the shareware slideshow, against the registered `1b2e:2d63`.
 
 * through the generator: **21 slides and 174 items each**, and the emitted
-  tables differ in exactly one line - the name of the array;
+  tables differ in exactly one line - the name of the array.
 * without it: the two string pools decode to **152 Pascal strings apiece,
   identical in order and content**. 152 is the count this file has quoted for
   the registered deck since it was extracted.
 
 The second check matters because the first runs one parser over two inputs. A
-parser bug would agree with itself; two raw pools cannot.
+parser bug would agree with itself. Two raw pools cannot.
 
 The four text-unit entry points confirm the `0x120` shift again from a fresh
 routine - the shareware calls `2000:37cb` / `2000:3c35` / `2000:40cb` where the
