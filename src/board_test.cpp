@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -4408,8 +4409,7 @@ void testThePosePassesTheRollHeightAndSlideThrough() {
 // These are the first checks on it, and they are only possible because the
 // gate is a portable value rather than a branch inside `main()`.
 std::string tempPath(const std::string& name) {
-    const char* dir = std::getenv("TMPDIR");
-    return std::string(dir && *dir ? dir : "/tmp") + "/" + name;
+    return (std::filesystem::temp_directory_path() / name).string();
 }
 
 bool fileContents(const std::string& path, std::string& out) {
