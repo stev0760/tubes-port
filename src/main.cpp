@@ -27,6 +27,7 @@
 #include "gfx.h"
 #include "hiscore.h"
 #include "gamedir.h"
+#include "icon.h"
 #include "input.h"
 #include "cutscene.h"
 #include "ending.h"
@@ -1840,6 +1841,16 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "SDL init failed: %s\n", SDL_GetError());
         SDL_Quit();
         return 1;
+    }
+    // The title bar and taskbar icon. On Windows the .exe's own icon would
+    // do for the taskbar, but this is the only one Linux gets, and setting it
+    // everywhere keeps the two from differing. The surface borrows the table;
+    // SDL copies the pixels, so it can be freed straight away.
+    if (SDL_Surface* icon = SDL_CreateRGBSurfaceWithFormatFrom(
+            const_cast<unsigned char*>(tubes::kIconRgba), tubes::kIconSize,
+            tubes::kIconSize, 32, tubes::kIconSize * 4, SDL_PIXELFORMAT_RGBA32)) {
+        SDL_SetWindowIcon(win, icon);
+        SDL_FreeSurface(icon);
     }
 
     // Nearest neighbour, always: this is an indexed 320x200 image and a
