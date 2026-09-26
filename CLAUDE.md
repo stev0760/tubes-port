@@ -98,7 +98,7 @@ that **a commit is not backed up until it is pushed**, and that **history is no
 longer free to rewrite**: a rewrite now breaks every clone and every hash
 anyone has quoted. Rewrite nothing that has been pushed.
 
-- **The version is `src/version.h`, and it is 0.9.0.** Read its comment before
+- **The version is `src/version.h`, and it is 0.10.0.** Read its comment before
   deciding what a change is worth: a fidelity correction is a **PATCH** even
   when the game plays differently afterwards, because the specification is the
   1994 binary and not the port's last release. `TUBES.SAV` and `TUBES.HSC` are
@@ -146,6 +146,7 @@ anyone has quoted. Rewrite nothing that has been pushed.
 | `docs/debug-rig.md` | the live DOSBox-X debugging setup and its limits |
 | `docs/worklog.md` | chronological record of the work |
 | `PLAN.md` | roadmap, current status, and what is known-wrong |
+| `.github/workflows/` | `build.yml` on every push, `release.yml` on a `v*` tag |
 
 The original game files live in the parent directory, `..`. The Ghidra
 project is at `../ghidra-project` — outside this repo on purpose, since it is
@@ -177,8 +178,23 @@ key names rather than the `Bindings` they come from, because only
 
     cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
     cmake --build build -j
-    ./build/tubes-tests                      # 1021 checks, and rising
+    ./build/tubes-tests                      # 1061 checks, and rising
     ./build/tubes-port --gamedir ..
+
+The port builds on **Linux and Windows**, and CI holds both: `build.yml` runs
+the suite under GCC on ubuntu-latest and under MSVC on windows-latest for every
+push. Windows uses vcpkg's `x64-windows-static` with the static CRT - the
+README has the four commands - so a POSIX-ism in `src/` now fails a check the
+day it lands. The only one so far was in the tests, a `/tmp` fallback.
+
+**Releases are built by CI, never locally.** Pushing a `v*` tag runs
+`release.yml`, which refuses a tag that disagrees with `src/version.h` and a
+binary whose `--version` disagrees with either, then publishes a Linux tarball
+and a Windows zip together or not at all. The Linux job is pinned to
+`ubuntu-24.04` because the binary's glibc floor is whatever built it. **A change
+to `release.yml` is not tested by a push** - only a tag runs it - so say so in
+the commit, and if a release run fails, fix it and re-run against the same tag
+from the Actions tab rather than moving the tag.
 
 Music is verified by diffing register streams, not by listening:
 `--dump-regs NAME` prints what the sequencer writes to the chip, and it must
@@ -340,9 +356,11 @@ other platforms, was never a polish task: see `Portability`.
 
 So nothing of the original program is outstanding, and **publishing is done** -
 the repository is at `github.com/stev0760/tubes-port` with CI running the suite
-on every push. What is left is the short list at the top of `PLAN.md`: the
-player's full playthrough on Tubes 101, and the GLDFADE question, which is a
-"think about it" item rather than a queued one.
+on every push. **0.10.0 is the first release with a Windows build.** What is left
+is the short list at the top of `PLAN.md`: the player's full playthrough on
+Tubes 101, a wave played on native Windows (the `.exe` has so far run under Wine
+and on a CI runner), and the GLDFADE question, which is a "think about it" item
+rather than a queued one.
 
 **The port adds no Credits slide of its own**, and that is a decision rather
 than an omission: the Credits screen is the 1994 team's, this project's
@@ -379,8 +397,9 @@ screen; it has already caught a bug that had nothing to do with rendering.
 The segment mapping is settled: DGROUP is Ghidra `0x2785` = `L + 0x1785`, and
 `L` is `CS` at the entry breakpoint. Proven against the file, not guessed.
 
-Ports to other platforms are an eventual goal, so keep SDL at the platform
-edge - it is the portability layer, not something to avoid. See `Layout` for
+Ports to other platforms are an eventual goal - Windows is the first one done -
+so keep SDL at the platform edge; it is the portability layer, not something
+to avoid. See `Layout` for
 which files may include it.
 
 ## When a search comes back empty, suspect the search
