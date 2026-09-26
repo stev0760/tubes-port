@@ -5133,3 +5133,73 @@ Two follow-ups from that run, done the same day:
 only in `release.yml`, which runs on a tag, so the next release is their first
 real run. If it fails, fix and re-run it from the Actions tab against the same
 tag rather than moving the tag.
+
+## 2026-09-26 - 0.11.0: a Windows build someone can actually start, and an icon
+
+The first person to try the Windows build who was not on the project called it
+not idiot-proof, and the reason was one line of `main.cpp`. When `TUBES.RES`
+was not in the current directory, the port printed an error to stderr and
+exited. From a terminal that is fine. From Explorer, stderr is a console that
+closes with the program, so a double-click anywhere but the game's folder
+looked like nothing at all. Putting the .exe in the install folder was always
+the answer. Nothing ever said so.
+
+**The game folder is now looked for** (`src/gamedir.{h,cpp}`, portable and
+tested). With no folder given: the current directory, the executable's own,
+a `TUBES` folder inside each, then the folder that worked last, which is
+remembered in `settings.cfg`. The remembered one is last on purpose, so an .exe
+dropped into a second install plays that one. With a folder given, only it and
+its `TUBES` subfolder are tried, because guessing past an explicit answer
+hides the mistake in it. A bare argument counts as given, and that is what
+makes drag-and-drop work: Windows passes a folder dropped onto an .exe as
+`argv[1]`. A dropped file means its folder. When nothing is found, the message
+lists every folder tried, the two fixes, and the Internet Archive's shareware
+copy, and a plain launch shows it in `SDL_ShowSimpleMessageBox` as well.
+
+**Tracing the opens found a real Windows bug.** SDL hands the program UTF-8:
+`SDL_GetPrefPath`, `SDL_GetBasePath`, and `argv` itself, which `SDL2main`
+rebuilds from the wide command line. Every open in `src/` then passed those
+bytes to a narrow `fopen` or `std::fstream(std::string)`, and on Windows those
+read the path in the ANSI code page. A Tubes folder called `Jeux rétro`, or a
+settings file under `C:\Users\José\AppData`, would simply not open. It could
+never have shown on Linux, where narrow calls take UTF-8. `src/paths.h` is now
+the one conversion, and a test writes and reads back a file named in Latin-1
+and CJK characters. That test proves nothing on Linux, and on the Windows
+runner it passed first time.
+
+**The shareware link was checked before it was published.** The Internet
+Archive's `msdos_TUBES_shareware` is downloadable (the other item,
+`msdos_Tubes_1993`, is stream-only), and `TUBES.RES` sits at the top of its zip,
+so "unzip it and put the .exe beside `TUBES.RES`" is literally true. Its
+`SYSOPS.TXT` offers the shareware as a free BBS download, which is what makes
+pointing at it reasonable. The repository still ships none of it.
+
+The README now opens with where to get the game and three steps for Windows,
+including the SmartScreen prompt an unsigned download triggers - without
+that line a first-time player can reasonably decide the program is unsafe. The
+Windows zip gains `HOW TO PLAY.txt`, plain text because double-clicking
+`README.md` on Windows asks which program to use. `.gitattributes` keeps it
+CRLF so Notepad shows its line breaks.
+
+**The icon had one hard constraint**: it is built into the executable, so it
+lives in the repository, and the repository carries no game art. The
+professor's face and anything traced from a sprite were out before any design
+started. Three original designs were mocked up at every Windows size - a
+molecule chain, a test tube and a beaker - and the player chose the test tube.
+`tools/gen_icon.py` draws it from signed-distance shapes, each size separately
+with a one-pixel outline, and emits the `.ico` and a 64 px RGBA table for
+`SDL_SetWindowIcon`. Its first render at 16 px had atoms two pixels wide and a
+lip that drew as a flag. A wider tube and a shorter lip fixed both, judged from
+an 8x contact sheet rather than the full-size strip. A rerun is byte-identical.
+On Windows a configured `.rc` also carries VERSIONINFO from `src/version.h`, so
+Properties shows the same version as `--version`.
+
+1086 checks, 0 failures on both platforms. Real runs against the game
+directory, with `XDG_DATA_HOME` pointed at scratch so the real settings file
+was never touched, covered each path. The game was found from inside its
+folder, from a dropped folder and from a dropped `TUBES.RES`. The message
+appeared from elsewhere. A wrong `--gamedir` was reported rather than guessed
+past. After one interactive start, the remembered folder was found from
+elsewhere. The game directory's listing
+was identical before and after. The release-only changes - `HOW TO PLAY.txt` in
+the zip and the new notes - run for the first time on the 0.11.0 tag.

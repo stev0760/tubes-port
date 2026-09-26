@@ -131,6 +131,20 @@ asked for, and then publishing:
    and artifact-action bumps that followed are **unexercised until the next
    tag**, since only `release.yml` uses them.
 
+8. ~~**Make it easy to run on Windows, and an icon**~~ - **DONE, 2026-09-26**,
+   as **0.11.0**, after a first-time Windows player found it was not. The
+   .exe finds the game on its own (current folder, its own folder, a `TUBES`
+   folder in either, then the folder that worked last), takes a folder
+   dragged onto it, and explains itself in a window when it cannot, with the
+   Internet Archive's shareware copy as the answer to "I do not have the
+   game". The README opens with that, and the zip carries a
+   `HOW TO PLAY.txt`. Files open through UTF-8 paths, so an accented folder
+   or account name no longer breaks it. The icon is a test tube of three
+   atoms, original art from `tools/gen_icon.py` - the game's own sprites were
+   ruled out because the icon lives in the repository. **Open**: the same
+   native-Windows play check as item 7, now including a first run from a
+   fresh download.
+
 **The three animations that used to head this list are done**, and the two
 leads it carried were both pointing at the wrong routine:
 
@@ -1332,7 +1346,9 @@ it justifies *not* painting into a corner.
   and MSVC's first build had no errors and no warnings. SDL2 and the C runtime
   are linked statically, so the release is one `.exe`. CI builds it on every
   push, which is what keeps it working - a POSIX-ism now fails a check the
-  day it lands. The worklog has the detail.
+  day it lands. The worklog has the detail. 0.11.0 fixed the one Windows bug
+  the first build shipped with: narrow file opens, which fail on any path
+  outside the ANSI code page. `src/paths.h` is the fix and the rule.
 - **Endianness is not a problem.** PSP is MIPS little-endian, same as x86, so
   the format decoders port unchanged.
 - **The OPL core may be.** Nuked-OPL3 is cycle-accurate and correspondingly
