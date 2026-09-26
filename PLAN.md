@@ -121,6 +121,16 @@ asked for, and then publishing:
    project's own code, with `third_party/nuked-opl3` keeping its LGPL-2.1
    notices.
 
+7. ~~**A Windows release**~~ - **DONE, 2026-09-26**, as **0.10.0**. A tag now
+   publishes a Windows zip beside the Linux tarball, both built in CI, and
+   `build.yml` compiles and tests under MSVC on every push. See "Releases" at
+   the end of this file. Two things are still open. **Nobody has played it on
+   native Windows** - the player ran the released `.exe` under Wine, and CI
+   ran its `--version` and the tests on a real Windows runner, but a wave
+   played on a Windows machine is the check that is left. And the runner pin
+   and artifact-action bumps that followed are **unexercised until the next
+   tag**, since only `release.yml` uses them.
+
 **The three animations that used to head this list are done**, and the two
 leads it carried were both pointing at the wrong routine:
 
@@ -1219,6 +1229,7 @@ changes: every one still fires from the site the original calls `PlaySound`
 at. They simply finish.
 
 **5. Ports to other platforms** stay an eventual goal - see `Portability`.
+Windows is the first one done, in 0.10.0.
 
 ### 5. After the port is faithful: enhancements
 
@@ -1309,13 +1320,19 @@ it justifies *not* painting into a corner.
 
 - **SDL is the plan - keep it at the edge.** SDL *is* the portability layer;
   the point is to confine it to the platform boundary rather than thread it
-  through the game. Today only `main.cpp` (window, input, loop) and `opl.cpp`
-  (audio device) include it - 3 files of 16, and `screen.cpp` is not one of
-  them, being a plain indexed framebuffer with a `toRgba()` at the end.
-  This already pays off twice: `tubes-tests` links no SDL at all, and
-  `--dump-regs` proved the sequencer correct with no audio device attached.
-  If a target's SDL is missing or awkward, `main.cpp` and `opl.cpp` are the
-  only files to rewrite and nothing reversed is touched.
+  through the game. Today four files include it - `main.cpp`, `boot.cpp`,
+  `present.cpp` and `opl.cpp` - and `screen.cpp` is not one of them, being a
+  plain indexed framebuffer with a `toRgba()` at the end. This already pays
+  off twice: `tubes-tests` links no SDL at all, and `--dump-regs` proved the
+  sequencer correct with no audio device attached. If a target's SDL is
+  missing or awkward, those four are the only files to rewrite and nothing
+  reversed is touched.
+- **Windows: DONE, 0.10.0.** The first platform after Linux, and the edge held:
+  the only source change was in the tests (`tempPath()` fell back to `/tmp`),
+  and MSVC's first build had no errors and no warnings. SDL2 and the C runtime
+  are linked statically, so the release is one `.exe`. CI builds it on every
+  push, which is what keeps it working - a POSIX-ism now fails a check the
+  day it lands. The worklog has the detail.
 - **Endianness is not a problem.** PSP is MIPS little-endian, same as x86, so
   the format decoders port unchanged.
 - **The OPL core may be.** Nuked-OPL3 is cycle-accurate and correspondingly
@@ -1737,8 +1754,9 @@ docs, scripts or vendored code. No `.RES`, `.EXE`, `.GFX`, `.SAV`, `.HSC` or
 Two things landed with it. `.gitignore` gained `*.HSC` and `*.BIN`, which it had
 never covered - `*.SAV` was there from the first commit and the high score table
 was not, an accident of which file the port learned to write first. And
-`.github/workflows/build.yml` builds on ubuntu-latest and runs `tubes-tests`;
-its header says what CI cannot check here, which is everything needing the
+`.github/workflows/build.yml` builds on ubuntu-latest and runs `tubes-tests` -
+and, since 0.10.0, does the same under MSVC on windows-latest. Its header says
+what CI cannot check here, which is everything needing the
 player's own game data - the screen sweep, `--demo-trace` and the pixel diff all
 stay on the machine that owns the game.
 
@@ -1940,3 +1958,20 @@ clone.
   MIDI and DRO produced during analysis. None of it should ever be committed.
 - Consider whether the Ghidra project should be mentioned in the README as
   *deliberately* outside the repo, since it is derived from copyrighted data.
+
+### Releases
+
+Built and published by `.github/workflows/release.yml` on a `v*` tag, never on
+a developer's machine: a Linux binary carries the glibc of whatever built it.
+The workflow refuses a tag that disagrees with `src/version.h`, and refuses a
+binary whose `--version` disagrees with either. Nothing is published unless
+every platform built and passed its tests.
+
+| Version | Date | Assets |
+|---|---|---|
+| 0.9.1 | 2026-08-15 | Linux x86_64 tarball, SDL2 dynamic, glibc 2.39 floor |
+| 0.10.0 | 2026-09-26 | the same, plus a Windows x86_64 zip: one `.exe`, SDL2 and CRT static |
+
+The Linux job is pinned to `ubuntu-24.04`, so the glibc floor moves only when a
+commit moves it. Before cutting the next one, the repository check under
+"Published" is still the one worth repeating.
