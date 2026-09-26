@@ -93,7 +93,7 @@ drawn on.
 
 ## Status
 
-**0.9.0**, playable start to finish in Endurance and Wave mode, on both
+**0.10.0**, playable start to finish in Endurance and Wave mode, on both
 editions. Every screen of the original is ported and every format in the archive
 decoded. `PLAN.md` lists what is left, and `src/version.h` explains what the
 version numbers promise.
