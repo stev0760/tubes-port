@@ -58,6 +58,7 @@ add_executable(tubes-port
     src/mus.cpp
     src/opl.cpp
     src/playerfiles.cpp
+    src/paths.cpp
 )
 
 target_include_directories(tubes-port PRIVATE src ${SDL2_INCLUDE_DIRS})
@@ -72,7 +73,7 @@ add_executable(tubes-tests src/board_test.cpp src/board.cpp src/menu.cpp src/ses
                             src/ordering.cpp
     src/registration.cpp
     src/textscreen.cpp src/cp437_font.cpp
-    src/screens.cpp src/uistate.cpp src/res.cpp src/playerfiles.cpp
+    src/screens.cpp src/uistate.cpp src/res.cpp src/playerfiles.cpp src/paths.cpp
                             src/sfx.cpp src/scr.cpp)
 target_include_directories(tubes-tests PRIVATE src)
 enable_testing()

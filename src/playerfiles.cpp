@@ -1,4 +1,5 @@
 #include "playerfiles.h"
+#include "paths.h"
 
 #include <fstream>
 
@@ -11,7 +12,7 @@ bool PlayerFiles::writeBytes(const std::string& path,
         return false;
     }
     if (path.empty()) return false;
-    std::ofstream f(path, std::ios::binary);
+    std::ofstream f(fsPath(path), std::ios::binary);
     if (!f) return false;
     f.write(reinterpret_cast<const char*>(bytes.data()),
             static_cast<std::streamsize>(bytes.size()));
@@ -24,7 +25,7 @@ bool PlayerFiles::writeText(const std::string& path, const std::string& text) {
         return false;
     }
     if (path.empty()) return false;
-    std::ofstream f(path);
+    std::ofstream f(fsPath(path));
     if (!f) return false;
     f << text;
     return static_cast<bool>(f);

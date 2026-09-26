@@ -44,6 +44,7 @@
 #include "scr.h"
 #include "sfx.h"
 #include "version.h"
+#include "paths.h"
 
 namespace {
 
@@ -350,7 +351,7 @@ struct Options {
 // which is right for exactly the atoms they contain.
 //
 bool loadState(const std::string& path, tubes::Game& game) {
-    std::FILE* fh = std::fopen(path.c_str(), "r");
+    std::FILE* fh = tubes::openFile(path, "r");
     if (!fh) {
         std::fprintf(stderr, "cannot open state %s\n", path.c_str());
         return false;
@@ -919,7 +920,7 @@ double songSeconds(const tubes::Bytes& song) {
 
 bool writeWav(const std::string& path, const std::vector<int16_t>& samples,
               int sampleRate, std::string& error) {
-    std::FILE* f = std::fopen(path.c_str(), "wb");
+    std::FILE* f = tubes::openFile(path, "wb");
     if (!f) {
         error = "cannot write " + path;
         return false;
@@ -1005,7 +1006,7 @@ int main(int argc, char** argv) {
     // `tools/sav_decode.py` prints, so the two decoders can be diffed. The
     // .SAV is the player's, so this never writes.
     if (!opt.dumpSave.empty()) {
-        std::ifstream sf(opt.dumpSave, std::ios::binary);
+        std::ifstream sf(tubes::fsPath(opt.dumpSave), std::ios::binary);
         if (!sf) {
             std::fprintf(stderr, "cannot open %s\n", opt.dumpSave.c_str());
             return 1;
@@ -1200,7 +1201,7 @@ int main(int argc, char** argv) {
         // on any notion of time.
         std::FILE* csv = nullptr;
         if (!opt.demoCsv.empty()) {
-            csv = std::fopen(opt.demoCsv.c_str(), "w");
+            csv = tubes::openFile(opt.demoCsv, "w");
             if (!csv) {
                 std::fprintf(stderr, "cannot write %s\n", opt.demoCsv.c_str());
                 return 1;
@@ -1396,7 +1397,7 @@ int main(int argc, char** argv) {
     }
     tubes::Settings settings;
     if (!settingsPath.empty()) {
-        std::ifstream cf(settingsPath);
+        std::ifstream cf(tubes::fsPath(settingsPath));
         if (cf) {
             std::stringstream ss;
             ss << cf.rdbuf();
@@ -1702,7 +1703,7 @@ int main(int argc, char** argv) {
         game->saveInto(slot, t);
         slot.setDescription("WAVE " + std::to_string(opt.wave) + " TEST");
         const std::vector<uint8_t> raw = tubes::encodeSaves(out);
-        std::ofstream f(opt.makeSave, std::ios::binary);
+        std::ofstream f(tubes::fsPath(opt.makeSave), std::ios::binary);
         if (!f) {
             std::fprintf(stderr, "cannot write %s\n", opt.makeSave.c_str());
             return 1;
@@ -1834,7 +1835,7 @@ int main(int argc, char** argv) {
         opt.gameDir + "/" + opt.edition.saveFileName();
     tubes::SaveFile saves;
     {
-        std::ifstream sf(savePath, std::ios::binary);
+        std::ifstream sf(tubes::fsPath(savePath), std::ios::binary);
         if (sf) {
             std::vector<uint8_t> raw((std::istreambuf_iterator<char>(sf)),
                                       std::istreambuf_iterator<char>());
@@ -1852,7 +1853,7 @@ int main(int argc, char** argv) {
         opt.gameDir + "/" + opt.edition.hiScoreFileName();
     tubes::HiScoreFile hiScores = tubes::defaultHiScores();
     {
-        std::ifstream hf(hiScorePath, std::ios::binary);
+        std::ifstream hf(tubes::fsPath(hiScorePath), std::ios::binary);
         if (hf) {
             std::vector<uint8_t> raw((std::istreambuf_iterator<char>(hf)),
                                       std::istreambuf_iterator<char>());

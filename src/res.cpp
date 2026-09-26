@@ -1,4 +1,5 @@
 #include "res.h"
+#include "paths.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -72,7 +73,7 @@ Bytes lzssDecompress(const uint8_t* src, size_t srcLen, size_t expected) {
 }
 
 bool Archive::open(const std::string& path, std::string& error) {
-    FILE* f = std::fopen(path.c_str(), "rb");
+    FILE* f = openFile(path, "rb");
     if (!f) {
         error = "cannot open " + path;
         return false;
@@ -143,7 +144,7 @@ bool Archive::read(const std::string& name, Bytes& out,
     }
     const Entry& e = it->second;
 
-    FILE* f = std::fopen(path_.c_str(), "rb");
+    FILE* f = openFile(path_, "rb");
     if (!f) {
         error = "cannot reopen " + path_;
         return false;

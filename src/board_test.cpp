@@ -29,6 +29,7 @@
 #include "hiscore.h"
 #include "input.h"
 #include "save.h"
+#include "paths.h"
 #include "menu.h"
 #include "ordering.h"
 #include "playerfiles.h"
@@ -4408,17 +4409,41 @@ void testThePosePassesTheRollHeightAndSlideThrough() {
 // missed - `--auto-advance` wrote a real `TUBES.HSC` into the game directory.
 // These are the first checks on it, and they are only possible because the
 // gate is a portable value rather than a branch inside `main()`.
+// UTF-8 in and out, like every other path in the port - `.string()` would
+// hand back the ANSI code page on Windows. See `paths.h`.
 std::string tempPath(const std::string& name) {
-    return (std::filesystem::temp_directory_path() / name).string();
+    return tubes::utf8Of(std::filesystem::temp_directory_path() /
+                         tubes::fsPath(name));
 }
 
 bool fileContents(const std::string& path, std::string& out) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(tubes::fsPath(path), std::ios::binary);
     if (!f) return false;
     std::stringstream ss;
     ss << f.rdbuf();
     out = ss.str();
     return true;
+}
+
+// A path the ANSI code page cannot spell. On Windows a narrow `fopen` or
+// `std::ofstream(std::string)` fails on it outright, which is how a player
+// whose account or Tubes folder has an accent in its name would have lost
+// their settings, saves and the game data itself. On Linux this passes
+// trivially; the Windows CI job is where it means something.
+void testAPathOutsideTheCodePageStillOpens() {
+    const std::string path = tempPath("tubes-\xc3\xa9t\xc3\xa9-\xe6\xb0\xb4.bin");
+    std::filesystem::remove(tubes::fsPath(path));
+    tubes::PlayerFiles files = tubes::PlayerFiles::writing();
+    check(files.writeBytes(path, {7, 8, 9}), "a UTF-8 path is written");
+    std::FILE* f = tubes::openFile(path, "rb");
+    check(f != nullptr, "and openFile finds it again");
+    if (f) {
+        unsigned char b[4] = {};
+        const size_t n = std::fread(b, 1, sizeof(b), f);
+        std::fclose(f);
+        check(n == 3 && b[0] == 7 && b[2] == 9, "with the bytes it was given");
+    }
+    std::filesystem::remove(tubes::fsPath(path));
 }
 
 void testABlockedWriterWritesNothingAndSaysSo() {
@@ -4657,6 +4682,7 @@ int main() {
     testGameEditionReflectsPreviewForSessionGates();
 
     testABlockedWriterWritesNothingAndSaysSo();
+    testAPathOutsideTheCodePageStillOpens();
     testAWritingWriterWritesExactlyWhatItWasGiven();
     testAnEmptyPathIsAFailureAndNotARefusal();
     testEveryPlayerOwnedFileGoesThroughTheGate();
