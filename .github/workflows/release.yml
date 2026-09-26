@@ -5,7 +5,10 @@
 # reason: a Linux binary carries the glibc of whatever built it. A machine
 # running a rolling distribution produces something most people cannot run at
 # all, and the failure is a loader error at startup rather than anything the
-# port could report. An ubuntu-latest runner is a known, older baseline.
+# port could report. The runner is pinned to ubuntu-24.04 rather than
+# ubuntu-latest for the same reason: `latest` moves, and when it moves the
+# glibc floor of every later release rises with it, silently. Moving the floor
+# should be a commit, not a side effect of GitHub relabelling a runner.
 # Windows has no such floor, but building it beside the Linux one means both
 # pass the same version checks and land on the same release page.
 #
@@ -45,7 +48,7 @@ jobs:
   # moment a tag exists, and a release whose binary prints a different number
   # than the tag it came from is worse than no release.
   version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       ver: ${{ steps.check.outputs.ver }}
     steps:
@@ -66,7 +69,7 @@ jobs:
 
   linux:
     needs: version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       VER: ${{ needs.version.outputs.ver }}
     steps:
@@ -111,7 +114,7 @@ jobs:
       - name: Record what the build was made against
         run: |
           {
-            echo "- **Linux**: built on \`ubuntu-latest\` against SDL $(pkg-config --modversion sdl2),"
+            echo "- **Linux**: built on \`ubuntu-24.04\` against SDL $(pkg-config --modversion sdl2),"
             echo "  glibc $(ldd --version | head -1 | grep -oE '[0-9]+\.[0-9]+$') (the floor for this binary)."
             echo "  Tests: $(./build/tubes-tests | tail -1)."
           } > build-linux.md
@@ -195,7 +198,7 @@ jobs:
 
   publish:
     needs: [version, linux, windows]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       VER: ${{ needs.version.outputs.ver }}
     steps:
