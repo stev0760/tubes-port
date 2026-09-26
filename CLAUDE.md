@@ -183,7 +183,7 @@ key names rather than the `Bindings` they come from, because only
 
     cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
     cmake --build build -j
-    ./build/tubes-tests                      # 1061 checks, and rising
+    ./build/tubes-tests                      # 1086 checks, and rising
     ./build/tubes-port --gamedir /path/to/game
 
 The port builds on **Linux and Windows**, and CI holds both: `build.yml` runs

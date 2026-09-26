@@ -8,11 +8,49 @@ Atoms travel a network of glass tubes. Slide the test tube along the bottom to
 catch them, tip them into the beaker, and clear three or more of a colour in a
 row. Miss too many and the run ends.
 
-## Running it
+## Playing it
 
-You supply the game data. Point the port at the folder holding your `TUBES.RES`:
+The port contains none of the original game. It plays the data files from your
+own copy of Tubes, so you need one first.
 
-    ./build/tubes-port --gamedir /path/to/your/tubes
+### Getting the game
+
+**Any copy works**, registered or shareware. Tubes has been out of print for
+decades. The shareware release was made to be copied and passed around freely,
+and the Internet Archive hosts it:
+<https://archive.org/details/msdos_TUBES_shareware>. Download `TUBES.zip` and
+unzip it anywhere. The folder you get is your Tubes folder: it is the one with
+`TUBES.RES` in it.
+
+### Windows
+
+1. Download the `windows-x86_64.zip` from the
+   [Releases page](https://github.com/stev0760/tubes-port/releases/latest)
+   and unzip it.
+2. Copy `tubes-port.exe` into your Tubes folder, next to `TUBES.RES`.
+3. Double-click `tubes-port.exe`.
+
+Or leave the .exe where it is and drag your Tubes folder onto it. Either way it
+remembers where the game is, so after the first start a shortcut to it on the
+desktop works too.
+
+If Windows says **"Windows protected your PC"**, click **More info**, then
+**Run anyway**. It says that about any program downloaded from the internet
+that has not been through a paid code-signing process, and this one has not.
+
+A console window opens beside the game. Messages go there, and closing it
+closes the game. If the game cannot be found, a window says where it looked and
+what to do.
+
+### Linux
+
+Download the `linux-x86_64.tar.gz` from the same page. It needs SDL2
+(`sudo apt install libsdl2-2.0-0` on Debian and Ubuntu). Extract it, then run it
+from your Tubes folder, or tell it where that is:
+
+    ./tubes-port /path/to/your/tubes
+
+### What it reads and writes
 
 `TUBES.RES` carries the sprites, sounds, songs, fonts and wave data.
 `DRIVERS.RES` beside it adds FM music, which needs the `FMMUSIC.DRV` inside it.
@@ -36,7 +74,7 @@ plugged in.
 
 | Flag | |
 |---|---|
-| `--gamedir DIR` | where your `TUBES.RES` lives (default `.`) |
+| `--gamedir DIR` | where your `TUBES.RES` lives; a bare `DIR` works too (default: look for it) |
 | `--scale N` | integer scale factor (default: largest that fits) |
 | `--no-splash` / `--no-music` | skip the boot splashes / start silent |
 | `--fade-steps N` | shorten the half-second screen fade; `0` cuts it |
@@ -52,7 +90,7 @@ SDL2, CMake 3.16 or newer, and a C++17 compiler.
     # Debian/Ubuntu: sudo apt install build-essential cmake libsdl2-dev
     cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
     cmake --build build -j
-    ./build/tubes-tests          # 1061 checks; runs without game data
+    ./build/tubes-tests          # 1086 checks; runs without game data
 
 On Windows, with Visual Studio and [vcpkg](https://vcpkg.io), from a Developer
 PowerShell:
