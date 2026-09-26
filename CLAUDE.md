@@ -98,7 +98,7 @@ that **a commit is not backed up until it is pushed**, and that **history is no
 longer free to rewrite**: a rewrite now breaks every clone and every hash
 anyone has quoted. Rewrite nothing that has been pushed.
 
-- **The version is `src/version.h`, and it is 0.10.0.** Read its comment before
+- **The version is `src/version.h`, and it is 0.11.0.** Read its comment before
   deciding what a change is worth: a fidelity correction is a **PATCH** even
   when the game plays differently afterwards, because the specification is the
   1994 binary and not the port's last release. `TUBES.SAV` and `TUBES.HSC` are

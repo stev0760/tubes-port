@@ -56,7 +56,7 @@
 // are an unambiguous anchor for `CMakeLists.txt`, which greps this file rather
 // than carrying a second copy that can drift.
 #define TUBES_VERSION_MAJOR 0
-#define TUBES_VERSION_MINOR 10
+#define TUBES_VERSION_MINOR 11
 #define TUBES_VERSION_PATCH 0
 
 #define TUBES_VERSION_STRINGIFY_(x) #x
@@ -72,10 +72,10 @@ constexpr int kVersionMajor = TUBES_VERSION_MAJOR;
 constexpr int kVersionMinor = TUBES_VERSION_MINOR;
 constexpr int kVersionPatch = TUBES_VERSION_PATCH;
 
-// `0.10.0`.
+// `0.11.0`.
 constexpr const char* kVersion = TUBES_VERSION_STRING;
 
-// `tubes-port 0.10.0` - the one printable identity, and one constant rather
+// `tubes-port 0.11.0` - the one printable identity, and one constant rather
 // than two formatted strings for a reason that is load-bearing: `main.cpp`
 // prints it for `--version` and `textscreen.cpp` writes it on the picker, and
 // `main.cpp` is not in `tubes-tests` and cannot be, since it includes SDL. So
