@@ -1988,6 +1988,7 @@ every platform built and passed its tests.
 |---|---|---|
 | 0.9.1 | 2026-08-15 | Linux x86_64 tarball, SDL2 dynamic, glibc 2.39 floor |
 | 0.10.0 | 2026-09-26 | the same, plus a Windows x86_64 zip: one `.exe`, SDL2 and CRT static |
+| 0.11.0 | 2026-09-26 | both again; the Windows zip adds `HOW TO PLAY.txt`, and the `.exe` carries the icon and version details |
 
 The Linux job is pinned to `ubuntu-24.04`, so the glibc floor moves only when a
 commit moves it. Before cutting the next one, the repository check under
