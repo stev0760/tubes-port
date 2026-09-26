@@ -4,6 +4,12 @@ Chronological record of the reverse-engineering and porting effort. Format
 specifics live in `reversing-notes.md`. This file records the sequence,
 the reasoning, and the mistakes.
 
+Paths in the entries are as they were on the machine the work was done on, and
+are kept as written because this is a record. `..` is the registered install,
+which sat beside the repository. `../ghidra-project` is the Ghidra project.
+`~/Dev/tubes-tooling/` is the tooling checkout. `CLAUDE.md` explains all three,
+and `CLAUDE.local.md` says where they are on the machine in hand.
+
 ---
 
 ## 2026-07-25 — Session 1

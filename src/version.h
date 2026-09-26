@@ -10,7 +10,7 @@
 // MAJOR - a consumer outside this repository stops working. A CLI flag
 //   removed, renamed, or given a new meaning; a machine-read output
 //   (`--dump-regs`, `--dump-save`, `--demo-csv`) reshaped where the consumer
-//   is not in `tools/` - the rig at `~/Dev/tubes-tooling/` is outside this
+//   is not in `tools/` - the rig in the tooling checkout is outside this
 //   repo on purpose and cannot be updated in the same commit; a `settings.cfg`
 //   key repurposed so an existing file silently means something new; or a
 //   piece of the port's OWN invented behaviour changed or withdrawn - control

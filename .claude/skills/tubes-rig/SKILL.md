@@ -5,8 +5,9 @@ description: Drive the Tubes debugging rig - run the original under DOSBox-X, ca
 
 # The Tubes rig
 
-Everything lives **outside the repo** at `~/Dev/tubes-tooling/` because it holds
-copyrighted game data. Never copy game data or decompiler output into
+Everything lives **outside the repo**, in the tooling checkout, because it holds
+copyrighted game data. `CLAUDE.local.md` says where that checkout is on this
+machine. If it does not, ask. Never copy game data or decompiler output into
 `tubes-port/`.
 
 ## Run an isolated instance (does not disturb a game in progress)
@@ -56,7 +57,7 @@ yellow = both, different shade.
 Two calibrations are built in and must not be removed:
 
 * the **backdrop is excluded** - random `GAMEBG1..10` with `STAR1..4` animated
-  over it, so it never matches and swamps everything;
+  over it, so it never matches and swamps everything.
 * **greys compare with a tolerance of 6** - DOSBox expands the 6-bit DAC with
   `v<<2`, the port with `v*255/63`, so every grey lands one unit apart. Without
   it the harness reads 34% instead of 4.6%.
@@ -85,7 +86,7 @@ them - what Ghidra receives has to be absolute.
       -scriptPath "$REPO/ghidra_scripts" \
       -postScript DecompileFuncs.java 1000:3a67 1000:9e53
 
-Output is prefixed `INFO  <Script>.java> `; strip it before parsing.
+Output is prefixed `INFO  <Script>.java> `. Strip it before parsing.
 
 **Do not read the decompiler for structure.** `1000:3a67` is a nested Pascal
 procedure sharing `1000:9e53`'s frame through a static link, and Ghidra folds
@@ -110,7 +111,7 @@ inferring them from symmetry.
 `1000:3a67`'s frame. Searching DGROUP offsets for it finds nothing.
 
 The atom array is `array[1..12]` and **the index is the column** for records
-1..6; 7..12 are the atoms falling out of the test tube into the beaker. The
+1..6. 7..12 are the atoms falling out of the test tube into the beaker. The
 base was carried as `0x241a4` for two sessions, which is `array[2]`. If an
 emitted index and the record's own `+0x0c` column field disagree, the base is
 wrong - the spawn indexes this array by the column, so they must match.

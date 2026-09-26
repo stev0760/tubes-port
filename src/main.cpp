@@ -1357,7 +1357,7 @@ int main(int argc, char** argv) {
     // player, a recorded demo, a captured state, an explicit wave. Three
     // things follow from it, and they are three separate things rather than
     // one - the flag used to be called `harness`, which said none of them and
-    // read as the DOSBox rig at `~/Dev/tubes-tooling/`, a different program
+    // read as the DOSBox rig in the tooling checkout, a different program
     // entirely:
     //
     //   1. seed from a constant instead of the clock, so a run repeats;

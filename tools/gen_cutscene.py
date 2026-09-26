@@ -24,7 +24,7 @@ What it reads, and how:
   * `CALL 0x1000:c226` is the animation, and its 23 pushed words are the two
     tracks (see cutscene.h for the parameter map).
 
-Run from ~/Dev/tubes-tooling with disasm-1651.txt and strings-1651.txt
+Run from the tooling checkout (see CLAUDE.md) with disasm-1651.txt and strings-1651.txt
 present. See docs/reversing-notes.md, "The opening cutscene".
 """
 import re

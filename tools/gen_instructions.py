@@ -6,7 +6,7 @@ it by hand would be 150 chances to make a transcription error nobody would ever
 notice. So it is extracted: every text call is a fixed push sequence and every
 illustration indexes the game's own ball table at `DS:0x1da6 + 4 * type`.
 
-Run from ~/Dev/tubes-tooling with disasm-2d63.txt and strings-2d63.txt present.
+Run from the tooling checkout (see CLAUDE.md) with disasm-2d63.txt and strings-2d63.txt present.
 """
 import argparse
 import re

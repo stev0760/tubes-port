@@ -2181,7 +2181,8 @@ before and after.
 
 ### The copy being reversed is the registered version
 
-Confirmed by the user: the copy in `..` is the **full registered release**, not
+Confirmed by the user: the copy this project was developed against - the
+**registered install** from here on - is the **full registered release**, not
 shareware. So everything in these notes describes the complete game, including
 AntiMatter and Bonus, which published sources list as registered-only additions -
 consistent with the slides documenting them.
@@ -3837,8 +3838,8 @@ link. The addresses now confirm it from the data side.
   index) as **absolute DS addresses**, matching the globals documented here.
   So the split is: presentation tables in DGROUP, gameplay state on the stack.
 
-The decompilation of `1000:3a67` + `1000:9e53` is kept **outside this repo**, at
-`~/Dev/tubes-tooling/decomp-3a67-9e53.txt`, for the same reason the Ghidra
+The decompilation of `1000:3a67` + `1000:9e53` is kept **outside this repo**, as
+`decomp-3a67-9e53.txt` in the tooling checkout, for the same reason the Ghidra
 project is: it is derived from copyrighted data.
 
 ## `1000:3a67` decompiled: the beaker grid and atom array, from the code
@@ -4063,7 +4064,7 @@ segments" would look equally authoritative while being unverified.
 ### RETRACTED: `DS:0x1d4e` does not select a tube layout
 
 Grouping the draw calls by **brace depth** rather than by line range
-(`~/Dev/tubes-tooling/group_layouts.py`) reverses the earlier reading:
+(`group_layouts.py`, in the tooling checkout) reverses the earlier reading:
 
 | group | draws |
 |---|---|
@@ -9061,7 +9062,7 @@ now corroborated from the binary's own documentation, which is the second-rank
 authority `CLAUDE.md` describes - and this is the **fourth** time that has held
 an answer the project was deriving the hard way.
 
-**Second: the copy in `..` is the REGISTERED edition.** That is now settled
+**Second: the registered install is the REGISTERED edition.** That is now settled
 against real shareware images - see the section below, which also **corrects
 the argument this paragraph originally made**. The first version of this note
 reasoned that all three advertised additions were present in the archive, so
@@ -9082,10 +9083,10 @@ the wave table's arms.
 
 ## Both editions, measured - shareware is 25 waves and the archive is identical
 
-Two real images, off archive.org and analysed side by side with the copy in
-`..`:
+Two real images, off archive.org and analysed side by side with the registered
+install:
 
-| | `..` | `msdos_TUBES_shareware` | `msdos_Tubes_1993` |
+| | registered install | `msdos_TUBES_shareware` | `msdos_Tubes_1993` |
 |---|---|---|---|
 | `TUBES.EXE` | 46,037 | 46,389 | 47,328 |
 | unpacked | 108,432 | 108,720 | 110,672 |
@@ -9109,7 +9110,7 @@ one arm per wave, every arm the same shape:
       or  eb dd  short, once the tail is near  (10 bytes)
       or  nothing at all, on the LAST arm      (8 bytes, JNZ dd = 4)
 
-**75 in `..`, 25 in both shareware images.** The pitch on the exit screen says
+**75 in the registered install, 25 in both shareware images.** The pitch on the exit screen says
 registering adds 50, and 75 - 50 = 25. Hypothesis closed.
 
 Two false counts came out of this before the right one, both from the filter
@@ -9127,7 +9128,7 @@ that the image's true count was already known from decompiling it arm by arm.
 
 ### The `.RES` does NOT distinguish the editions - it is byte-identical
 
-`..`'s `TUBES.RES` and the shareware download's have **the same md5**. Ten
+The registered install's `TUBES.RES` and the shareware download's have **the same md5**. Ten
 `GAMEBG`, `AFADE*` and `GLDFADE*`, `TUBESEND.BIN`: all of it is in the
 shareware archive too. The `msdos_Tubes_1993` archive differs from both only by
 its publisher splash - `IMPULSE.DAT` in place of `SOFT.ANM`/`SOFT.GFX`/
@@ -9142,7 +9143,7 @@ follow:
 2. there is nothing for the engine to *detect*. "Supporting the shareware
    edition" can only mean offering its 25-wave progression as a choice, which
    is a mode and not a compatibility layer.
-3. the earlier reading of `..` as registered - "all three additions are
+3. the earlier reading of the development copy as registered - "all three additions are
    present in the archive" - was **wrong in its premises** and right only by
    luck. What actually says registered is `PRIZE.GFX`, the ending text with
    its `existance` misspelling, and 75 arms. Corrected above.
@@ -9187,8 +9188,8 @@ which is the role measurement is allowed to play.
 
 ### The strings, which are the corroboration
 
-`strings SW_UNP.EXE` minus `strings TUBES_UNP.EXE` (the registered image in
-`..`) is 666 unique against 635, and the shareware-only set names every stage
+`strings SW_UNP.EXE` minus `strings TUBES_UNP.EXE` (the registered image, from
+the registered install) is 666 unique against 635, and the shareware-only set names every stage
 above in the program's own words:
 
     Preview Registered                Ordering Info
@@ -9258,10 +9259,10 @@ Two images are in use, and there are only two:
 
 | | registered | shareware |
 |---|---|---|
-| install | `..` | `~/Dev/tubes-tooling/editions/sw/` |
+| install | the game directory | `editions/sw/` in the tooling checkout |
 | unpacked | `assets-extracted/TUBES_UNP.EXE` | `editions/SW_UNP.EXE` |
 | waves | 75 | 25 |
-| Ghidra project | `../ghidra-project`, `tubes` | `../ghidra-project-sw`, `tubes-sw` |
+| Ghidra project | `tubes`, in the Ghidra project | `tubes-sw`, a Ghidra project of its own |
 
 The third image is **filed away** at
 `editions/filed-impulse-rerelease/`, with a `README.txt` saying why. It was
@@ -9283,12 +9284,12 @@ one project holding both is a wrong-address finding waiting to happen.
 
 ### The shareware map: every new stage located, by string
 
-`SW_UNP.EXE` imported into `../ghidra-project-sw` (project `tubes-sw`), Old-style
+`SW_UNP.EXE` imported into its own Ghidra project, `tubes-sw`, Old-style
 DOS Executable (MZ), `x86:LE:16:Real Mode:default` - the same loader and
 language the registered image got, chosen by Ghidra without prompting. Clean
 import, no errors. `FindPascalStrings.java` then `MapProgram.java`: **297
 functions, 686 strings, 195 call edges**, dumped to
-`~/Dev/tubes-tooling/map-sw.txt`.
+`map-sw.txt` in the tooling checkout.
 
 The one-liner from `CLAUDE.md` - the one that found the high score viewer after
 a scalar scan had "disproved" it - found every new stage on the first try:

@@ -22,8 +22,8 @@ would be a transcription error nobody would ever catch.
 `DS:0x2110` is STARTREK.816 (the heading) and `DS:0x2118` is TINY6X8.88 (the
 small one), from the loads at `1000:b0f6` and `1000:b0b6`.
 
-Usage, from ~/Dev/tubes-tooling:
-    gen_ending.py disasm-9499.txt ending-strings.txt > ../tubes-port/src/ending.cpp
+Usage, from the tooling checkout (see CLAUDE.md):
+    gen_ending.py disasm-9499.txt ending-strings.txt > REPO/src/ending.cpp
 """
 import re
 import sys

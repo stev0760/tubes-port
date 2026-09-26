@@ -554,7 +554,7 @@ lossy in ways invisible from the inside - a scoring rule fitted to two points
 that was simply wrong, a wildcard rule wrong until a player described it, and
 an "ambiguity in the original" that was really a bug in our own matcher.
 
-**The measure of progress is now a number.** `~/Dev/tubes-tooling/` holds a
+**The measure of progress is now a number.** The tooling checkout holds a
 pixel-diff harness (see `docs/debug-rig.md`):
 
     python3 capture_frame.py frames 2      # original, PAUSED, + its state
@@ -1382,20 +1382,20 @@ one was. See "What shareware mode actually is" below. The measurements in this
 section still stand and are what that work builds on.
 
 **MEASURED, against both editions.** Two real images have now been pulled from
-archive.org and compared with the copy in `..`, and the answer is smaller than
+archive.org and compared with the registered install, and the answer is smaller than
 this section assumed. `docs/reversing-notes.md` has the table.
 
 1. **The wave table.** ~~Hypothesis, untested~~ - **confirmed by counting.**
    `tools/count_waves.py` counts `1000:86b8`'s dispatch arms straight out of an
-   unpacked image: **75 in `..`, 25 in both shareware images.** The exit
+   unpacked image: **75 in the registered install, 25 in both shareware images.** The exit
    screen's "50 more exciting waves" is exactly that difference.
-2. **Which edition is in `..`.** ~~Unknown~~ - **REGISTERED**, and it is the
+2. **Which edition the development copy is.** ~~Unknown~~ - **REGISTERED**, and it is the
    only one of the three that is. What says so is `PRIZE.GFX`, the ending text
    with its `existance` misspelling, and the 75 arms. (An earlier reading of
    this from the archive's contents was wrong - see the correction in the
    notes.)
 3. **The resource sets.** ~~Would have to become version-aware~~ - **they do
-   not differ.** `..`'s `TUBES.RES` is **byte-identical** to the shareware
+   not differ.** The registered `TUBES.RES` is **byte-identical** to the shareware
    download's, same md5. Ten `GAMEBG`, both special-atom fade families,
    `TUBESEND.BIN`: all present in the shareware archive too. The second
    archive, `msdos_Tubes_1993`, differs from both only by its publisher splash
@@ -1428,7 +1428,7 @@ it eventually belongs (auto-detect from the install, a menu choice, or both)
 left open until the behaviour is in. The goal is that **a player who only ever
 had the shareware disc can play the game they remember**, which is a fitting
 thing for an abandonware preservation port to be able to do, and it is the
-first time this port will reproduce a program other than the one in `..`.
+first time this port will reproduce a program other than the registered one.
 
 ### What is different, and what says so
 
@@ -1676,7 +1676,8 @@ inherits window scaling, 4:3 and the fade. `buildEditionPrompt` is in
 | by hand | edit `edition` in the settings file |
 
 The settings file is wherever `SDL_GetPrefPath` puts it - on Linux
-`~/.local/share/tubes-port/settings.cfg`. There is deliberately **no in-game
+`~/.local/share/tubes-port/settings.cfg`, on Windows
+`%APPDATA%\tubes-port\settings.cfg`. There is deliberately **no in-game
 switch** - the player asked for exactly that - and the ordering constraint below
 is why it would be awkward anyway: a menu item would have to rebuild and re-read
 the save and high-score files mid-run. If one is ever wanted, that is the work it implies, and it is the write
@@ -1692,7 +1693,7 @@ there anyway, so an answer given in one could not be remembered.
 ### The work, in order
 
 1. **Import `SW_UNP.EXE` into its own Ghidra project** - separate from
-   `../ghidra-project`, because two programs with the same segment layout in
+   the registered image's, because two programs with the same segment layout in
    one project is a confusion waiting to happen. Run
    `ghidra_scripts/MapProgram.java` over it exactly as the registered image was
    mapped: the call graph plus the strings each function references is what
@@ -1748,8 +1749,8 @@ green on the first run - 1034 checks, 0 failures, 44 seconds.
 The repository check that gated the push, because it is the one worth repeating
 before every release: 111 tracked files, and every path ever added is source,
 docs, scripts or vendored code. No `.RES`, `.EXE`, `.GFX`, `.SAV`, `.HSC` or
-`assets-extracted` path has existed in the history at any point. `git grep
-/home/steve` finds nothing but this file describing the check.
+`assets-extracted` path has existed in the history at any point. A `git grep`
+for an absolute home-directory path finds nothing that names a machine.
 
 Two things landed with it. `.gitignore` gained `*.HSC` and `*.BIN`, which it had
 never covered - `*.SAV` was there from the first commit and the high score table
@@ -1884,8 +1885,8 @@ clone.
     guard impossible rather than merely documented. `saveHiScores` and
     `writeSaves` are the only two guarded today; the next one added is the
     one at risk.
-  - **Rename it.** "Harness" reads as the DOSBox reverse-engineering rig at
-    `~/Dev/tubes-tooling/`, which is a different program entirely and never
+  - **Rename it.** "Harness" reads as the DOSBox reverse-engineering rig in
+    the tooling checkout, which is a different program entirely and never
     touches this code. What the flag actually means is "this run is scripted,
     not a person playing" - `scripted` or `nonInteractive` says that, and the
     three behaviours then read as consequences of it rather than as a

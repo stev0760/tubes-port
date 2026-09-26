@@ -5,9 +5,10 @@ self-corrections in one session, every one from a tool rather than the binary).
 This is the replacement technique: watch the game run.
 
 Nothing here lives in this repository. The rig is machine-local and its drive
-holds copyrighted game data, so it sits outside:
+holds copyrighted game data, so it sits outside, in the **tooling checkout**.
+Where that is differs per machine - `CLAUDE.local.md` records it. Its layout:
 
-    ~/Dev/tubes-tooling/
+    tubes-tooling/
       dosbox-x-remotedebug/     lokkju's DOSBox-X fork: GDB stub + QMP server
       dosbox-mcp/               jdmichaud's MCP wrapper, 24 tools
       tubes.conf                the DOSBox-X config used for all experiments
@@ -33,13 +34,13 @@ holds copyrighted game data, so it sits outside:
       diag_frameclock.py        find which candidate sites execute per frame
       build.log                 the fork's build transcript
 
-`gamedrive/` is symlinks to the game files in `..`, plus **copies** of the two
+`gamedrive/` is symlinks to the files in the game directory, plus **copies** of the two
 files the game writes (`SETUP.CFG`, `TUBES.SAV`) so debugging cannot corrupt
 the user's real save. No game data is duplicated and none is in this repo.
 
 ## What was built
 
-    cd ~/Dev/tubes-tooling/dosbox-x-remotedebug
+    cd tubes-tooling/dosbox-x-remotedebug
     ./build-debug --enable-remotedebug \
                   --disable-libfluidsynth --disable-mt32 --disable-avcodec
 
@@ -472,7 +473,7 @@ frozen for its whole run and no drop was ever lost.
 
 Neither is vendored into this repo. Both are upstream clones, unmodified so
 far. If route 1 above is taken, the patch should be kept as a tracked diff
-somewhere in `~/Dev/tubes-tooling/` so a fresh clone can be brought back up.
+somewhere in the tooling checkout so a fresh clone can be brought back up.
 
 ## The pixel-diff harness
 

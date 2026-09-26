@@ -26,7 +26,7 @@
 namespace tubes {
 
 enum class Edition {
-    kRegistered,   // `..`            - 75 waves
+    kRegistered,   // 75 waves
     kShareware,    // 25 waves, plus the Preview
 };
 

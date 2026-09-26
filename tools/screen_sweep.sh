@@ -19,7 +19,7 @@
 # script was written: the same capture run twice is byte-identical, play frames
 # included.
 #
-# Not the same thing as ~/Dev/tubes-tooling/diff_frame.py, which compares the
+# Not the same thing as the tooling checkout's diff_frame.py, which compares the
 # PORT against the ORIGINAL under DOSBox and needs masking and a tolerance of 6
 # because the two expand the 6-bit DAC differently. This compares the port
 # against itself, which is stricter and far quicker.
