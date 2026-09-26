@@ -52,7 +52,7 @@ jobs:
     outputs:
       ver: ${{ steps.check.outputs.ver }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
 
@@ -73,7 +73,7 @@ jobs:
     env:
       VER: ${{ needs.version.outputs.ver }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
 
@@ -120,7 +120,7 @@ jobs:
           } > build-linux.md
           cat build-linux.md
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux
           path: |
@@ -136,7 +136,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
 
@@ -189,7 +189,7 @@ jobs:
           } > build-windows.md
           cat build-windows.md
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: |
@@ -202,7 +202,7 @@ jobs:
     env:
       VER: ${{ needs.version.outputs.ver }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
 
