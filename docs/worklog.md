@@ -792,7 +792,7 @@ looks like from outside: the cell walks the candidate colours and settles on the
 one that pays off. Recorded as a hypothesis with a direct test - settle a wildcard
 beside two of one colour and watch the cell value across the match.
 
-#### Retraction: Flashium always uses `FFADE`. The *sound* is what varies
+#### Retraction: Flashium always uses `FFADE`, and the *sound* is what varies
 
 The hypothesis recorded a few entries above - that a settled Flashium's cell
 holds the colour it matched, so a type-indexed lookup would produce that colour's
