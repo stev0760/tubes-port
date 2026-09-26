@@ -169,6 +169,9 @@ std::string encodeSettings(const Settings& s) {
           << (s.edition == Edition::kShareware ? "shareware" : "registered")
           << "\n";
     }
+    // The rest of the line is the path, so a folder with spaces in it -
+    // `C:\Program Files\Tubes` - needs no quoting.
+    if (!s.gameDir.empty()) o << "gamedir " << s.gameDir << "\n";
     return o.str();
 }
 
@@ -225,6 +228,15 @@ void decodeSettings(const std::string& text, Settings& out) {
             } else if (which == "registered") {
                 out.edition = Edition::kRegistered;
                 out.editionChosen = true;
+            }
+        } else if (word == "gamedir") {
+            std::string rest;
+            std::getline(ls, rest);
+            const size_t start = rest.find_first_not_of(" \t");
+            // A file written on Windows and read back may carry the CR.
+            const size_t end = rest.find_last_not_of(" \t\r");
+            if (start != std::string::npos) {
+                out.gameDir = rest.substr(start, end - start + 1);
             }
         }
         // Anything else is from a version that knew more than this one.

@@ -220,6 +220,12 @@ struct Settings {
     // recovery path for answering it wrongly.
     Edition edition = Edition::kRegistered;
     bool editionChosen = false;
+
+    // The folder the game was last found in, UTF-8 and absolute. Written
+    // whenever an interactive run finds the game somewhere else, so a player
+    // who dropped the .exe into their Tubes folder once can start it from a
+    // shortcut afterwards. Only a fallback: see `gamedir.h` for the order.
+    std::string gameDir;
 };
 
 std::string encodeSettings(const Settings& s);

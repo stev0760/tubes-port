@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <iterator>
@@ -17,6 +18,7 @@
 #include <utility>
 #include <string>
 #include <vector>
+#include <system_error>
 
 #include "font.h"
 #include "game.h"
@@ -24,6 +26,7 @@
 #include "uistate.h"
 #include "gfx.h"
 #include "hiscore.h"
+#include "gamedir.h"
 #include "input.h"
 #include "cutscene.h"
 #include "ending.h"
@@ -256,7 +259,13 @@ const float kContinueTickSeconds = tubes::waitKeySeconds(2);
 enum class Stage { kTitle, kPlay };
 
 struct Options {
-    std::string gameDir = ".";
+    // Empty means "find it" - see `gamedir.h`. Set by `--gamedir` or by a
+    // path dropped onto the executable.
+    std::string gameDir;
+    // Nothing on the command line but, at most, where the game is. That is a
+    // double-click or a drag-and-drop, so a failure is shown in a dialog and
+    // not only on a console that closes with the program.
+    bool plainLaunch = true;
     int scale = 0;              // 0 = pick the largest that fits
     std::string screenshot;     // render one frame here and exit
     int autoFrames = 0;         // simulate N scripted frames first
@@ -433,8 +442,15 @@ Options parseArgs(int argc, char** argv) {
     Options o;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
+        const bool aboutGameDir =
+            a == "--gamedir" || a == "-g" || (!a.empty() && a[0] != '-');
+        if (!aboutGameDir) o.plainLaunch = false;
         if ((a == "--gamedir" || a == "-g") && i + 1 < argc) {
             o.gameDir = argv[++i];
+        } else if (!a.empty() && a[0] != '-' && o.gameDir.empty()) {
+            // A bare path: what Windows passes when a folder is dragged onto
+            // the .exe. Taken as the game directory.
+            o.gameDir = a;
         } else if (a == "--scale" && i + 1 < argc) {
             o.scale = std::atoi(argv[++i]);
         } else if (a == "--screenshot" && i + 1 < argc) {
@@ -589,7 +605,10 @@ void usage() {
     std::printf(
         "%s - SDL reimplementation of Tubes\n"
         "\n"
-        "  --gamedir DIR     directory holding your TUBES.RES (default: .)\n"
+        "  --gamedir DIR     directory holding your TUBES.RES; a bare DIR works\n"
+        "                    too. Without one: the current directory, the\n"
+        "                    program's own, a TUBES folder in either, then the\n"
+        "                    last one that worked\n"
         "  --scale N         integer scale factor for this run, overriding the\n"
         "                    saved one (default: fit the display)\n"
         "  --graphics        open the port's Graphics Options screen\n"
@@ -1052,14 +1071,76 @@ int main(int argc, char** argv) {
         return diff == 0 ? 0 : 1;
     }
 
-    const std::string resPath = opt.gameDir + "/TUBES.RES";
+    // The port's own settings - the toggles and the six bindings. Not in the
+    // game directory: `SETUP.CFG` is the DOS install's hardware configuration
+    // and belongs to `SETUP.EXE`, and the port does not read a byte of it.
+    // `SDL_GetPrefPath` puts this where the platform keeps such things, which
+    // also means the eventual non-desktop ports have somewhere to go.
+    std::string settingsPath;
+    {
+        char* pref = SDL_GetPrefPath("", "tubes-port");
+        if (pref) {
+            settingsPath = std::string(pref) + "settings.cfg";
+            SDL_free(pref);
+        }
+    }
+    tubes::Settings settings;
+    if (!settingsPath.empty()) {
+        std::ifstream cf(tubes::fsPath(settingsPath));
+        if (cf) {
+            std::stringstream ss;
+            ss << cf.rdbuf();
+            tubes::decodeSettings(ss.str(), settings);
+        }
+    }
+    // Where the game is. Read before anything else opens a file, and the one
+    // place the settings file's `gamedir` is consulted - see `gamedir.h` for
+    // the order and why a remembered folder comes last.
+#ifdef _WIN32
+    const char* const exeName = "tubes-port.exe";
+#else
+    const char* const exeName = "tubes-port";
+#endif
+    {
+        tubes::GameDirSearch search;
+        search.given = opt.gameDir;
+        std::error_code ec;
+        search.cwd = tubes::utf8Of(std::filesystem::current_path(ec));
+        if (char* base = SDL_GetBasePath()) {
+            search.exeDir = base;
+            SDL_free(base);
+        }
+        search.remembered = settings.gameDir;
+        const tubes::GameDirLookup found = tubes::findGameDir(search);
+        if (found.dir.empty()) {
+            const std::string msg = tubes::gameNotFoundMessage(found, exeName);
+            std::fprintf(stderr, "%s", msg.c_str());
+            // Launched from Explorer, stderr is a console that closes with
+            // the program, so the explanation has to be a window of its own.
+            if (opt.plainLaunch) {
+                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+                                         "Tubes: game files not found",
+                                         msg.c_str(), nullptr);
+            }
+            return 1;
+        }
+        opt.gameDir = found.dir;
+    }
+
+    const std::string resPath = opt.gameDir + "/" + tubes::kGameDataFile;
     tubes::Archive res;
     std::string err;
     if (!res.open(resPath, err)) {
-        std::fprintf(stderr, "error: %s\n", err.c_str());
-        std::fprintf(stderr,
-                     "\nPoint --gamedir at a directory containing TUBES.RES "
-                     "from your copy of the game.\n");
+        // TUBES.RES is there - `findGameDir` saw it - and did not read.
+        const std::string msg =
+            "tubes-port found " + resPath + " but could not read it:\n    " +
+            err + "\n\nThe file may be damaged. Try a fresh copy of the game.\n";
+        std::fprintf(stderr, "%s", msg.c_str());
+        if (opt.plainLaunch) {
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+                                     "Tubes: game files unreadable",
+                                     msg.c_str(), nullptr);
+        }
         return 1;
     }
     std::printf("opened %s (%zu resources)\n", resPath.c_str(),
@@ -1382,31 +1463,18 @@ int main(int argc, char** argv) {
     // `1b2e:0243`: read `TUBES.HSC` if it is there, otherwise fill both banks
     // with the twenty names the binary ships. The file lives beside the game
     // data, which is where the original writes it.
-    // The port's own settings - the toggles and the six bindings. Not in the
-    // game directory: `SETUP.CFG` is the DOS install's hardware configuration
-    // and belongs to `SETUP.EXE`, and the port does not read a byte of it.
-    // `SDL_GetPrefPath` puts this where the platform keeps such things, which
-    // also means the eventual non-desktop ports have somewhere to go.
-    std::string settingsPath;
-    {
-        char* pref = SDL_GetPrefPath("", "tubes-port");
-        if (pref) {
-            settingsPath = std::string(pref) + "settings.cfg";
-            SDL_free(pref);
-        }
-    }
-    tubes::Settings settings;
-    if (!settingsPath.empty()) {
-        std::ifstream cf(tubes::fsPath(settingsPath));
-        if (cf) {
-            std::stringstream ss;
-            ss << cf.rdbuf();
-            tubes::decodeSettings(ss.str(), settings);
-        }
-    }
     auto writeSettings = [&]() {
         playerFiles.writeText(settingsPath, tubes::encodeSettings(settings));
     };
+
+    // Remember where the game was found, so the next start - from a shortcut,
+    // a Start menu entry, anywhere - finds it without being told. Only when
+    // it moved, so an ordinary start writes nothing; `playerFiles` refuses it
+    // on a scripted run like every other write.
+    if (settings.gameDir != opt.gameDir) {
+        settings.gameDir = opt.gameDir;
+        writeSettings();
+    }
 
     // Which edition to be, resolved once and before anything opens a file -
     // because the edition names the save and high-score files. See

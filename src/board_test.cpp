@@ -30,6 +30,7 @@
 #include "input.h"
 #include "save.h"
 #include "paths.h"
+#include "gamedir.h"
 #include "menu.h"
 #include "ordering.h"
 #include "playerfiles.h"
@@ -4425,6 +4426,168 @@ bool fileContents(const std::string& path, std::string& out) {
     return true;
 }
 
+// Finding the game. The rules are in `gamedir.h`; each check below is one of
+// them, because the failure they prevent is silent - a double-click that
+// finds nothing, or worse, finds the wrong install.
+namespace gd {
+
+namespace fs = std::filesystem;
+
+// A scratch tree under the temp directory, removed on the way out.
+struct Tree {
+    fs::path root;
+    Tree() {
+        root = fs::temp_directory_path() / "tubes-gamedir-test";
+        std::error_code ec;
+        fs::remove_all(root, ec);
+        fs::create_directories(root);
+    }
+    ~Tree() {
+        std::error_code ec;
+        fs::remove_all(root, ec);
+    }
+    std::string dir(const std::string& rel) const {
+        fs::create_directories(root / rel);
+        return tubes::utf8Of(root / rel);
+    }
+    std::string file(const std::string& rel) const {
+        fs::create_directories((root / rel).parent_path());
+        std::ofstream(root / rel) << "x";
+        return tubes::utf8Of(root / rel);
+    }
+};
+
+// The same directory compared the way `findGameDir` reports it.
+std::string norm(const std::string& d) {
+    fs::path p = fs::absolute(tubes::fsPath(d)).lexically_normal();
+    p.make_preferred();
+    std::string s = tubes::utf8Of(p);
+    while (s.size() > 1 && (s.back() == '/' || s.back() == '\\')) s.pop_back();
+    return s;
+}
+
+}  // namespace gd
+
+void testAGivenFolderIsUsedAsItIs() {
+    gd::Tree t;
+    const std::string game = t.dir("Tubes");
+    t.file("Tubes/TUBES.RES");
+    tubes::GameDirSearch s;
+    s.given = game;
+    const tubes::GameDirLookup r = tubes::findGameDir(s);
+    check(r.dir == gd::norm(game), "a folder holding TUBES.RES is the game");
+    check(r.given, "and the lookup knows it was told");
+    check(r.tried.size() == 1, "and looked nowhere else");
+}
+
+void testAGivenParentFolderFindsItsTubesSubfolder() {
+    gd::Tree t;
+    const std::string games = t.dir("DOSGAMES");
+    t.file("DOSGAMES/TUBES/TUBES.RES");
+    tubes::GameDirSearch s;
+    s.given = games;
+    const tubes::GameDirLookup r = tubes::findGameDir(s);
+    check(r.dir == gd::norm(games + "/TUBES"),
+          "a folder with a TUBES folder in it finds the game inside");
+}
+
+void testADroppedFileMeansItsFolder() {
+    gd::Tree t;
+    t.file("Tubes/TUBES.RES");
+    const std::string exe = t.file("Tubes/TUBES.EXE");
+    tubes::GameDirSearch s;
+    s.given = exe;
+    const tubes::GameDirLookup r = tubes::findGameDir(s);
+    check(r.dir == gd::norm(t.dir("Tubes")),
+          "dragging TUBES.EXE onto the port finds the folder it is in");
+}
+
+void testAWrongGivenFolderIsNotGuessedPast() {
+    gd::Tree t;
+    const std::string cwd = t.dir("here");
+    t.file("here/TUBES.RES");
+    tubes::GameDirSearch s;
+    s.given = t.dir("empty");
+    s.cwd = cwd;
+    const tubes::GameDirLookup r = tubes::findGameDir(s);
+    // Falling back to the current directory would hide the typo - and could
+    // quietly play a different install than the one the player named.
+    check(r.dir.empty(), "a folder without the game is reported, not replaced");
+    check(r.given, "as the player's own answer");
+}
+
+void testTheSearchOrderPutsTheCurrentFolderFirst() {
+    // A pure predicate, so the order is tested without a filesystem.
+    const std::string cwd = gd::norm("/sw"), exe = gd::norm("/bin"),
+                      mem = gd::norm("/reg");
+    auto everywhere = [](const std::string&) { return true; };
+    tubes::GameDirSearch s;
+    s.cwd = cwd;
+    s.exeDir = exe;
+    s.remembered = mem;
+    check(tubes::findGameDir(s, everywhere).dir == cwd,
+          "the current folder wins over the program's own and the remembered one");
+
+    auto onlyExe = [&](const std::string& d) { return d == exe; };
+    check(tubes::findGameDir(s, onlyExe).dir == exe,
+          "the program's own folder is next");
+
+    auto onlyMem = [&](const std::string& d) { return d == mem; };
+    const tubes::GameDirLookup r = tubes::findGameDir(s, onlyMem);
+    check(r.dir == mem, "the remembered folder is the last resort");
+    // cwd, cwd/TUBES, exe, exe/TUBES, remembered - and no remembered/TUBES.
+    check(r.tried.size() == 5, "after exactly five places, in order");
+    check(!r.given, "and nothing was given");
+}
+
+void testTheSameFolderIsNotLookedInTwice() {
+    const std::string dir = gd::norm("/games/tubes");
+    tubes::GameDirSearch s;
+    s.cwd = dir;
+    s.exeDir = dir + "/";  // `SDL_GetBasePath` ends in a separator
+    s.remembered = dir;
+    const tubes::GameDirLookup r =
+        tubes::findGameDir(s, [](const std::string&) { return false; });
+    check(r.tried.size() == 2,
+          "a double-click in the game folder looks there once, plus TUBES");
+}
+
+void testTheGameFolderSurvivesTheSettingsFile() {
+    tubes::Settings a;
+    a.gameDir = "C:\\Program Files\\Old Games\\TUBES";
+    tubes::Settings b;
+    tubes::decodeSettings(tubes::encodeSettings(a), b);
+    check(b.gameDir == a.gameDir, "a folder with spaces round-trips unquoted");
+
+    tubes::Settings c;
+    tubes::decodeSettings("gamedir /home/p/tubes\r\n", c);
+    check(c.gameDir == "/home/p/tubes", "a CRLF line loses its CR");
+
+    tubes::Settings d;
+    check(tubes::encodeSettings(d).find("gamedir") == std::string::npos,
+          "no folder found yet writes no gamedir line");
+}
+
+void testTheNotFoundMessageSaysWhatToDo() {
+    tubes::GameDirLookup r;
+    r.tried = {"C:\\Users\\p\\Desktop", "C:\\Users\\p\\Desktop\\TUBES"};
+    const std::string m = tubes::gameNotFoundMessage(r, "tubes-port.exe");
+    check(m.find("C:\\Users\\p\\Desktop\\TUBES") != std::string::npos,
+          "the message lists every place it looked");
+    check(m.find("TUBES.RES") != std::string::npos, "names the file it needs");
+    check(m.find("Drag that folder onto tubes-port.exe") != std::string::npos,
+          "tells the player how to fix it, by the program's own name");
+    check(m.find("https://archive.org/details/msdos_TUBES_shareware") !=
+              std::string::npos,
+          "and where to get a copy");
+    check(m.find("the folder you gave it") == std::string::npos,
+          "and does not blame a folder nobody gave it");
+    r.given = true;
+    check(tubes::gameNotFoundMessage(r, "tubes-port").find(
+              "the folder you gave it") != std::string::npos,
+          "but does say so when one was given");
+}
+
 // A path the ANSI code page cannot spell. On Windows a narrow `fopen` or
 // `std::ofstream(std::string)` fails on it outright, which is how a player
 // whose account or Tubes folder has an accent in its name would have lost
@@ -4683,6 +4846,14 @@ int main() {
 
     testABlockedWriterWritesNothingAndSaysSo();
     testAPathOutsideTheCodePageStillOpens();
+    testAGivenFolderIsUsedAsItIs();
+    testAGivenParentFolderFindsItsTubesSubfolder();
+    testADroppedFileMeansItsFolder();
+    testAWrongGivenFolderIsNotGuessedPast();
+    testTheSearchOrderPutsTheCurrentFolderFirst();
+    testTheSameFolderIsNotLookedInTwice();
+    testTheGameFolderSurvivesTheSettingsFile();
+    testTheNotFoundMessageSaysWhatToDo();
     testAWritingWriterWritesExactlyWhatItWasGiven();
     testAnEmptyPathIsAFailureAndNotARefusal();
     testEveryPlayerOwnedFileGoesThroughTheGate();
