@@ -42,3 +42,32 @@ jobs:
       # Prints "N checks, M failures" and exits non-zero if any failed.
       - name: Test
         run: ./build/tubes-tests
+
+  # The same build under MSVC. Nothing else compiles this code on Windows, so
+  # this job is what notices a POSIX-ism the day it lands rather than the day
+  # a release is cut.
+  #
+  # SDL2 comes from vcpkg, which the runner ships with, as the static triplet
+  # with the static CRT: the release job uses the same pair so that the zip is
+  # one self-contained .exe. Building the CI check any other way would test a
+  # configuration nobody ships.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install SDL2
+        run: vcpkg install sdl2:x64-windows-static
+
+      - name: Configure
+        run: >
+          cmake -B build -S .
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows-static
+          -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+
+      - name: Build
+        run: cmake --build build --config Release -j
+
+      - name: Test
+        run: ./build/Release/tubes-tests.exe
